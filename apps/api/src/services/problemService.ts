@@ -129,7 +129,7 @@ export async function createProblem(
       for (const ciId of input.affectedCIs!) {
         const rows = await runQuery<{ linked: unknown }>(session, `
           MATCH (p:Problem {id: $id, tenant_id: $tenantId})
-          MATCH (ci {id: $ciId, tenant_id: $tenantId})
+          MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
           WHERE ${ciPredicate}
           MERGE (p)-[r:AFFECTS]->(ci)
           RETURN count(r) AS linked

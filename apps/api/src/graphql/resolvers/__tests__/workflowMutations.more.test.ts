@@ -378,17 +378,35 @@ describe('updateWorkflowTransition', () => {
 })
 
 describe('addWorkflowTransition', () => {
-  it('creates a manual edge with a default label and returns the drawn handles', async () => {
+  it('creates a manual edge with its label and returns the drawn handles', async () => {
     on('CREATE (from)-[tr:TRANSITIONS_TO', rows({
-      tr: { properties: { trigger: 'manual', label: 'New transition', source_handle: 'r', target_handle: null } },
+      tr: { properties: { trigger: 'manual', label: 'Triage', source_handle: 'r', target_handle: null } },
       fromStep: 'new', toStep: 'triage', entityType: 'incident',
     }))
-    const out = await M.addWorkflowTransition(null, { definitionId: 'd-1', fromStepName: 'new', toStepName: 'triage', sourceHandle: 'r' }, ctx)
-    expect(out).toMatchObject({ fromStepName: 'new', toStepName: 'triage', trigger: 'manual', label: 'New transition', sourceHandle: 'r', targetHandle: null, requiresInput: false })
+    const out = await M.addWorkflowTransition(null, { definitionId: 'd-1', fromStepName: 'new', toStepName: 'triage', label: '  Triage ', sourceHandle: 'r' }, ctx)
+    expect(out).toMatchObject({ fromStepName: 'new', toStepName: 'triage', trigger: 'manual', label: 'Triage', sourceHandle: 'r', targetHandle: null, requiresInput: false })
     expect(typeof out.id).toBe('string')
     const p = callOf('CREATE (from)-[tr:TRANSITIONS_TO')!.params
-    expect(p).toMatchObject({ tenantId: 't-1', trigger: 'manual', label: 'New transition', targetHandle: null })
+    expect(p).toMatchObject({ tenantId: 't-1', trigger: 'manual', label: 'Triage', targetHandle: null })
     expect(p['id']).toBe(out.id)
+  })
+
+  // Tour of 23 Sep 2026: a new arrow was stored with `label: ''` (what the
+  // designer sent) or with a fixed English «New transition»: a blank or
+  // foreign button on every ticket.
+  it.each([undefined, null, '', '   '])('a manual edge without a label (%j) is refused, and nothing is written', async (label) => {
+    const e = await caught(M.addWorkflowTransition(null, { definitionId: 'd-1', fromStepName: 'new', toStepName: 'triage', label }, ctx))
+    expect(e.extensions['code']).toBe('BAD_USER_INPUT')
+    expect(e.extensions['i18n']).toEqual({ key: 'errors.workflow.manualTransitionNeedsLabel', params: { from: 'new', to: 'triage' } })
+    expect(callOf('CREATE (from)')).toBeUndefined()
+  })
+
+  it('an edge nobody clicks (a timer) needs no label', async () => {
+    on('CREATE (from)-[tr:TRANSITIONS_TO', rows({
+      tr: { properties: { trigger: 'timer', label: '' } }, fromStep: 'resolved', toStep: 'closed', entityType: 'incident',
+    }))
+    await M.addWorkflowTransition(null, { definitionId: 'd-1', fromStepName: 'resolved', toStepName: 'closed', trigger: 'timer' }, ctx)
+    expect(callOf('CREATE (from)-[tr:TRANSITIONS_TO')!.params).toMatchObject({ trigger: 'timer', label: '' })
   })
 
   it('an identical edge (same steps, same trigger) is refused: the engine would pick one at random (B-27)', async () => {
@@ -399,7 +417,7 @@ describe('addWorkflowTransition', () => {
   })
 
   it('steps not in this definition are a NOT_FOUND, not an edge to nowhere', async () => {
-    const e = await caught(M.addWorkflowTransition(null, { definitionId: 'd-1', fromStepName: 'a', toStepName: 'zz' }, ctx))
+    const e = await caught(M.addWorkflowTransition(null, { definitionId: 'd-1', fromStepName: 'a', toStepName: 'zz', label: 'Go on' }, ctx))
     expect(e.extensions['code']).toBe('NOT_FOUND')
   })
 })

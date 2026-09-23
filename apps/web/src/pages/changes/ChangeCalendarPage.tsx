@@ -34,8 +34,10 @@ import { formatHourMinute, formatDate, formatDateTime, currentLocale } from '@/l
 import { colors, palette } from '@/lib/tokens'
 import { pausedWhenHidden } from '@/lib/polling'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
+import { useCILabels } from '@/hooks/useCILabels'
 import { ModalOverlay } from './components/shared'
 import { riepilogoRilascio } from './releasePlanSummary'
+import { readableWindow } from './readableWindow'
 import { Pill } from '@/components/ui/Pill'
 import type { DeployStep } from '@/types/change'
 import {
@@ -78,9 +80,12 @@ function Barra({ b, onClick }: { b: BarraDiCalendario; onClick: () => void }) {
   const v = b.v
   const s = stileVoce(v)
   const tipo = t(v.kind === 'release' ? 'pages.changeCalendar.typeRelease' : 'pages.changeCalendar.typeValidation')
-  const conflitto = v.sovrapposizione === 'none'
-    ? ''
-    : `\n${t(v.sovrapposizione === 'clash' ? 'pages.changeCalendar.clashWith' : 'pages.changeCalendar.warnWith', { codes: v.conflittoCon.join(', ') })}`
+  // Each change under its own relation (tour of 23 Sep 2026): one line for all
+  // of them named a change that only overlaps elsewhere as «same CI».
+  const conflitto = [
+    v.overlapsWith.length > 0 ? `\n${t('pages.changeCalendar.warnWith', { codes: v.overlapsWith.join(', ') })}` : '',
+    v.sameCiWith.length > 0 ? `\n${t('pages.changeCalendar.clashWith', { codes: v.sameCiWith.join(', ') })}` : '',
+  ].join('')
   const ore = b.span > 1
     ? `${formatHourMinute(v.start)} → ${formatHourMinute(v.end)}`
     : formatHourMinute(v.start)
@@ -132,6 +137,8 @@ function Barra({ b, onClick }: { b: BarraDiCalendario; onClick: () => void }) {
 function AnteprimaChange({ changeId, onClose }: { changeId: string; onClose: () => void }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  // The environment with its Dictionary label, as in every other list of CIs (U-9/U-11).
+  const { environmentLabel } = useCILabels()
   const { data, loading, error } = useQuery<{
     change: { id: string; code: string; title: string; why: string | null; what: string | null; changeType: string | null; priority: string | null } | null
     changeAffectedCIs: Array<{
@@ -172,7 +179,7 @@ function AnteprimaChange({ changeId, onClose }: { changeId: string; onClose: () 
                   {ci.map((x) => (
                     <li key={x.ci.id} style={{ marginBottom: 2 }}>
                       {x.ci.name}
-                      {x.ci.environment && <span style={{ color: 'var(--color-slate)' }}>{' · '}{x.ci.environment}</span>}
+                      {x.ci.environment && <span style={{ color: 'var(--color-slate)' }}>{' · '}{environmentLabel(x.ci.environment)}</span>}
                     </li>
                   ))}
                 </ul>
@@ -197,7 +204,7 @@ function AnteprimaChange({ changeId, onClose }: { changeId: string; onClose: () 
                     {piano.voci.map((v, i) => (
                       <tr key={`${v.taskCode ?? v.ciId}-${v.tipo}-${i}`} style={{ borderTop: i === 0 ? 'none' : '1px solid var(--color-border-light)' }}>
                         <td style={{ padding: '5px 8px 5px 0', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', color: 'var(--color-slate-dark)' }}>
-                          {formatDateTime(v.start)} → {formatHourMinute(v.end)}
+                          {readableWindow(v.start, v.end)}
                         </td>
                         <td style={{ padding: '5px 8px' }}>
                           <Pill
@@ -421,7 +428,9 @@ export function ChangeCalendarPage() {
 
       {/* Il riassunto: quante change, quanti rilasci, e quanti urti. */}
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10, fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>
-        <span>{t('pages.changeCalendar.summary', { changes: conti.change, releases: conti.rilasci })}</span>
+        {/* Two counts, two plurals: one key with both read «1 changes · 1 release windows».
+            The changes are counted as in the list of changes. */}
+        <span>{`${t('pages.changes.count', { count: conti.change })} · ${t('pages.changeCalendar.releaseWindows', { count: conti.rilasci })}`}</span>
         {conti.conflitti > 0 && (
           <span style={{ color: palette.danger.text, fontWeight: 600 }}>
             <AlertTriangle size={12} style={{ verticalAlign: -1, marginRight: 4 }} aria-hidden="true" />

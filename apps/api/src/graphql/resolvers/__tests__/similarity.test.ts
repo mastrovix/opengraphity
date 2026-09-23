@@ -16,6 +16,11 @@
  *   ready: true,  items: []        → calcolato, e davvero non somiglia a niente
  *
  * Erano prosa. Qui sono tre test.
+ *
+ * D15 (tour of 23 Sep 2026): «not computed yet» was true only if someone had
+ * queued the computation. On imported or old incidents nobody had, and the
+ * panel waited for ever. Now the question queues it, and a computation that
+ * failed is a fourth state: `failure` with the reason.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
@@ -37,6 +42,8 @@ const aiFeatureEnabled = vi.fn()
 vi.mock('../../../lib/aiSettings.js', () => ({ aiFeatureEnabled: (...a: unknown[]) => aiFeatureEnabled(...a) }))
 
 vi.mock('../../../services/embeddings.js', () => ({ vectorIndexName: (l: string) => `idx-${l}` }))
+const requestEmbedding = vi.fn()
+vi.mock('../../../jobs/embeddingWorker.js', () => ({ requestEmbedding: (...a: unknown[]) => requestEmbedding(...a) }))
 vi.mock('../../../lib/kbPublished.js', () => ({ kbArticlePublishedCypher: (a: string) => `${a}.published = true` }))
 
 const suggestTriage = vi.fn()
@@ -59,6 +66,9 @@ vi.mock('../../../lib/kbCoverage.js', () => ({
   collegaArticoloAIncident: (...a: unknown[]) => collegaArticoloAIncident(...a),
 }))
 
+const auditCalls: unknown[][] = []
+vi.mock('../../../lib/audit.js', () => ({ audit: async (...a: unknown[]) => { auditCalls.push(a) } }))
+
 const logWarn = vi.fn()
 vi.mock('../../../lib/logger.js', () => ({
   logger: { warn: (...a: unknown[]) => logWarn(...a), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -78,7 +88,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   close.mockResolvedValue(undefined)
   aiFeatureEnabled.mockResolvedValue(true)
-  runQueryOne.mockResolvedValue({ embedding: [0.1, 0.2] })
+  runQueryOne.mockResolvedValue({ embedding: [0.1, 0.2], version: '2026-09-23T04:20:00.000Z' })
+  requestEmbedding.mockResolvedValue({ state: 'queued' })
   vectorSearchForTenant.mockResolvedValue([])
   createKBArticle.mockResolvedValue({ id: 'kb1' })
   collegaArticoloAIncident.mockResolvedValue(true)
@@ -94,19 +105,42 @@ describe('i tre stati che sembrano tutti «lista vuota»', () => {
     describe(nome, () => {
       it('spenti dall\'organizzazione: `disabled: true` — non «non ancora pronto»', async () => {
         aiFeatureEnabled.mockResolvedValue(false)
-        expect(await chiama()).toEqual({ ready: false, disabled: true, items: [] })
+        expect(await chiama()).toEqual({ ready: false, disabled: true, failure: null, items: [] })
         // Non si legge nemmeno l'incident: la domanda non si fa proprio.
         expect(runQueryOne).not.toHaveBeenCalled()
       })
 
       it('embedding non ancora calcolato: `ready: false`, ma NON disabilitato', async () => {
-        runQueryOne.mockResolvedValue({ embedding: null })
-        expect(await chiama()).toEqual({ ready: false, disabled: false, items: [] })
+        runQueryOne.mockResolvedValue({ embedding: null, version: '2026-09-23T04:20:00.000Z' })
+        expect(await chiama()).toEqual({ ready: false, disabled: false, failure: null, items: [] })
         expect(vectorSearchForTenant).not.toHaveBeenCalled()
       })
 
+      it('D15: the question itself queues the computation, for this version of the incident', async () => {
+        runQueryOne.mockResolvedValue({ embedding: null, version: '2026-09-23T04:20:00.000Z' })
+        await chiama()
+        expect(requestEmbedding).toHaveBeenCalledWith({ entityType: 'incident', entityId: 'i1', tenantId: 't1', updatedAt: '2026-09-23T04:20:00.000Z' })
+      })
+
+      it('D15: a computation that used up its attempts is said, with its reason — not «under way» for ever', async () => {
+        runQueryOne.mockResolvedValue({ embedding: null, version: '2026-09-23T04:20:00.000Z' })
+        requestEmbedding.mockResolvedValue({ state: 'failed', reason: 'model not loaded' })
+        expect(await chiama()).toEqual({ ready: false, disabled: false, failure: 'model not loaded', items: [] })
+      })
+
+      it('D15: an incident without any timestamp cannot be versioned, and says so', async () => {
+        runQueryOne.mockResolvedValue({ embedding: null, version: null })
+        await expect(chiama()).rejects.toThrow('has neither updated_at nor created_at')
+        expect(requestEmbedding).not.toHaveBeenCalled()
+      })
+
+      it('an incident that already has its embedding asks for nothing', async () => {
+        await chiama()
+        expect(requestEmbedding).not.toHaveBeenCalled()
+      })
+
       it('calcolato e davvero senza vicini: `ready: true` con lista vuota', async () => {
-        expect(await chiama()).toEqual({ ready: true, disabled: false, items: [] })
+        expect(await chiama()).toEqual({ ready: true, disabled: false, failure: null, items: [] })
       })
 
       it('un incident che non esiste è NOT_FOUND, non una lista vuota', async () => {
@@ -194,5 +228,11 @@ describe('createKbDraftFromIncident — da dove viene questo articolo', () => {
     createKBArticle.mockResolvedValue({})
     await R.Mutation.createKbDraftFromIncident(null, { incidentId: 'i1' }, ctx)
     expect(collegaArticoloAIncident).not.toHaveBeenCalled()
+  })
+
+  it('says in the Audit Log that the text came from the model (tour of 23 Sep 2026)', async () => {
+    auditCalls.length = 0
+    await R.Mutation.createKbDraftFromIncident(null, { incidentId: 'i1' }, ctx)
+    expect(auditCalls).toEqual([[ctx, 'kb_article.drafted_by_ai', 'KBArticle', 'kb1', { incidentId: 'i1' }]])
   })
 })

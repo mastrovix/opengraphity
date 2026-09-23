@@ -7,7 +7,8 @@
  */
 import { describe, it, expect } from 'vitest'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { GET_USERS, GET_PRE_APPROVED_CHANGE_TYPES, GET_ALL_CIS, GET_CI_GROUPS_BY_ID, GET_TICKET_CI_EXCLUSIONS } from '@/graphql/queries'
+import { GET_PRE_APPROVED_CHANGE_TYPES, GET_ALL_CIS, GET_CI_GROUPS_BY_ID, GET_TICKET_CI_EXCLUSIONS } from '@/graphql/queries'
+import { userSearchMock } from '@/test/mocks/gql'
 import { DomainVocabularyContext } from '@/contexts/DomainVocabularyContext'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { CreateChangePage } from './CreateChangePage'
@@ -18,11 +19,8 @@ const CHANGE_TYPES = [
   { value: 'major', label: 'Major', labels: [] },
 ]
 
-const users: GqlMock = {
-  request: { query: GET_USERS, variables: () => true },
-  result: { data: { users: [] } },
-  maxUsageCount: Number.POSITIVE_INFINITY,
-}
+/** The owner picker's people (D21): none needed by these tests. */
+const users: GqlMock = userSearchMock([])
 const preApproved = (types: string[]): GqlMock => ({
   request: { query: GET_PRE_APPROVED_CHANGE_TYPES },
   result: { data: { preApprovedChangeTypes: { __typename: 'PreApprovedChangeTypes', types, vocabulary: CHANGE_TYPES.map((t) => t.value) } } },

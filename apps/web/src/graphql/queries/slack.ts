@@ -13,13 +13,15 @@ export const GET_SLACK_SETTINGS = gql`
 `
 
 /** Regole delle password e login aziendale del realm dell'organizzazione (ondata 8). */
+// D71: `redirectUris`/`samlSpMetadataUrls` are every address to register, one for each origin of the sign-in page
+// (the singular `redirectUri`/`samlSpMetadataUrl` are only their first entry, kept by the API for older clients).
 export const GET_LOGIN_SETTINGS = gql`
   query GetLoginSettings {
     loginSettings {
       passwordRules { minLength uppercase lowercase digits special notUsername notEmail history expireDays lockoutEnabled lockoutFailures lockoutMinutes }
       passwordRulesOutOfRange { rule value min max }
       providers { kind displayName enabled clientId tenant hostedDomain metadataUrl redirectUri samlSpMetadataUrl }
-      addresses { kind redirectUri samlSpMetadataUrl }
+      addresses { kind redirectUris samlSpMetadataUrls }
     }
   }
 `

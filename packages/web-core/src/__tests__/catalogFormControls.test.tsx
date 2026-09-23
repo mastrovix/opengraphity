@@ -150,6 +150,34 @@ describe('reference fields', () => {
     expect(await screen.findByText('Nessun risultato')).toBeTruthy()
   })
 
+  // Tour of 23 Sep 2026: a failed search was an unhandled rejection, and the
+  // field went on as if nothing had happened.
+  it('a search that fails says the list is unknown, and does not call it empty', async () => {
+    draw(riferimento, {
+      onSearchReference: vi.fn(async () => { throw new Error('network down') }), onPickReference: vi.fn(),
+      referenceNoResultsLabel: 'Nessun risultato', referenceSearchFailedLabel: 'Ricerca non riuscita',
+    })
+    await userEvent.type(screen.getByRole('searchbox'), 'se')
+    expect((await screen.findByRole('alert')).textContent).toBe('Ricerca non riuscita')
+    expect(screen.queryByText('Nessun risultato')).toBeNull()
+  })
+
+  // Tour of 23 Sep 2026: every keystroke searches, and a slower answer to an
+  // older search could land last and replace the candidates of the newer one.
+  it('only the answer to the last search fills the list', async () => {
+    let releaseFirst: (found: { id: string; label: string }[]) => void = () => {}
+    const onSearchReference = vi.fn((_campo: unknown, q: string) => q === 'se'
+      ? new Promise<{ id: string; label: string }[]>((resolve) => { releaseFirst = resolve })
+      : Promise.resolve([{ id: 'ci-2', label: 'Server B' }]))
+    draw(riferimento, { onSearchReference, onPickReference: vi.fn() })
+    await userEvent.type(screen.getByRole('searchbox'), 'ser')
+    expect(await screen.findByRole('button', { name: 'Server B' })).toBeTruthy()
+    releaseFirst([{ id: 'ci-1', label: 'Server A (old answer)' }])
+    await new Promise((r) => setTimeout(r, 0))
+    expect(screen.queryByRole('button', { name: 'Server A (old answer)' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Server B' })).toBeTruthy()
+  })
+
   it('once chosen, the reference shows its label and a way to clear it', async () => {
     const onPickReference = vi.fn()
     draw(riferimento, {

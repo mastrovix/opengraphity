@@ -58,7 +58,7 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   },
   { anyOf: ['portal.read'], query: ['myTickets', 'myTicket', 'myTicketStats', 'portalSeverityChoices', 'portalCustomFields'] },
   { anyOf: ['workspace.use', 'portal.read'], query: ['ticketCategories', 'fieldVisibilityRules', 'fieldRequirementRules'] },
-  { anyOf: ['portal.submit'], mutation: ['createTicket', 'addTicketComment', 'reopenTicket'] },
+  { anyOf: ['portal.submit'], mutation: ['createTicket', 'addTicketComment', 'reopenTicket', 'confirmTicketResolution'] },
 
   /**
    * I COMPITI DI UN TICKET non hanno un permesso proprio: vale quello del
@@ -132,7 +132,7 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
     // modulo può vedere le sue scelte, e sono i CI dei tipi che il campo
     // dichiara — non la CMDB (20 set 2026).
     'portalReferenceChoices'] },
-  { anyOf: ['request.write'], mutation: ['updateServiceRequest', 'assignServiceRequestToUser', 'setServiceRequestFormAnswer'] },
+  { anyOf: ['request.write'], mutation: ['updateServiceRequest', 'assignServiceRequestToUser', 'assignServiceRequestToTeam', 'setServiceRequestFormAnswer'] },
   { anyOf: ['request.write', 'portal.submit'], mutation: ['createServiceRequest'] },
   // Il passo di workflow per id d'istanza: vale per incident, richieste e articoli.
   { anyOf: ['incident.write', 'problem.write', 'request.write', 'kb.write'], mutation: ['executeWorkflowTransition'] },

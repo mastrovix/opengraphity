@@ -3,7 +3,7 @@ import { ArrowLeft } from 'lucide-react'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { TicketStatusBadge } from '@/components/StatusBadge'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
-import { buttonStyleForCategory } from '@/lib/workflowStepStyle'
+import { transitionButtonColors } from '@/lib/workflowStepStyle'
 
 interface WorkflowTransition {
   toStep:        string
@@ -29,7 +29,7 @@ interface Incident {
   availableTransitions: WorkflowTransition[]
 }
 
-function transitionButtonStyle(category: string | null | undefined, disabled: boolean): React.CSSProperties {
+function transitionButtonStyle(category: string | null | undefined, inputField: string | null, disabled: boolean): React.CSSProperties {
   const base: React.CSSProperties = {
     padding:      '6px 14px',
     borderRadius: 6,
@@ -40,7 +40,8 @@ function transitionButtonStyle(category: string | null | undefined, disabled: bo
     border:       '1px solid transparent',
     transition:   'opacity 0.15s',
   }
-  return { ...base, ...buttonStyleForCategory(category) }
+  // D27: a transition that ends the incident badly is drawn as danger (lib/workflowStepStyle).
+  return { ...base, ...transitionButtonColors(category, inputField, 'byCategory') }
 }
 
 interface IncidentHeaderProps {
@@ -116,7 +117,7 @@ export function IncidentHeader({
               key={tr.toStep}
               onClick={() => onTransitionClick(tr)}
               disabled={transitioning}
-              style={transitionButtonStyle(stepByName.get(tr.toStep)?.category ?? null, transitioning)}
+              style={transitionButtonStyle(stepByName.get(tr.toStep)?.category ?? null, tr.inputField, transitioning)}
             >
               {tr.label}
             </button>

@@ -137,6 +137,12 @@ import { aiSettingsDailyWork } from './20261006_1030_ai_settings_daily_work.js'
 import { automationOrigin } from './20261006_1040_automation_origin.js'
 import { aiSettingsConfigurationAssist } from './20261006_1050_ai_settings_configuration_assist.js'
 import { deleteOwnerlessReportConversations } from './20261007_1010_delete_ownerless_report_conversations.js'
+import { certificatesOnDatabases } from './20261007_1020_certificates_on_databases.js'
+import { changeStatusFromWorkflow } from './20261007_1030_change_status_from_workflow.js'
+import { eventPolicyNonProduction } from './20261007_1040_event_policy_non_production.js'
+import { isolatedClusterEveryRelation } from './20261007_1050_isolated_cluster_every_relation.js'
+import { requestRejectedFailed } from './20261007_1060_request_rejected_failed.js'
+import { incidentConfirmResolution } from './20261008_1010_incident_confirm_resolution.js'
 import { ticketTeamSegments } from './20260930_1030_ticket_team_segments.js'
 import { changeTaskTeamSegments } from './20260930_1040_change_task_team_segments.js'
 
@@ -259,4 +265,10 @@ export const MIGRATIONS: readonly Migration[] = [
   automationOrigin,
   aiSettingsConfigurationAssist,
   deleteOwnerlessReportConversations,
+  certificatesOnDatabases,
+  changeStatusFromWorkflow,
+  eventPolicyNonProduction,
+  isolatedClusterEveryRelation,
+  requestRejectedFailed,
+  incidentConfirmResolution,
 ]

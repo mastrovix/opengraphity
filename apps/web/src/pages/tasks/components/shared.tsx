@@ -67,19 +67,52 @@ export function fromLocal(v: string, timeZone?: string | null): string {
   return instant.toISOString()
 }
 
-export function StickyAction({ label, disabled, blockReason, onClick }: {
-  label: string; disabled: boolean; blockReason?: string; onClick: () => void
+/**
+ * The action that completes a task. `busyLabel`: a completion, an answer or a
+ * save is in flight (D24) — the button waits and says what it is waiting
+ * for, instead of taking a second click that the server refuses with «This
+ * task is already completed».
+ */
+export function StickyAction({ label, disabled, blockReason, onClick, busyLabel = null }: {
+  label: string; disabled: boolean; blockReason?: string | undefined; onClick: () => void; busyLabel?: string | null
 }) {
+  const off = disabled || busyLabel !== null
   return (
     <div style={{ position: 'sticky', bottom: 0, background: colors.white, borderTop: `1px solid ${colors.border}`, padding: '12px 0', marginTop: 20 }}>
-      <button type="button" disabled={disabled} onClick={onClick} style={{
+      <button type="button" disabled={off} aria-busy={busyLabel !== null} onClick={onClick} style={{
         width: '100%', padding: '12px 24px', borderRadius: 8, border: 'none',
         backgroundColor: 'var(--color-brand)', color: colors.white, fontSize: 'var(--font-size-card-title)',
-        fontWeight: 600, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
+        fontWeight: 600, cursor: busyLabel !== null ? 'wait' : off ? 'not-allowed' : 'pointer', opacity: off ? 0.5 : 1,
       }}>
-        {label}
+        {busyLabel ?? label}
       </button>
       {blockReason && <p style={{ margin: '6px 0 0', fontSize: 'var(--font-size-label)', color: 'var(--color-trigger-sla-breach)', textAlign: 'center' }}>{blockReason}</p>}
     </div>
+  )
+}
+
+/**
+ * A button that completes the task with one result (pass/fail, confirmed/
+ * rejected, deploy confirmed). While a completion is in flight every result
+ * button waits, and the one that was pressed says so (D24).
+ */
+export function ResultButton({ label, tone, disabled, busyLabel, pressed, onClick }: {
+  label: string; tone: 'success' | 'danger'; disabled: boolean; busyLabel: string | null; pressed: boolean; onClick: () => void
+}) {
+  const off = disabled || busyLabel !== null
+  return (
+    <button
+      type="button"
+      disabled={off}
+      aria-busy={busyLabel !== null && pressed}
+      onClick={onClick}
+      style={{
+        padding: '12px 32px', borderRadius: 8, border: 'none', fontWeight: 600, fontSize: 'var(--font-size-body)',
+        background: tone === 'success' ? 'var(--color-success)' : 'var(--color-danger)', color: colors.white,
+        cursor: busyLabel !== null ? 'wait' : off ? 'not-allowed' : 'pointer', opacity: off ? 0.5 : 1,
+      }}
+    >
+      {busyLabel !== null && pressed ? busyLabel : label}
+    </button>
   )
 }

@@ -245,6 +245,14 @@ export function eventsSDL(): string {
     highImpactDependents: Int!
     """Mappa severità → impatto/urgenza, JSON serializzato."""
     severityMap:          String!
+    """Values of the environment vocabulary that count as production."""
+    productionEnvironments: [String!]!
+    """
+    Severity → impact/urgency for alarms on CIs outside production, serialized
+    JSON; null = severityMap everywhere. A CI without an environment counts as
+    production.
+    """
+    nonProductionSeverityMap: String
   }
 
   input EventFilter {
@@ -299,6 +307,10 @@ export function eventsSDL(): string {
     maintenanceStatuses:  [String!]
     highImpactDependents: Int
     severityMap:          String
+    """Complete list; values of this organization's environment vocabulary."""
+    productionEnvironments: [String!]
+    """JSON like severityMap, or null = severityMap everywhere."""
+    nonProductionSeverityMap: String
   }
 
   type EventPage {
@@ -369,6 +381,8 @@ export function eventsSDL(): string {
     """Servizi monitorati che dipendono dal CI: quante mappe attive lo includono (0 se nessuna)."""
     servicesCount: Int!
     ownerTeam:    String
+    """The team that acts on the CI when it is unhealthy: its support group (SUPPORTED_BY)."""
+    supportTeam:  String
   }
 
   """Contatori su tutto il tenant (indipendenti dal filtro) + righe filtrate e paginate."""
@@ -393,6 +407,8 @@ export function eventsSDL(): string {
     environment: String
     """Id del team proprietario (OWNED_BY)."""
     team:        String
+    """Id of the support group (SUPPORTED_BY)."""
+    supportTeam: String
     """Ricerca per nome, senza distinzione di maiuscole."""
     search:      String
   }

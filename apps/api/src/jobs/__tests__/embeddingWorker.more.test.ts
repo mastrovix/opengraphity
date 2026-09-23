@@ -17,9 +17,10 @@ type OnFailed = (job: Job | undefined, err: Error) => void
 let processor: Processor | null = null
 let onFailed: OnFailed | null = null
 vi.mock('../../lib/aiSettings.js', () => import('../../lib/__tests__/aiSettingsFake.js'))
+const queue = { add: vi.fn(), getJob: vi.fn() }
 vi.mock('../../lib/bullmq.js', () => ({
   createWorker: vi.fn((_name: string, p: Processor, opts: { onFailed: OnFailed }) => { processor = p; onFailed = opts.onFailed; return {} }),
-  getQueue: vi.fn(() => ({ add: vi.fn() })),
+  getQueue: vi.fn(() => queue),
 }))
 
 const getSession = vi.fn(() => ({ executeWrite: vi.fn(async () => undefined), close: vi.fn(async () => undefined) }))
@@ -43,7 +44,7 @@ vi.mock('../../lib/logger.js', () => ({
   logger: { child: () => ({ info: logInfo, warn: vi.fn(), error: logError, debug: vi.fn() }) },
 }))
 
-const { startEmbeddingWorker, embeddingJobId } = await import('../embeddingWorker.js')
+const { startEmbeddingWorker, embeddingJobId, requestEmbedding } = await import('../embeddingWorker.js')
 const { aiOff, aiResetFake } = await import('../../lib/__tests__/aiSettingsFake.js')
 
 beforeEach(async () => {
@@ -88,5 +89,35 @@ describe('failed jobs', () => {
   it('a failure without a job (BullMQ can report one) is still logged', () => {
     onFailed!(undefined, new Error('stalled'))
     expect(logError).toHaveBeenCalledWith({ jobId: undefined, data: undefined, err: 'stalled' }, expect.any(String))
+  })
+})
+
+/**
+ * D15 (tour of 23 Sep 2026): the similarity panel asks for the embedding of
+ * the incident it shows. «Under way» must be true: the job is queued if it is
+ * not there, left alone while it waits or runs, and a job that used up its
+ * attempts is reported with its reason instead of being queued again.
+ */
+describe('requestEmbedding', () => {
+  const data = { entityType: 'incident' as const, entityId: 'i1', tenantId: 't1', updatedAt: '2026-09-23T04:20:00.000Z' }
+  const jobId = `embed-incident-i1-${Date.parse('2026-09-23T04:20:00.000Z')}`
+
+  it('queues the job of this version when there is none', async () => {
+    queue.getJob.mockResolvedValue(undefined)
+    await expect(requestEmbedding(data)).resolves.toEqual({ state: 'queued' })
+    expect(queue.getJob).toHaveBeenCalledWith(jobId)
+    expect(queue.add).toHaveBeenCalledWith('embed', data, expect.objectContaining({ jobId }))
+  })
+
+  it('leaves a waiting or running job alone', async () => {
+    queue.getJob.mockResolvedValue({ isFailed: async () => false })
+    await expect(requestEmbedding(data)).resolves.toEqual({ state: 'queued' })
+    expect(queue.add).not.toHaveBeenCalled()
+  })
+
+  it('reports a failed job with its reason, and does not queue it again', async () => {
+    queue.getJob.mockResolvedValue({ isFailed: async () => true, failedReason: 'model not loaded' })
+    await expect(requestEmbedding(data)).resolves.toEqual({ state: 'failed', reason: 'model not loaded' })
+    expect(queue.add).not.toHaveBeenCalled()
   })
 })

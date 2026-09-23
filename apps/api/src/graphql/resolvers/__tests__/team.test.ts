@@ -95,7 +95,7 @@ describe('assignCIOwner — relazione OWNED_BY single-valued', () => {
     expect(cypher).toContain('DELETE old')
     expect(cypher).not.toContain('MERGE')
     expect(cypher).not.toContain('MATCH (t:Team')
-    expect(cypher).toContain('MATCH (ci {id: $ciId, tenant_id: $tenantId})')
+    expect(cypher).toContain('MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})')
     // A-9: le etichette dei CI vengono dal metamodello del tenant, quindi un CI
     // di un tipo creato dal cliente si trova (prima: «ConfigurationItem or Team»).
     expect(cypher).toContain('ci:LoadBalancer')

@@ -3,7 +3,7 @@ import { ArrowLeft } from 'lucide-react'
 import { Pill } from '@/components/ui/Pill'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
-import { buttonStyleForCategory } from '@/lib/workflowStepStyle'
+import { transitionButtonColors } from '@/lib/workflowStepStyle'
 import { useValueStyle } from '@/hooks/useValueStyle'
 
 interface WorkflowTransition {
@@ -27,14 +27,15 @@ interface Problem {
 const STATUS_BG = 'var(--color-brand-light)'
 const STATUS_FG = 'var(--color-brand)'
 
-function transitionButtonStyle(category: string | null | undefined, disabled: boolean): React.CSSProperties {
+function transitionButtonStyle(category: string | null | undefined, inputField: string | null, disabled: boolean): React.CSSProperties {
   const base: React.CSSProperties = {
     padding: '6px 14px', borderRadius: 6,
     fontSize: 'var(--font-size-card-title)', fontWeight: 500,
     cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
     border: '1px solid transparent', transition: 'opacity 0.15s',
   }
-  return { ...base, ...buttonStyleForCategory(category) }
+  // D27: a transition that ends the problem badly is drawn as danger (lib/workflowStepStyle).
+  return { ...base, ...transitionButtonColors(category, inputField, 'byCategory') }
 }
 
 interface ProblemHeaderProps {
@@ -81,16 +82,16 @@ export function ProblemHeader({
           lingue.
         */}
         <Pill bg={STATUS_BG} color={STATUS_FG} radius={4} style={{ fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
-          {labelFor(problem.status) || problem.status.replace(/_/g, ' ')}
+          {labelFor(problem.status)}
         </Pill>
       </div>
       {/* Il NUMERO del ticket, non l'uuid interno: è quello che si cita al telefono. */}
-      <div style={{ fontSize: 'var(--font-size-body)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: 'var(--text-muted)' }}>{problem.number}</div>
+      <div style={{ fontSize: 'var(--font-size-body)', fontFamily: 'var(--font-family)', color: 'var(--text-muted)' }}>{problem.number}</div>
 
       {manualTransitions.length > 0 && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
           {manualTransitions.map((tr) => (
-            <button type="button" key={tr.toStep} onClick={() => onTransitionClick(tr)} disabled={transitioning} style={transitionButtonStyle(stepByName.get(tr.toStep)?.category ?? null, transitioning)}>
+            <button type="button" key={tr.toStep} onClick={() => onTransitionClick(tr)} disabled={transitioning} style={transitionButtonStyle(stepByName.get(tr.toStep)?.category ?? null, tr.inputField, transitioning)}>
               {tr.label}
             </button>
           ))}

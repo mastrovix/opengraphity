@@ -176,6 +176,8 @@ const Q = {
   closedPrev:  /WHERE wi\.current_step IN \$terminalSteps AND wi\.current_step <> \$resolvedStep AND i\.id <> \$openedId/,
   // cronologia dell'allarme: la voce scritta da sola (appendEventHistory: chiusura automatica); le altre stanno dentro gli statement qui sopra
   history:     /MATCH \(e:Event \{id: \$eventId, tenant_id: \$tenantId\}\)\s+FOREACH \(_ IN CASE WHEN true THEN \[1\] ELSE \[\] END \|/,
+  // tour of 23 Sep 2026: the environment of the CI, read before opening when the policy has a map outside production
+  target:      /MATCH \(ci:ConfigurationItem \{id: \$ciId, tenant_id: \$tenantId\}\)\s+RETURN ci\.environment AS environment/,
 }
 
 /** Archi della definizione come li restituisce loadDefinitionTransitions (dal seed reale del workflow incident). */
@@ -227,6 +229,7 @@ function baseRules(ev: Record<string, unknown> = {}, ciId: string | null = 'ci-1
     [Q.incStep, { incidentId: 'inc-storm', instanceId: 'wi-s', step: 'in_progress' }],
     [Q.closedPrev, null],
     [Q.history, { id: 'ev-1' }],
+    [Q.target, { environment: 'production' }],
   ]
 }
 
@@ -802,12 +805,53 @@ describe('openIncidentFromEvent', () => {
     expect(err!.message).toMatch(/Orphan event.*linkEventToCI/)
     expect(incidentService.createIncident).not.toHaveBeenCalled()
 
-    onCypher([[Q.attach, { created: true }], [Q.setCorr, null]])
+    onCypher([[Q.attach, { created: true }], [Q.setCorr, null], [Q.target, { environment: null }]])
     const inc = await openIncidentFromEvent({ tenantId: 't1', props: props({ severity: 'warning' }), ciId: 'ci-1', actorId: 'op-1', manual: true, now: NOW })
     expect(inc).toMatchObject({ id: 'inc-new' })
     expect(incidentService.createIncident).toHaveBeenCalledWith(expect.objectContaining({ severity: 'medium', impact: 'medium', urgency: 'medium' }), { tenantId: 't1', userId: 'op-1' })
     expect(callMatching(Q.attach)!.params).toMatchObject({ manual: true, now: NOW })
     expect(callMatching(Q.setCorr)!.params['correlation']).toBe('opened')
+  })
+})
+
+/**
+ * HOW SEVERE OUTSIDE PRODUCTION (browser tour of 23 Sep 2026): the owner's
+ * choice, High in production and Medium elsewhere, through the policy's map
+ * outside production when the organization sets one. (Who gets the incident
+ * is decided by createIncident for every channel: the CI's support group.)
+ */
+describe('the severity of a monitoring incident outside production', () => {
+  const open = (targetRow: Record<string, unknown> | null, over: Partial<typeof DEFAULT_EVENT_POLICY> = {}) => {
+    onCypher([[Q.attach, { created: true }], [Q.setCorr, null], [Q.target, targetRow]])
+    return openIncidentFromEvent({ tenantId: 't1', props: props(), ciId: 'ci-1', actorId: 'monitoring', manual: false, now: NOW, policy: policy(over) })
+  }
+  const NON_PROD = {
+    critical: { impact: 'medium', urgency: 'medium' },
+    warning:  { impact: 'low',    urgency: 'medium' },
+    info:     { impact: 'low',    urgency: 'low' },
+  }
+  const over = { non_production_severity_map: NON_PROD, production_environments: ['production', 'dr'] }
+
+  it('outside production the map outside production; production, or no environment, the usual map', async () => {
+    await open({ environment: 'development' }, over)
+    expect(vi.mocked(incidentService.createIncident).mock.calls.at(-1)![0]).toMatchObject({ impact: 'medium', urgency: 'medium' })
+    expect(callMatching(Q.target)!.params).toEqual({ ciId: 'ci-1', tenantId: 't1' })
+    await open({ environment: 'dr' }, over)
+    expect(vi.mocked(incidentService.createIncident).mock.calls.at(-1)![0]).toMatchObject({ impact: 'high', urgency: 'high' })
+    // missing data never downgrades an outage
+    await open({ environment: null }, over)
+    expect(vi.mocked(incidentService.createIncident).mock.calls.at(-1)![0]).toMatchObject({ impact: 'high', urgency: 'high' })
+  })
+
+  it('without a map outside production, the same map everywhere and the CI is not even read', async () => {
+    await open({ environment: 'development' })
+    expect(vi.mocked(incidentService.createIncident).mock.calls.at(-1)![0]).toMatchObject({ impact: 'high', urgency: 'high' })
+    expect(callMatching(Q.target)).toBeUndefined()
+  })
+
+  it('a CI that disappeared is an error, not an incident without its data', async () => {
+    await expect(open(null, over)).rejects.toThrow('CI ci-1 of tenant t1 not found')
+    expect(incidentService.createIncident).not.toHaveBeenCalled()
   })
 })
 
@@ -1302,7 +1346,7 @@ describe('metriche della pipeline', () => {
   })
 
   it('openIncidentFromEvent manuale → nessun incremento di incidents_auto_opened', async () => {
-    onCypher([[Q.attach, { created: true }], [Q.setCorr, null]])
+    onCypher([[Q.attach, { created: true }], [Q.setCorr, null], [Q.target, { environment: 'production' }]])
     await openIncidentFromEvent({ tenantId: 't1', props: props(), ciId: 'ci-1', actorId: 'op-1', manual: true, now: NOW })
     expect(metrics.incidentsAutoOpenedTotal.inc).not.toHaveBeenCalled()
   })

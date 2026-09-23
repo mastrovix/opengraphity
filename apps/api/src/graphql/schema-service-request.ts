@@ -27,6 +27,11 @@ export function serviceRequestSDL(): string {
     availableTransitions: [WorkflowTransition!]!
     requestedBy: User
     assignee: User
+    """
+    The team the request is assigned to: at creation the fulfilment group of its
+    catalog item (D56); the assignee is a member of it.
+    """
+    team: Team
     slaStatus: SLAStatusInfo
     """I CI che la richiesta riguarda (revisione del 15 set 2026 · CM-8)."""
     affectedCIs: [CIBase!]!
@@ -69,6 +74,8 @@ export function serviceRequestSDL(): string {
     workflowDefinitionId: ID
     """Il nome della definizione scelta, per mostrarlo senza una seconda query."""
     workflowDefinitionName: String
+    """The fulfilment group: the requests of this item are born assigned to it (D56). Null = born without a team."""
+    fulfillmentTeam: Team
   }
 
   input CreateServiceCatalogItemInput {
@@ -79,6 +86,8 @@ export function serviceRequestSDL(): string {
     priority: String!
     """L'iter di questa voce: assente = si sceglie per categoria (moduli del catalogo, ondata 3)."""
     workflowDefinitionId: ID
+    """The fulfilment group of the item's requests (D56)."""
+    fulfillmentTeamId: ID
   }
 
   input UpdateServiceCatalogItemInput {
@@ -90,6 +99,8 @@ export function serviceRequestSDL(): string {
     active: Boolean
     """L'iter di questa voce: assente = si sceglie per categoria (moduli del catalogo, ondata 3)."""
     workflowDefinitionId: ID
+    """The fulfilment group (D56); null removes it."""
+    fulfillmentTeamId: ID
   }
 
   input CreateServiceRequestInput {

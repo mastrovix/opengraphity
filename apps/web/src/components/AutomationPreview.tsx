@@ -8,7 +8,7 @@ import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
 import { useMemo } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { GET_TEAMS, GET_USERS } from '@/graphql/queries'
-import { useEntityFieldLookup } from '@/hooks/useEntityFields'
+import { useEntityFieldLookup, type FieldMeta } from '@/hooks/useEntityFields'
 import { palette } from '@/lib/tokens'
 import {
   NO_VALUE_OPERATORS, automationActionKey, eventParticipleKey, operatorKey,
@@ -44,6 +44,21 @@ export function AutomationPreview({ entityType, eventType, conditions, condition
   const userMap = useMemo(() => new Map((usersData?.users ?? []).map(u => [u.id, `${u.name} (${u.email})`])), [usersData])
   const logic = ` ${t((conditionLogic ?? 'and').toUpperCase() === 'OR' ? 'automation.sentence.or' : 'automation.sentence.and')} `
 
+  /**
+   * A value of a field as the customer names it, the same for the value a
+   * condition compares and the one an action writes. What cannot be resolved
+   * is shown as it is.
+   */
+  const valueLabel = (meta: FieldMeta | undefined, value: string): string => {
+    // Resolve IDs to names
+    if (meta?.fieldType === 'user') return userMap.get(value) ?? value
+    if (meta?.fieldType === 'team') return teamMap.get(value) ?? value
+    // V-19: «Urgenza = "high"» → «Urgenza = "Alta"», l'etichetta del Dizionario.
+    // Anche la scelta multipla (ondata 5): il valore è UNA scelta del vocabolario.
+    if ((meta?.fieldType === 'enum' || meta?.fieldType === 'multi_enum') && meta.enumTypeName) return vocab.labelOf(meta.enumTypeName, value) ?? value
+    return value
+  }
+
   // ── Build condition text ─────────────────────────────────────────────────
   const condText = conditions.length > 0
     ? conditions.map(c => {
@@ -51,14 +66,7 @@ export function AutomationPreview({ entityType, eventType, conditions, condition
         const fieldName = meta?.label ?? (c.field || '?')
         const op        = t(operatorKey(c.operator))
         if (NO_VALUE_OPERATORS.has(c.operator)) return `${fieldName} ${op}`
-        let val = c.value
-        // Resolve IDs to names
-        if (meta?.fieldType === 'user') val = userMap.get(c.value) ?? c.value
-        if (meta?.fieldType === 'team') val = teamMap.get(c.value) ?? c.value
-        // V-19: «Urgenza = "high"» → «Urgenza = "Alta"», l'etichetta del Dizionario.
-        // Anche la scelta multipla (ondata 5): il valore è UNA scelta del vocabolario.
-        if ((meta?.fieldType === 'enum' || meta?.fieldType === 'multi_enum') && meta.enumTypeName) val = vocab.labelOf(meta.enumTypeName, c.value) ?? c.value
-        return `${fieldName} ${op} "${val}"`
+        return `${fieldName} ${op} "${valueLabel(meta, c.value)}"`
       }).join(logic)
     : null
 
@@ -71,10 +79,16 @@ export function AutomationPreview({ entityType, eventType, conditions, condition
           case 'assign_team':    return `${label} ${teamMap.get(p['team_id'] ?? '') ?? p['team_id'] ?? '?'}`
           case 'assign_user':    return `${label} ${userMap.get(p['user_id'] ?? '') ?? p['user_id'] ?? '?'}`
           case 'transition_workflow': return `${label} → ${p['to_step'] ?? '?'}`
-          case 'set_priority':   return `${label} → ${p['priority'] ?? '?'}`
+          case 'set_priority': {
+            // A choice of the `priority` field or, on a type that has none, of
+            // `severity`: the same values the action editor offers.
+            const pMeta = fieldLookup.get('priority') ?? fieldLookup.get('severity')
+            const priority = p['priority']
+            return `${label} → ${priority === undefined ? '?' : valueLabel(pMeta, priority)}`
+          }
           case 'set_field': {
             const fMeta = fieldLookup.get(p['field'] ?? '')
-            return `${label} ${fMeta?.label ?? p['field'] ?? '?'} = "${p['value'] ?? ''}"`
+            return `${label} ${fMeta?.label ?? p['field'] ?? '?'} = "${valueLabel(fMeta, p['value'] ?? '')}"`
           }
           case 'create_notification': return `${label}: "${(p['message'] ?? '').slice(0, 40)}${(p['message'] ?? '').length > 40 ? '…' : ''}"`
           case 'create_comment': return `${label}: "${(p['text'] ?? '').slice(0, 40)}${(p['text'] ?? '').length > 40 ? '…' : ''}"`

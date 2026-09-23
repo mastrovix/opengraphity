@@ -168,16 +168,34 @@ describe('Keycloak admin client and public URL', () => {
   })
 
   it('addresses of every provider are given before configuration, under the tenant realm', () => {
+    const sso = 'https://sso.example.com/realms/ac%20me/broker'
     expect(tl.loginProviderAddresses('ac me')).toEqual([
-      { kind: 'microsoft', redirectUri: 'https://sso.example.com/realms/ac%20me/broker/microsoft/endpoint', samlSpMetadataUrl: null },
-      { kind: 'google', redirectUri: 'https://sso.example.com/realms/ac%20me/broker/google/endpoint', samlSpMetadataUrl: null },
-      { kind: 'saml', redirectUri: 'https://sso.example.com/realms/ac%20me/broker/saml/endpoint', samlSpMetadataUrl: 'https://sso.example.com/realms/ac%20me/broker/saml/endpoint/descriptor' },
+      { kind: 'microsoft', redirectUri: `${sso}/microsoft/endpoint`, redirectUris: [`${sso}/microsoft/endpoint`], samlSpMetadataUrl: null, samlSpMetadataUrls: [] },
+      { kind: 'google', redirectUri: `${sso}/google/endpoint`, redirectUris: [`${sso}/google/endpoint`], samlSpMetadataUrl: null, samlSpMetadataUrls: [] },
+      { kind: 'saml', redirectUri: `${sso}/saml/endpoint`, redirectUris: [`${sso}/saml/endpoint`], samlSpMetadataUrl: `${sso}/saml/endpoint/descriptor`, samlSpMetadataUrls: [`${sso}/saml/endpoint/descriptor`] },
     ])
+  })
+
+  /*
+   * D71 (tour of 23 Sep 2026): KEYCLOAK_PUBLIC_URL lists every front door
+   * (local, Tailscale, the public domain) and the page showed only the first,
+   * `http://localhost:8080/...`. Keycloak builds its broker addresses from the
+   * origin the browser used: each of them goes to the provider.
+   */
+  it('one return address per public origin, in the order they are declared', () => {
+    h.publicUrls = ['http://localhost:8080/', 'https://host.tailnet.ts.net']
+    const [ms] = tl.loginProviderAddresses('acme')
+    expect(ms!.redirectUris).toEqual([
+      'http://localhost:8080/realms/acme/broker/microsoft/endpoint',
+      'https://host.tailnet.ts.net/realms/acme/broker/microsoft/endpoint',
+    ])
+    expect(ms!.redirectUri).toBe(ms!.redirectUris[0])
+    expect(tl.loginProviderAddresses('acme')[2]!.samlSpMetadataUrls).toHaveLength(2)
   })
 
   it('no public URL is a loud error, not an address with "undefined" in it', () => {
     h.publicUrls = []
-    expect(() => tl.redirectUriOf('acme', 'google')).toThrow(/KEYCLOAK_PUBLIC_URL has no URL/)
+    expect(() => tl.redirectUrisOf('acme', 'google')).toThrow(/KEYCLOAK_PUBLIC_URL has no URL/)
   })
 })
 

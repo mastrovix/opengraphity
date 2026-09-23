@@ -79,7 +79,8 @@ export function MentionInput({ value, onChange, placeholder, label, onSubmit, ro
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); onSubmit?.(); return }
+    // D13: ⌘+Enter on a Mac, Ctrl+Enter elsewhere — both send.
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); onSubmit?.(); return }
     if (!mentionState.active) return
     if (e.key === 'Escape') { e.preventDefault(); setMentionState(s => ({ ...s, active: false })); return }
     if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedIdx(i => Math.min(i + 1, users.length - 1)); return }

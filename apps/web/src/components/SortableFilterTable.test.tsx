@@ -184,3 +184,39 @@ describe('SortableFilterTable — selezione', () => {
     expect(onToggleAll).toHaveBeenCalledWith(['r1', 'r2', 'r3'])
   })
 })
+
+describe('SortableFilterTable — a column pinned at the right edge (D36)', () => {
+  const pinned: ColumnDef<Row>[] = [
+    ...COLUMNS,
+    { key: 'id', label: 'Azioni', width: '170px', sticky: 'end', render: () => <button type="button">Elimina</button> },
+  ]
+
+  it('the last column stays in view while the table scrolls sideways: header and cells', () => {
+    render(<SortableFilterTable columns={pinned} data={ROWS} label="Utenti" />)
+    const header = screen.getByRole('columnheader', { name: 'Azioni' })
+    // The opaque header tint comes from index.css (`th.sft-sticky-end`).
+    expect(header).toHaveClass('sft-sticky-end')
+    expect(header).toHaveStyle({ position: 'sticky', right: '0px' })
+    for (const r of bodyRows()) {
+      const last = within(r).getAllByRole('cell').at(-1)!
+      expect(last).toHaveStyle({ position: 'sticky', right: '0px', backgroundColor: 'var(--color-white)' })
+    }
+    // The other columns are not pinned.
+    expect(screen.getByRole('columnheader', { name: 'Nome' })).not.toHaveClass('sft-sticky-end')
+    expect(within(bodyRows()[0]!).getAllByRole('cell')[0]!.style.position).toBe('')
+  })
+
+  it('also while loading: the skeleton has the same pinned column', () => {
+    render(<SortableFilterTable columns={pinned} data={[]} loading label="Utenti" />)
+    const firstRow = within(screen.getAllByRole('rowgroup')[1]!).getAllByRole('row')[0]!
+    expect(within(firstRow).getAllByRole('cell').at(-1)).toHaveStyle({ position: 'sticky' })
+  })
+
+  it('a sticky column that is not the last one is a caller mistake: said, and nothing is pinned', () => {
+    const errore = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const wrong: ColumnDef<Row>[] = [{ ...COLUMNS[0]!, sticky: 'end' }, ...COLUMNS.slice(1)]
+    render(<SortableFilterTable columns={wrong} data={ROWS} label="Utenti" />)
+    expect(errore).toHaveBeenCalledWith(expect.stringContaining('only the last column can be sticky: name'))
+    expect(screen.getByRole('columnheader', { name: 'Nome' })).not.toHaveClass('sft-sticky-end')
+  })
+})

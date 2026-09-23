@@ -26,7 +26,7 @@ const t = i18n.getFixedT('en')
 
 const contract = (over: Partial<OLAContract> = {}): OLAContract => ({
   id: 'c1', type: 'ola', name: 'Network restore', description: 'Four hours', entityType: 'incident',
-  responseMinutes: 30, resolveMinutes: 240, businessHours: false, calendarId: null, calendarName: null,
+  responseMinutes: 30, resolveMinutes: 240, businessHours: false, calendarId: null, calendarName: null, timezone: null,
   complianceTarget: 99, complianceWarning: 95, partyType: 'team', partyName: null, teamId: 't-in',
   teamName: 'Network', enabled: true, createdAt: '2026-09-01T00:00:00Z', ...over,
 })
@@ -184,7 +184,7 @@ describe('create', () => {
     await user.click(within(dialog()).getByRole('button', { name: 'Save' }))
     expect(apolloFinto.chiamata('CreateOLAContract')).toEqual({ input: {
       type: 'uc', name: 'Hosting UC', description: null, entityType: 'change',
-      responseMinutes: 15, resolveMinutes: 600, calendarId: 'cal-1',
+      responseMinutes: 15, resolveMinutes: 600, calendarId: 'cal-1', timezone: null,
       complianceTarget: 99.5, complianceWarning: 97, partyType: 'supplier', teamId: 't-ext',
     } })
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
@@ -256,9 +256,35 @@ describe('edit and delete', () => {
     await user.click(within(dialog()).getByRole('button', { name: 'Save' }))
     expect(apolloFinto.chiamata('UpdateOLAContract')).toEqual({ id: 'c1', input: {
       name: 'Network restored', description: null, entityType: 'incident', responseMinutes: 30, resolveMinutes: 240,
-      calendarId: 'cal-1', complianceTarget: 99, complianceWarning: 95, partyType: 'team', teamId: 't-in',
+      calendarId: 'cal-1', timezone: null, complianceTarget: 99, complianceWarning: 95, partyType: 'team', teamId: 't-in',
     } })
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Contract saved'))
+  })
+
+  /*
+   * The contract's own zone (tour of 23 Sep 2026): a team in Singapore works
+   * 9-18 in Singapore. Asked only with a calendar — a 24×7 contract has no
+   * hours to place — and shown next to the calendar in the list.
+   */
+  it('with a calendar the zone is asked and sent; empty means the organization\'s; the list shows it', async () => {
+    apolloFinto.risposte['GetOLAContracts'] = { olaContracts: [contract({ businessHours: true, calendarId: 'cal-1', calendarName: 'Office hours', timezone: 'Asia/Singapore' })] }
+    const { user } = renderWithProviders(<OLAContractsPage />)
+    expect(await screen.findByText('Office hours · Asia/Singapore')).toBeInTheDocument()
+    await user.click(screen.getByText('Network restore'))
+    expect(field(/Time zone/)).toHaveValue('Asia/Singapore')
+    await user.clear(field(/Time zone/))
+    await user.type(field(/Time zone/), ' America/New_York ')
+    await user.click(within(dialog()).getByRole('button', { name: 'Save' }))
+    expect(apolloFinto.chiamata('UpdateOLAContract')).toMatchObject({ id: 'c1', input: { calendarId: 'cal-1', timezone: 'America/New_York' } })
+  })
+
+  it('a 24×7 contract has no zone to choose, and sends none', async () => {
+    apolloFinto.risposte['GetOLAContracts'] = { olaContracts: [contract({ businessHours: false, calendarId: null, timezone: 'Asia/Singapore' })] }
+    const { user } = renderWithProviders(<OLAContractsPage />)
+    await user.click(await screen.findByText('Network restore'))
+    expect(within(dialog()).queryByLabelText(/Time zone/)).toBeNull()
+    await user.click(within(dialog()).getByRole('button', { name: 'Save' }))
+    expect(apolloFinto.chiamata('UpdateOLAContract')).toMatchObject({ input: { calendarId: null, timezone: null } })
   })
 
   it('a legacy contract with no party, team or compliance opens with empty fields, not "null"', async () => {

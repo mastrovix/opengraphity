@@ -19,7 +19,8 @@ import { Pagination } from '@/components/ui/Pagination'
 import { formatDate } from '@/lib/datetime'
 import { toEnumOptions, useCIBaseEnums } from '@/lib/ciEnums'
 import { colors } from '@/lib/tokens'
-import { useCILabels } from '@/hooks/useCILabels'
+import { useCILabels, CI_STATUS_VOCABULARY, CI_ENVIRONMENT_VOCABULARY } from '@/hooks/useCILabels'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useMetamodel } from '@/contexts/MetamodelContext'
 
 interface CI {
@@ -54,6 +55,7 @@ export function CMDBPage() {
   const baseEnums = useCIBaseEnums()
   // F-23: etichette dei tipi e degli ambienti dal metamodello e dal Dizionario.
   const ciLabels = useCILabels()
+  const { labelOf } = useDomainVocabularies()
   const { ciTypes } = useMetamodel()
   const idTipo = useId()
 
@@ -114,8 +116,9 @@ export function CMDBPage() {
   // Status/environment dal tipo base del metamodello (unica sorgente, F-23)
   const FILTER_FIELDS: FieldConfig[] = [
     { key: 'name',        label: t('pages.cmdb.name'),        type: 'text' },
-    { key: 'status',      label: t('pages.cmdb.status'),      type: 'enum', options: toEnumOptions(baseEnums.statuses) },
-    { key: 'environment', label: t('pages.cmdb.environment'), type: 'enum', options: toEnumOptions(baseEnums.environments) },
+    // D29: the Dictionary label, or the value humanized by the one shared rule.
+    { key: 'status',      label: t('pages.cmdb.status'),      type: 'enum', options: toEnumOptions(baseEnums.statuses, (v) => labelOf(CI_STATUS_VOCABULARY, v)) },
+    { key: 'environment', label: t('pages.cmdb.environment'), type: 'enum', options: toEnumOptions(baseEnums.environments, (v) => labelOf(CI_ENVIRONMENT_VOCABULARY, v)) },
     { key: 'createdAt',   label: t('pages.cmdb.createdAt'),   type: 'date' },
     { key: 'health',      label: t('pages.cmdb.health'),      type: 'enum', options: CI_HEALTHS.map((h) => ({ value: h, label: t(`events.health.${h}`) })) },
   ]

@@ -212,12 +212,20 @@ describe('globalSearch', () => {
     const call = vi.mocked(runQuery).mock.calls.find(([, c]) => c.includes('fulltext.queryNodes'))
     expect(call).toBeDefined()
     expect(call![1]).toContain("db.index.fulltext.queryNodes('global_search'")
-    expect(paramsOf('fulltext.queryNodes')['lucene']).toBe('SERV* AND down*')
+    expect(paramsOf('fulltext.queryNodes')['lucene']).toBe('(SERV* OR *_SERV*) AND (down* OR *_down*)')
   })
 
   it('tokenizza sui confini non alfanumerici come lo standard analyzer', async () => {
     await globalSearch(null, { query: 'a+b (test)' }, ctx)
-    expect(paramsOf('fulltext.queryNodes')['lucene']).toBe('a* AND b* AND test*')
+    expect(paramsOf('fulltext.queryNodes')['lucene']).toBe('(a* OR *_a*) AND (b* OR *_b*) AND (test* OR *_test*)')
+  })
+
+  it('finds a word after a CMDB prefix: the analyzer keeps «APP_Lavender» as one token (D74)', async () => {
+    await globalSearch(null, { query: 'Lavender' }, ctx)
+    expect(paramsOf('fulltext.queryNodes')['lucene']).toBe('(Lavender* OR *_Lavender*)')
+    vi.mocked(runQuery).mockClear()
+    await globalSearch(null, { query: 'APP_Lavender' }, ctx)
+    expect(paramsOf('fulltext.queryNodes')['lucene']).toBe('(APP* OR *_APP*) AND (Lavender* OR *_Lavender*)')
   })
 
   it('mappa i task con taskType leggibile e riferimenti a change/CI', async () => {

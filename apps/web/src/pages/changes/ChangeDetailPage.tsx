@@ -64,6 +64,7 @@ import { colors, palette } from '@/lib/tokens'
 import { withLocalizedLabel, localizedLabel } from '@/lib/localizedLabel'
 import { showError } from '@/lib/showError'
 import { useCILabels } from '@/hooks/useCILabels'
+import { reloadQueries } from '@/lib/reloadQueries'
 
 interface ImpactedCIRow {
   ci: { id: string; name: string; type: string | null; environment: string | null }
@@ -90,14 +91,14 @@ export function ChangeDetailPage() {
   const meData: { me: MeData | null } = { me }
   const { steps: wfSteps, byName: wfByName, initialStep: wfInitialStep, isTerminal: wfIsTerminal, purposeOf: wfPurposeOf } = useWorkflowSteps('change')
 
-  const refetchAll = async () => { await refetchChange(); await refetchAffected(); await refetchAudit() }
+  const refetchAll = () => { reloadQueries(refetchChange, refetchAffected, refetchAudit) }
   const [executeTransition, { loading: transitioning }] = useMutation<{ executeChangeTransition?: { actionErrors?: string[] | null } }>(EXECUTE_CHANGE_TRANSITION, {
-    onCompleted: async (data) => {
+    onCompleted: (data) => {
       // La transizione è avvenuta, ma alcune azioni di step (SLA, eventi, timer)
       // sono fallite: va detto, non nascosto.
       const errs = data?.executeChangeTransition?.actionErrors
       if (errs?.length) toast.warning(t('toast.change.transitionPartial', { count: errs.length, errors: errs.join(' · ') }), { duration: 10000 })
-      await refetchAll()
+      refetchAll()
     },
     onError: (e) => showError(e),
   })
@@ -112,11 +113,11 @@ export function ChangeDetailPage() {
   }
 
   const [approveApproval, { loading: approving }] = useMutation(APPROVE_CHANGE_APPROVAL, {
-    onCompleted: async () => { toast.success(t('toast.change.approvalRecorded')); await refetchAll() },
+    onCompleted: () => { toast.success(t('toast.change.approvalRecorded')); refetchAll() },
     onError: (e) => showError(e),
   })
   const [rejectApproval] = useMutation(REJECT_CHANGE_APPROVAL, {
-    onCompleted: async () => { toast.success(t('toast.change.approvalRejected')); await refetchAll() },
+    onCompleted: () => { toast.success(t('toast.change.approvalRejected')); refetchAll() },
     onError: (e) => showError(e),
   })
   const [rejectModal, setRejectModal] = useState<{ teamId: string; teamName: string } | null>(null)
@@ -128,11 +129,11 @@ export function ChangeDetailPage() {
   //    problem; la ricerca vive nel componente). Link/unlink aggiornano anche
   //    l'audit trail.
   const [linkTicket] = useMutation(LINK_RESOLVED_TICKET, {
-    onCompleted: async () => { toast.success(t('toast.change.ticketLinked')); await refetchAll() },
+    onCompleted: () => { toast.success(t('toast.change.ticketLinked')); refetchAll() },
     onError: (e) => showError(e),
   })
   const [unlinkTicket] = useMutation(UNLINK_RESOLVED_TICKET, {
-    onCompleted: async () => { toast.success(t('toast.change.ticketUnlinked')); await refetchAll() },
+    onCompleted: () => { toast.success(t('toast.change.ticketUnlinked')); refetchAll() },
     onError: (e) => showError(e),
   })
 
@@ -286,12 +287,13 @@ export function ChangeDetailPage() {
         transitions={transitions}
         stepLabel={wfByName.get(currentStep) ? localizedLabel(wfByName.get(currentStep)!) : currentStep}
         onTransitionClick={handleTransitionClick}
+        categoryOf={(step) => wfByName.get(step)?.category ?? null}
       />
 
       {/* Campi del cliente (verifica «Cosa resta cablato», ondata 4) */}
       <div style={{ marginBottom: 16 }}>
         <TicketOLACard entityType="change" entityId={change.id} />
-        <CustomFieldsCard entityType="change" ticketId={change.id} fields={change.customFields ?? []} canEdit={can('ticket.work')} onSaved={() => void refetchAll()} />
+        <CustomFieldsCard entityType="change" ticketId={change.id} fields={change.customFields ?? []} canEdit={can('ticket.work')} onSaved={refetchAll} />
       </div>
 
       {/* Approvazione multi-parte: Change Manager + un owner group per CI affected.
@@ -340,7 +342,9 @@ export function ChangeDetailPage() {
                         <>
                           <button type="button" disabled={approving} onClick={() => void (async () => {
                             if (a.onBehalf && !(await confirm({ title: t('pages.changeDetail.approveOnBehalfTitle'), body: t('pages.changeDetail.approveOnBehalfBody', { team: a.teamName ?? '—' }), confirmLabel: t('pages.changeDetail.approve') }))) return
-                            await approveApproval({ variables: { changeId, teamId: a.teamId, note: null } })
+                            // Not awaited: nothing follows, and onError reports a refusal — awaited, Apollo 4's
+                            // rejection of a refused mutation escaped this handler unhandled (tour of 23 Sep 2026).
+                            void approveApproval({ variables: { changeId, teamId: a.teamId, note: null } })
                           })()}
                             style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: 'none', background: palette.success.base, color: colors.white, fontWeight: 600, fontSize: 'var(--font-size-label)', cursor: approving ? 'wait' : 'pointer' }}>
                             <CheckCircle size={14} /> {t('pages.changeDetail.approve')}
@@ -617,11 +621,16 @@ export function ChangeDetailPage() {
                    * non è andato a buon fine.
                    */
                   const m = rejectModal
-                  await rejectApproval({ variables: {
-                    changeId, teamId: m.teamId, note: rejectNote.trim(),
-                    reopenAll: reopenMode === 'all',
-                    reopenTaskIds: reopenMode === 'some' ? [...reopenIds] : null,
-                  } })
+                  try {
+                    await rejectApproval({ variables: {
+                      changeId, teamId: m.teamId, note: rejectNote.trim(),
+                      reopenAll: reopenMode === 'all',
+                      reopenTaskIds: reopenMode === 'some' ? [...reopenIds] : null,
+                    } })
+                  } catch {
+                    // The mutation's onError has already told the user; the dialog keeps what they wrote.
+                    return
+                  }
                   setRejectModal(null)
                 }}
                 style={{ backgroundColor: 'var(--color-danger)', fontWeight: 600, opacity: canConfirm ? 1 : 0.6 }}

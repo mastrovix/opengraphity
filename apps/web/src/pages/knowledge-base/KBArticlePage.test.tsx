@@ -96,4 +96,14 @@ describe('KBArticlePage', () => {
     expect(related).toHaveAttribute('href', '/knowledge-base/config-vpn')
     expect(screen.getAllByText('Reset della password VPN')).toHaveLength(1)   // il correlato uguale all'articolo è escluso
   })
+
+  // Tour of 23 Sep 2026: the editor saves an underline as <u>…</u>, and the
+  // reader printed the tag as text. Exactly that pair is rendered; any other
+  // HTML in an article stays text on the reader's page.
+  it('an underline written in the editor reads as underlined, and no other HTML is rendered', async () => {
+    renderWithProviders(<KBArticlePage />, { ...ROUTE, mocks: [articleMock({ ...ARTICLE, body: 'Press <u>Reset</u>, not <b>Delete</b>.' }), relatedMock, attachmentsMock] })
+    const underlined = await screen.findByText('Reset')
+    expect(underlined.tagName).toBe('U')
+    expect(document.querySelector('b')).toBeNull()
+  })
 })

@@ -72,7 +72,7 @@ vi.mock('../vocabularyShippedDrift.js', () => ({
 }))
 vi.mock('../portalSeverityOptions.js', () => ({ PORTAL_SEVERITY_VOCABULARY: 'severity', portalSeverityOptions: vi.fn(async () => [{ value: 'low', labels: {} }]) }))
 vi.mock('../tenantInAppRetention.js', () => ({ tenantInAppRetentionDays: vi.fn(async () => 30) }))
-vi.mock('../catalogItemPriority.js', () => ({ catalogItemsWithoutPriority: vi.fn(async () => []), catalogItemsWithLegacyCategory: vi.fn(async () => []) }))
+vi.mock('../catalogItemPriority.js', () => ({ catalogItemsWithoutPriority: vi.fn(async () => []), catalogItemsWithLegacyCategory: vi.fn(async () => []), catalogItemsWithoutFulfillmentTeam: vi.fn(async () => []) }))
 vi.mock('../stepDeadlineBlocked.js', () => ({ blockedStepDeadlines: vi.fn(async () => h.blocked) }))
 vi.mock('../slackChannelsWithoutWorkspace.js', () => ({ slackChannelsWithoutWorkspace: vi.fn(async () => []) }))
 vi.mock('../serviceIncidentProblems.js', () => ({ serviceMapsWithIncidentProblem: vi.fn(async () => []) }))

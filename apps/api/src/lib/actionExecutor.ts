@@ -12,6 +12,7 @@ import { withSession } from '../graphql/resolvers/ci-utils.js'
 import { ValidationError } from './errors.js'
 import { assertSafeOutboundUrl, loggableUrl } from './safeUrl.js'
 import { assertScriptingEnabled } from './scriptingPlan.js'
+import { matchById } from './cypherLookups.js'
 
 /** I metodi che un webhook di regola può usare (C-29). */
 const WEBHOOK_METHODS: readonly string[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
@@ -266,7 +267,8 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
       const { assertAutomaticTransitionAllowed } = await import('../graphql/resolvers/change/windowGate.js')
       await withSession(async (session) => {
         const wiRes = await session.executeRead(tx => tx.run(`
-          MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+          ${matchById('e', { labels: 'entities', id: '$entityId' })}
+          MATCH (e)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
           OPTIONAL MATCH (wi)-[:CURRENT_STEP]->(cur:WorkflowStep)
           // Serve al varco della finestra di rilascio: questa azione transisce
           // QUALUNQUE entita con un workflow, change comprese.

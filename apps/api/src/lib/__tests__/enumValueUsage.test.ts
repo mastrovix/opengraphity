@@ -182,6 +182,7 @@ describe('il conteggio copre i vocabolari di dominio e le matrici', () => {
       [],                                        // nessun campo agganciato con USES_ENUM
       [{ value: 'urgente', n: 1200 }],           // Incident.urgency
       [{ value: 'urgente', n: 14 }],             // Problem.urgency
+      [],                                        // the alarm policy: none saved
       [],                                        // matrici: nessuna salvata
     ])
     const out = await countEnumValueUsage(s as never, 'acme', 'urgency', ['urgente'])
@@ -210,6 +211,7 @@ describe('il conteggio copre i vocabolari di dominio e le matrici', () => {
     const s = fakeSession([
       [],
       [], [], [],                                // i tre binding dichiarati di `impact`
+      [],                                        // the alarm policy: none saved
       // Le matrici che citano `impact` (ingresso in `priority`, uscita in
       // `service_impact`) si leggono in UNA query.
       [
@@ -225,7 +227,51 @@ describe('il conteggio copre i vocabolari di dominio e le matrici', () => {
   })
 })
 
+/**
+ * The alarm policy names impact, urgency and environment values outside the
+ * lifecycle lists (tour of 23 Sep 2026): the two severity maps and the
+ * production environments. Removing one of them is a use to be counted.
+ */
+describe('the alarm policy is a use of impact, urgency and environment values', () => {
+  const POLICY = {
+    severity_map: { info: { impact: 'low', urgency: 'low' }, warning: { impact: 'medium', urgency: 'medium' }, critical: { impact: 'high', urgency: 'medium' } },
+    non_production_severity_map: { info: { impact: 'low', urgency: 'low' }, warning: { impact: 'low', urgency: 'medium' }, critical: { impact: 'medium', urgency: 'medium' } },
+    production_environments: ['production', 'dr'],
+  }
+
+  it('an impact value in both maps: each severity that names it', async () => {
+    const s = fakeSession([[], [], [], [], [{ raw: JSON.stringify(POLICY) }], []])
+    const out = await countEnumValueUsage(s as never, 'acme', 'impact', ['medium'])
+    expect(out[0]!.policyLists).toEqual(['severity_map.warning', 'non_production_severity_map.critical'])
+    expect(enumValueUsageMessage('impact', out)).toContain('the alarm policy (non_production_severity_map.critical)')
+  })
+
+  it('an environment that counts as production', async () => {
+    const s = fakeSession([[], [], [{ raw: JSON.stringify(POLICY) }], []])
+    const out = await countEnumValueUsage(s as never, 'acme', 'environment', ['dr'])
+    expect(out[0]!.policyLists).toEqual(['production_environments'])
+  })
+})
+
 describe('replaceEnumValue riscrive anche matrici e severity_map', () => {
+  it('the map outside production and the production environments are rewritten too (tour of 23 Sep 2026)', async () => {
+    const policy = {
+      severity_map: { info: { impact: 'low', urgency: 'low' }, warning: { impact: 'medium', urgency: 'medium' }, critical: { impact: 'high', urgency: 'high' } },
+      non_production_severity_map: { info: { impact: 'low', urgency: 'low' }, warning: { impact: 'low', urgency: 'medium' }, critical: { impact: 'high', urgency: 'medium' } },
+      production_environments: ['production'],
+    }
+    const s = fakeSession([[], [], [], [], [{ raw: JSON.stringify(policy) }], [], []])
+    await replaceEnumValue(s as never, 'acme', 'impact', 'high', 'alto')
+    const written = JSON.parse(s.calls.find((c) => c.cypher.includes('SET t.event_policy'))!.params['policy'] as string) as typeof policy
+    expect(written.non_production_severity_map.critical).toEqual({ impact: 'alto', urgency: 'medium' })
+    expect(written.severity_map.critical).toEqual({ impact: 'alto', urgency: 'high' })
+
+    const env = fakeSession([[], [], [{ raw: JSON.stringify(policy) }], [], []])
+    await replaceEnumValue(env as never, 'acme', 'environment', 'production', 'produzione')
+    const envWritten = JSON.parse(env.calls.find((c) => c.cypher.includes('SET t.event_policy'))!.params['policy'] as string) as typeof policy
+    expect(envWritten.production_environments).toEqual(['produzione'])
+  })
+
   it('le CHIAVI e le CELLE della matrice (senza questo, la rinomina rompeva la matrice)', async () => {
     const s = fakeSession([
       [],                                        // nessun USES_ENUM

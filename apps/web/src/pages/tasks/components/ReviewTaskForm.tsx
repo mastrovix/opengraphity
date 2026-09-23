@@ -1,23 +1,29 @@
 /**
- * Confirmed / Rejected buttons for the post-deploy review task.
+ * Confirmed / Rejected buttons for the post-deploy review task. While the
+ * completion is in flight both wait, and the pressed one says so (D24).
  */
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { REVIEW_RESULT } from '@/lib/taskStatus'
-import { colors } from '@/lib/tokens'
+import { ResultButton } from './shared'
 
-export function ReviewTaskForm({ canEdit, onComplete }: {
+export function ReviewTaskForm({ canEdit, onComplete, busyLabel = null }: {
   canEdit: boolean
   onComplete: (result: string) => void
+  /** A completion is in flight: the buttons wait (D24). */
+  busyLabel?: string | null
 }) {
   const { t } = useTranslation()
+  const [pressed, setPressed] = useState<string | null>(null)
+  const choose = (result: string) => { setPressed(result); onComplete(result) }
   return (
     <div>
       <p style={{ marginBottom: 16, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
         {t('pages.tasks.review.intro')}
       </p>
       <div style={{ display: 'flex', gap: 12 }}>
-        <button type="button" disabled={!canEdit} onClick={() => onComplete(REVIEW_RESULT.CONFIRMED)} style={{ padding: '12px 32px', borderRadius: 8, border: 'none', background: 'var(--color-success)', color: colors.white, fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: canEdit ? 'pointer' : 'not-allowed', opacity: canEdit ? 1 : 0.5 }}>{t('pages.tasks.review.confirmed')}</button>
-        <button type="button" disabled={!canEdit} onClick={() => onComplete(REVIEW_RESULT.REJECTED)} style={{ padding: '12px 32px', borderRadius: 8, border: 'none', background: 'var(--color-danger)', color: colors.white, fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: canEdit ? 'pointer' : 'not-allowed', opacity: canEdit ? 1 : 0.5 }}>{t('pages.tasks.review.rejected')}</button>
+        <ResultButton label={t('pages.tasks.review.confirmed')} tone="success" disabled={!canEdit} busyLabel={busyLabel} pressed={pressed === REVIEW_RESULT.CONFIRMED} onClick={() => choose(REVIEW_RESULT.CONFIRMED)} />
+        <ResultButton label={t('pages.tasks.review.rejected')} tone="danger" disabled={!canEdit} busyLabel={busyLabel} pressed={pressed === REVIEW_RESULT.REJECTED} onClick={() => choose(REVIEW_RESULT.REJECTED)} />
       </div>
     </div>
   )

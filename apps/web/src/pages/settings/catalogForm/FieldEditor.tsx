@@ -19,7 +19,7 @@
  * Nome e tipo non si cambiano dopo: `inModifica` li blocca. E il nome proposto
  * smette di seguire l'etichetta appena qualcuno lo scrive a mano.
  */
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@apollo/client/react'
 import {
@@ -267,6 +267,29 @@ export function FieldEditor({
 }) {
   const { t } = useTranslation()
   const [nomeAMano, setNomeAMano] = useState(false)
+
+  /*
+   * ONE SAVE AT A TIME (tour of 23 Sep 2026). The button stayed enabled while
+   * the save was in flight, and a double click created the field twice. It is
+   * now off from the press until the caller's save has finished (or while the
+   * caller says it is saving), and a second press that arrives before the
+   * button is redrawn is dropped by the ref.
+   */
+  const saveInFlight = useRef(false)
+  const [pressed, setPressed] = useState(false)
+  const busy = salvando === true || pressed
+  const save = async () => {
+    if (saveInFlight.current || salvando === true) return
+    saveInFlight.current = true
+    setPressed(true)
+    try {
+      await onSalva()
+    } finally {
+      saveInFlight.current = false
+      setPressed(false)
+    }
+  }
+
   /* I tipi di CI servono solo a un `ref_ci`: la query si salta per tutti gli
      altri campi, che sono la maggioranza. */
   const { data: tipiData } = useQuery<{ ciTypes: Array<{ name: string; label: string; active: boolean; fields?: { name: string; label: string; fieldType: string; enumValues?: string[] | null; isSystem?: boolean }[] }> }>(GET_CI_TYPES, {
@@ -542,9 +565,9 @@ export function FieldEditor({
         />
 
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-          <button type="button" onClick={() => { void onSalva() }}
-            style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: colors.white, fontSize: 'var(--font-size-body)', fontWeight: fontWeight.medium, cursor: 'pointer' }}>
-            {salvando ? t('common.saving') : etichettaSalva}
+          <button type="button" disabled={busy} onClick={() => { void save() }}
+            style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: colors.white, fontSize: 'var(--font-size-body)', fontWeight: fontWeight.medium, cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1 }}>
+            {busy ? t('common.saving') : etichettaSalva}
           </button>
           <button type="button" onClick={onAnnulla}
             style={{ padding: '7px 14px', borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.white, fontSize: 'var(--font-size-body)', cursor: 'pointer', color: 'var(--color-slate-dark)' }}>

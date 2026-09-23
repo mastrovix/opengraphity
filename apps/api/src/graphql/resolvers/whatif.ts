@@ -50,7 +50,7 @@ async function whatIfAnalysis(_: unknown, args: WhatIfArgs, ctx: GraphQLContext)
   try {
     // Load target
     const tgt = await runQueryOne<{ name: string; lbl: string; env: string | null; status: string | null }>(s1, `
-      MATCH (ci {id: $ciId, tenant_id: $tenantId})
+      MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
       RETURN ci.name AS name, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS lbl, ci.environment AS env, ci.status AS status
     `, { ciId, tenantId })
     if (!tgt) throw new GraphQLError(`CI not found: ${ciId}`, { extensions: { code: 'NOT_FOUND' } })
@@ -63,7 +63,7 @@ async function whatIfAnalysis(_: unknown, args: WhatIfArgs, ctx: GraphQLContext)
     // CM-3: le relazioni dei servizi del tenant, non una lista scritta qui.
     const relPattern = await serviceRelPatternForTenant(tenantId)
     impactedRows = await runQuery<Row>(s1, `
-      MATCH (target {id: $ciId, tenant_id: $tenantId})
+      MATCH (target:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
       MATCH path = (impacted)-[:${relPattern}*1..${depth}]->(target)
       WHERE impacted.tenant_id = $tenantId AND impacted.id <> $ciId
       WITH impacted, path, length(path) AS dist
@@ -130,9 +130,9 @@ async function whatIfAnalysis(_: unknown, args: WhatIfArgs, ctx: GraphQLContext)
     const s4 = getSession(undefined, 'READ')
     try {
       serviceRows = await runQuery<ServiceRow>(s4, `
-        MATCH (m:ServiceMap {tenant_id: $tenantId})-[:INCLUDES]->(ci)
+        MATCH (m:ServiceMap {tenant_id: $tenantId})-[:INCLUDES]->(ci:ConfigurationItem)
         WHERE ci.tenant_id = $tenantId AND ci.id IN $ciIds
-        MATCH (ba {tenant_id: $tenantId})-[:HAS_SERVICE_MAP]->(m)
+        MATCH (ba:ConfigurationItem {tenant_id: $tenantId})-[:HAS_SERVICE_MAP]->(m)
         RETURN ba.id AS id, coalesce(m.name, ba.name) AS name, ba.environment AS env, ba.status AS status, ci.id AS ciId
       `, { tenantId, ciIds: [ciId, ...impactedIds] })
     } finally { await s4.close() }

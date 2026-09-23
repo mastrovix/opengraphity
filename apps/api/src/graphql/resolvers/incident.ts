@@ -143,7 +143,7 @@ async function incident(
 
 async function createIncident(
   _: unknown,
-  args: { input: { title: string; description?: string; severity?: string; impact?: string; urgency?: string; category?: string; affectedCIIds?: string[]; acknowledgeNoSla?: boolean | null ; customFields?: CustomFieldInput[] | null } },
+  args: { input: { title: string; description?: string; severity?: string; impact?: string; urgency?: string; category?: string; affectedCIIds?: string[]; acknowledgeNoSla?: boolean | null ; customFields?: CustomFieldInput[] | null; teamId?: string | null } },
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
@@ -316,7 +316,7 @@ async function addAffectedCI(
     // rispondeva con l'incident intatto, come se il collegamento ci fosse.
     const res = await session.executeWrite((tx) => tx.run(`
       MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
-      MATCH (ci {id: $ciId, tenant_id: $tenantId})
+      MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
       WHERE ${ciWhereClause}
       MERGE (i)-[r:AFFECTED_BY]->(ci)
       SET i.updated_at = $now

@@ -94,7 +94,7 @@ const RESTORE_KB_VERSION = gql`
 
 interface KBVersion { version: number; title: string; category: string; tags: string[]; editedByName: string | null; editedAt: string }
 
-interface RestoredArticle { title: string; body: string; category: string; tags: string[] }
+interface RestoredArticle { title: string; body: string; category: string; tags: string[]; version: number }
 
 /** Collapsible version-history panel shown in the edit form. */
 function VersionHistory({ articleId, onRestored }: { articleId: string; onRestored: (a: RestoredArticle) => void }) {
@@ -173,24 +173,26 @@ interface KBListFilter { status?: string; category?: string; search?: string }
  * the same field twice) throws — the UI shows the reason instead of a filter
  * badge that silently changes nothing.
  */
-function kbFilterFromGroup(group: FilterGroup | null, t: TFunction): KBListFilter {
+function kbFilterFromGroup(group: FilterGroup | null, t: TFunction, fields: FieldConfig[]): KBListFilter {
   const out: KBListFilter = {}
   if (!group) return out
+  // The reason names the field as the filter shows it, not by its key: «Category», not «category».
+  const nameOf = (key: string) => fields.find((f) => f.key === key)?.label ?? key
   group.rules.forEach((rule, i) => {
     const isLast = i === group.rules.length - 1
     if (!isLast && rule.logic !== 'AND') throw new Error(t('pages.kbAdmin.filter.onlyAnd'))
     const value = typeof rule.value === 'string' ? rule.value.trim() : ''
-    if (!value) throw new Error(t('pages.kbAdmin.filter.missingValue', { field: rule.field }))
+    if (!value) throw new Error(t('pages.kbAdmin.filter.missingValue', { field: nameOf(rule.field) }))
     switch (rule.field) {
       case 'status':
       case 'category':
-        if (rule.operator !== 'equals') throw new Error(t('pages.kbAdmin.filter.onlyEquals', { field: rule.field }))
-        if (out[rule.field]) throw new Error(t('pages.kbAdmin.filter.onlyOnce', { field: rule.field }))
+        if (rule.operator !== 'equals') throw new Error(t('pages.kbAdmin.filter.onlyEquals', { field: nameOf(rule.field) }))
+        if (out[rule.field]) throw new Error(t('pages.kbAdmin.filter.onlyOnce', { field: nameOf(rule.field) }))
         out[rule.field] = value
         break
       case 'title':
         if (rule.operator !== 'contains') throw new Error(t('pages.kbAdmin.filter.titleOnlyContains'))
-        if (out.search) throw new Error(t('pages.kbAdmin.filter.onlyOnce', { field: t('common.title') }))
+        if (out.search) throw new Error(t('pages.kbAdmin.filter.onlyOnce', { field: nameOf('title') }))
         out.search = value
         break
       default:
@@ -271,7 +273,7 @@ export function KBAdminPage() {
   ]
   function applyListFilter(group: FilterGroup | null) {
     try {
-      setListFilter(kbFilterFromGroup(group, t))
+      setListFilter(kbFilterFromGroup(group, t, KB_FILTER_FIELDS))
       setPage(0)
     } catch (e) {
       showError(e)
@@ -290,41 +292,26 @@ export function KBAdminPage() {
 
   // ── Mutations ──
   const [createArticle, { loading: creating }] = useMutation<{ createKBArticle: KBArticle }>(CREATE_ARTICLE, {
-    onCompleted: (d) => {
+    // «Submit for review» exists only on an article already saved (`handlePublish`):
+    // a creation is never followed by a move from here (tour of 23 Sep 2026 — the
+    // block that did it could not run, and hid that fact).
+    onCompleted: () => {
       toast.success(t('pages.kbAdmin.created'))
       closeForm()
       void refetch()
-      // If a publish was requested right after create, trigger the forward
-      // transition from the workflow's initial step. The destination is
-      // defined by the workflow, not by this page.
-      if (publishingRef.current && d.createKBArticle.workflowInstanceId) {
-        publishingRef.current = false
-        // La destinazione la decide il WORKFLOW: il primo passo RAGGIUNGIBILE
-        // dal passo iniziale che non sia terminale (revisione totale · G-9 —
-        // prima si prendeva il primo passo non iniziale e non terminale
-        // nell'ORDINE della definizione, quindi un `rejected` inserito prima
-        // di `review` riceveva l'articolo, o la transizione veniva rifiutata).
-        const forwardFromInitial = kbReachableFromInitial[0]?.name
-        if (forwardFromInitial) {
-          void execTransition({
-            variables: { instanceId: d.createKBArticle.workflowInstanceId, toStep: forwardFromInitial },
-          }).then((res) => {
-            const r = res.data?.executeWorkflowTransition
-            if (r?.success) {
-              toast.success(t('toast.kb.sentForReview'))
-              void refetch()
-            } else if (r) {
-              toast.error(transitionErrorText(r, t('toast.kb.sendForReviewFailed')))
-            }
-          })
-        }
-      }
     },
     onError: (e: { message: string }) => { publishingRef.current = false; showError(e) },
   })
 
   const [updateArticle, { loading: updating }] = useMutation<{ updateKBArticle: KBArticle }>(UPDATE_ARTICLE, {
     onCompleted: (d) => {
+      /*
+       * The save made a new version: the form now edits THAT one. It kept the
+       * version read when it opened, so after a refused «Submit for review»
+       * (the save went through, the move did not) the next save was refused
+       * as «changed by someone else» — by the editor's own save.
+       */
+      setEditArticle((cur) => (cur ? { ...cur, version: d.updateKBArticle.version } : cur))
       if (publishingRef.current) {
         // After content save, trigger the forward transition from the
         // initial step (workflow decides which step that leads to).
@@ -342,7 +329,7 @@ export function KBAdminPage() {
             } else if (r) {
               toast.error(transitionErrorText(r, t('toast.kb.sendForReviewFailed')))
             }
-          })
+          }, () => { /* refused outright: its onError has said why, and the form stays open */ })
         } else {
           toast.error(t('toast.kb.reviewStepNotFound'))
         }
@@ -563,7 +550,11 @@ export function KBAdminPage() {
               </h4>
               <VersionHistory
                 articleId={editId}
-                onRestored={(a) => setForm({ title: a.title, body: a.body, category: a.category, tags: a.tags.join(', ') })}
+                onRestored={(a) => {
+                  setForm({ title: a.title, body: a.body, category: a.category, tags: a.tags.join(', ') })
+                  // A restore is a new version too: the next save must send it.
+                  setEditArticle((cur) => (cur ? { ...cur, version: a.version } : cur))
+                }}
               />
             </div>
           )}

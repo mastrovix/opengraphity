@@ -13,11 +13,12 @@ import { SeverityBadge } from '@/components/SeverityBadge'
 import type { AvailableTransition, ChangeData } from '@/types/change'
 import { DescriptionField, DetailField, RiskBadge, fmtDate } from './shared'
 import { colors } from '@/lib/tokens'
+import { transitionButtonColors } from '@/lib/workflowStepStyle'
 
 export function ChangeInfoCard({
   change, currentStep, atApproval, initialStepName, isTerminal, actsForAnyTeam,
   transitioning, totalTasks, completedTasks, transitions,
-  onTransitionClick, stepLabel,
+  onTransitionClick, stepLabel, categoryOf,
 }: {
   change: ChangeData
   currentStep: string
@@ -37,6 +38,8 @@ export function ChangeInfoCard({
   transitions: AvailableTransition[]
   stepLabel: string
   onTransitionClick: (tr: AvailableTransition) => void
+  /** The category of a step of the change workflow: a transition towards a `failed` step is drawn as danger (D27). */
+  categoryOf?: (step: string) => string | null
 }) {
   const { t } = useTranslation()
   return (
@@ -77,8 +80,9 @@ export function ChangeInfoCard({
             disabled={transitioning}
             onClick={() => onTransitionClick(tr)}
             style={{
-              padding: '6px 14px', borderRadius: 6, border: 'none',
-              background: 'var(--color-brand)', color: colors.white, fontWeight: 600,
+              padding: '6px 14px', borderRadius: 6, borderWidth: 1, borderStyle: 'solid',
+              // D27: a transition that ends the change badly (cancelled, rejected) is drawn as danger.
+              ...transitionButtonColors(categoryOf?.(tr.toStep) ?? null, tr.inputField ?? null, 'brand'), fontWeight: 600,
               cursor: transitioning ? 'wait' : 'pointer', fontSize: 'var(--font-size-label)',
             }}
           >

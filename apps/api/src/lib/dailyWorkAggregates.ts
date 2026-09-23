@@ -235,8 +235,9 @@ export async function tempiNeiPassi(
     const righe = await runQuery<{
       step: string; n: number; mediana: number; p90: number; oltre: number; zeri: number
     }>(session, `
-      MATCH (wi:WorkflowInstance {tenant_id: $tenantId})-[:STEP_HISTORY]->(w:WorkflowStepExecution)
-      WHERE w.exited_at IS NOT NULL AND w.exited_at >= $da AND w.duration_ms IS NOT NULL
+      // From the index on (tenant, exit), D67: walking every instance read a million executions.
+      MATCH (w:WorkflowStepExecution {tenant_id: $tenantId})
+      WHERE w.exited_at >= $da AND w.duration_ms IS NOT NULL
       WITH w.step_name AS step,
            CASE WHEN w.duration_ms > 0 THEN w.duration_ms / 3600000.0 ELSE null END AS ore,
            CASE WHEN w.duration_ms = 0 THEN 1 ELSE 0 END AS zero
@@ -302,15 +303,21 @@ export async function coppieRipetute(
       MATCH (a:AuditEntry {tenant_id: $tenantId})
       WHERE a.created_at >= $da AND ${humanActorClause('a')} AND ${NON_DEL_PROGRAMMA}
         AND a.entity_id IS NOT NULL AND a.entity_id <> ''
-      MATCH (b:AuditEntry {tenant_id: $tenantId})
-      WHERE b.entity_id = a.entity_id AND b.user_id = a.user_id
-        AND b.created_at > a.created_at
-        AND duration.inSeconds(datetime(a.created_at), datetime(b.created_at)).seconds <= $finestraSecondi
-        AND ${NON_DEL_PROGRAMMA.replace(/\ba\./g, 'b.')}
-        AND b.id <> a.id
-      RETURN a.action AS prima, b.action AS poi, count(*) AS n,
-             count(DISTINCT a.entity_id) AS oggetti,
-             count(DISTINCT a.user_id) AS autori
+      // The entries of one person on one object, in time order, and every pair
+      // within the window (D67, tour of 23 Sep 2026): the self-join looked up
+      // the index once per entry, 2.4 s on the demo tenant; grouping first
+      // gives the same pairs in 0.4 s.
+      WITH a.entity_id AS entity, a.user_id AS user, a ORDER BY a.created_at
+      WITH entity, user, collect({action: a.action, at: a.created_at}) AS seq
+      WHERE size(seq) > 1
+      UNWIND range(0, size(seq) - 2) AS i
+      UNWIND range(i + 1, size(seq) - 1) AS j
+      WITH entity, user, seq[i] AS first, seq[j] AS then
+      WHERE then.at > first.at
+        AND duration.inSeconds(datetime(first.at), datetime(then.at)).seconds <= $finestraSecondi
+      RETURN first.action AS prima, then.action AS poi, count(*) AS n,
+             count(DISTINCT entity) AS oggetti,
+             count(DISTINCT user) AS autori
       ORDER BY n DESC
       LIMIT 200
     `, {
@@ -382,6 +389,29 @@ export interface AdozioneAI {
  * di articolo KB da un incident — e i cambi di configurazione AI. È poco, ed
  * è detto invece che gonfiato.
  */
+/**
+ * THE ENTRIES THAT ARE AN AI AT WORK, named one by one (tour of 23 Sep 2026).
+ *
+ * The filter was `action CONTAINS 'ai'`, and «ai» is inside «claimed»,
+ * «email», «maintenance», «domain», «failed», «detail»: taking a task, a
+ * maintenance window and a notification preference were counted as AI
+ * actions, while the one this section was written for — the KB draft from an
+ * incident — was not, because its entry is `kb_article.created`, the same as
+ * an article written by hand. Now the draft writes its own entry, and the
+ * list is explicit: a new AI mutation is added here, or it is not counted.
+ */
+export const AI_AUDIT_ACTIONS: readonly string[] = [
+  /** The KB draft the model writes from an incident (`createKbDraftFromIncident`). */
+  'kb_article.drafted_by_ai',
+  /** The two designers that ask the model for a proposal (the mutation registry names them). */
+  'mutation.proposeServiceRequestDesign',
+  'mutation.proposeReportSection',
+  /** «Analyse now» on the improvement proposals: the analysts with a model inside. */
+  'proposal.analysis_run',
+  /** Turning an AI feature on or off. */
+  'tenant.ai_settings.updated',
+]
+
 export async function adozioneFunzioniAI(
   tenantId: string,
   finestraGiorni = 30,
@@ -391,12 +421,10 @@ export async function adozioneFunzioniAI(
     const righe = await runQuery<{ action: string; n: number; autori: number }>(session, `
       MATCH (a:AuditEntry {tenant_id: $tenantId})
       WHERE a.created_at >= $da AND ${humanActorClause('a')}
-        AND (a.action CONTAINS 'ai' OR a.action CONTAINS 'triage'
-             OR a.action CONTAINS 'assistant' OR a.action CONTAINS 'kb_draft'
-             OR a.action STARTS WITH 'mutation.propose')
+        AND a.action IN $azioniAI
       RETURN a.action AS action, count(*) AS n, count(DISTINCT a.user_id) AS autori
       ORDER BY n DESC
-    `, parametriComuni(tenantId, daQuando(finestraGiorni)))
+    `, { ...parametriComuni(tenantId, daQuando(finestraGiorni)), azioniAI: [...AI_AUDIT_ACTIONS] })
 
     return righe.map((r) => ({
       feature: String(r.action),

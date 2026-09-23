@@ -141,3 +141,41 @@ describe('updateOLAContract — il responsabile', () => {
     expect(cypher.some((q) => q.includes('SET o +='))).toBe(true)
   })
 })
+
+/*
+ * THE CONTRACT'S OWN ZONE (tour of 23 Sep 2026). A team in Singapore works
+ * 9-18 in Singapore; counted in the organization's zone its calendar was six
+ * or seven hours off. Like an SLA policy: empty = the organization's.
+ */
+describe('the contract\'s time zone', () => {
+  it('create: a real zone is stored, an empty one is «the organization\'s» (null)', async () => {
+    unaRiga = { name: 'NOC', sourcing: 'internal' }
+    const { runQuery } = await import('@opengraphity/neo4j')
+    await createOLAContract(null, { input: { ...INPUT, partyType: 'team', teamId: 'team-noc', timezone: ' Asia/Singapore ' } }, admin)
+    expect((vi.mocked(runQuery).mock.calls.at(-1)![2] as Record<string, unknown>)['timezone']).toBe('Asia/Singapore')
+    await createOLAContract(null, { input: { ...INPUT, partyType: 'team', teamId: 'team-noc', timezone: '' } }, admin)
+    expect((vi.mocked(runQuery).mock.calls.at(-1)![2] as Record<string, unknown>)['timezone']).toBeNull()
+    expect(cypher.find((q) => q.includes('CREATE (o:OLAContract'))).toContain('timezone: $timezone')
+  })
+
+  it('create: a zone that does not exist is refused, and nothing is written', async () => {
+    const e = await errore(createOLAContract(null, { input: { ...INPUT, partyType: 'team', teamId: 'team-noc', timezone: 'Mars/Olympus' } }, admin))
+    expect(e.extensions['i18n']).toMatchObject({ key: 'errors.tenant.unknownTimezone' })
+    expect(cypher.some((q) => q.includes('CREATE (o:OLAContract'))).toBe(false)
+  })
+
+  it('update: the zone changes, and an empty one goes back to the organization\'s', async () => {
+    const { runQuery } = await import('@opengraphity/neo4j')
+    await updateOLAContract(null, { id: 'ola-1', input: { timezone: 'America/New_York' } }, admin)
+    expect((vi.mocked(runQuery).mock.calls.at(-1)![2] as { sets: Record<string, unknown> }).sets['timezone']).toBe('America/New_York')
+    await updateOLAContract(null, { id: 'ola-1', input: { timezone: '' } }, admin)
+    expect((vi.mocked(runQuery).mock.calls.at(-1)![2] as { sets: Record<string, unknown> }).sets['timezone']).toBeNull()
+  })
+
+  it('the contract says its zone', async () => {
+    righe = [{ props: props({ timezone: 'Europe/London' }), teamName: 'NOC' }]
+    unaRiga = { name: 'NOC', sourcing: 'internal' }
+    const out = await createOLAContract(null, { input: { ...INPUT, partyType: 'team', teamId: 'team-noc', timezone: 'Europe/London' } }, admin) as { timezone: string | null }
+    expect(out.timezone).toBe('Europe/London')
+  })
+})

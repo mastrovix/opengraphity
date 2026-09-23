@@ -24,7 +24,7 @@ vi.mock('@opengraphity/neo4j', () => ({
     close,
   })),
 }))
-vi.mock('../../../lib/env.js', () => ({ envOrThrowInProd: vi.fn(() => 'http://kc') }))
+vi.mock('../../../lib/env.js', () => ({ envOrThrowInProd: vi.fn(() => 'http://kc:9000') }))
 
 const redisClient = { connect: vi.fn(), ping: vi.fn(), quit: vi.fn() }
 vi.mock('@opengraphity/events', () => ({ getRedisConnection: vi.fn(() => ({ host: 'r' })) }))
@@ -155,5 +155,21 @@ describe('systemMetrics e traceInfo', () => {
     const { recentTraces } = await import('../../../telemetry.js')
     expect(out['recentTraces']).toEqual(recentTraces)
     expect(out['recentTraces']).not.toBe(recentTraces)
+  })
+})
+
+/**
+ * D66 (tour of 23 Sep 2026): since Keycloak 25 the health endpoint is on the
+ * management interface (port 9000); on the HTTP port it is a 404, and the
+ * page said «Error — HTTP 404» while sign-in worked.
+ */
+describe('the Keycloak probe reads the management interface', () => {
+  it('asks KEYCLOAK_MANAGEMENT_URL/health/ready, not the HTTP port', async () => {
+    const { envOrThrowInProd } = await import('../../../lib/env.js')
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    await R.Query.systemHealth(null, null, ADMIN)
+    expect(envOrThrowInProd).toHaveBeenCalledWith('KEYCLOAK_MANAGEMENT_URL', 'http://localhost:9000')
+    expect((fetchMock.mock.calls as unknown as Array<[string]>).map((c) => c[0])).toContain('http://kc:9000/health/ready')
   })
 })

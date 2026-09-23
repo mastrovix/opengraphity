@@ -2,11 +2,15 @@ import { gql } from '@apollo/client'
 
 // ── Report builder ───────────────────────────────────────────────────────────
 
+// The settings form of the Report Builder is filled from this list: without
+// the schedule's channel, recipients and format, saving the settings wiped
+// them (tour of 23 Sep 2026).
 export const GET_REPORT_TEMPLATES = gql`
   query GetReportTemplates {
     reportTemplates {
       id name description icon visibility
-      scheduleEnabled scheduleCron
+      scheduleEnabled scheduleCron scheduleChannelId
+      scheduleRecipients scheduleFormat lastScheduledRun
       createdAt
       createdBy { id name }
       sharedWith { id name }

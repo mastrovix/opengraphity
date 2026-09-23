@@ -72,11 +72,34 @@ interface VisibilityForm {
   action:       'show' | 'hide'
 }
 
+/**
+ * The fields a rule on `trigger` can show or hide: every field but the trigger
+ * itself. A rule never targets the field that triggers it: with a single
+ * field there is no target at all (tour of 23 Sep 2026: the default target
+ * was the trigger itself, and such a rule was saved).
+ */
+function targetsOf(fields: FieldDef[], trigger: string): FieldDef[] {
+  return fields.filter((f) => f.name !== trigger)
+}
+
+/**
+ * The target a form stands for, shown and saved alike: its own while the list
+ * offers it, else the first field the list offers — the one it shows. Choosing
+ * as trigger the field that was the target left the target on the trigger:
+ * the list showed «Category», the rule saved was serial → serial (tour of
+ * 23 Sep 2026). Empty when there is nothing to target.
+ */
+function targetOf(fields: FieldDef[], form: VisibilityForm): string {
+  const targets = targetsOf(fields, form.triggerField)
+  return targets.some((f) => f.name === form.targetField) ? form.targetField : (targets[0]?.name ?? '')
+}
+
 function emptyVisForm(fields: FieldDef[]): VisibilityForm {
+  const triggerField = fields[0]?.name ?? ''
   return {
-    triggerField: fields[0]?.name ?? '',
+    triggerField,
     triggerValue: '',
-    targetField:  fields[1]?.name ?? fields[0]?.name ?? '',
+    targetField:  targetsOf(fields, triggerField)[0]?.name ?? '',
     action:       'show',
   }
 }
@@ -116,8 +139,9 @@ function VisibilityRulesSection({ entityType, fields }: { entityType: string; fi
   const isEnumEdit     = editTrigger?.fieldType === 'enum'
 
   function handleCreate() {
-    if (!form.triggerField || !form.targetField || !form.triggerValue) return
-    void createRule({ variables: { entityType, ...form } })
+    const targetField = targetOf(fields, form)
+    if (!form.triggerField || !targetField || !form.triggerValue) return
+    void createRule({ variables: { entityType, ...form, targetField } })
   }
 
   function startEdit(rule: VisibilityRule) {
@@ -127,7 +151,7 @@ function VisibilityRulesSection({ entityType, fields }: { entityType: string; fi
 
   function handleUpdate() {
     if (!editingId) return
-    void updateRule({ variables: { id: editingId, ...editForm } })
+    void updateRule({ variables: { id: editingId, ...editForm, targetField: targetOf(fields, editForm) } })
   }
 
   return (
@@ -211,6 +235,9 @@ function VisibilityRuleForm({ form, fields, isEnumTrigger, triggerField, onChang
   // G-15: le etichette del form non erano collegate ai controlli (screen
   // reader: «menu» senza nome). `useId` dà la radice degli identificativi.
   const ids = useId()
+  const targets = targetsOf(fields, form.triggerField)
+  // Nothing to target: the form says so and saves nothing.
+  const noTarget = targets.length === 0
   return (
     <div style={{ background: palette.info.light, border: `1px solid ${palette.info.border}`, borderRadius: 8, padding: '14px 16px', marginBottom: 10 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px 1fr', gap: 10, marginBottom: 10 }}>
@@ -240,14 +267,21 @@ function VisibilityRuleForm({ form, fields, isEnumTrigger, triggerField, onChang
         </div>
         <div>
           <label htmlFor={`${ids}-target-field`} style={labelS}>{t('fieldRules.visibility.targetField')}</label>
-          <Select id={`${ids}-target-field`} style={selectS} value={form.targetField} onChange={(e) => onChange({ targetField: e.target.value })}>
-            {fields.filter((f) => f.name !== form.triggerField).map((f) => <option key={f.name} value={f.name}>{f.label || f.name}</option>)}
+          <Select id={`${ids}-target-field`} style={selectS} value={targetOf(fields, form)} onChange={(e) => onChange({ targetField: e.target.value })}
+            aria-describedby={noTarget ? `${ids}-no-target` : undefined}>
+            {targets.map((f) => <option key={f.name} value={f.name}>{f.label || f.name}</option>)}
           </Select>
         </div>
       </div>
+      {noTarget && (
+        <p id={`${ids}-no-target`} style={{ margin: '0 0 10px', fontSize: 'var(--font-size-body)', color: palette.warning.text }}>
+          {t('fieldRules.visibility.noTarget')}
+        </p>
+      )}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <button type="button" style={btnSecondary} onClick={onCancel}><X size={13} /> {t('common.cancel')}</button>
-        <button type="button" style={btnPrimary}   onClick={onSave}><Check size={13} /> {t('common.save')}</button>
+        <button type="button" style={{ ...btnPrimary, opacity: noTarget ? 0.6 : 1 }} disabled={noTarget}
+          aria-describedby={noTarget ? `${ids}-no-target` : undefined} onClick={onSave}><Check size={13} /> {t('common.save')}</button>
       </div>
     </div>
   )

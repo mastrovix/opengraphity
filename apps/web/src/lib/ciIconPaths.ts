@@ -97,7 +97,45 @@ export const CI_ICON_PATHS: Record<string, IconNode[]> = {
     ['path', { d: 'M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16' }],
     ['rect', { width: '20', height: '14', x: '2', y: '6', rx: '2' }],
   ],
+  // The ITIL types' icons (lucide-react 1.44). The ITIL designer offered them
+  // and none was here, so each was drawn as the red «?» (tour of 23 Sep 2026).
+  'alert-circle': [
+    ['circle', { cx: '12', cy: '12', r: '10' }],
+    ['line', { x1: '12', x2: '12', y1: '8', y2: '12' }],
+    ['line', { x1: '12', x2: '12.01', y1: '16', y2: '16' }],
+  ],
+  bug: [
+    ['path', { d: 'M12 20v-9' }],
+    ['path', { d: 'M14 7a4 4 0 0 1 4 4v3a6 6 0 0 1-12 0v-3a4 4 0 0 1 4-4z' }],
+    ['path', { d: 'M14.12 3.88 16 2' }],
+    ['path', { d: 'M21 21a4 4 0 0 0-3.81-4' }],
+    ['path', { d: 'M21 5a4 4 0 0 1-3.55 3.97' }],
+    ['path', { d: 'M22 13h-4' }],
+    ['path', { d: 'M3 21a4 4 0 0 1 3.81-4' }],
+    ['path', { d: 'M3 5a4 4 0 0 0 3.55 3.97' }],
+    ['path', { d: 'M6 13H2' }],
+    ['path', { d: 'm8 2 1.88 1.88' }],
+    ['path', { d: 'M9 7.13V6a3 3 0 1 1 6 0v1.13' }],
+  ],
+  'git-pull-request': [
+    ['circle', { cx: '18', cy: '18', r: '3' }],
+    ['circle', { cx: '6', cy: '6', r: '3' }],
+    ['path', { d: 'M13 6h3a2 2 0 0 1 2 2v7' }],
+    ['line', { x1: '6', x2: '6', y1: '9', y2: '21' }],
+  ],
+  inbox: [
+    // lucide's polyline 22 12 16 12 14 15 10 15 8 12 2 12, written as a path.
+    ['path', { d: 'M22 12h-6l-2 3h-4l-2-3H2' }],
+    ['path', { d: 'M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z' }],
+  ],
 }
+
+/**
+ * The icons a designer offers for a type, CI or ITIL: exactly the ones this
+ * registry draws. Each picker kept its own list, and the ITIL one offered
+ * icons that were not here (tour of 23 Sep 2026).
+ */
+export const CI_ICON_KEYS: readonly string[] = Object.keys(CI_ICON_PATHS)
 
 /** Chiave riservata: "?" rosso, usata quando l'icona richiesta non esiste. */
 export const BROKEN_ICON_KEY = '__broken__'

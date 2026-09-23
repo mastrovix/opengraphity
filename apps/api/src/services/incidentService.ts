@@ -27,6 +27,12 @@ export interface IncidentEventPayload {
   id: string; title: string; severity: string; status: string
   ciName: string; assignedTo: string
   resolved_at?: string; affected_ci_ids?: string[]
+  /**
+   * `incident.assigned` of a team set while the incident was being created:
+   * routing, not a response — the SLA engine does not count it as one
+   * (packages/sla, `handleEntityResponded`).
+   */
+  routed_at_creation?: boolean
 }
 
 export interface ServiceCtx {
@@ -123,15 +129,17 @@ export async function addIncidentComment(id: string, ctx: ServiceCtx, text: stri
  */
 export async function setIncidentTitle(id: string, ctx: ServiceCtx, title: string): Promise<void> {
   if (typeof title !== 'string' || title.trim() === '') throw new ValidationError('Incident title must not be empty')
+  const now = new Date().toISOString()
   await withSession(async (session) => {
     const row = await runQueryOne<{ id: string }>(session, `
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})
       SET i.title = $title, i.updated_at = $now
       RETURN i.id AS id
-    `, { id, tenantId: ctx.tenantId, title, now: new Date().toISOString() })
+    `, { id, tenantId: ctx.tenantId, title, now })
     if (!row) throw new NotFoundError('Incident', id)
   }, true)
-  enqueueEmbedding({ entityType: 'incident', entityId: id, tenantId: ctx.tenantId }).catch((err: unknown) => {
+  // The version is the incident's updated_at, as when the similarity panel asks for it (D15).
+  enqueueEmbedding({ entityType: 'incident', entityId: id, tenantId: ctx.tenantId, updatedAt: now }).catch((err: unknown) => {
     logger.error({ err, incidentId: id }, '[embeddings] enqueue failed — similarity will lag until backfill')
   })
 }
@@ -162,13 +170,69 @@ function requirePayload(payload: IncidentEventPayload | null, id: string): Incid
  */
 export type IncidentChannel = 'agent' | 'portal'
 
+/**
+ * WHO TAKES A NEW INCIDENT (the owner's rule, 23 Sep 2026).
+ *
+ * «When you create an incident you name a CI, and it is assigned
+ * automatically to its support group.» The team is `teamId` when the caller
+ * chose one — the form prefills it with the CI's support group, and the
+ * person may change it — otherwise the support group (`SUPPORTED_BY`) of the
+ * first impacted CI that has one, in the order given. Every channel goes
+ * through here: the form, the REST API, Slack, the inbound webhooks, the
+ * monitoring alarms (tour of 23 Sep 2026, D61: their incidents had no team,
+ * and nobody was told about a critical one), the monitored services, the
+ * workflow actions. A CI without a support group leaves the incident without
+ * a team, as before.
+ */
+async function supportGroupOfCIs(tenantId: string, ciIds: readonly string[]): Promise<{ teamId: string; ciName: string } | null> {
+  if (ciIds.length === 0) return null
+  return withSession((session) => runQueryOne<{ teamId: string; ciName: string }>(session, `
+    UNWIND range(0, size($ciIds) - 1) AS idx
+    MATCH (ci:ConfigurationItem {id: $ciIds[idx], tenant_id: $tenantId})-[:SUPPORTED_BY]->(t:Team {tenant_id: $tenantId})
+    RETURN t.id AS teamId, ci.name AS ciName
+    ORDER BY idx, t.name
+    LIMIT 1
+  `, { tenantId, ciIds: [...ciIds] }))
+}
+
+/** A team chosen by the caller must exist in the tenant, checked BEFORE the incident is written. */
+async function assertTeamOfTenant(tenantId: string, teamId: string): Promise<void> {
+  const row = await withSession((session) => runQueryOne<{ id: string }>(session,
+    'MATCH (t:Team {id: $teamId, tenant_id: $tenantId}) RETURN t.id AS id', { teamId, tenantId }))
+  if (!row) throw new ValidationError(`Team ${teamId} does not exist in this organization`, { key: 'errors.incident.teamNotFound', params: { teamId } })
+}
+
+/**
+ * The new incident goes to its team, and the rules on the assignment notify
+ * the team — but it stays in its first step: the group's queue. Leaving that
+ * step is the response of the SLA (packages/sla, `from_initial`), and the
+ * response is a person of the group taking the incident in charge, not the
+ * routing that happened while it was being created: moving it on here made
+ * every incident with a CI «responded» at the instant it was opened. Any
+ * failure says that the incident exists and what did not happen.
+ */
+async function assignNewIncident(
+  created: ReturnType<typeof mapIncident>, team: { teamId: string; ciName: string | null }, ctx: ServiceCtx,
+): Promise<ReturnType<typeof mapIncident>> {
+  try {
+    return (await assignIncidentToTeam(String(created.id), team.teamId, ctx, { supportGroupOf: team.ciName })).incident
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    throw new ValidationError(
+      `Incident ${String(created.number ?? created.id)} was created, but assigning it to its team failed: ${reason}`,
+      { key: 'errors.incident.createdButNotAssigned', params: { number: String(created.number ?? created.id), reason } },
+    )
+  }
+}
+
 export async function createIncident(
-  input: { title: string; description?: string; severity?: string; impact?: string; urgency?: string; category?: string; affectedCIIds?: string[]; acknowledgeNoSla?: boolean | null; customFields?: CustomFieldInput[] | null },
+  input: { title: string; description?: string; severity?: string; impact?: string; urgency?: string; category?: string; affectedCIIds?: string[]; acknowledgeNoSla?: boolean | null; customFields?: CustomFieldInput[] | null; teamId?: string | null },
   ctx: ServiceCtx,
   channel: IncidentChannel = 'agent',
 ) {
   validateStringLength(input.title, 'title', 1, 500)
   validateStringLength(input.description, 'description', 0, 10000)
+  if (input.teamId) await assertTeamOfTenant(ctx.tenantId, input.teamId)
 
   // ITIL: an incident must record the impacted CI(s) — required, not optional.
   // L'eccezione dichiarata è il portale (vedi `IncidentChannel`).
@@ -272,7 +336,7 @@ export async function createIncident(
       for (const ciId of affectedCIIds) {
         const rows = await runQuery<{ linked: unknown }>(session, `
           MATCH (i:Incident {id: $id, tenant_id: $tenantId})
-          MATCH (ci {id: $ciId, tenant_id: $tenantId})
+          MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
           WHERE ${ciPredicate}
           MERGE (i)-[r:AFFECTED_BY]->(ci)
           RETURN count(r) AS linked
@@ -345,11 +409,15 @@ export async function createIncident(
 
   // Trigger, Business Rule e trigger a tempo: li mette in moto `incident.created`
   // (consumers/automationConsumer.ts), come per ogni altro ticket e evento.
-  enqueueEmbedding({ entityType: 'incident', entityId: id, tenantId: ctx.tenantId }).catch((err: unknown) => {
+  enqueueEmbedding({ entityType: 'incident', entityId: id, tenantId: ctx.tenantId, updatedAt: now }).catch((err: unknown) => {
     logger.error({ err, incidentId: id }, '[embeddings] enqueue failed — similarity will lag until backfill')
   })
 
-  return created
+  // After `incident.created`: the SLA starts there, and the assignment may change its policy (SL-10).
+  const team = input.teamId
+    ? { teamId: input.teamId, ciName: null }
+    : await supportGroupOfCIs(ctx.tenantId, input.affectedCIIds ?? [])
+  return team ? assignNewIncident(created, team, ctx) : created
 }
 
 export async function resolveIncident(
@@ -414,6 +482,12 @@ export async function assignIncidentToTeam(
   id: string,
   teamId: string,
   ctx: ServiceCtx,
+  /**
+   * Set by the creation: the incident stays in its first step (see
+   * `assignNewIncident`), and when the team is the support group of a CI
+   * (`supportGroupOf`, its name) the note says so.
+   */
+  atCreation?: { supportGroupOf: string | null },
 ) {
   if (!teamId?.trim()) throw new ValidationError('teamId is required', { key: 'errors.assignment.teamRequired' })
   const now = new Date().toISOString()
@@ -430,10 +504,14 @@ export async function assignIncidentToTeam(
    */
   let nomi: { teamName: string; previousTeamName: string | null; unassignedUserName: string | null } =
     { teamName: '', previousTeamName: null, unassignedUserName: null }
+  let advanced = false
   const assigned = await withSession(async (session) => {
     const { teamName, previousTeamName, unassignedUserName } = await setTicketTeam(session, 'Incident', id, teamId, ctx.tenantId)
     nomi = { teamName, previousTeamName, unassignedUserName }
-    const transitionNotes = await systemText(ctx.tenantId, 'incident.reassignedTeam', { team: teamName })
+    // D11: «Reassigned» only when there was a team before.
+    const transitionNotes = atCreation?.supportGroupOf
+      ? await systemText(ctx.tenantId, 'incident.autoAssignedTeam', { team: teamName, ci: atCreation.supportGroupOf })
+      : await systemText(ctx.tenantId, previousTeamName ? 'incident.reassignedTeam' : 'incident.assignedTeam', { team: teamName })
     // M-10: l'assegnatario che non è nel gruppo nuovo è stato staccato. Non è
     // un dettaglio tecnico: chi guarda il ticket deve sapere che non ha più un
     // assegnatario, e perché.
@@ -453,7 +531,7 @@ export async function assignIncidentToTeam(
       const currentStep = wiResult.records[0]!.get('currentStep') as string
       const initialStep = await getInitialStepName(session, ctx.tenantId, 'incident')
 
-      if (currentStep === initialStep) {
+      if (currentStep === initialStep && !atCreation) {
         // Assigning a team from the initial step auto-advances the workflow.
         // Take the first manual transition available — the workflow defines
         // the post-assignment step, not this service.
@@ -461,14 +539,16 @@ export async function assignIncidentToTeam(
         if (next) {
           const result = await workflowEngine.transition(
             session,
-            { instanceId, toStepName: next.toStep, triggeredBy: ctx.userId, triggerType: 'automatic', notes: transitionNotes, tenantId: ctx.tenantId },
+            { instanceId, toStepName: next.toStep, triggeredBy: ctx.userId, triggerType: 'automatic', notes: transitionNotes, actorLabel: ctx.actorLabel ?? null, tenantId: ctx.tenantId },
             { userId: ctx.userId, entityData: {} },
           )
           if (!result.success) advanceRefused = { result, toStep: next.toStep }
+          else advanced = true
         }
       } else {
-        // Reassignment while already past the initial step: just log a
-        // history entry against the current step, no transition.
+        // Reassignment while already past the initial step, or the team of a
+        // new incident: just log a history entry against the current step,
+        // no transition.
         await session.executeWrite((tx) => tx.run(`
           MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
           CREATE (wi)-[:STEP_HISTORY]->(:WorkflowStepExecution {
@@ -485,7 +565,9 @@ export async function assignIncidentToTeam(
           })
         `, { incidentId: id, tenantId: ctx.tenantId, now, userId: ctx.userId, notes: transitionNotes }))
       }
-      await createTransitionComment(session, id, ctx.tenantId, ctx.userId, transitionNotes, ctx.actorLabel ?? null)
+      // D12: a transition already wrote «Workflow: <step> — <note>» on the
+      // ticket (lib/stepEnteredPublisher.ts); writing the note again made two.
+      if (!advanced) await createTransitionComment(session, id, ctx.tenantId, ctx.userId, transitionNotes, ctx.actorLabel ?? null)
     }
 
     const r = await session.executeRead((tx) => tx.run(
@@ -501,6 +583,7 @@ export async function assignIncidentToTeam(
     await publishEvent('incident.assigned', ctx.tenantId, ctx.userId, {
       ...requirePayload(assignedPayload, id),
       assignedTo: teamName,
+      ...(atCreation ? { routed_at_creation: true } : {}),
     } satisfies IncidentEventPayload, now)
     // SL-10: la policy SLA può dipendere dal gruppo appena assegnato.
     await publishEvent(TICKET_TEAM_ASSIGNED_EVENT, ctx.tenantId, ctx.userId, { entity_type: 'incident', entity_id: id, team_id: teamId } satisfies TicketTeamAssignedPayload, now)
@@ -555,6 +638,7 @@ export async function assignIncidentToUser(
   // I nomi escono dal servizio perché il registro li vuole: vedi
   // `assignIncidentToTeam`.
   let nomi: { userName: string | null; previousUserName: string | null } = { userName: null, previousUserName: null }
+  let advanced = false
 
   const assigned = await withSession(async (session) => {
     if (!userId) {
@@ -589,16 +673,18 @@ export async function assignIncidentToUser(
       // una persona a un incident già avviato non deve far scattare una
       // transizione arbitraria (transitions[0] potrebbe essere "resolved").
       // Da qualunque altro step si registra soltanto l'assegnazione (sotto).
-      const reassignedNote = await systemText(ctx.tenantId, 'incident.reassignedUser', { user: userName })
-      const assignedNote = await systemText(ctx.tenantId, 'incident.assignedUser', { user: userName })
+      // D11: «Reassigned» only when someone had it before; the same sentence
+      // in the history and in the note.
+      const note = await systemText(ctx.tenantId, previousUserName ? 'incident.reassignedUser' : 'incident.assignedUser', { user: userName })
       const next = currentStep === initialStep ? await assignmentAdvanceTarget(session, ctx.tenantId, instanceId) : null
       if (currentStep === initialStep && next) {
         const result = await workflowEngine.transition(
           session,
-          { instanceId, toStepName: next.toStep, triggeredBy: ctx.userId, triggerType: 'automatic', notes: assignedNote, tenantId: ctx.tenantId },
+          { instanceId, toStepName: next.toStep, triggeredBy: ctx.userId, triggerType: 'automatic', notes: note, actorLabel: ctx.actorLabel ?? null, tenantId: ctx.tenantId },
           { userId: ctx.userId, entityData: {} },
         )
         if (!result.success) advanceRefused = { result, toStep: next.toStep }
+        else advanced = true
       } else {
         await session.executeWrite((tx) => tx.run(`
           MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
@@ -614,9 +700,10 @@ export async function assignIncidentToUser(
             trigger_type: 'manual',
             notes:        $notes
           })
-        `, { incidentId: id, tenantId: ctx.tenantId, now, userId: ctx.userId, notes: reassignedNote }))
+        `, { incidentId: id, tenantId: ctx.tenantId, now, userId: ctx.userId, notes: note }))
       }
-      await createTransitionComment(session, id, ctx.tenantId, ctx.userId, assignedNote, ctx.actorLabel ?? null)
+      // D12: after a transition the note is already on the ticket, see assignIncidentToTeam.
+      if (!advanced) await createTransitionComment(session, id, ctx.tenantId, ctx.userId, note, ctx.actorLabel ?? null)
     }
 
     const r = await session.executeRead((tx) => tx.run(

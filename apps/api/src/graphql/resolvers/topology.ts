@@ -89,9 +89,8 @@ export const topologyResolvers = {
           // 1. Collect all reachable CI ids up to requested depth
           //    Origin is always included; neighbors are filtered by env/status if provided
           const reachableResult = await session.executeRead((tx) => tx.run(`
-            MATCH (origin)
-            WHERE origin.id = $ciId AND origin.tenant_id = $tenantId
-              AND ANY(lbl IN labels(origin) WHERE lbl IN $ciLabels)
+            MATCH (origin:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
+            WHERE ANY(lbl IN labels(origin) WHERE lbl IN $ciLabels)
             CALL apoc.path.subgraphNodes(origin, {
               relationshipFilter: null,
               labelFilter:        '${CI_LABEL_FILTER}',
@@ -117,7 +116,7 @@ export const topologyResolvers = {
           // 2. Load full node data with incident/change counts
           //    Re-apply filter here too (origin always passes via ci.id = $ciId exception)
           const nodesResult = await session.executeRead((tx) => tx.run(`
-            MATCH (ci)
+            MATCH (ci:ConfigurationItem)
             WHERE ci.id IN $nodeIds AND ci.tenant_id = $tenantId
               AND (ci.id = $ciId
                 OR (($environment IS NULL OR ci.environment = $environment)
@@ -143,7 +142,7 @@ export const topologyResolvers = {
 
           // 3. Edges between the loaded nodes
           const edgesResult = await session.executeRead((tx) => tx.run(`
-            MATCH (a)-[r]->(b)
+            MATCH (a:ConfigurationItem)-[r]->(b:ConfigurationItem)
             WHERE a.id IN $nodeIds AND b.id IN $nodeIds
               AND a.tenant_id = $tenantId
             RETURN DISTINCT a.id AS source, b.id AS target, type(r) AS relType
@@ -189,9 +188,8 @@ export const topologyResolvers = {
           : ''
 
         const nodesResult = await session.executeRead((tx) => tx.run(`
-          MATCH (ci)
-          WHERE ci.tenant_id = $tenantId
-            AND ANY(lbl IN labels(ci) WHERE lbl IN $ciLabels)
+          MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
+          WHERE ANY(lbl IN labels(ci) WHERE lbl IN $ciLabels)
             ${extraWhere}
           ${TICKET_COUNT_MATCHES}
           WITH ci,
@@ -218,7 +216,7 @@ export const topologyResolvers = {
 
         const nodeIds = nodes.map((n) => n.id)
         const edgesResult = await session.executeRead((tx) => tx.run(`
-          MATCH (a)-[r]->(b)
+          MATCH (a:ConfigurationItem)-[r]->(b:ConfigurationItem)
           WHERE a.tenant_id = $tenantId
             AND b.tenant_id = $tenantId
             AND a.id IN $nodeIds

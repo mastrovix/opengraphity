@@ -101,7 +101,7 @@ describe('/og incident open', () => {
     expect((res.body as { text: string }).text).toContain('INC00000042')
     // A-9: la risoluzione del CI usa le etichette del metamodello del tenant —
     // con la lista fissa un CI di un tipo del cliente dava «CI non trovato».
-    expect(reads.find((q) => q.includes('MATCH (ci {tenant_id: $tenantId})'))).toContain('ci:LoadBalancer')
+    expect(reads.find((q) => q.includes('MATCH (ci:ConfigurationItem {tenant_id: $tenantId})'))).toContain('ci:LoadBalancer')
   })
 
   it('missing ci= → usage, nothing created', async () => {

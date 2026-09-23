@@ -335,9 +335,31 @@ const INDEXES: SchemaStatement[] = [
     label: 'WorkflowInstance(tenant_id, status)',
     cypher: 'CREATE INDEX workflow_instance_tenant_status IF NOT EXISTS FOR (n:WorkflowInstance) ON (n.tenant_id, n.status)',
   },
+  /*
+   * The step executions of a tenant, by outcome of their deadline and by exit
+   * (tour of 23 Sep 2026, D67). The diagnostics looked for the tickets whose
+   * deadline could not move them by walking every instance and every
+   * execution of the tenant — a million on the demo tenant, 0.66 s at each
+   * refresh — and «Daily work» read every execution for the steps of the
+   * last 30 days. Both now start from the index.
+   */
+  {
+    label: 'WorkflowStepExecution(tenant_id, deadline_outcome)',
+    cypher: 'CREATE INDEX workflow_step_execution_tenant_deadline IF NOT EXISTS FOR (n:WorkflowStepExecution) ON (n.tenant_id, n.deadline_outcome)',
+  },
+  {
+    label: 'WorkflowStepExecution(tenant_id, exited_at)',
+    cypher: 'CREATE INDEX workflow_step_execution_tenant_exited IF NOT EXISTS FOR (n:WorkflowStepExecution) ON (n.tenant_id, n.exited_at)',
+  },
   {
     label: 'SLAStatus(breached)',
     cypher: 'CREATE INDEX sla_status_breached IF NOT EXISTS FOR (n:SLAStatus) ON (n.breached)',
+  },
+  // The SLA report reads the SLAs started in a window, tenant by tenant: without
+  // this index it scanned every SLAStatus of every tenant (tour of 23 Sep 2026).
+  {
+    label: 'SLAStatus(tenant_id, started_at)',
+    cypher: 'CREATE INDEX sla_status_tenant_started IF NOT EXISTS FOR (n:SLAStatus) ON (n.tenant_id, n.started_at)',
   },
   {
     label: 'Problem(tenant_id)',

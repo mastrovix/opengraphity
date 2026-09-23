@@ -34,8 +34,15 @@ Garanzie (D-08):
   scritture concorrenti saltava o duplicava righe senza errori).
 - **Pubblicazione fail-loud**: l'archivio è scritto come
   `backup_<stamp>.tar.gz.partial` e rinominato in `.tar.gz` solo se le righe
-  scritte coincidono con i conteggi letti nella stessa transazione. Un
-  `.partial` non è mai un backup valido.
+  scritte stanno fra il conteggio letto prima degli stream e quello letto
+  dopo, nella stessa transazione. Una transazione di lettura di Neo4j è
+  «read committed», non un'istantanea: le scritture che altri committano
+  mentre gli stream girano (log, audit, monitoraggio) si vedono, e con un
+  conteggio solo bastava un nodo in più per scartare il backup notturno
+  (18 set 2026). Uno stream troncato resta fuori dall'intervallo ed è
+  rifiutato; se il grafo è cambiato durante il backup il log lo dice
+  (`The graph changed while the backup was running`). Un `.partial` non è mai
+  un backup valido.
 - **Keycloak**: se non risponde o l'autenticazione admin fallisce il backup
   **fallisce**. Per saltarlo consapevolmente: `--skip-keycloak` (CLI) o
   `BACKUP_SKIP_KEYCLOAK=true` (worker); il manifest lo registra.
@@ -308,6 +315,14 @@ KEYCLOAK_ADMIN_PASSWORD=… pnpm --filter @opengraphity/api onboard-tenant -- \
   --slug acme --admin-email admin@acme.com --admin-first-name A --admin-last-name B --password-stdin
 ```
 
+Il realm nasce con le regole iniziali delle password (`INITIAL_PASSWORD_RULES`
+in `lib/tenantLogin.ts`: almeno 12 caratteri con una maiuscola, una minuscola e
+una cifra, diversa da username ed e-mail, non una delle ultime 3; blocco dopo 10
+tentativi, fino a 15 minuti) — senza, Keycloak accettava anche una password di
+un carattere. Si cambiano da **Login & passwords**. Una password passata con
+`--password-stdin` deve rispettarle, altrimenti Keycloak la rifiuta e
+l'onboarding si ferma dicendolo; quella generata le rispetta sempre.
+
 Crea realm Keycloak (= slug = `Tenant.id`), client, ruoli, utente admin, nodo
 `Tenant`, e poi chiama `provisionTenantData` — la funzione che porta il tenant
 allo stato usabile: dashboard predefinita, regole di notifica, matrici di
@@ -397,8 +412,8 @@ dice quale dipendenza è giù.
 
 **Backup notturno fallito** (log `Backup verification FAILED` o job fallito)
 - Guardare i `problems` nel log; l'archivio è rinominato `.invalid`
-  (verifica fallita) o lasciato `.partial` (conteggi non tornano, tipico se
-  un import massivo girava a mezzanotte).
+  (verifica fallita) o lasciato `.partial` (righe scritte fuori
+  dall'intervallo dei due conteggi: uno stream interrotto).
 - Rilanciare a mano `backup-neo4j` + `verify-backup`; se il problema è
   Keycloak, risolverlo o `--skip-keycloak` per non restare senza backup del grafo.
 

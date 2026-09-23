@@ -97,8 +97,12 @@ export function ItineraryPanel() {
   const [accendi] = useMutation(SET_WORKFLOW_DEFINITION_ACTIVE, { onError: (e) => showError(e) })
 
   const cambiaStato = async (d: Definizione, attivo: boolean) => {
-    const r = await accendi({ variables: { definitionId: d.id, active: attivo } })
-    if (!r.data) return
+    try {
+      await accendi({ variables: { definitionId: d.id, active: attivo } })
+    } catch {
+      // The mutation's onError has already told the user; the workflow stays as it was.
+      return
+    }
     toast.success(attivo ? t('pages.catalogForms.itinerary.activated') : t('pages.catalogForms.itinerary.deactivated'))
     void rileggiDefinizioni()
   }
@@ -123,12 +127,20 @@ export function ItineraryPanel() {
   const scegliIter = async (voce: Voce, definitionId: string) => {
     const scelto = definizioni.find((d) => d.id === definitionId)
     if (scelto && !scelto.active) {
-      const acceso = await accendi({ variables: { definitionId, active: true } })
-      if (!acceso.data) return
+      try {
+        await accendi({ variables: { definitionId, active: true } })
+      } catch {
+        // The mutation's onError has already told the user; a workflow still off is not assigned.
+        return
+      }
       void rileggiDefinizioni()
     }
-    const r = await aggiornaVoce({ variables: { id: voce.id, input: { workflowDefinitionId: definitionId || null } } })
-    if (!r.data) return
+    try {
+      await aggiornaVoce({ variables: { id: voce.id, input: { workflowDefinitionId: definitionId || null } } })
+    } catch {
+      // The mutation's onError has already told the user; the item keeps its workflow.
+      return
+    }
     toast.success(scelto && !scelto.active
       ? t('pages.catalogForms.itinerary.savedAndActivated', { name: scelto.name })
       : t('pages.catalogForms.itinerary.saved'))
@@ -137,8 +149,12 @@ export function ItineraryPanel() {
 
   const duplicaIter = async () => {
     if (!daDuplicare || nomeCopia.trim() === '') return
-    const r = await duplica({ variables: { definitionId: daDuplicare, name: nomeCopia.trim(), category: null } })
-    if (!r.data) return
+    try {
+      await duplica({ variables: { definitionId: daDuplicare, name: nomeCopia.trim(), category: null } })
+    } catch {
+      // The mutation's onError has already told the user; the typed name stays, to retry.
+      return
+    }
     toast.success(t('pages.catalogForms.itinerary.duplicated'))
     setNomeCopia('')
     void rileggiDefinizioni()

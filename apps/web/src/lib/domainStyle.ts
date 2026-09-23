@@ -17,7 +17,7 @@
  *
  *  1. **il valore è nel vocabolario del cliente, ma nessuno gli ha assegnato
  *     uno stile** → è *normale*. Stile neutro, etichetta leggibile
- *     (`enumLabel`), nessun rumore in console.
+ *     (`humanizeValue`), nessun rumore in console.
  *  2. **il valore NON è nel vocabolario del cliente** → è un errore vero (un
  *     record rimasto su un valore che il Dizionario non ha più, o una
  *     scrittura che ha scavalcato la validazione). Resta rosso, e `console.error`

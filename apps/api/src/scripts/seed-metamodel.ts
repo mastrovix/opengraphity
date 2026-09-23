@@ -166,6 +166,7 @@ const CI_TYPES: CIType[] = [
     relations: [
       { name: 'dependencies', label: 'Dependencies', relationship_type: 'DEPENDS_ON', target_type: 'any', cardinality: 'many', direction: 'outgoing', order: 1, description: 'Istanze database su cui gira questo database' },
       { name: 'dependents',   label: 'Dependents', relationship_type: 'DEPENDS_ON', target_type: 'any', cardinality: 'many', direction: 'incoming', order: 2, description: 'CI che dipendono da questo database' },
+      { name: 'certificates', label: 'Uses Certificate', relationship_type: 'USES_CERTIFICATE', target_type: 'Certificate', cardinality: 'many', direction: 'outgoing', order: 3, description: 'TLS certificates used by this database' },
     ],
     systemRels: [
       { name: 'ownerGroup',   label: 'Owner Group',   relationship_type: 'OWNED_BY',     target_entity: 'Team', required: true,  order: 1 },
@@ -199,6 +200,7 @@ const CI_TYPES: CIType[] = [
       { name: 'dependencies', label: 'Dependencies', relationship_type: 'DEPENDS_ON', target_type: 'any',    cardinality: 'many', direction: 'outgoing', order: 1, description: 'CI da cui questa istanza dipende' },
       { name: 'dependents',   label: 'Dependents', relationship_type: 'DEPENDS_ON', target_type: 'any',    cardinality: 'many', direction: 'incoming', order: 2, description: 'Database che girano su questa istanza' },
       { name: 'hostedOn',     label: 'Hosted On',  relationship_type: 'HOSTED_ON',  target_type: 'Server', cardinality: 'many', direction: 'outgoing', order: 3, description: 'Server che ospita questa istanza database' },
+      { name: 'certificates', label: 'Installed Certificates', relationship_type: 'INSTALLED_ON', target_type: 'Certificate', cardinality: 'many', direction: 'incoming', order: 4, description: 'Certificates installed on this database instance' },
     ],
     systemRels: [
       { name: 'ownerGroup',   label: 'Owner Group',   relationship_type: 'OWNED_BY',     target_entity: 'Team', required: true,  order: 1 },
@@ -257,6 +259,8 @@ const CI_TYPES: CIType[] = [
     relations: [
       { name: 'dependencies', label: 'Dependencies', relationship_type: 'INSTALLED_ON',     target_type: 'Server',      cardinality: 'many', direction: 'outgoing', order: 1, description: 'Server su cui è installato questo certificato' },
       { name: 'dependents',   label: 'Dependents', relationship_type: 'USES_CERTIFICATE', target_type: 'Application', cardinality: 'many', direction: 'incoming', order: 2, description: 'Applicazioni che utilizzano questo certificato' },
+      { name: 'installedOnInstance', label: 'Installed On Instance', relationship_type: 'INSTALLED_ON',     target_type: 'DatabaseInstance', cardinality: 'many', direction: 'outgoing', order: 3, description: 'Database instances this certificate is installed on' },
+      { name: 'usedByDatabases',     label: 'Used By Databases',     relationship_type: 'USES_CERTIFICATE', target_type: 'Database',         cardinality: 'many', direction: 'incoming', order: 4, description: 'Databases that use this certificate' },
     ],
     systemRels: [
       { name: 'ownerGroup',   label: 'Owner Group',   relationship_type: 'OWNED_BY',     target_entity: 'Team', required: true,  order: 1 },

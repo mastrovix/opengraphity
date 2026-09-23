@@ -76,7 +76,16 @@ export interface WorkflowDefinition {
  */
 export type WorkflowKey = 'incident' | 'change' | 'service_request' | 'problem' | 'kb_article' | 'none'
 export type StepNodeData = { step: WFStep; accentColor: string }
-export type EdgeNodeData  = { transition: WFTransition; color: string }
+export type EdgeNodeData  = {
+  transition: WFTransition
+  color:      string
+  /**
+   * A return arrow is drawn without its label, to keep the canvas readable.
+   * Only the DRAWING hides it: the transition keeps its label, which its panel
+   * edits and the ticket shows on its button (tour of 23 Sep 2026).
+   */
+  hideLabel?: boolean
+}
 
 export interface NotifyRuleAction {
   type:   'notify_rule'

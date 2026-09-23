@@ -30,6 +30,7 @@ import { resolveDomainValue } from '../lib/domainValue.js'
 import { customFieldDefs, resolveCustomFieldWrites, type CustomFieldInput } from '../lib/ticketCustomFields.js'
 import { raiseSequenceTo } from '../lib/sequence.js'
 import { nextTicketNumber, ticketNumbering } from '../lib/ticketNumbering.js'
+import { matchById } from '../lib/cypherLookups.js'
 
 type Session = ReturnType<typeof getSession>
 
@@ -226,7 +227,8 @@ async function pointWorkflowToStep(
   now: string,
 ): Promise<void> {
   await tx.run(`
-    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+    ${matchById('e', { labels: 'entities', id: '$entityId' })}
+    MATCH (e)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
     WHERE wi.current_step <> $stepName
     // tenant-ok(traversal): definizione dell'istanza dell'entità scopata
     MATCH (wd:WorkflowDefinition {id: wi.definition_id})-[:HAS_STEP]->(target:WorkflowStep {name: $stepName})
@@ -263,7 +265,8 @@ async function ensureWorkflowInstance(
   entityType: string,
 ): Promise<void> {
   const existing = await tx.run(`
-    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+    ${matchById('e', { labels: 'entities', id: '$entityId' })}
+    MATCH (e)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
     RETURN wi.id AS id LIMIT 1
   `, { entityId, tenantId })
   if (existing.records.length === 0) {

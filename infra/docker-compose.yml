@@ -23,11 +23,30 @@ services:
       NEO4J_PLUGINS: '["apoc"]'
       NEO4J_dbms_security_procedures_unrestricted: "apoc.*"
       # Explicit memory bounds — without them Neo4j sizes itself on host RAM
-      # and is the first OOM candidate on the machine
-      NEO4J_server_memory_heap_initial__size: 512m
-      NEO4J_server_memory_heap_max__size: 1G
-      NEO4J_server_memory_pagecache_size: 512m
-    mem_limit: 2g
+      # and is the first OOM candidate on the machine.
+      #
+      # Alzati il 22 set 2026 (erano 512m/1G/512m dentro 2g). Un tenant di
+      # dimostrazione con tre anni di operatività — 27.000 CI e circa un
+      # milione e mezzo di nodi fra ticket, cronologie e audit — ha esaurito
+      # l'heap durante una cancellazione a blocchi: `java.lang.
+      # OutOfMemoryError: Java heap space`, e il database ha smesso di
+      # accettare scritture. Un'installazione vera di questa taglia sta molto
+      # sopra questi numeri; qui bastano a reggere il tenant più grosso che
+      # la macchina di sviluppo ospita, lasciando libera la maggior parte
+      # dei 24 GB.
+      # Rivisti il 22 set 2026, DOPO due morti in diretta. Prima erano 4 GB di
+      # heap e 2 di page cache dentro un limite di 8 GB — ma la VM di Docker
+      # su questa macchina ha 7,75 GB IN TUTTO, e ci vivono altri undici
+      # container. Neo4j da solo poteva quindi chiedere più memoria di quanta
+      # ne esista: al picco della cancellazione di cinque milioni di nodi il
+      # kernel della VM ha ucciso la JVM, due volte, senza lasciare una riga
+      # di errore nei log di Neo4j — il processo semplicemente spariva e
+      # ripartiva. Il numero che conta non è quanta memoria ha il Mac (24 GB),
+      # è quanta ne ha la VM: questi valori ci stanno dentro con margine.
+      NEO4J_server_memory_heap_initial__size: 1G
+      NEO4J_server_memory_heap_max__size: 3G
+      NEO4J_server_memory_pagecache_size: 1G
+    mem_limit: 5g
     volumes:
       - neo4j_data:/data
       - neo4j_logs:/logs
@@ -376,6 +395,8 @@ services:
       # Keycloak
       # Internal URL — used by the API for JWKS fetch and admin calls (Docker network)
       KEYCLOAK_URL: http://keycloak:8080
+      # Management interface (Keycloak >= 25): health and metrics, read by «Platform monitoring»
+      KEYCLOAK_MANAGEMENT_URL: http://keycloak:9000
       # Public URL — the origin browsers use; tokens carry this in their `iss` claim
       KEYCLOAK_PUBLIC_URL: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
       # I client delle app a cui l'API crede (token emessi per altri client rifiutati): gli stessi dei bundle.

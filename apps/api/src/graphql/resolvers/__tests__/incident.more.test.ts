@@ -292,7 +292,7 @@ describe('addAffectedCI / removeAffectedCI', () => {
 
     expect(assertCIsLinkable).toHaveBeenCalledWith('t1', 'incident', ['ci1'])
     const [cypher, params] = txRun.mock.calls[0]! as [string, Record<string, unknown>]
-    expect(cypher).toContain('MATCH (ci {id: $ciId, tenant_id: $tenantId})')
+    expect(cypher).toContain('MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})')
     expect(cypher).toContain('WHERE ci:ConfigurationItem')
     expect(params).toMatchObject({ incidentId: 'i1', ciId: 'ci1', tenantId: 't1' })
     expect(txRun.mock.calls[1]![1]).toEqual({ id: 'i1', tenantId: 't1' })

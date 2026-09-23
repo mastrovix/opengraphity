@@ -35,7 +35,10 @@ export function tenantReportDir(tenantId: string): string {
   return path.join(REPORT_DIR, tenantId)
 }
 
-// Cleanup files older than 2 hours every 30 minutes (per tenant directory)
+// Cleanup files older than 2 hours every 30 minutes (per tenant directory).
+// `unref()`: the timer runs while the server runs, but it must not keep alive
+// a process that only imports this module — a script that calls the report
+// mutations never ended (23 Sep 2026, the demo-tenant generator).
 setInterval(() => {
   try {
     const threshold = Date.now() - 2 * 60 * 60 * 1000
@@ -55,7 +58,7 @@ setInterval(() => {
     // Best-effort cleanup, but disk-filling failures must be visible.
     logger.warn({ err }, '[reportExport] cleanup of old report files failed')
   }
-}, 30 * 60 * 1000)
+}, 30 * 60 * 1000).unref()
 
 /**
  * Template name + sections WITH nodes/edges via the shared loader. The previous

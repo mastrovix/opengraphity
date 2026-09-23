@@ -45,7 +45,7 @@ import { getSession } from '@opengraphity/neo4j'
 import { getScriptingPlan } from './scriptingPlan.js'
 import { formFieldsWithFormula } from './catalogForm.js'
 import { PORTAL_SEVERITY_VOCABULARY, portalSeverityOptions } from './portalSeverityOptions.js'
-import { catalogItemsWithLegacyCategory, catalogItemsWithoutPriority } from './catalogItemPriority.js'
+import { catalogItemsWithLegacyCategory, catalogItemsWithoutFulfillmentTeam, catalogItemsWithoutPriority } from './catalogItemPriority.js'
 import { tenantInAppRetentionDays } from './tenantInAppRetention.js'
 import { getSchemaState } from './schemaCache.js'
 import { ENTITY_NEO4J_LABELS } from '@opengraphity/types'
@@ -60,7 +60,7 @@ import { runQuery } from '../graphql/resolvers/ci-utils.js'
 const COPPIE_TIPO_ETICHETTA: string[] = Object.entries(ENTITY_NEO4J_LABELS).map(([tipo, etichetta]) => `${tipo}::${etichetta}`)
 import { tenantProvisioningGaps, type ProvisioningGap } from './provisionTenantData.js'
 import { DOMAIN_MATRIX_KINDS, domainVocabulary, loadDomainMatrix, matrixInputValues, matrixKey, matrixOutputValues, type DomainMatrixKind } from './domainMatrix.js'
-import { CI_STATUS_VOCABULARY } from './eventVocabularies.js'
+import { CI_STATUS_VOCABULARY, ENVIRONMENT_VOCABULARY } from './eventVocabularies.js'
 import { LIFECYCLE_POLICY_LISTS } from './eventPolicy.js'
 import { getEventPolicy } from '../services/events/policy.js'
 import { logger } from './logger.js'
@@ -106,6 +106,7 @@ export type ConfigurationIssueKind =
   | 'catalog_items_without_priority'
   | 'inapp_retention_not_set'
   | 'catalog_items_legacy_category'
+  | 'catalog_items_without_fulfillment_team'
   | 'migrations_pending'
   | 'teams_without_sourcing'
   | 'tickets_without_sla'
@@ -182,7 +183,7 @@ async function computeConfigurationIssues(tenantId: string): Promise<Configurati
   const out: ConfigurationIssue[] = []
   const session = getSession()
   try {
-    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkRedundantVocabularyCopies, checkSlaWarnings, checkStepDeadlines, checkSlackChannels, checkServiceIncidentProblems, checkCustomFieldSteps, checkOLAContracts, checkFormulasScripting, checkDuplicateFields, checkCatalogForms, checkStuckChanges, checkTaskIntegrity, checkAutoanalisiGitHub]) {
+    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkCatalogItemTeams, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkRedundantVocabularyCopies, checkSlaWarnings, checkStepDeadlines, checkSlackChannels, checkServiceIncidentProblems, checkCustomFieldSteps, checkOLAContracts, checkFormulasScripting, checkDuplicateFields, checkCatalogForms, checkStuckChanges, checkTaskIntegrity, checkAutoanalisiGitHub]) {
       try {
         out.push(...await check(tenantId, session))
       } catch (err) {
@@ -702,6 +703,16 @@ async function checkInAppRetention(tenantId: string): Promise<ConfigurationIssue
 }
 
 /**
+ * CATALOG ITEMS WITHOUT A FULFILMENT GROUP (D56, 23 Sep 2026): their requests
+ * are born without a team — in nobody's queue, invisible to the OLA contracts.
+ */
+async function checkCatalogItemTeams(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const names = await catalogItemsWithoutFulfillmentTeam(session, tenantId)
+  if (names.length === 0) return []
+  return [{ kind: 'catalog_items_without_fulfillment_team', severity: 'warning', where: '/admin/service-catalog', params: { count: String(names.length), items: names.join(', ') } }]
+}
+
+/**
  * VOCI DEL CATALOGO SENZA PRIORITÀ (verifica «Cosa resta cablato», ondata 1):
  * la priorità delle richieste la decide la voce, e da una voce attiva che non
  * ne ha nessuna il portale non apre richieste.
@@ -852,6 +863,12 @@ async function checkLifecyclePolicy(tenantId: string): Promise<ConfigurationIssu
     const orfani = (policy[list] as readonly string[]).filter((v) => !values.includes(v))
     if (orfani.length) fuori.set(list, orfani)
   }
+  // The production environments too (tour of 23 Sep 2026): a stale value there
+  // turns every component into «non-production» — out of the service maps
+  // (D44) and downgraded by the map outside production.
+  const environments = await domainVocabulary(tenantId, ENVIRONMENT_VOCABULARY)
+  const staleEnvironments = policy.production_environments.filter((v) => !environments.includes(v))
+  if (staleEnvironments.length) fuori.set('production_environments', staleEnvironments)
   if (fuori.size) {
     out.push({
       kind: 'policy_out_of_vocabulary', severity: 'error', where: '/settings/event-policy',

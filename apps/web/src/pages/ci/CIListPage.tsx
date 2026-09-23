@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { toast } from 'sonner'
-import { useMetamodel } from '@/contexts/MetamodelContext'
+import { useMetamodel, type CITypeDef } from '@/contexts/MetamodelContext'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
@@ -25,7 +25,9 @@ import { apolloClient } from '@/lib/apollo'
 import { toPascalCase, pluralize } from '@/lib/stringUtils'
 import { formatDate } from '@/lib/datetime'
 import { toEnumOptions, useCIBaseEnums } from '@/lib/ciEnums'
-import { useCILabels } from '@/hooks/useCILabels'
+import { useCILabels, CI_STATUS_VOCABULARY, CI_ENVIRONMENT_VOCABULARY } from '@/hooks/useCILabels'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import type { TFunction } from 'i18next'
 import { palette } from '@/lib/tokens'
 import { Plus } from 'lucide-react'
 import { showError } from '@/lib/showError'
@@ -40,6 +42,40 @@ interface CIItem {
   environment: string | null
   createdAt: string
   ownerGroup: { id: string; name: string } | null
+}
+
+/**
+ * The fields the filter builder offers on a CI type. A vocabulary value reads
+ * with its Dictionary label, or humanized by the one shared rule when it has
+ * none (D29): «in_progress» → «In progress», a sentence stays as it is. This
+ * list used its own copy of the rule, which capitalised every word.
+ */
+function ciFilterFields(
+  ciType: CITypeDef, t: TFunction, baseEnums: { statuses: string[]; environments: string[] },
+  labelOf: (vocabulary: string, value: string) => string | null,
+): FieldConfig[] {
+  const base: FieldConfig[] = [
+    { key: 'name',        label: t('pages.cmdb.name'),        type: 'text' },
+    { key: 'status',      label: t('pages.cmdb.status'),      type: 'enum', options: toEnumOptions(baseEnums.statuses, (v) => labelOf(CI_STATUS_VOCABULARY, v)) },
+    { key: 'environment', label: t('pages.cmdb.environment'), type: 'enum', options: toEnumOptions(baseEnums.environments, (v) => labelOf(CI_ENVIRONMENT_VOCABULARY, v)) },
+    { key: 'ownerGroup',  label: t('pages.cmdb.ownerGroup'),  type: 'text' },
+    { key: 'chain',       label: t('ciTypeDesigner.chain'),    type: 'enum', options: [
+      { value: 'Application',    label: t('ciTypeDesigner.chainApplication')    },
+      { value: 'Infrastructure', label: t('ciTypeDesigner.chainInfrastructure') },
+    ]},
+    { key: 'createdAt',   label: t('pages.cmdb.createdAt'),   type: 'date' },
+  ]
+  const custom: FieldConfig[] = ciType.fields
+    .filter((f) => !f.isSystem)
+    .map((f) => ({
+      key:     f.name,
+      label:   f.label,
+      type:    f.fieldType === 'date' ? 'date' : f.fieldType === 'enum' ? 'enum' : 'text',
+      options: f.enumValues?.length
+        ? toEnumOptions(f.enumValues, (v) => (f.enumTypeName ? labelOf(f.enumTypeName, v) : null))
+        : undefined,
+    } as FieldConfig))
+  return [...base, ...custom]
 }
 
 export function CIListPage() {
@@ -58,6 +94,7 @@ export function CIListPage() {
   }
 
   const { typeLabel } = useCILabels()
+  const { labelOf } = useDomainVocabularies()
   const ciType = typeName ? getCIType(typeName) : undefined
   // F-22 (l'etichetta del disegnatore vince sulla chiave i18n) vive in
   // `useCILabels`, che la applica anche alle anomalie e alla mappa dei
@@ -105,12 +142,17 @@ export function CIListPage() {
     return { queryKey: key, listQuery: query, createMutation: mutation }
   }, [typeName])
 
+  // Only a type the metamodel has is asked for (tour of 23 Sep 2026): the
+  // query is named after the type, and for `/ci/firewall` the schema has no
+  // `firewalls`: the server refused it and a technical toast stood next to the
+  // page's own «not found». While the metamodel loads, or when it failed, the
+  // type is not known yet: the list waits, and the page says which case it is.
   const { data, loading, error, refetch } = useQuery<Record<string, { total: number; items: CIItem[] }>>(
     listQuery ?? gql`query EmptyCIList { __typename }`,
     {
       variables: { limit: PAGE_SIZE, offset: page * PAGE_SIZE, filters: filterGroup ? JSON.stringify(filterGroup) : null, sortField, sortDirection: sortDir },
       fetchPolicy: 'cache-and-network',
-      skip: !listQuery || !typeName,
+      skip: !listQuery || !ciType,
     },
   )
 
@@ -135,34 +177,10 @@ export function CIListPage() {
   const total = result?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
-  const filterFields = useMemo((): FieldConfig[] => {
-    if (!ciType) return []
-    const base: FieldConfig[] = [
-      { key: 'name',        label: t('pages.cmdb.name'),        type: 'text' },
-      { key: 'status',      label: t('pages.cmdb.status'),      type: 'enum', options: toEnumOptions(baseEnums.statuses) },
-      { key: 'environment', label: t('pages.cmdb.environment'), type: 'enum', options: toEnumOptions(baseEnums.environments) },
-      { key: 'ownerGroup',  label: t('pages.cmdb.ownerGroup'),  type: 'text' },
-      { key: 'chain',       label: t('ciTypeDesigner.chain'),    type: 'enum', options: [
-        { value: 'Application',    label: t('ciTypeDesigner.chainApplication')    },
-        { value: 'Infrastructure', label: t('ciTypeDesigner.chainInfrastructure') },
-      ]},
-      { key: 'createdAt',   label: t('pages.cmdb.createdAt'),   type: 'date' },
-    ]
-    const custom: FieldConfig[] = ciType.fields
-      .filter((f) => !f.isSystem)
-      .map((f) => ({
-        key:     f.name,
-        label:   f.label,
-        type:    f.fieldType === 'date' ? 'date' : f.fieldType === 'enum' ? 'enum' : 'text',
-        options: f.enumValues?.length
-          ? f.enumValues.map((v: string) => ({
-              value: v,
-              label: v.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
-            }))
-          : undefined,
-      } as FieldConfig))
-    return [...base, ...custom]
-  }, [ciType, t, baseEnums.statuses, baseEnums.environments])
+  const filterFields = useMemo(
+    () => (ciType ? ciFilterFields(ciType, t, baseEnums, labelOf) : []),
+    [ciType, t, baseEnums, labelOf],
+  )
 
   const COLUMNS: ColumnDef<CIItem>[] = [
     { key: 'name', label: t('pages.cmdb.name'), sortable: true },

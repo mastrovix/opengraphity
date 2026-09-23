@@ -22,12 +22,20 @@ export const SYSTEM_TEXTS = {
   'event.incident.resource':    { en: 'Resource: {resource} ({kind})',                        it: 'Risorsa: {resource} ({kind})' },
   'event.incident.severity':    { en: 'Severity: {severity}',                                 it: 'Severità: {severity}' },
   'event.incident.occurrences': { en: 'Occurrences: {count} (first: {first}, last: {last})', it: 'Occorrenze: {count} (prima: {first}, ultima: {last})' },
+  // D11 (tour of 23 Sep 2026): the first team of an incident is an assignment, not a reassignment.
+  'incident.assignedTeam':      { en: 'Assigned to team {team}',                              it: 'Assegnato al team {team}' },
   'incident.reassignedTeam':    { en: 'Reassigned to team {team}',                            it: 'Riassegnato al team {team}' },
+  // The owner's rule (23 Sep 2026): a new incident goes to the support group of its CI.
+  'incident.autoAssignedTeam':  { en: 'Assigned to team {team}, the support group of {ci}',   it: 'Assegnato al team {team}, gruppo di supporto di {ci}' },
   'incident.assignedUser':      { en: 'Assigned to {user}',                                   it: 'Assegnato a {user}' },
   // Revisione totale · M-10: il cambio di gruppo stacca l'assegnatario che in
   // quel gruppo non c'è, e lo dice.
   'incident.unassignedOnTeamChange': { en: '{user} is no longer the assignee: not a member of team {team}', it: '{user} non è più l\'assegnatario: non fa parte del team {team}' },
   'incident.reassignedUser':    { en: 'Reassigned to {user}',                                 it: 'Riassegnato a {user}' },
+  // D56 (23 Sep 2026): a service request has its team, the fulfilment group of its catalog item.
+  'request.assignedTeam':       { en: 'Assigned to team {team}',                              it: 'Assegnata al team {team}' },
+  'request.reassignedTeam':     { en: 'Reassigned to team {team}',                            it: 'Riassegnata al team {team}' },
+  'request.fulfilmentTeam':     { en: 'Assigned to team {team}, the fulfilment group of «{item}»', it: 'Assegnata al team {team}, gruppo di evasione di «{item}»' },
   'workflow.transitionComment': { en: 'Workflow: {step}',                                     it: 'Workflow: {step}' },
   'workflow.transitionCommentNotes': { en: 'Workflow: {step} — {notes}',                      it: 'Workflow: {step} — {notes}' },
   'change.rfcCreated':          { en: 'RFC {code} created',                                   it: 'RFC {code} creata' },
@@ -60,6 +68,7 @@ export const SYSTEM_TEXTS = {
   'report.error.granularityNeedsDate': { en: "Grouping by period needs a date field, and the field chosen is not one. Pick a date field, or remove the period.", it: "Per raggruppare per periodo serve un campo data, e quello scelto non lo è. Scegli un campo data, oppure togli il periodo." },
   'report.error.tableWithoutColumns': { en: "A table needs at least one column: choose the fields to show.", it: "Una tabella ha bisogno di almeno una colonna: scegli i campi da mostrare." },
   'portal.reopened':            { en: 'Reopened from the portal',                             it: 'Riaperto dal portale' },
+  'portal.confirmed':           { en: 'The requester confirmed the resolution from the portal', it: 'Il richiedente ha confermato la risoluzione dal portale' },
   'notification.escalationDefault': { en: '{title}: not resolved after {minutes} minutes',      it: '{title}: non risolto dopo {minutes} minuti' },
   'approval.publicationRejected': { en: 'Publication rejected',                               it: 'Pubblicazione rifiutata' },
   'approval.requestRejected':   { en: 'Request rejected',                                     it: 'Richiesta rifiutata' },

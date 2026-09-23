@@ -21,28 +21,32 @@ import { QueryError } from '@/components/QueryError'
 import { ExportCsvButton } from '@/components/ExportCsvButton'
 import { exportToCsv } from '@/lib/csvExport'
 import { apolloClient } from '@/lib/apollo'
-import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { colors, palette } from '@/lib/tokens'
 import { formatDate } from '@/lib/datetime'
 import { useAIFeature } from '@/hooks/useAIFeature'
 import { useAIDisabledText } from '@/components/ai/AIDisabledNotice'
 import { showError } from '@/lib/showError'
+import { ProblemCandidatesPanel, type ProblemCandidatesResult } from './ProblemCandidatesPanel'
 
+/**
+ * The candidates and what was examined to find them (D15): an empty list is
+ * «no cluster» only when open incidents were actually analysed.
+ */
 const PROBLEM_CANDIDATES = gql`
   query ProblemCandidates {
     problemCandidates {
-      title
-      motivation
-      incidents { id number title status severity }
+      candidates {
+        title
+        motivation
+        incidents { id number title status severity }
+      }
+      examined
+      notAnalysed
+      analysisFailures
+      capped
     }
   }
 `
-interface Candidate {
-  title: string
-  motivation: string
-  incidents: { id: string; number: string | null; title: string; status: string; severity: string }[]
-}
 
 interface Problem {
   customFields?: { name: string; value: string | null }[]
@@ -109,8 +113,8 @@ export function ProblemListPage() {
   const { fields: filterFields } = useEntityFields('Problem')
   const [page, setPage] = useState(0)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
-  const [candidates, setCandidates] = useState<Candidate[] | null>(null)
-  const [runCandidates, { loading: candidatesLoading }] = useLazyQuery<{ problemCandidates: Candidate[] }>(PROBLEM_CANDIDATES, { fetchPolicy: 'network-only' })
+  const [candidates, setCandidates] = useState<ProblemCandidatesResult | null>(null)
+  const [runCandidates, { loading: candidatesLoading }] = useLazyQuery<{ problemCandidates: ProblemCandidatesResult }>(PROBLEM_CANDIDATES, { fetchPolicy: 'network-only' })
   const [sortField, setSortField] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
@@ -163,30 +167,7 @@ export function ProblemListPage() {
         }
       />
 
-      {candidates !== null && (
-        <div style={{ background: palette.info.light, border: `1px solid ${palette.info.border}`, borderRadius: 10, padding: '14px 18px', marginBottom: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)', marginBottom: 8 }}>
-            <Sparkles size={14} color="var(--color-brand)" /> {t('pages.problems.candidatesTitle')}
-          </div>
-          {candidates.length === 0 ? (
-            <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
-              {t('pages.problems.candidatesEmpty')}
-            </p>
-          ) : candidates.map((c, i) => (
-            <div key={i} style={{ background: colors.white, border: `1px solid ${colors.border}`, borderRadius: 8, padding: '10px 14px', marginBottom: 8 }}>
-              <div style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginBottom: 4 }}>{c.title}</div>
-              <p style={{ margin: '0 0 8px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', lineHeight: 1.45 }}>{c.motivation}</p>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {c.incidents.map((inc) => (
-                  <Link key={inc.id} to={`/incidents/${inc.id}`} style={{ fontSize: 'var(--font-size-label)', padding: '2px 8px', borderRadius: 6, background: colors.slateBg, color: 'var(--color-slate-dark)', textDecoration: 'none', border: `1px solid ${colors.border}` }}>
-                    {inc.number ?? inc.title.slice(0, 20)}
-                  </Link>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      {candidates !== null && <ProblemCandidatesPanel result={candidates} />}
 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
         <div style={{ flex: 1 }}>

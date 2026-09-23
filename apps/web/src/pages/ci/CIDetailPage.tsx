@@ -28,7 +28,7 @@ import { keyActivate } from '@/lib/a11y'
 import { GroupCriteriaBuilder } from './GroupCriteriaBuilder'
 import { CIHealthSection } from './CIHealthSection'
 import { CIServicesSection } from './CIServicesSection'
-import { GET_BLAST_RADIUS, GET_ALL_CIS, GET_TEAMS } from '@/graphql/queries'
+import { GET_BLAST_RADIUS, GET_ALL_CIS } from '@/graphql/queries'
 import { ADD_CI_RELATIONSHIP, REMOVE_CI_RELATIONSHIP, UPDATE_CI, ASSIGN_CI_OWNER, ASSIGN_CI_SUPPORT_GROUP } from '@/graphql/mutations'
 import { X, Plus, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
@@ -42,6 +42,8 @@ import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { showError } from '@/lib/showError'
 import { useCILabels } from '@/hooks/useCILabels'
+import { TeamPicker } from '@/components/pickers/TeamPicker'
+import { TEAM_TYPE, type TeamRole } from '@/lib/teamVocabularies'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -228,25 +230,29 @@ function CIGroupMembersCard({ groupId }: { groupId: string }) {
  * U-27: per un gruppo che il tipo dichiara obbligatorio offriva
  * «— not assigned —», e l'API poi lo rifiutava (CM-6). Ora quella voce non
  * c'è; se il CI ne è già senza, la tendina lo dice e chiede di sceglierne uno.
+ *
+ * D34 (tour of 23 Sep 2026): it was a select of all 200-300 teams, cut to
+ * 220px («OWN_Controlling Platform Own»). Now it is the searchable team
+ * picker: owner teams for the owner group, support teams for the support
+ * group, full names.
  */
-function CIGroupSelect({ label, required, value, teams, onChange }: {
-  label: string; required: boolean; value: string; teams: Team[]; onChange: (teamId: string | null) => void
+function CIGroupSelect({ label, role, required, value, onChange }: {
+  label: string; role: TeamRole; required: boolean; value: Team | null; onChange: (teamId: string | null) => void
 }) {
   const { t } = useTranslation()
-  const missing = required && value === ''
+  const missing = required && value === null
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <Select
-        aria-label={label}
-        aria-invalid={missing || undefined}
+      <TeamPicker
+        role={role}
+        label={label}
         value={value}
-        onChange={(e) => onChange(e.target.value || null)}
-        style={{ fontSize: 'var(--font-size-body)', padding: '4px 8px', maxWidth: 220, ...(missing ? { borderColor: palette.warning.border } : {}) }}
-      >
-        {!required && <option value="">{t('pages.ci.notAssignedOption')}</option>}
-        {missing && <option value="" disabled>{t('pages.ci.requiredGroupOption')}</option>}
-        {teams.map((tm) => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
-      </Select>
+        onChange={(team) => onChange(team?.id ?? null)}
+        {...(required ? {} : { clearLabel: t('pages.ci.notAssignedOption') })}
+        {...(missing ? { placeholder: t('pages.ci.requiredGroupOption') } : {})}
+        invalid={missing}
+        style={{ fontSize: 'var(--font-size-body)', padding: '4px 8px' }}
+      />
       {missing && (
         <span role="status" data-testid="ci-required-group-missing" style={{ fontSize: 'var(--font-size-table)', color: palette.warning.text }}>
           {t('pages.ci.requiredGroupMissing', { group: label })}
@@ -407,8 +413,6 @@ export function CIDetailPage() {
     { variables: { id }, skip: !detailQuery || !id },
   )
 
-  const { data: teamsData } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: METAMODEL_FETCH_POLICY })
-  const allTeams = teamsData?.teams ?? []
   // teamId null → l'API rimuove la relazione ("— non assegnato —" è un'azione reale)
   const [assignOwner] = useMutation<unknown, { ciId: string; teamId: string | null }>(ASSIGN_CI_OWNER, {
     onCompleted: (_d, opts) => { toast.success(t(opts?.variables?.teamId ? 'toast.ci.ownerGroupUpdated' : 'toast.ci.ownerGroupRemoved')); void refetch() },
@@ -669,18 +673,18 @@ export function CIDetailPage() {
                   <DetailField label={t('pages.cmdb.ownerGroup')} value={
                     <CIGroupSelect
                       label={t('pages.cmdb.ownerGroup')}
+                      role={TEAM_TYPE.OWNER}
                       required={groupRequired('ownerGroup')}
-                      value={(ci.ownerGroup as Team | null)?.id ?? ''}
-                      teams={allTeams}
+                      value={(ci.ownerGroup as Team | null) ?? null}
                       onChange={(teamId) => void assignOwner({ variables: { ciId: ci.id, teamId } })}
                     />
                   } />
                   <DetailField label={t('pages.ci.supportGroup')} value={
                     <CIGroupSelect
                       label={t('pages.ci.supportGroup')}
+                      role={TEAM_TYPE.SUPPORT}
                       required={groupRequired('supportGroup')}
-                      value={(ci.supportGroup as Team | null)?.id ?? ''}
-                      teams={allTeams}
+                      value={(ci.supportGroup as Team | null) ?? null}
                       onChange={(teamId) => void assignSupport({ variables: { ciId: ci.id, teamId } })}
                     />
                   } />

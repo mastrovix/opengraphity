@@ -6,7 +6,7 @@ import { ChevronDown, ChevronRight, Paperclip } from 'lucide-react'
 import { GET_MY_TICKET, GET_ME } from '@/graphql/queries'
 import { usePortalAccess } from '@/hooks/usePortalAccess'
 import { useTicketCategories } from '@/hooks/useTicketCategories'
-import { ADD_TICKET_COMMENT, REOPEN_TICKET, UPDATE_COMMENT, DELETE_COMMENT } from '@/graphql/mutations'
+import { ADD_TICKET_COMMENT, REOPEN_TICKET, CONFIRM_TICKET_RESOLUTION, UPDATE_COMMENT, DELETE_COMMENT } from '@/graphql/mutations'
 import { TicketStatusBadge } from '@/components/TicketStatusBadge'
 import { CommentBubble } from '@/components/CommentBubble'
 import { downloadAttachment } from '@/lib/attachments'
@@ -36,6 +36,8 @@ interface Ticket {
   customFields: { name: string; label: string; fieldType: string; value: string | null; valueLabel: string | null }[]
   /** Le risposte al modulo del catalogo, con le domande di allora (17 set 2026). */
   formAnswers: RispostaModulo[]
+  /** Resolved, and the workflow lets the requester confirm and close it now (D51). */
+  canConfirmResolution: boolean
 }
 
 /** Una risposta al modulo come la manda l'API: il dato e come si legge. */
@@ -148,6 +150,10 @@ export function TicketDetailPage() {
   })
 
   const [reopenTicket, { loading: reopening }] = useMutation(REOPEN_TICKET, {
+    onCompleted: () => void refetch(),
+    onError: (e: { message: string }) => notifyError(e.message),
+  })
+  const [confirmResolution, { loading: confirming }] = useMutation(CONFIRM_TICKET_RESOLUTION, {
     onCompleted: () => void refetch(),
     onError: (e: { message: string }) => notifyError(e.message),
   })
@@ -265,9 +271,31 @@ export function TicketDetailPage() {
           <span style={{ color: palette.success.text, fontWeight: 500, fontSize: 12 }}>
             ✓ {t('ticket.resolved')}
           </span>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {/* «It works»: closes it now instead of at the end of the timer (D51). Only when the workflow allows it. */}
+          {ticket.canConfirmResolution && (
+            <button
+              type="button"
+              onClick={() => id && void confirmResolution({ variables: { ticketId: id } })}
+              disabled={confirming || reopening}
+              style={{
+                padding:         '7px 16px',
+                backgroundColor: palette.success.base,
+                border:          `1px solid ${palette.success.base}`,
+                borderRadius:    7,
+                fontSize:        13,
+                cursor:          'pointer',
+                color:           colors.white,
+                fontWeight:      600,
+              }}
+            >
+              {t('ticket.confirmResolution')}
+            </button>
+          )}
           <button
+            type="button"
             onClick={() => id && void reopenTicket({ variables: { ticketId: id } })}
-            disabled={reopening}
+            disabled={reopening || confirming}
             style={{
               padding:         '7px 16px',
               backgroundColor: colors.white,
@@ -281,6 +309,7 @@ export function TicketDetailPage() {
           >
             {t('ticket.reopen')}
           </button>
+          </div>
         </div>
       )}
 

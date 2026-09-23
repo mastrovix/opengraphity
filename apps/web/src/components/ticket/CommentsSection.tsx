@@ -43,6 +43,11 @@ export interface TicketComment {
 
 interface Props {
   comments:     TicketComment[]
+  /**
+   * Adds the comment. Whoever passes it says why when it fails (the pages'
+   * mutation `onError`): a rejection only tells this section the comment was
+   * not added, so the text stays in the box.
+   */
   onAdd:        (text: string, isInternal: boolean) => Promise<unknown> | void
   adding:       boolean
   defaultOpen?: boolean
@@ -82,7 +87,14 @@ export function CommentsSection({ comments, onAdd, adding, defaultOpen = false, 
 
   const submit = async () => {
     if (!canSend) return
-    await onAdd(text.trim(), isInternal)
+    try {
+      await onAdd(text.trim(), isInternal)
+    } catch {
+      // Refused: the mutation's `onError` has already said why, and Apollo 4
+      // rejects its promise as well — left uncaught, every refused comment was
+      // an «Uncaught (in promise)». Text and visibility stay, to be sent again.
+      return
+    }
     setText('')
     setIsInternal(true)
   }

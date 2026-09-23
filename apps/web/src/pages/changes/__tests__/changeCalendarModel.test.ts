@@ -114,6 +114,37 @@ describe('le sovrapposizioni', () => {
     expect(r[1]!.sovrapposizione).toBe('warn')
     expect(r[2]!.sovrapposizione).toBe('clash')
   })
+
+  // Tour of 23 Sep 2026: with one level per window, the calendar named CHG2
+  // below as "same CI" for the first window, though it is on another CI.
+  it('each change met is named under its own relation, not under the worst of the window', () => {
+    const r = conSovrapposizioni([
+      voce({ code: 'CHG1', start: '2026-09-21T22:00:00Z', end: '2026-09-22T02:00:00Z', ciId: 'ci-A' }),
+      voce({ code: 'CHG2', start: '2026-09-21T23:00:00Z', end: '2026-09-22T00:00:00Z', ciId: 'ci-B' }),
+      voce({ code: 'CHG3', start: '2026-09-22T00:30:00Z', end: '2026-09-22T01:00:00Z', ciId: 'ci-A' }),
+    ])
+    expect(r[0]).toMatchObject({ sameCiWith: ['CHG3'], overlapsWith: ['CHG2'] })
+    expect(r[1]).toMatchObject({ sameCiWith: [], overlapsWith: ['CHG1'] })
+    expect(r[2]).toMatchObject({ sameCiWith: ['CHG1'], overlapsWith: [] })
+  })
+
+  it('a change met on the same CI and on another CI is named once, as the same CI', () => {
+    // The two windows of CHG2 are one plan: the clash comes first, and the
+    // overlap met after it must not lower it.
+    const r = conSovrapposizioni([
+      voce({ code: 'CHG1', start: '2026-09-21T22:00:00Z', end: '2026-09-22T02:00:00Z', ciId: 'ci-A' }),
+      voce({ code: 'CHG2', start: '2026-09-21T23:00:00Z', end: '2026-09-22T00:00:00Z', ciId: 'ci-A' }),
+      voce({ code: 'CHG2', start: '2026-09-22T00:30:00Z', end: '2026-09-22T01:00:00Z', ciId: 'ci-B' }),
+    ])
+    expect(r[0]).toMatchObject({ sovrapposizione: 'clash', conflittoCon: ['CHG2'], sameCiWith: ['CHG2'], overlapsWith: [] })
+    expect(r[1]).toMatchObject({ sovrapposizione: 'clash', sameCiWith: ['CHG1'], overlapsWith: [] })
+    expect(r[2]).toMatchObject({ sovrapposizione: 'warn', sameCiWith: [], overlapsWith: ['CHG1'] })
+  })
+
+  it('a window that meets nothing names nobody', () => {
+    const [v] = conSovrapposizioni([voce({ code: 'CHG1', start: '2026-09-21T22:00:00Z', end: '2026-09-21T23:00:00Z' })])
+    expect(v).toMatchObject({ sovrapposizione: 'none', conflittoCon: [], sameCiWith: [], overlapsWith: [] })
+  })
 })
 
 describe('il riassunto in testa', () => {

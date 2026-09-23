@@ -123,7 +123,7 @@ export async function handleSlackCommands(req: Request, res: Response): Promise<
       const ciPredicate = await ciLabelPredicateForTenant('ci', tenantId)
       const ciResult = await session.executeRead((tx) =>
         tx.run(`
-          MATCH (ci {tenant_id: $tenantId})
+          MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
           WHERE ${ciPredicate} AND (ci.id = $ref OR toLower(ci.name) = toLower($ref))
           RETURN ci.id AS id LIMIT 2
         `, { tenantId, ref: ciRef }),

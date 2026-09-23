@@ -47,7 +47,7 @@ async function seed(TENANT_ID: string) {
 
   // Load databases
   const dbsResult = await session.run(
-    `MATCH (c {tenant_id: $tenantId})
+    `MATCH (c:ConfigurationItem {tenant_id: $tenantId})
      WHERE (c:Database OR c:DatabaseInstance)
      RETURN c.id AS id`,
     { tenantId: TENANT_ID }
@@ -119,7 +119,7 @@ async function seed(TENANT_ID: string) {
     // DEPENDS_ON databases
     for (const dbId of depDbIds) {
       await session.run(
-        `MATCH (c:Application {id: $ciId}), (db {id: $dbId})
+        `MATCH (c:Application {id: $ciId}), (db:ConfigurationItem {id: $dbId})
          MERGE (c)-[:DEPENDS_ON]->(db)`,
         { ciId, dbId }
       )

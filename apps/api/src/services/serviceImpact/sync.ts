@@ -282,7 +282,7 @@ export const SYNC_APPLY_CYPHER = `${VERSION_GUARD}
   CALL {
     WITH m
     UNWIND $addNodes AS n
-    MATCH (ci {id: n.ciId, tenant_id: $tenantId})
+    MATCH (ci:ConfigurationItem {id: n.ciId, tenant_id: $tenantId})
     CREATE (m)-[:INCLUDES {level: toInteger(n.level), role: n.role, propagate: n.propagate, weight: toInteger(n.weight),
                            critical: n.critical, via: n.via, added_by: 'auto', added_at: $now}]->(ci)
     RETURN count(ci) AS added

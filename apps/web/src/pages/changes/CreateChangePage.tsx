@@ -9,7 +9,7 @@ import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
 import { ChangeTypeModal } from './components/ChangeTypeModal'
 import { CREATE_CHANGE } from '@/graphql/mutations'
-import { GET_ALL_CIS, GET_USERS, GET_PROBLEM, GET_INCIDENT, GET_PRE_APPROVED_CHANGE_TYPES, GET_CI_GROUPS_BY_ID } from '@/graphql/queries'
+import { GET_ALL_CIS, GET_PROBLEM, GET_INCIDENT, GET_PRE_APPROVED_CHANGE_TYPES, GET_CI_GROUPS_BY_ID } from '@/graphql/queries'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
@@ -17,6 +17,7 @@ import { colors, palette } from '@/lib/tokens'
 import { showError } from '@/lib/showError'
 import { useCILabels } from '@/hooks/useCILabels'
 import { CIExclusionHint } from '@/components/ticket/CIExclusionHint'
+import { UserPicker, CHANGE_WORK_PERMISSION } from '@/components/pickers/UserPicker'
 
 interface CIRef {
   id: string; name: string; type: string; environment?: string
@@ -28,7 +29,6 @@ interface CIRef {
 function missingGroups(ci: CIRef): boolean {
   return ci.ownerGroup === null || ci.supportGroup === null
 }
-interface UserRef { id: string; name: string; email: string }
 
 const fieldLabel: React.CSSProperties = {
   display:       'block',
@@ -50,7 +50,7 @@ const inputBase: React.CSSProperties = {
   outline:         'none',
   backgroundColor: colors.white,
   boxSizing:       'border-box',
-  fontFamily:      "'Plus Jakarta Sans', system-ui, sans-serif",
+  fontFamily:      'var(--font-family)',
   transition:      'border-color 150ms',
 }
 
@@ -100,7 +100,7 @@ export function CreateChangePage() {
     GET_PRE_APPROVED_CHANGE_TYPES, { fetchPolicy: METAMODEL_FETCH_POLICY },
   )
   const preApproved = preApprovedData?.preApprovedChangeTypes.types ?? null
-  const [ownerId, setOwnerId]         = useState<string>('')
+  const [owner, setOwner]             = useState<{ id: string; name: string } | null>(null)
   const [ciSearch, setCiSearch]       = useState('')
   const [selectedCIs, setSelectedCIs] = useState<CIRef[]>([])
   const [backendError, setBackendError] = useState<string | null>(null)
@@ -120,11 +120,6 @@ export function CreateChangePage() {
       setPrefilled(true)
     }
   }, [requestSource, prefilled, t])
-
-  const { data: usersData } = useQuery<{ users: UserRef[] }>(GET_USERS, {
-    variables: { sortField: 'name', sortDirection: 'asc' },
-  })
-  const users = usersData?.users ?? []
 
   // CM-8: i tipi di CI esclusi per le change non si propongono (l'API li rifiuta comunque).
   const { excluded: excludedCITypes } = useTicketCIExclusions('change')
@@ -242,7 +237,7 @@ export function CreateChangePage() {
           title:         title.trim(),
           why:           why.trim(),
           what:          what.trim(),
-          changeOwner:   ownerId || null,
+          changeOwner:   owner?.id ?? null,
           affectedCIIds: selectedCIs.map(ci => ci.id),
           changeType,
           customFields:  customFieldsInput(customDefs, customValues),
@@ -389,17 +384,17 @@ export function CreateChangePage() {
           {/* CHANGE OWNER */}
           <div style={{ marginBottom: 20 }}>
             <label htmlFor={ids.owner} style={fieldLabel}>{t('pages.changeDetail.changeOwner')}</label>
-            <select
-              id={ids.owner}
-              value={ownerId}
-              onChange={e => setOwnerId(e.target.value)}
+            {/* D21: the people who can work on changes, searchable — not a select of all 3,001 users. */}
+            <UserPicker
+              permission={CHANGE_WORK_PERMISSION}
+              hint={t('pickers.users.changeWork')}
+              inputId={ids.owner}
+              label={t('pages.changeDetail.changeOwner')}
+              value={owner}
+              onChange={setOwner}
+              clearLabel={t('pages.createChange.nobody')}
               style={inputBase}
-            >
-              <option value="">{t('pages.createChange.nobody')}</option>
-              {users.map(u => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
-            </select>
+            />
           </div>
 
           {/* CI AFFECTED */}

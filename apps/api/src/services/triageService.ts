@@ -120,7 +120,7 @@ async function loadCIImpact(tenantId: string, ciIds: string[]): Promise<CIImpact
       name: string; type: string | null; environment: string | null
       dependentCount: unknown; capabilities: string[]
     }>(session, `
-      MATCH (ci {tenant_id: $tenantId})
+      MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
       WHERE ci.id IN $ciIds
       OPTIONAL MATCH (dep)-[:DEPENDS_ON]->(ci)
       WITH ci, count(DISTINCT dep) AS dependentCount

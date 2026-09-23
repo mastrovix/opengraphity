@@ -71,7 +71,10 @@ function CreateDashboardDialog({ teams, onClose, onCreated }: CreateDashboardDia
   const [createDashboard] = useMutation(CREATE_DASHBOARD)
 
   async function handleCreate() {
-    if (!name.trim()) return
+    // `creating` too: Enter in the name field is not the Create button, which is
+    // off while the request runs — a second Enter created a second dashboard
+    // with the same name (tour of 23 Sep 2026).
+    if (!name.trim() || creating) return
     setCreating(true)
     try {
       const result = await createDashboard({
@@ -346,6 +349,7 @@ export function DashboardPage() {
     handleAddWidget,
     toggleTemplate,
     handleSelectDashboard,
+    handleDashboardDeleted,
     setActiveDashboardId,
     handleWidgetSaved,
     handleDeleteCustomWidget,
@@ -496,10 +500,7 @@ export function DashboardPage() {
             teams={teams}
             canDelete={dashboards.length > 1}
             onClose={() => setShowSettings(false)}
-            onDeleted={() => {
-              setActiveDashboardId(null)
-              void refetchList()
-            }}
+            onDeleted={() => handleDashboardDeleted(activeDash.id)}
             onUpdated={() => {
               void refetchList()
               void refetchDash()

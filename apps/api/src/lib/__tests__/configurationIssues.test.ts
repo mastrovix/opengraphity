@@ -97,7 +97,9 @@ let giorniNotifiche: number | null = 30
 vi.mock('../tenantInAppRetention.js', () => ({ tenantInAppRetentionDays: vi.fn(async () => giorniNotifiche) }))
 let vociSenzaPriorita: string[] = []
 let vociCategoriaVecchia: Array<{ name: string; legacy: string }> = []
-vi.mock('../catalogItemPriority.js', () => ({ catalogItemsWithoutPriority: vi.fn(async () => vociSenzaPriorita), catalogItemsWithLegacyCategory: vi.fn(async () => vociCategoriaVecchia) }))
+/** D56: the active catalog items without a fulfilment group; none by default. */
+let vociSenzaGruppo: string[] = []
+vi.mock('../catalogItemPriority.js', () => ({ catalogItemsWithoutPriority: vi.fn(async () => vociSenzaPriorita), catalogItemsWithLegacyCategory: vi.fn(async () => vociCategoriaVecchia), catalogItemsWithoutFulfillmentTeam: vi.fn(async () => vociSenzaGruppo) }))
 vi.mock('../stepDeadlineBlocked.js', () => ({ blockedStepDeadlines: vi.fn(async () => []) }))
 let canaliSlackSenzaWorkspace: string[] = []
 vi.mock('../slackChannelsWithoutWorkspace.js', () => ({ slackChannelsWithoutWorkspace: vi.fn(async () => canaliSlackSenzaWorkspace) }))
@@ -174,6 +176,7 @@ function healthy(): void {
   linguaDelCliente = 'it'
   severitaDelPortale = [{ value: 'low', labels: {} }]
   vociSenzaPriorita = []
+  vociSenzaGruppo = []
   vociCategoriaVecchia = []
   giorniNotifiche = 30
   canaliSlackSenzaWorkspace = []
@@ -197,7 +200,7 @@ function healthy(): void {
     }, [''])
     return [kind, Object.fromEntries(keys.map((k) => [k, out]))]
   }))
-  policy = { ignore_lifecycle_statuses: [], retired_statuses: ['dismesso'], maintenance_statuses: [] }
+  policy = { ignore_lifecycle_statuses: [], retired_statuses: ['dismesso'], maintenance_statuses: [], production_environments: ['production'] }
   // Ogni valore con la sua etichetta IN TUTTE LE LINGUE: lo stato in cui il
   // controllo tace. Una lingua sola non basta piu: da quando le etichette sono
   // per lingua, chi ne ha una sola viene segnalato (chi usa l'altra lo legge in
@@ -251,6 +254,14 @@ describe('configurationIssues', () => {
     vociSenzaPriorita = ['Nuovo laptop', 'Sblocco account']
     expect(await configurationIssues('c-one')).toEqual([
       { kind: 'catalog_items_without_priority', severity: 'error', where: '/admin/service-catalog', params: { count: '2', items: 'Nuovo laptop, Sblocco account' } },
+    ])
+  })
+
+  // D56 (23 Sep 2026): their requests are born without a team — in nobody's queue, invisible to the OLAs.
+  it('active catalog items without a fulfilment group → a warning naming them, fixed in the catalog', async () => {
+    vociSenzaGruppo = ['New laptop', 'VPN access']
+    expect(await configurationIssues('c-one')).toEqual([
+      { kind: 'catalog_items_without_fulfillment_team', severity: 'warning', where: '/admin/service-catalog', params: { count: '2', items: 'New laptop, VPN access' } },
     ])
   })
 
@@ -314,6 +325,13 @@ describe('configurationIssues', () => {
    * dismessi di nuovo dentro la salute dei servizi, che è il difetto C-4
    * dichiarato chiuso, spostato dal codice al dato.
    */
+  // D44 (23 Sep 2026): a stale production environment empties every service map.
+  it('a production environment the vocabulary no longer has → the same error, naming the list', async () => {
+    policy = { ...policy, production_environments: ['production', 'prod-old'] }
+    const issue = (await configurationIssues('c-one')).find((i) => i.kind === 'policy_out_of_vocabulary')
+    expect(issue).toMatchObject({ severity: 'error', where: '/settings/event-policy', params: { details: 'production_environments → prod-old' } })
+  })
+
   it('la policy che cita uno stato fuori vocabolario → errore che dice la conseguenza', async () => {
     policy = { ...policy, retired_statuses: ['decommissioned'] }   // il cliente l'ha rinominato
     const issue = (await configurationIssues('c-one')).find((i) => i.kind === 'policy_out_of_vocabulary')

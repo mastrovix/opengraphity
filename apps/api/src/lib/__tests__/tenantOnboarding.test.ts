@@ -202,6 +202,22 @@ describe('produzione e sviluppo non hanno gli stessi indirizzi', () => {
     expect(creaRealm.sslRequired).toBe('external')
   })
 
+  /*
+   * D70 (tour of 23 Sep 2026): the realm was created with no password rules —
+   * Keycloak then accepts a one-character password and never locks an account.
+   */
+  it('the realm is born with the initial password and lockout rules', async () => {
+    const { INITIAL_PASSWORD_RULES, policyString } = await import('../tenantLogin.js')
+    const kc = keycloak()
+    await onboardTenant(kc as never, spec(), password)
+    const creaRealm = kc.post.mock.calls[0]![2] as Record<string, unknown>
+    expect(creaRealm).toMatchObject({
+      passwordPolicy: policyString(INITIAL_PASSWORD_RULES, null),
+      bruteForceProtected: true, failureFactor: 10, maxFailureWaitSeconds: 900, permanentLockout: false,
+    })
+    expect(String(creaRealm['passwordPolicy'])).toContain('length(12)')
+  })
+
   it('in sviluppo: anche localhost, e le origini aperte', async () => {
     const kc = keycloak()
     await onboardTenant(kc as never, spec(), password)

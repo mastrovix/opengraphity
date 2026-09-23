@@ -10,6 +10,8 @@ import { useConfirm } from '@/hooks/useConfirm'
 import { timeAgo } from '@/lib/datetime'
 import { colors, palette } from '@/lib/tokens'
 import { showError } from '@/lib/showError'
+import { useMe } from '@/hooks/useMe'
+import { sendShortcutLabel } from '@/lib/platform'
 
 interface Message {
   id: string
@@ -31,6 +33,47 @@ function initials(name: string): string {
   return name.split(' ').map(w => w[0] ?? '').join('').toUpperCase().slice(0, 2)
 }
 
+/**
+ * SENT MEANS SHOWN (D13, tour of 23 Sep 2026).
+ *
+ * After «send» the message appeared only at the next reading of the list, a
+ * few seconds later, and the text stayed in the box meanwhile — it looked
+ * like nothing had happened, and a second «send» was the natural reaction.
+ * Now the box empties at once and the message is in the list at once
+ * (`optimisticResponse`); the server's answer replaces it in the cache
+ * (`update`). On an error the message leaves the list and its text comes
+ * back in the box, so it can be sent again: it is never lost.
+ */
+function useSendMessage(entityType: string, entityId: string, currentUserId: string, setBody: (update: (current: string) => string) => void) {
+  const { t } = useTranslation()
+  const { me } = useMe()
+  const listVariables = { entityType, entityId, limit: 50 }
+  const [sendMessage, { loading }] = useMutation<{ sendInternalMessage: Message }>(SEND_INTERNAL_MESSAGE, {
+    update: (cache, { data }) => {
+      const sent = data?.sendInternalMessage
+      if (!sent) return
+      cache.updateQuery<{ internalMessages: Message[] }>({ query: GET_INTERNAL_MESSAGES, variables: listVariables }, (prev) =>
+        prev ? { internalMessages: [...prev.internalMessages.filter((m) => m.id !== sent.id), sent] } : prev)
+    },
+  })
+  const send = (text: string) => {
+    setBody(() => '')
+    void sendMessage({
+      variables: { entityType, entityId, body: text },
+      optimisticResponse: { sendInternalMessage: {
+        __typename: 'InternalMessage', id: `optimistic-${String(Date.now())}`, authorId: currentUserId,
+        authorName: me?.name ?? '', body: text, mentions: [], createdAt: new Date().toISOString(), editedAt: null,
+      } as Message },
+      // Il testo NON si perde su errore: torna nella casella, e l'utente può ritentare l'invio.
+      onError: (e) => {
+        setBody((current) => (current === '' ? text : current))
+        showError(e, t('toast.internalChat.sendFailed', { error: e.message }))
+      },
+    })
+  }
+  return { send, sending: loading }
+}
+
 export function InternalChatPanel({ entityType, entityId, currentUserId }: Props) {
   const { t } = useTranslation()
   const confirm = useConfirm()
@@ -41,11 +84,7 @@ export function InternalChatPanel({ entityType, entityId, currentUserId }: Props
     variables: { entityType, entityId, limit: 50 },
   })
 
-  const [sendMessage, { loading: sending }] = useMutation(SEND_INTERNAL_MESSAGE, {
-    onCompleted: () => { setBody(''); void refetch() },
-    // Il testo NON viene svuotato su errore: l'utente può ritentare l'invio.
-    onError: (e) => showError(e, t('toast.internalChat.sendFailed', { error: e.message })),
-  })
+  const { send, sending } = useSendMessage(entityType, entityId, currentUserId, setBody)
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editBody, setEditBody]   = useState('')
@@ -67,7 +106,7 @@ export function InternalChatPanel({ entityType, entityId, currentUserId }: Props
   const handleSend = () => {
     const trimmed = body.trim()
     if (!trimmed || sending) return
-    void sendMessage({ variables: { entityType, entityId, body: trimmed } })
+    send(trimmed)
   }
 
   const handleDelete = async (msg: Message) => {
@@ -160,7 +199,7 @@ export function InternalChatPanel({ entityType, entityId, currentUserId }: Props
         <MentionInput
           value={body}
           onChange={setBody}
-          placeholder={t('internalChat.placeholder')}
+          placeholder={t('internalChat.placeholder', { shortcut: sendShortcutLabel() })}
           label={t('internalChat.title')}
           onSubmit={handleSend}
           rows={2}

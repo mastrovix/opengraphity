@@ -20,10 +20,15 @@ export const REMOVE_WATCHER = gql`
 
 // ── Internal chat ────────────────────────────────────────────────────────────
 
+/**
+ * The same fields as `GET_INTERNAL_MESSAGES`: the sent message goes straight
+ * into the list in the cache (D13), and a message missing a field there would
+ * not be written.
+ */
 export const SEND_INTERNAL_MESSAGE = gql`
   mutation SendInternalMessage($entityType: String!, $entityId: ID!, $body: String!) {
     sendInternalMessage(entityType: $entityType, entityId: $entityId, body: $body) {
-      id authorId authorName body createdAt
+      id authorId authorName body mentions createdAt editedAt
     }
   }
 `

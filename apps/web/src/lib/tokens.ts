@@ -188,7 +188,10 @@ export const spacing = {
 const ERROR_STYLE = { bg: 'var(--color-danger)', color: 'var(--color-white)' }
 
 export function lookupOrError<T>(map: Record<string, T>, key: string, mapName: string, errorFallback: T): T {
-  const val = map[key]
+  // Only the map's OWN entries: `map['constructor']` is Object's function, and a key
+  // that arrives from the data (an icon named «constructor», «toString») crashed
+  // whoever drew it (found on 23 Sep 2026).
+  const val = Object.hasOwn(map, key) ? map[key] : undefined
   if (val === undefined) {
     console.error(`[${mapName}] unknown value: "${key}"`)
     return errorFallback

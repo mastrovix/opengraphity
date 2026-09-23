@@ -42,14 +42,20 @@ export interface ErrorLinkOptions {
   clientLogger?: ClientLogger
   /** Window in which repeated identical notifications are collapsed (N failing queries → 1 toast). */
   dedupeMs?: number
+  /**
+   * Come si traduce la chiave di un errore. Senza, i messaggi restano quelli del server.
+   *
+   * The error link needs it too: GraphQL errors that arrive inside a non-2xx
+   * response (a `ServerError`) never pass through the i18n link, which only
+   * sees results, so the link translates them itself with the same rule.
+   */
+  traduciErrore?: TraduciErrore | undefined
 }
 
 export interface CreateApolloClientOptions extends ErrorLinkOptions {
   uri: string
   getToken: () => string | undefined
   defaultOptions?: ApolloClient.DefaultOptions
-  /** Come si traduce la chiave di un errore. Senza, i messaggi restano quelli del server. */
-  traduciErrore?: TraduciErrore
   /** Regole della cache per tipo (es. oggetti senza id letti da più query). */
   typePolicies?: TypePolicies
 }
@@ -130,6 +136,45 @@ function isTenantSuspended(error: unknown): boolean {
 
 function resultHasTenantSuspended(result: ApolloLink.Result): boolean {
   return codici((result as { errors?: unknown }).errors).includes(TENANT_SUSPENDED_CODE)
+}
+
+/** One GraphQL error as the link reports it: the fields it reads, nothing more. */
+interface ReportedGraphQLError {
+  message:     string
+  path?:       readonly (string | number)[] | undefined
+  extensions?: Record<string, unknown> | undefined
+}
+
+/**
+ * THE GRAPHQL ERRORS INSIDE A NON-2xx RESPONSE (D77, tour of 23 Sep 2026).
+ *
+ * `HttpLink` reads the body of a non-2xx response only when its media type is
+ * `application/graphql-response+json`; with any other type it raises a
+ * `ServerError` and leaves the body unread. A validation failure — HTTP 400
+ * GRAPHQL_VALIDATION_FAILED with `{"errors":[…]}` — arrived that way and was
+ * treated as a NETWORK error: deduped under the single network key, and
+ * remembered as "already shown", so the page calling `showError` stayed
+ * silent. The user pressed Save, saw «Loading…», then nothing.
+ *
+ * Here the body is read: when it parses into GraphQL `errors`, those are what
+ * the server said, and they are reported like any other GraphQL error. A body
+ * that is not GraphQL (an HTML page from a proxy, an empty 502) returns null
+ * and stays a network error.
+ */
+export function graphQLErrorsInServerError(error: unknown): ReportedGraphQLError[] | null {
+  if (!ServerError.is(error)) return null
+  let body: unknown
+  try {
+    body = JSON.parse(error.bodyText)
+  } catch {
+    // Not JSON: a transport-level failure, reported as such by the caller.
+    return null
+  }
+  const errors = (body as { errors?: unknown } | null)?.errors
+  if (!Array.isArray(errors)) return null
+  const reported = (errors as unknown[]).filter((e): e is ReportedGraphQLError =>
+    typeof e === 'object' && e !== null && typeof (e as { message?: unknown }).message === 'string')
+  return reported.length > 0 ? reported : null
 }
 
 /**
@@ -213,6 +258,9 @@ function rememberNotified(message: string): void {
 
 export function wasNotifiedCentrally(error: unknown): boolean {
   if (CombinedGraphQLErrors.is(error)) return true
+  // A ServerError whose body carries GraphQL errors: the link reported each of
+  // them (D77), so the page must not add a second, generic toast.
+  if (graphQLErrorsInServerError(error) !== null) return true
   const message = error instanceof Error ? error.message
     : typeof error === 'object' && error !== null && 'message' in error ? String((error as { message: unknown }).message) : null
   if (message === null) return false
@@ -223,6 +271,18 @@ export function wasNotifiedCentrally(error: unknown): boolean {
 export function createErrorLink(o: ErrorLinkOptions): ErrorLink {
   const logger = o.clientLogger ?? consoleLogger
   const once   = createDeduper(o.dedupeMs ?? DEFAULT_DEDUPE_MS)
+
+  /** One GraphQL error, reported the same way whichever form it arrived in. */
+  const reportGraphQLError = ({ message, path, extensions }: ReportedGraphQLError, operationName: string | undefined) => {
+    const code = typeof extensions?.['code'] === 'string' ? extensions['code'] : undefined
+    logger.error(`GraphQL error: ${message}`, {
+      code,
+      path:      path as unknown as Record<string, unknown> | undefined,
+      operation: operationName,
+    })
+    rememberNotified(message)
+    if (once(`gql:${message}`)) o.onGraphQLError(message, { code, path, operation: operationName })
+  }
 
   return new ErrorLink(({ error, operation, forward }) => {
     /*
@@ -244,21 +304,21 @@ export function createErrorLink(o: ErrorLinkOptions): ErrorLink {
       })
       return retryAfterRefresh(o, once, logger, operation, forward)
     }
-    if (CombinedGraphQLErrors.is(error)) {
-      const unauthorized = error.errors.some((e) => e.extensions?.['code'] === 'UNAUTHORIZED')
+    /*
+     * The GraphQL errors, in either form: a combined error (already translated
+     * by the i18n link, which sits inside this one) or the body of a non-2xx
+     * response (D77), which never reached the i18n link and is translated here
+     * with the same rule.
+     */
+    const graphQLErrors: readonly ReportedGraphQLError[] | null = CombinedGraphQLErrors.is(error)
+      ? error.errors
+      : graphQLErrorsInServerError(error)?.map((e) => (o.traduciErrore ? conFrase(e, o.traduciErrore) : e)) ?? null
+    if (graphQLErrors) {
+      const unauthorized = graphQLErrors.some((e) => e.extensions?.['code'] === 'UNAUTHORIZED')
       if (unauthorized) {
         return retryAfterRefresh(o, once, logger, operation, forward)
       }
-      error.errors.forEach(({ message, path, extensions }) => {
-        const code = typeof extensions?.['code'] === 'string' ? extensions['code'] : undefined
-        logger.error(`GraphQL error: ${message}`, {
-          code,
-          path:      path as unknown as Record<string, unknown> | undefined,
-          operation: operation.operationName,
-        })
-        rememberNotified(message)
-        if (once(`gql:${message}`)) o.onGraphQLError(message, { code, path, operation: operation.operationName })
-      })
+      graphQLErrors.forEach((e) => reportGraphQLError(e, operation.operationName))
       return
     }
 
@@ -316,18 +376,25 @@ function conPezziTradotti(params: Record<string, string | number>, translate: Tr
   return fuori
 }
 
+/**
+ * One error with its key turned into the sentence. Shared by the i18n link
+ * (errors inside a result) and the error link (errors inside the body of a
+ * `ServerError`, D77): one rule, whichever way the error arrived.
+ */
+function conFrase<E extends { message: string; extensions?: unknown }>(e: E, translate: TraduciErrore): E {
+  const i18n = (e.extensions as ErroreConChiave['extensions'])?.i18n
+  if (!i18n || typeof i18n.key !== 'string') return e
+  const params = conPezziTradotti((i18n.params ?? {}) as Record<string, string | number>, translate)
+  const frase = translate(i18n.key, params)
+  return frase === null ? e : { ...e, message: frase }
+}
+
 function conFrasi(result: ApolloLink.Result, translate: TraduciErrore): ApolloLink.Result {
   const errors = (result as { errors?: ErroreConChiave[] }).errors
   if (!errors || errors.length === 0) return result
   return {
     ...result,
-    errors: errors.map((e) => {
-      const i18n = e.extensions?.i18n
-      if (!i18n || typeof i18n.key !== 'string') return e
-      const params = conPezziTradotti((i18n.params ?? {}) as Record<string, string | number>, translate)
-      const frase = translate(i18n.key, params)
-      return frase === null ? e : { ...e, message: frase }
-    }),
+    errors: errors.map((e) => conFrase(e, translate)),
   } as ApolloLink.Result
 }
 
@@ -367,7 +434,7 @@ export function createApolloClient(opts: CreateApolloClientOptions): ApolloClien
     le pagine vedono (e quando lo passa a `onGraphQLError`, che fa il toast).
   */
   const catena = traduciErrore
-    ? [createErrorLink(linkOptions), createI18nLink(traduciErrore), createAuthLink(getToken).concat(httpLink)]
+    ? [createErrorLink({ ...linkOptions, traduciErrore }), createI18nLink(traduciErrore), createAuthLink(getToken).concat(httpLink)]
     : [createErrorLink(linkOptions), createAuthLink(getToken).concat(httpLink)]
   return new ApolloClient({
     link:  from(catena),
@@ -401,9 +468,7 @@ export function createApolloClient(opts: CreateApolloClientOptions): ApolloClien
  * cambiata): il chiamante allora mostra solo l'avviso, come prima.
  */
 export function errorFieldName(error: unknown): string | null {
-  const errori = (error as { errors?: ErroreConChiave[] } | null)?.errors
-  const elenco = Array.isArray(errori) ? errori : [error as ErroreConChiave]
-  for (const e of elenco) {
+  for (const e of erroriDi(error)) {
     const params = e?.extensions?.i18n?.params
     if (params && typeof params === 'object') {
       const nome = (params as Record<string, unknown>)['name']
@@ -413,10 +478,20 @@ export function errorFieldName(error: unknown): string | null {
   return null
 }
 
-export function errorHasKey(error: unknown, key: string): boolean {
+/**
+ * The errors to look into: those of a combined error, those inside the body of
+ * a `ServerError` (D77: the same errors, arrived with a non-2xx status and a
+ * media type `HttpLink` does not read), or the error itself.
+ */
+function erroriDi(error: unknown): ErroreConChiave[] {
+  const nelCorpo = graphQLErrorsInServerError(error)
+  if (nelCorpo) return nelCorpo as ErroreConChiave[]
   const errori = (error as { errors?: ErroreConChiave[] } | null)?.errors
-  const elenco = Array.isArray(errori) ? errori : [error as ErroreConChiave]
-  return elenco.some((e) => {
+  return Array.isArray(errori) ? errori : [error as ErroreConChiave]
+}
+
+export function errorHasKey(error: unknown, key: string): boolean {
+  return erroriDi(error).some((e) => {
     const chiave = e?.extensions?.i18n?.key
     return typeof chiave === 'string' && chiave === key
   })

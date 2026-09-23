@@ -149,7 +149,7 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
     }>(session, `
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_ASSESSMENT]->(t:AssessmentTask {id: $taskId})
       WHERE coalesce(c.deleted, false) = false
-      MATCH (ci {id: t.ci_id, tenant_id: $tenantId})
+      MATCH (ci:ConfigurationItem {id: t.ci_id, tenant_id: $tenantId})
       // ANCHE I TIPI CI DEL CLIENTE (terza revisione). Con scope='base' il
       // tipo di un CI creato dal cliente non si risolveva: ciTypeId restava
       // null, la ricerca delle domande non trovava niente e il task rifiutava

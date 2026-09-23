@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import i18n from '@/i18n/i18n'
 import { clientLogger } from '../lib/clientLogger'
+import { errorMessage } from '@/lib/showError'
 import { colors } from '@/lib/tokens'
 
 interface Props {
@@ -10,19 +11,26 @@ interface Props {
 
 interface State {
   hasError: boolean
-  error?:   Error
+  /** The text of what was thrown. */
+  message?: string
 }
 
+/*
+ * Anything can be thrown, not only an Error: a library that throws a string
+ * lost its text on both sides, because both read `.message` — the log said
+ * «React error: undefined» and the screen gave no reason (found by the tests,
+ * tour of 23 Sep 2026). `errorMessage` reads any thrown value.
+ */
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { hasError: false }
 
-  static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error }
+  static getDerivedStateFromError(error: unknown): State {
+    return { hasError: true, message: errorMessage(error) }
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo): void {
-    clientLogger.error(`React error: ${error.message}`, {
-      stack:          error.stack?.slice(0, 500),
+  componentDidCatch(error: unknown, info: ErrorInfo): void {
+    clientLogger.error(`React error: ${errorMessage(error)}`, {
+      stack:          error instanceof Error ? error.stack?.slice(0, 500) : undefined,
       componentStack: info.componentStack?.slice(0, 500),
     })
   }
@@ -34,7 +42,7 @@ export class ErrorBoundary extends Component<Props, State> {
         <div role="alert" style={{ padding: 40, textAlign: 'center', color: 'var(--color-trigger-sla-breach)' }}>
           <h2>{i18n.t('errorBoundary.title')}</h2>
           <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>
-            {this.state.error?.message}
+            {this.state.message}
           </p>
           <button
             type="button"

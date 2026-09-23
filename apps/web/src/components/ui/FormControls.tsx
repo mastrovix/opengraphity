@@ -11,7 +11,7 @@ export const controlStyle: CSSProperties = {
   width: '100%', boxSizing: 'border-box', padding: '6px 10px',
   fontSize: 'var(--font-size-body)', borderRadius: 6,
   border: `1px solid ${palette.neutral.borderStrong}`, background: colors.white,
-  fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+  fontFamily: 'var(--font-family)',
   outline: 'none',
 }
 

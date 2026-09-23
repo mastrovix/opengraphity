@@ -93,8 +93,8 @@ describe('runReportAgent — stream vs non-stream', () => {
     const b = fakeClient([textMessage('ciao')])
     const messages = [{ role: 'user' as const, content: 'quanti incident?' }]
 
-    await runReportAgent({ tenantId: 't1', messages, client: a.client })
-    await runReportAgent({ tenantId: 't1', messages, client: b.client, stream: () => {} })
+    await runReportAgent({ tenantId: 't1', language: 'English', messages, client: a.client })
+    await runReportAgent({ tenantId: 't1', language: 'English', messages, client: b.client, stream: () => {} })
 
     expect(a.create).toHaveBeenCalledTimes(1)
     expect(a.stream).not.toHaveBeenCalled()
@@ -117,14 +117,14 @@ describe('runReportAgent — stream vs non-stream', () => {
     process.env['REPORT_AI_MODEL'] = 'claude-test-model'
     expect(resolveReportAIModel()).toBe('claude-test-model')
     const f = fakeClient([textMessage('ok')])
-    await runReportAgent({ tenantId: 't1', messages: [{ role: 'user', content: 'q' }], client: f.client })
+    await runReportAgent({ tenantId: 't1', language: 'English', messages: [{ role: 'user', content: 'q' }], client: f.client })
     expect((f.create.mock.calls[0]![0] as { model: string }).model).toBe('claude-test-model')
   })
 
   it('fails loud without ANTHROPIC_API_KEY', async () => {
     delete process.env['ANTHROPIC_API_KEY']
     const f = fakeClient([textMessage('ok')])
-    await expect(runReportAgent({ tenantId: 't1', messages: [{ role: 'user', content: 'q' }], client: f.client }))
+    await expect(runReportAgent({ tenantId: 't1', language: 'English', messages: [{ role: 'user', content: 'q' }], client: f.client }))
       .rejects.toThrow(/ANTHROPIC_API_KEY/)
     expect(f.create).not.toHaveBeenCalled()
   })
@@ -139,6 +139,7 @@ describe('runReportAgent — tool loop', () => {
     const events: unknown[] = []
     const out = await runReportAgent({
       tenantId: 't1',
+      language: 'English',
       messages: [{ role: 'user', content: 'quanti incident?' }],
       client: f.client,
       stream: (e) => events.push(e),
@@ -169,7 +170,7 @@ describe('runReportAgent — tool loop', () => {
       toolMessage('tu-1', 'MATCH (u:User) RETURN u.email'),
       textMessage('Non posso.'),
     ])
-    await runReportAgent({ tenantId: 't1', messages: [{ role: 'user', content: 'q' }], client: f.client })
+    await runReportAgent({ tenantId: 't1', language: 'English', messages: [{ role: 'user', content: 'q' }], client: f.client })
 
     expect(session.run).not.toHaveBeenCalledWith(expect.stringContaining('u.email'), expect.anything())
     const second = f.create.mock.calls[1]![0] as { messages: Anthropic.MessageParam[] }
@@ -179,7 +180,7 @@ describe('runReportAgent — tool loop', () => {
 
   it(`stops after ${REPORT_AI_LIMITS.maxIterations} tool calls (budget)`, async () => {
     const f = fakeClient([toolMessage('tu', SAFE_Q)]) // always asks for another query
-    await expect(runReportAgent({ tenantId: 't1', messages: [{ role: 'user', content: 'q' }], client: f.client }))
+    await expect(runReportAgent({ tenantId: 't1', language: 'English', messages: [{ role: 'user', content: 'q' }], client: f.client }))
       .rejects.toThrow(new RegExp(`limit of ${REPORT_AI_LIMITS.maxIterations} queries`))
     expect(f.create).toHaveBeenCalledTimes(REPORT_AI_LIMITS.maxIterations + 1)
   })
@@ -188,7 +189,7 @@ describe('runReportAgent — tool loop', () => {
     const big = toolMessage('tu', SAFE_Q)
     big.usage.output_tokens = REPORT_AI_LIMITS.maxOutputTokens + 1
     const f = fakeClient([big])
-    await expect(runReportAgent({ tenantId: 't1', messages: [{ role: 'user', content: 'q' }], client: f.client }))
+    await expect(runReportAgent({ tenantId: 't1', language: 'English', messages: [{ role: 'user', content: 'q' }], client: f.client }))
       .rejects.toThrow(/token budget/)
     expect(f.create).toHaveBeenCalledTimes(1)
   })
@@ -196,13 +197,13 @@ describe('runReportAgent — tool loop', () => {
   it('a tool call without a query fails the request instead of running nothing', async () => {
     const m = toolMessage('tu-1', '')
     const f = fakeClient([m, textMessage('x')])
-    await expect(runReportAgent({ tenantId: 't1', messages: [{ role: 'user', content: 'q' }], client: f.client }))
+    await expect(runReportAgent({ tenantId: 't1', language: 'English', messages: [{ role: 'user', content: 'q' }], client: f.client }))
       .rejects.toThrow(/without a query/)
   })
 
   it('a refusal is an error, not an empty answer', async () => {
     const f = fakeClient([textMessage('', 'refusal')])
-    await expect(runReportAgent({ tenantId: 't1', messages: [{ role: 'user', content: 'q' }], client: f.client }))
+    await expect(runReportAgent({ tenantId: 't1', language: 'English', messages: [{ role: 'user', content: 'q' }], client: f.client }))
       .rejects.toThrow(/refused the request/)
   })
 })

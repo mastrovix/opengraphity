@@ -49,6 +49,10 @@ export interface VoceSegnata extends VoceCalendario {
   sovrapposizione: Sovrapposizione
   /** I codici delle change con cui questa finestra si sovrappone, senza ripetizioni. */
   conflittoCon: readonly string[]
+  /** Of those, the changes released on the SAME CI at the same time (a clash). */
+  sameCiWith: readonly string[]
+  /** Of those, the changes whose releases only overlap on other CIs (a warning). */
+  overlapsWith: readonly string[]
 }
 
 export type Modo = 'week' | 'month'
@@ -112,14 +116,19 @@ export function scorri(modo: Modo, riferimento: Date, passi: number): Date {
  */
 export function conSovrapposizioni(voci: readonly VoceCalendario[]): VoceSegnata[] {
   const ms = (s: string) => Date.parse(s)
-  const segnate: VoceSegnata[] = voci.map((v) => ({ ...v, sovrapposizione: 'none', conflittoCon: [] }))
+  const segnate: VoceSegnata[] = voci.map((v) => ({ ...v, sovrapposizione: 'none', conflittoCon: [], sameCiWith: [], overlapsWith: [] }))
 
   const rilasci = segnate
     .map((v, i) => ({ v, i }))
     .filter(({ v }) => v.kind === 'release' && !Number.isNaN(ms(v.start)) && !Number.isNaN(ms(v.end)))
 
-  const conflitti = new Map<number, Set<string>>()
-  const livelli = new Map<number, Sovrapposizione>()
+  /*
+   * The level is kept PER CHANGE met, not per window (tour of 23 Sep 2026):
+   * with one level per window, a window that clashed with a change on its CI
+   * and overlapped another elsewhere named both as «same CI», saying the
+   * second touched a CI it does not. Per window: change code → its level.
+   */
+  const collisions = new Map<number, Map<string, Exclude<Sovrapposizione, 'none'>>>()
 
   for (let x = 0; x < rilasci.length; x++) {
     for (let y = x + 1; y < rilasci.length; y++) {
@@ -129,18 +138,24 @@ export function conSovrapposizioni(voci: readonly VoceCalendario[]): VoceSegnata
       // Lo stesso CI è un conflitto, CI diversi un avviso. Il livello di una
       // voce è il PEGGIORE dei suoi: una change che urta due volte, di cui una
       // sullo stesso CI, si legge come conflitto.
-      const livello: Sovrapposizione = a.v.ciId !== '' && a.v.ciId === b.v.ciId ? 'clash' : 'warn'
+      const livello = a.v.ciId !== '' && a.v.ciId === b.v.ciId ? 'clash' : 'warn'
       for (const [uno, altro] of [[a, b], [b, a]] as const) {
-        if (!conflitti.has(uno.i)) conflitti.set(uno.i, new Set())
-        conflitti.get(uno.i)!.add(altro.v.code)
-        if (livelli.get(uno.i) !== 'clash') livelli.set(uno.i, livello)
+        const byCode = collisions.get(uno.i) ?? new Map<string, Exclude<Sovrapposizione, 'none'>>()
+        collisions.set(uno.i, byCode)
+        // The same holds per change: met once on this CI and once elsewhere, it is a clash.
+        if (byCode.get(altro.v.code) !== 'clash') byCode.set(altro.v.code, livello)
       }
     }
   }
 
-  for (const [i, codici] of conflitti) {
-    segnate[i]!.conflittoCon = [...codici].sort()
-    segnate[i]!.sovrapposizione = livelli.get(i) ?? 'warn'
+  for (const [i, byCode] of collisions) {
+    const codes = [...byCode.keys()].sort()
+    const v = segnate[i]!
+    v.conflittoCon = codes
+    v.sameCiWith   = codes.filter((c) => byCode.get(c) === 'clash')
+    v.overlapsWith = codes.filter((c) => byCode.get(c) === 'warn')
+    // The window is a clash as soon as one change is on its CI.
+    v.sovrapposizione = v.sameCiWith.length > 0 ? 'clash' : 'warn'
   }
   return segnate
 }

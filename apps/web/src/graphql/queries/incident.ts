@@ -104,6 +104,7 @@ export const GET_SERVICE_REQUEST = gql`
       createdAt updatedAt completedAt
       requestedBy { id name email }
       assignee { id name email }
+      team { id name }
       workflowInstance { id currentStep status }
       availableTransitions { toStep label labels { language label } requiresInput inputField }
       slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt warningMinutes }

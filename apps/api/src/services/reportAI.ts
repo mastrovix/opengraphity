@@ -6,6 +6,8 @@
 import type Anthropic from '@anthropic-ai/sdk'
 import { runReportAgent } from './reportAgent.js'
 import { assertAIFeature } from '../lib/aiSettings.js'
+import { languageForUser } from '../lib/tenantLanguage.js'
+import { LANGUAGE_NAME_FOR_MODEL } from '../lib/systemText.js'
 
 export {
   REPORT_AI_LIMITS, ToolLoopBudget, runGuardedCypherTool,
@@ -26,8 +28,14 @@ export function toAgentMessages(history: HistoryMessage[], question: string): An
   return messages
 }
 
+/** The language of the person's interface, named for the model (D62). */
+async function answerLanguage(tenantId: string, userId: string): Promise<string> {
+  return LANGUAGE_NAME_FOR_MODEL[await languageForUser(tenantId, userId)]
+}
+
 export async function streamReportAI(
   tenantId: string,
+  userId: string,
   history: HistoryMessage[],
   question: string,
   onChunk: (text: string) => void,
@@ -36,6 +44,7 @@ export async function streamReportAI(
   await assertAIFeature(tenantId, 'reportAnalysis')
   return runReportAgent({
     tenantId,
+    language: await answerLanguage(tenantId, userId),
     messages: toAgentMessages(history, question),
     stream: (event) => {
       if (event.type === 'text') onChunk(event.text)
@@ -46,9 +55,10 @@ export async function streamReportAI(
 
 export async function callReportAI(
   tenantId: string,
+  userId: string,
   history: HistoryMessage[],
   question: string,
 ): Promise<string> {
   await assertAIFeature(tenantId, 'reportAnalysis')
-  return runReportAgent({ tenantId, messages: toAgentMessages(history, question) })
+  return runReportAgent({ tenantId, language: await answerLanguage(tenantId, userId), messages: toAgentMessages(history, question) })
 }

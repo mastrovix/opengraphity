@@ -11,13 +11,13 @@ function row(over: Partial<CIHealthRow> & { id: string; name: string }): CIHealt
   return {
     type: 'server', environment: 'production', health: 'down', healthSource: 'monitoring',
     healthSince: new Date(Date.now() - 42 * 60_000).toISOString(), lastEventAt: new Date(Date.now() - 5 * 60_000).toISOString(),
-    firingEvents: 2, dependents: 7, servicesCount: 2, ownerTeam: 'DBA', ...over,
+    firingEvents: 2, dependents: 7, servicesCount: 2, ownerTeam: 'DBA', supportTeam: 'SUP_Database EMEA', ...over,
   }
 }
 
 const ROWS: CIHealthRow[] = [
   row({ id: 'ci-1', name: 'db-01' }),
-  row({ id: 'ci-2', name: 'cache-02', health: 'degraded', firingEvents: 1, dependents: 3, servicesCount: 1, ownerTeam: null }),
+  row({ id: 'ci-2', name: 'cache-02', health: 'degraded', firingEvents: 1, dependents: 3, servicesCount: 1, ownerTeam: null, supportTeam: null }),
   row({ id: 'ci-3', name: 'app-03', type: 'application', health: 'operational', healthSource: 'manual', firingEvents: 0, dependents: 0, servicesCount: 0, healthSince: null, lastEventAt: null }),
 ]
 
@@ -119,7 +119,9 @@ describe('CIHealthPage', () => {
     // Colonna «Servizi» (ondata 3): il numero è un link alla pagina Servizi filtrata su QUESTO CI
     // (C-14: prima portava alla lista intera, cioè a un insieme diverso da quello che il numero contava).
     expect(within(rows[0]!).getByRole('link', { name: '2 monitored services depend on db-01' })).toHaveAttribute('href', '/monitoring/services?ciId=ci-1')
-    expect(within(rows[0]!).getByText('DBA')).toBeInTheDocument()
+    // The SUPPORT team, not the owner team («DBA») the overview carries.
+    expect(await within(rows[0]!).findByText('SUP_Database EMEA')).toBeInTheDocument()
+    expect(within(rows[0]!).queryByText('DBA')).not.toBeInTheDocument()
     expect(within(rows[0]!).getByText('5 min ago')).toBeInTheDocument()
     expect(within(rows[0]!).getByText('Monitoring')).toBeInTheDocument()
     expect(within(rows[0]!).getByRole('link', { name: 'View db-01 on the map' })).toHaveAttribute('href', '/topology?health=1&ciId=ci-1')
@@ -183,7 +185,7 @@ describe('CIHealthPage', () => {
     await screen.findByRole('heading', { name: 'CI health' })
     await user.selectOptions(await screen.findByRole('combobox', { name: 'Environment' }), 'staging')
     await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ environment: 'staging' }))
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Team' }), 't1')
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Owner team' }), 't1')
     await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ environment: 'staging', team: 't1' }))
     // La query parte già in fase di render (variabili viste dal mock prima del commit): la posizione va attesa, non letta al volo.
     await attendiURL('/monitoring/health', { env: 'staging', team: 't1' })
@@ -201,7 +203,7 @@ describe('CIHealthPage', () => {
     expect(tile('Degraded')).toHaveAttribute('aria-pressed', 'true')
     expect(tile('Down')).toHaveAttribute('aria-pressed', 'false')
     expect(await screen.findByRole('combobox', { name: 'Environment' })).toHaveValue('staging')
-    expect(screen.getByRole('combobox', { name: 'Team' })).toHaveValue('t1')
+    expect(screen.getByRole('combobox', { name: 'Owner team' })).toHaveValue('t1')
     expect(screen.getByRole('textbox', { name: 'Search a CI by name' })).toHaveValue('db')
     expect(screen.getByText('page 2 of 2')).toBeInTheDocument()
     // un valore di salute fuori vocabolario nell'URL viene ignorato (nessun riquadro premuto), non inviato al server
@@ -283,5 +285,34 @@ describe('CIHealthPage', () => {
     await screen.findByRole('heading', { name: 'CI health' })
     await user.click(within(bodyRows()[1]!).getByText('3 dependents'))
     expect(location()).toBe('/ci/server/ci-2')
+  })
+})
+
+describe('CIHealthPage — the support team of each CI (tour of 23 Sep 2026)', () => {
+  it('the column is «Support team»: the CI\'s support group from the overview, a dash for a CI without one', async () => {
+    renderPage('operator')
+    expect(await screen.findByRole('columnheader', { name: 'Support team' })).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Team' })).not.toBeInTheDocument()
+    const rows = bodyRows()
+    expect(within(rows[0]!).getByText('SUP_Database EMEA')).toBeInTheDocument()
+    expect(within(rows[1]!).getByText('—')).toBeInTheDocument()
+  })
+
+  it('each team filter offers the teams of its role, and the support group reaches the query and the URL', async () => {
+    const seen: Vars[] = []
+    const teams = teamsMock([
+      { id: 't1', name: 'DBA', type: 'owner' } as { id: string; name: string },
+      { id: 's1', name: 'SUP_Database EMEA', type: 'support' } as { id: string; name: string },
+    ])
+    const { user } = renderPage('operator', { seen, teams })
+    const owner = await screen.findByRole('combobox', { name: 'Owner team' })
+    const support = screen.getByRole('combobox', { name: 'Support team' })
+    await waitFor(() => expect(within(support).getByRole('option', { name: 'SUP_Database EMEA' })).toHaveValue('s1'))
+    expect(within(support).queryByRole('option', { name: 'DBA' })).not.toBeInTheDocument()
+    expect(within(owner).getByRole('option', { name: 'DBA' })).toHaveValue('t1')
+    expect(within(owner).queryByRole('option', { name: 'SUP_Database EMEA' })).not.toBeInTheDocument()
+    await user.selectOptions(support, 's1')
+    await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ supportTeam: 's1' }))
+    await attendiURL('/monitoring/health', { support: 's1' })
   })
 })

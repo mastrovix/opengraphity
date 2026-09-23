@@ -42,6 +42,9 @@ interface CITypeItem {
   label: string
   icon:  string
   color: string
+  /** The relations the metamodel declares: the map gives each relation type its distance (D76). */
+  relations?:       { relationshipType: string }[]
+  systemRelations?: { relationshipType: string }[]
 }
 
 interface Filters {

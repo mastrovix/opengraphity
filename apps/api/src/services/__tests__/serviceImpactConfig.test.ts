@@ -405,7 +405,7 @@ describe('applyServiceMapProposal', () => {
     expect(w.session).toBe(tx)
     expect(w.cypher).toBe(APPLY_PROPOSAL_CYPHER)
     expect(w.cypher).toMatch(/WITH m, m\.version AS version\s+WHERE version = toInteger\(\$expectedVersion\)/)
-    expect(w.cypher).toContain('MATCH (ci {id: n.ciId, tenant_id: $tenantId})')
+    expect(w.cypher).toContain('MATCH (ci:ConfigurationItem {id: n.ciId, tenant_id: $tenantId})')
     expect(w.cypher).toContain("CREATE (m)-[:INCLUDES {level: toInteger(n.level), role: n.role, propagate: n.propagate, weight: toInteger(n.weight),")
     expect(w.cypher).toContain("critical: n.critical, via: n.via, added_by: 'manual', added_at: $now}]->(ci)")
     expect(w.cypher).toMatch(/MERGE \(m\)-\[e:EXCLUDES\]->\(ci\)\s+ON CREATE SET e\.reason = \$excludeReason, e\.excluded_by = \$actorId, e\.at = \$now/)

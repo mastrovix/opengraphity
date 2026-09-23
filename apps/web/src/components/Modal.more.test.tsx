@@ -2,8 +2,8 @@
  * Extra Modal behaviours not pinned by Modal.test.tsx: the close button gives
  * hover feedback (it is a bare icon, the colour change is the only hint it is
  * clickable), a click inside the panel never bubbles to the row/card that
- * mounted the modal, and Tab never lets focus escape a modal whose panel
- * currently exposes nothing focusable.
+ * mounted the modal, and a Tab pressed while the focus is on the page behind
+ * is taken over by the dialog, not left to the browser.
  */
 import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
@@ -38,15 +38,18 @@ describe('Modal (more)', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 
-  it('Tab with nothing focusable in reach is swallowed, so focus cannot leave the dialog', () => {
+  it('Tab from the page behind is taken over: the focus goes to the dialog, and the browser does not move it further', () => {
     render(<><button type="button">outside</button><Modal open onClose={() => {}} title="T">body</Modal></>)
     const outside = screen.getByRole('button', { name: 'outside' })
-    // jsdom has no layout: every candidate has offsetParent === null, and the
-    // focused element is outside the panel, so the focusable list is empty.
+    // The global setup makes every connected element count as visible, so the
+    // panel's close button IS focusable here: the trap puts the focus on it
+    // and cancels the key, otherwise the browser would then move it one step
+    // on. The case where nothing in the panel is visible is Modal.trap.test.tsx.
     outside.focus()
     const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })
     fireEvent(document, tab)
     expect(tab.defaultPrevented).toBe(true)
+    expect(screen.getByRole('button', { name: 'Close' })).toHaveFocus()
   })
 
   it('other keys are left alone', () => {

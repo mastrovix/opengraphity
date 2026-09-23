@@ -147,9 +147,14 @@ export async function listTenants(session: Session): Promise<TenantRow[]> {
       const c = await runQueryOne<{ utenti: unknown; ticket: unknown }>(session, `
         OPTIONAL MATCH (u:User {tenant_id: $tenantId})
         WITH count(u) AS utenti
-        OPTIONAL MATCH (n {tenant_id: $tenantId})
-        WHERE n:Incident OR n:Problem OR n:Change OR n:ServiceRequest
-        RETURN utenti, count(n) AS ticket
+        // One index count per ticket label (D25): the pattern without a label read every node.
+        CALL () {
+          MATCH (n:Incident {tenant_id: $tenantId}) RETURN count(n) AS c
+          UNION ALL MATCH (n:Problem {tenant_id: $tenantId}) RETURN count(n) AS c
+          UNION ALL MATCH (n:Change {tenant_id: $tenantId}) RETURN count(n) AS c
+          UNION ALL MATCH (n:ServiceRequest {tenant_id: $tenantId}) RETURN count(n) AS c
+        }
+        RETURN utenti, sum(c) AS ticket
       `, { tenantId: r.id })
       conteggi.set(r.id, { utenti: toNumber(c?.utenti), ticket: toNumber(c?.ticket) })
     } catch (err) {

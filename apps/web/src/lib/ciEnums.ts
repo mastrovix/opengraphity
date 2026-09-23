@@ -15,6 +15,7 @@ import { GET_BASE_CI_TYPE } from '@/graphql/queries'
 import type { ValueColor } from '@opengraphity/types'
 import { vocabularyValueStyle, type ValueStyle } from '@/lib/domainStyle'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
+import { humanizeValue } from '@opengraphity/web-core'
 
 interface BaseCITypeData {
   baseCIType: {
@@ -59,13 +60,14 @@ export function useCIBaseEnums(): CIBaseEnums {
   }, [data, loading, error])
 }
 
-/** "active" → "Active", "database_instance" → "Database Instance" */
-export function enumLabel(v: string): string {
-  return v.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-}
-
-export function toEnumOptions(values: string[]): { value: string; label: string }[] {
-  return values.map((v) => ({ value: v, label: enumLabel(v) }))
+/**
+ * The options of a vocabulary field: the Dictionary label when there is one,
+ * otherwise the value as `humanizeValue` shows it (D29, tour of 23 Sep 2026:
+ * «in_progress» → «In progress», and a value written as a sentence stays as
+ * it is — it used to become «Pick Up At The IT Desk»).
+ */
+export function toEnumOptions(values: readonly string[], labelOf?: (value: string) => string | null | undefined): { value: string; label: string }[] {
+  return values.map((v) => ({ value: v, label: labelOf?.(v) || humanizeValue(v) }))
 }
 
 // ── Palette stato CI (unica: prima solo TopologyPage la coloriva) ────────────

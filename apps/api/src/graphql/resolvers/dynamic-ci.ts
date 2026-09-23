@@ -184,7 +184,7 @@ function buildBlastRadiusResolver(types: CITypeWithDefinitions[]) {
       const relPattern = await impactRelPatternForTenant(ctx.tenantId)
       const r = await session.executeRead(tx =>
         tx.run(
-          `MATCH (root {id: $id, tenant_id: $tenantId})
+          `MATCH (root:ConfigurationItem {id: $id, tenant_id: $tenantId})
            MATCH path = (root)<-[:${relPattern}*1..5]-(impacted)
            WHERE impacted.tenant_id = $tenantId
            WITH impacted, min(length(path)) AS distance, collect(path) AS paths

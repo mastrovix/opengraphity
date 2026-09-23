@@ -24,6 +24,7 @@ import { downloadFile } from '@/lib/downloadPdf'
 import type { ReportSectionInput } from '@/components/ReportSectionBuilder'
 import { colors, palette } from '@/lib/tokens'
 import { showError } from '@/lib/showError'
+import { reloadQueries } from '@/lib/reloadQueries'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -72,32 +73,79 @@ export const labelStyle: React.CSSProperties = { fontSize: 'var(--font-size-body
 export const btnPrimary: React.CSSProperties = { padding: '8px 18px', borderRadius: 7, border: 'none', background: 'var(--color-brand)', color: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 600 }
 export const btnGhost: React.CSSProperties  = { padding: '8px 14px', borderRadius: 7, border: '1px solid var(--color-border)', background: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }
 
-// ── Hook ───────────────────────────────────────────────────────────────────────
+// ── Parts of the hook: the run, the settings ───────────────────────────────────
 
-export function useCustomReports() {
-  // `t` NON si rinomina: con l'alias le sue chiavi erano invisibili a
-  // `scripts/check-i18n.mjs`, che ora segnala l'alias come errore.
-  const { t, i18n } = useTranslation()
+/**
+ * The frequency a saved schedule opens with: its preset, or «Custom» with the
+ * cron in its box. A report saved with no cron opens on the default, every
+ * day at 9:00.
+ */
+function frequencyOfCron(saved: string | null): { cron: string; preset: string; customCron: string } {
+  const cron = saved ?? '0 9 * * *'
+  const preset = SCHEDULE_PRESETS.some((p) => p.value === cron) ? cron : '__custom__'
+  return { cron, preset, customCron: preset === '__custom__' ? cron : '' }
+}
+
+/** Running a report, and the results of its last run on screen. */
+function useReportRun() {
+  const { i18n } = useTranslation()
   // V-20: le etichette dei valori seguono la lingua di chi legge il report
   const language = i18n.resolvedLanguage ?? i18n.language
-  const confirm = useConfirm()
-  const [view,           setView]           = useState<View>('list')
-  const [selectedId,     setSelectedId]     = useState<string | null>(null)
-  const [editSection,    setEditSection]    = useState<ReportSection | null>(null)
   const [sectionResults, setSectionResults] = useState<Record<string, SectionResult>>({})
-  const [showNewDialog,  setShowNewDialog]  = useState(false)
-  const [menuOpenId,     setMenuOpenId]     = useState<string | null>(null)
-  const [schedulePreset, setSchedulePreset] = useState('0 9 * * *')
-  const [customCron,     setCustomCron]     = useState('')
-  const menuRef = useRef<HTMLDivElement>(null)
+  const [runExecute, { loading: execLoading, error: execError }] = useLazyQuery<{ executeReport: { sections: SectionResult[] } }>(
+    EXECUTE_REPORT, { fetchPolicy: 'network-only' },
+  )
 
-  // ── New template form state ────────────────────────────────────────────────
-  const [newName,    setNewName]    = useState('')
-  const [newDesc,    setNewDesc]    = useState('')
-  const [newVis,     setNewVis]     = useState('private')
-  const [newTeamIds, setNewTeamIds] = useState<string[]>([])
+  /**
+   * The results on screen belong to ONE run, and they come from that run's own
+   * answer (tour of 23 Sep 2026). They used to be filled by an effect on the
+   * query's data, and Apollo 4 hands back the SAME object for an identical
+   * answer: running a report again left every section on «Click ▶ Run». Every
+   * run, and every report opened, takes a new number here; an answer that
+   * arrives when its number is no longer the last one is not shown.
+   */
+  const runRef = useRef(0)
 
-  // ── Settings form state ────────────────────────────────────────────────────
+  function clearResults() {
+    runRef.current++
+    setSectionResults({})
+  }
+
+  async function runReport(templateId: string) {
+    clearResults()
+    const run = runRef.current
+    // A failed run is reported by the `execError` effect below; a run that a
+    // newer one replaced is aborted by Apollo, and there is nothing to say.
+    const res = await runExecute({ variables: { templateId, language } }).catch(() => null)
+    if (!res || run !== runRef.current) return
+    const map: Record<string, SectionResult> = {}
+    for (const s of res.data?.executeReport?.sections ?? []) {
+      if (s?.sectionId) map[s.sectionId] = s
+    }
+    setSectionResults(map)
+  }
+
+  useEffect(() => {
+    if (execError) showError(execError)
+  }, [execError])
+
+  return { sectionResults, execLoading, clearResults, runReport }
+}
+
+/**
+ * The settings of a report: its name, who sees it, and the schedule that sends
+ * it. The form is filled in from the report as it is saved, and saved in its
+ * two parts, in order.
+ */
+function useReportSettings({ selectedId, refetch, onSaved }: {
+  /** The report the settings are saved into. */
+  selectedId: string | null
+  /** Reloads the list of reports. */
+  refetch: () => Promise<unknown>
+  /** Called once both parts are saved. */
+  onSaved: () => void
+}) {
+  const { t } = useTranslation()
   const [settingsName,        setSettingsName]        = useState('')
   const [settingsDesc,        setSettingsDesc]        = useState('')
   const [settingsVis,         setSettingsVis]         = useState('private')
@@ -108,6 +156,130 @@ export function useCustomReports() {
   const [settingsRecipients,  setSettingsRecipients]  = useState<string[]>([])
   const [recipientInput,      setRecipientInput]      = useState('')
   const [settingsFormat,      setSettingsFormat]      = useState<'pdf' | 'excel'>('pdf')
+  const [schedulePreset,      setSchedulePreset]      = useState('0 9 * * *')
+  const [customCron,          setCustomCron]          = useState('')
+
+  /**
+   * La vista si chiude quando il salvataggio è COMPLETO, non a metà (revisione
+   * totale · G-23): `onCompleted` faceva `setView('detail')` subito, e il
+   * salvataggio delle impostazioni è DUE mutation in fila — se la seconda
+   * (pianificazione, destinatari, formato) falliva, la scheda era già chiusa
+   * con nome e visibilità salvati e il resto no, con un toast d'errore su una
+   * pagina che non mostrava più il form. Ora chiude `handleSaveSettings`,
+   * dopo entrambe.
+   *
+   * The list is reloaded there too, once the schedule is saved (23 Sep 2026):
+   * the list now carries the recipients and the format, and a reload sent
+   * between the two mutations could answer with the old ones after the
+   * schedule's own answer — the next save would have written them back.
+   */
+  const [updateTemplate, { loading: updating }] = useMutation(UPDATE_REPORT_TEMPLATE, {
+    onError: (e) => showError(e),
+  })
+  const [updateReportSchedule] = useMutation(UPDATE_REPORT_SCHEDULE)
+
+  function fillSettings(tpl: ReportTemplate) {
+    setSettingsName(tpl.name)
+    setSettingsDesc(tpl.description ?? '')
+    setSettingsVis(tpl.visibility)
+    setSettingsTeamIds(tpl.sharedWith.map(x => x.id))
+    setSettingsSched(tpl.scheduleEnabled)
+    // The frequency shown is the one saved: its preset, or «Custom» with the
+    // cron in its box. Both were left as the previous report had them, so a
+    // report scheduled every Monday opened on «Every day at 9:00».
+    const frequency = frequencyOfCron(tpl.scheduleCron)
+    setSettingsSchedCron(frequency.cron)
+    setSchedulePreset(frequency.preset)
+    setCustomCron(frequency.customCron)
+    setSettingsChanId(tpl.scheduleChannelId ?? '')
+    setSettingsRecipients(tpl.scheduleRecipients ?? [])
+    setSettingsFormat((tpl.scheduleFormat as 'pdf' | 'excel') ?? 'pdf')
+    setRecipientInput('')
+  }
+
+  const handleSaveSettings = async () => {
+    if (!selectedId) return
+    const effectiveCron = schedulePreset === '__custom__' ? customCron : settingsSchedCron
+    // «Custom» with no cron typed saved an empty cron: a schedule that never
+    // runs, shown as enabled (tour of 23 Sep 2026). Nothing is saved.
+    if (settingsSched && !effectiveCron.trim()) {
+      toast.error(t('toast.report.cronRequired'))
+      return
+    }
+    let templateSaved = false
+    try {
+      await updateTemplate({
+        variables: {
+          id: selectedId,
+          input: {
+            name:        settingsName,
+            description: settingsDesc || null,
+            visibility:  settingsVis,
+            sharedWithTeamIds: settingsVis === 'groups' ? settingsTeamIds : [],
+            scheduleEnabled:   settingsSched,
+            scheduleCron:      settingsSched ? effectiveCron : null,
+            scheduleChannelId: settingsSched && settingsChanId ? settingsChanId : null,
+          },
+        },
+      })
+      templateSaved = true
+      await updateReportSchedule({
+        variables: {
+          templateId: selectedId,
+          enabled:    settingsSched,
+          cron:       settingsSched ? effectiveCron : null,
+          recipients: settingsSched ? settingsRecipients : [],
+          format:     settingsFormat,
+        },
+      })
+      // G-23: solo qui, quando ENTRAMBE sono passate.
+      onSaved()
+    } catch (err: unknown) {
+      showError(err, err instanceof Error ? err.message : t('toast.report.saveFailed'))
+    } finally {
+      // After the schedule, never between the two (see `updateTemplate`).
+      if (templateSaved) void refetch()
+    }
+  }
+
+  return {
+    settingsName, setSettingsName,
+    settingsDesc, setSettingsDesc,
+    settingsVis, setSettingsVis,
+    settingsTeamIds, setSettingsTeamIds,
+    settingsSched, setSettingsSched,
+    settingsSchedCron, setSettingsSchedCron,
+    settingsChanId, setSettingsChanId,
+    settingsRecipients, setSettingsRecipients,
+    recipientInput, setRecipientInput,
+    settingsFormat, setSettingsFormat,
+    schedulePreset, setSchedulePreset,
+    customCron, setCustomCron,
+    updating,
+    fillSettings,
+    handleSaveSettings,
+  }
+}
+
+// ── Hook ───────────────────────────────────────────────────────────────────────
+
+export function useCustomReports() {
+  // `t` NON si rinomina: con l'alias le sue chiavi erano invisibili a
+  // `scripts/check-i18n.mjs`, che ora segnala l'alias come errore.
+  const { t } = useTranslation()
+  const confirm = useConfirm()
+  const [view,           setView]           = useState<View>('list')
+  const [selectedId,     setSelectedId]     = useState<string | null>(null)
+  const [editSection,    setEditSection]    = useState<ReportSection | null>(null)
+  const [showNewDialog,  setShowNewDialog]  = useState(false)
+  const [menuOpenId,     setMenuOpenId]     = useState<string | null>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  // ── New template form state ────────────────────────────────────────────────
+  const [newName,    setNewName]    = useState('')
+  const [newDesc,    setNewDesc]    = useState('')
+  const [newVis,     setNewVis]     = useState('private')
+  const [newTeamIds, setNewTeamIds] = useState<string[]>([])
 
   // Close menu on outside click
   useEffect(() => {
@@ -122,23 +294,12 @@ export function useCustomReports() {
   const { data, refetch } = useQuery<{ reportTemplates: ReportTemplate[] }>(GET_REPORT_TEMPLATES, { fetchPolicy: 'network-only' })
   const { data: channelsData } = useQuery<{ notificationChannels: Channel[] }>(GET_CHANNELS_SLIM)
   const { data: teamsData }    = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS_SLIM)
-  const [runExecute, { loading: execLoading, data: executeData, error: execError }] = useLazyQuery<{ executeReport: { sections: SectionResult[] } }>(
-    EXECUTE_REPORT, { fetchPolicy: 'network-only' },
-  )
+  const { sectionResults, execLoading, clearResults, runReport } = useReportRun()
 
-  useEffect(() => {
-    if (executeData?.executeReport) {
-      const map: Record<string, SectionResult> = {}
-      for (const s of executeData.executeReport.sections ?? []) {
-        if (s?.sectionId) map[s.sectionId] = s as SectionResult
-      }
-      setSectionResults(map)
-    }
-  }, [executeData])
-
-  useEffect(() => {
-    if (execError) showError(execError)
-  }, [execError])
+  // ── Settings form state ────────────────────────────────────────────────────
+  const { fillSettings, updating, handleSaveSettings, ...settingsForm } = useReportSettings({
+    selectedId, refetch, onSaved: () => setView('detail'),
+  })
 
   const templates: ReportTemplate[]           = data?.reportTemplates ?? []
   const channels: Channel[]                   = channelsData?.notificationChannels?.filter((c: Channel) => c.platform === 'slack') ?? []
@@ -147,20 +308,6 @@ export function useCustomReports() {
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   const [createTemplate, { loading: creating }] = useMutation(CREATE_REPORT_TEMPLATE, {
-    onError: (e) => showError(e),
-  })
-
-  /**
-   * La vista si chiude quando il salvataggio è COMPLETO, non a metà (revisione
-   * totale · G-23): `onCompleted` faceva `setView('detail')` subito, e il
-   * salvataggio delle impostazioni è DUE mutation in fila — se la seconda
-   * (pianificazione, destinatari, formato) falliva, la scheda era già chiusa
-   * con nome e visibilità salvati e il resto no, con un toast d'errore su una
-   * pagina che non mostrava più il form. Ora chiude `handleSaveSettings`,
-   * dopo entrambe.
-   */
-  const [updateTemplate, { loading: updating }] = useMutation(UPDATE_REPORT_TEMPLATE, {
-    onCompleted: () => { refetch() },
     onError: (e) => showError(e),
   })
 
@@ -183,7 +330,6 @@ export function useCustomReports() {
   const [exportExcel, { loading: exportingExcel }] = useMutation<{ exportReportExcel: string }>(EXPORT_REPORT_EXCEL, {
     onError: (e: { message: string }) => showError(e),
   })
-  const [updateReportSchedule] = useMutation(UPDATE_REPORT_SCHEDULE)
 
   /**
    * La mutation genera il file e restituisce il suo percorso `/api/reports/…`:
@@ -198,16 +344,19 @@ export function useCustomReports() {
     }
   }
 
+  // Apollo 4 rejects a refused export AFTER calling `onError`, which has
+  // already said why: without the catch the refusal was also an unhandled
+  // promise rejection (tour of 23 Sep 2026).
   async function handleExportPDF() {
     if (!selectedId) return
-    const res = await exportPDF({ variables: { templateId: selectedId } })
-    if (res.data?.exportReportPDF) await triggerDownload(res.data.exportReportPDF, 'report.pdf')
+    const res = await exportPDF({ variables: { templateId: selectedId } }).catch(() => null)
+    if (res?.data?.exportReportPDF) await triggerDownload(res.data.exportReportPDF, 'report.pdf')
   }
 
   async function handleExportExcel() {
     if (!selectedId) return
-    const res = await exportExcel({ variables: { templateId: selectedId } })
-    if (res.data?.exportReportExcel) await triggerDownload(res.data.exportReportExcel, 'report.xlsx')
+    const res = await exportExcel({ variables: { templateId: selectedId } }).catch(() => null)
+    if (res?.data?.exportReportExcel) await triggerDownload(res.data.exportReportExcel, 'report.xlsx')
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
@@ -215,23 +364,21 @@ export function useCustomReports() {
   function resetNew() { setNewName(''); setNewDesc(''); setNewVis('private'); setNewTeamIds([]) }
 
   function openSettings(tpl: ReportTemplate) {
-    setSettingsName(tpl.name)
-    setSettingsDesc(tpl.description ?? '')
-    setSettingsVis(tpl.visibility)
-    setSettingsTeamIds(tpl.sharedWith.map(x => x.id))
-    setSettingsSched(tpl.scheduleEnabled)
-    setSettingsSchedCron(tpl.scheduleCron ?? '0 9 * * *')
-    setSettingsChanId(tpl.scheduleChannelId ?? '')
-    setSettingsRecipients(tpl.scheduleRecipients ?? [])
-    setSettingsFormat((tpl.scheduleFormat as 'pdf' | 'excel') ?? 'pdf')
-    setRecipientInput('')
+    // The settings are of THIS report, also when opened from a card's menu in
+    // the list (tour of 23 Sep 2026): the report was not selected, so the page
+    // went blank, or showed and saved into the report opened before.
+    if (tpl.id !== selectedId) {
+      setSelectedId(tpl.id)
+      clearResults()
+    }
+    fillSettings(tpl)
     setMenuOpenId(null)
     setView('settings')
   }
 
   function goToDetail(tpl: ReportTemplate) {
     setSelectedId(tpl.id)
-    setSectionResults({})
+    clearResults()
     setView('detail')
     setMenuOpenId(null)
   }
@@ -246,7 +393,7 @@ export function useCustomReports() {
     const copy = res?.data?.duplicateReportTemplate
     if (!copy) return  // errore già notificato da onError
     toast.success(t('toast.report.duplicated', { name: copy.name, count: copy.sections.length }))
-    await refetch()
+    reloadQueries(refetch)
   }
 
   function sectionToInput(s: ReportSection): ReportSectionInput {
@@ -279,40 +426,6 @@ export function useCustomReports() {
     updateSection({ variables: { sectionId: editSection.id, input } })
   }
 
-  const handleSaveSettings = async () => {
-    if (!selectedId) return
-    const effectiveCron = schedulePreset === '__custom__' ? customCron : settingsSchedCron
-    try {
-      await updateTemplate({
-        variables: {
-          id: selectedId,
-          input: {
-            name:        settingsName,
-            description: settingsDesc || null,
-            visibility:  settingsVis,
-            sharedWithTeamIds: settingsVis === 'groups' ? settingsTeamIds : [],
-            scheduleEnabled:   settingsSched,
-            scheduleCron:      settingsSched ? effectiveCron : null,
-            scheduleChannelId: settingsSched && settingsChanId ? settingsChanId : null,
-          },
-        },
-      })
-      await updateReportSchedule({
-        variables: {
-          templateId: selectedId,
-          enabled:    settingsSched,
-          cron:       settingsSched ? effectiveCron : null,
-          recipients: settingsSched ? settingsRecipients : [],
-          format:     settingsFormat,
-        },
-      })
-      // G-23: solo qui, quando ENTRAMBE sono passate.
-      setView('detail')
-    } catch (err: unknown) {
-      showError(err, err instanceof Error ? err.message : t('toast.report.saveFailed'))
-    }
-  }
-
   async function handleCreateTemplate() {
     const result = await createTemplate({ variables: { input: { name: newName, description: newDesc || null, visibility: newVis, sharedWithTeamIds: newVis === 'groups' ? newTeamIds : [] } } }).catch(() => null)
     const id = (result?.data as { createReportTemplate: { id: string } } | undefined)?.createReportTemplate?.id
@@ -321,7 +434,9 @@ export function useCustomReports() {
       // aperto e il form non viene resettato — niente falso successo.
       return
     }
-    await refetch()
+    // The report exists: a list that cannot be reloaded must not keep the dialog
+    // open — a second click made a duplicate (tour of 23 Sep 2026).
+    await refetch().catch((e: unknown) => { showError(e) })
     setSelectedId(id); setView('detail')
     setShowNewDialog(false); resetNew()
   }
@@ -336,16 +451,13 @@ export function useCustomReports() {
   }
 
   function handleExecuteAndGoToDetail(tpl: ReportTemplate) {
-    setSelectedId(tpl.id)
-    setSectionResults({})
-    runExecute({ variables: { templateId: tpl.id, language } })
     goToDetail(tpl)
+    void runReport(tpl.id)
   }
 
   function handleExecuteSelected() {
     if (!selected) return
-    setSectionResults({})
-    runExecute({ variables: { templateId: selected.id, language } })
+    void runReport(selected.id)
   }
 
   function startEditSection(sec: ReportSection) {
@@ -378,19 +490,8 @@ export function useCustomReports() {
     newTeamIds, setNewTeamIds,
     // Menu
     menuOpenId, setMenuOpenId,
-    // Settings state
-    settingsName, setSettingsName,
-    settingsDesc, setSettingsDesc,
-    settingsVis, setSettingsVis,
-    settingsTeamIds, setSettingsTeamIds,
-    settingsSched, setSettingsSched,
-    settingsSchedCron, setSettingsSchedCron,
-    settingsChanId, setSettingsChanId,
-    settingsRecipients, setSettingsRecipients,
-    recipientInput, setRecipientInput,
-    settingsFormat, setSettingsFormat,
-    schedulePreset, setSchedulePreset,
-    customCron, setCustomCron,
+    // Settings state (see `useReportSettings`)
+    ...settingsForm,
     // Handlers
     openSettings,
     goToDetail,

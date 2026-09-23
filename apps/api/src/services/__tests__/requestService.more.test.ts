@@ -56,6 +56,8 @@ vi.mock('../../lib/ticketCustomFields.js', () => ({
   resolveCustomFieldWrites: vi.fn(() => ({ cf_cost_center: 'CC-1' })),
 }))
 vi.mock('../../lib/customFieldSteps.js', () => ({ creationStepContext: vi.fn(async () => null) }))
+// D56: the fulfilment group of the item takes the new request.
+vi.mock('../requestAssignment.js', () => ({ fulfilmentTeamOf: vi.fn(async () => null), assignRequestToTeam: vi.fn() }))
 
 const { createRequest } = await import('../requestService.js')
 const { runQuery } = await import('@opengraphity/neo4j')
@@ -64,6 +66,7 @@ const { publishEvent } = await import('../../lib/publishEvent.js')
 const { logger } = await import('../../lib/logger.js')
 const cf = await import('../../lib/catalogForm.js')
 const tcf = await import('../../lib/ticketCustomFields.js')
+const assignment = await import('../requestAssignment.js')
 
 const ctx = { tenantId: 'tenant-1', userId: 'user-1' }
 
@@ -183,5 +186,39 @@ describe('createRequest — no usable workflow', () => {
   it('says "none" when there was no category', async () => {
     vi.mocked(initialStepSelection).mockResolvedValue(null as never)
     await expect(createRequest({ title: 'T', priority: 'low' }, ctx)).rejects.toThrow('(category none)')
+  })
+})
+
+/*
+ * D56 (the owner's choice of 23 Sep 2026): a request from a catalog item is
+ * born assigned to the item's FULFILMENT GROUP — after `request.created`,
+ * like the incident's support group — and a failure there says that the
+ * request exists instead of inviting a second one.
+ */
+describe('createRequest — the fulfilment group of the item', () => {
+  it('takes the request, after request.created, with the item named in the note', async () => {
+    vi.mocked(assignment.fulfilmentTeamOf).mockResolvedValueOnce({ teamId: 'team-ful', itemName: 'New laptop' })
+    vi.mocked(assignment.assignRequestToTeam).mockResolvedValueOnce({ request: { id: 'sr-new', team: 'x' } as never, teamName: 'Desk', previousTeamName: null, unassignedUserName: null })
+    const out = await createRequest({ title: 'T', priority: 'low', catalogItemId: 'cat-1' }, ctx)
+    expect(assignment.fulfilmentTeamOf).toHaveBeenCalledWith('tenant-1', 'cat-1')
+    const [id, teamId, callCtx, opts] = vi.mocked(assignment.assignRequestToTeam).mock.calls[0]!
+    expect([teamId, callCtx, opts]).toEqual(['team-ful', ctx, { fromCatalogItem: 'New laptop' }])
+    expect(typeof id).toBe('string')
+    expect(vi.mocked(publishEvent).mock.calls[0]![0]).toBe('request.created')
+    expect(out).toEqual({ id: 'sr-new', team: 'x' })
+  })
+
+  it('an item without a group, or a request without an item, is born without a team', async () => {
+    await createRequest({ title: 'T', priority: 'low', catalogItemId: 'cat-1' }, ctx)
+    await createRequest({ title: 'T', priority: 'low' }, ctx)
+    expect(assignment.assignRequestToTeam).not.toHaveBeenCalled()
+    expect(assignment.fulfilmentTeamOf).toHaveBeenCalledTimes(1)
+  })
+
+  it('a failed assignment says that the request exists and what did not happen', async () => {
+    vi.mocked(assignment.fulfilmentTeamOf).mockResolvedValueOnce({ teamId: 'team-ful', itemName: 'New laptop' })
+    vi.mocked(assignment.assignRequestToTeam).mockRejectedValueOnce(new Error('neo4j down'))
+    await expect(createRequest({ title: 'T', priority: 'low', catalogItemId: 'cat-1' }, ctx))
+      .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.serviceRequest.createdButNotAssigned' } } })
   })
 })

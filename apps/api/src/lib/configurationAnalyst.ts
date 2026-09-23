@@ -8,7 +8,7 @@
  *
  * `tipo_accesso_applicativo` con i valori `lettura, scrittura,
  * amministratore` va mostrato in inglese a chi ha scelto l'inglese, e nessun
- * algoritmo lo ricava: `titleCase('lettura')` dà «Lettura», che in inglese
+ * algoritmo lo ricava: `humanizeValue('lettura')` dà «Lettura», che in inglese
  * non vuol dire niente.
  *
  * ## La differenza con gli altri due analisti

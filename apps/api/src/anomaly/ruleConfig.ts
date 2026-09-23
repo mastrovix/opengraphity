@@ -65,6 +65,8 @@ export interface AnomalyRuleConfig extends AnomalyRuleSettings {
 export interface AnomalyRuleSpec {
   ciTypes:            boolean
   relations:          boolean
+  /** An empty list of relations means every relation between CIs of the tenant (resolved when the rule runs). */
+  allRelationsWhenEmpty?: boolean
   threshold:          { min: number; max: number } | null
   incidentSeverities: boolean
   forbidden:          boolean
@@ -78,7 +80,7 @@ export const ANOMALY_RULE_SPECS: Readonly<Record<AnomalyRuleKey, AnomalyRuleSpec
   missing_owner:         { ciTypes: true,  relations: false, threshold: null,                 incidentSeverities: false, forbidden: false },
   unauthorized_relation: { ciTypes: false, relations: false, threshold: null,                 incidentSeverities: false, forbidden: true },
   /** I tipi sono i CANDIDATI da cui si cerca il cluster; la soglia è quanti CI al massimo raggiunge. */
-  isolated_cluster:      { ciTypes: true,  relations: true,  threshold: { min: 1, max: 50 },   incidentSeverities: false, forbidden: false },
+  isolated_cluster:      { ciTypes: true,  relations: true,  allRelationsWhenEmpty: true, threshold: { min: 1, max: 50 }, incidentSeverities: false, forbidden: false },
   risk_concentration:    { ciTypes: true,  relations: false, threshold: { min: 1, max: 1000 }, incidentSeverities: true,  forbidden: false },
 }
 
@@ -91,7 +93,16 @@ export const FACTORY_ANOMALY_RULES: Readonly<Record<AnomalyRuleKey, AnomalyRuleS
   dependency_cycle:      { ...empty, enabled: true, severity: 'high', relations: ['DEPENDS_ON'], threshold: 6 },
   missing_owner:         { ...empty, enabled: true, severity: 'low' },
   unauthorized_relation: { ...empty, enabled: true, severity: 'medium', forbidden: [{ fromType: 'server', relation: 'DEPENDS_ON', toType: 'application' }] },
-  isolated_cluster:      { ...empty, enabled: true, severity: 'medium', ciTypes: ['application', 'certificate'], relations: ['DEPENDS_ON', 'HOSTED_ON', 'INSTALLED_ON', 'USES_CERTIFICATE'], threshold: 5 },
+  /*
+   * Tour of 23 Sep 2026 (D49): «cut off from the main graph» was measured on
+   * four relation types only, so an application whose link to the rest of the
+   * CMDB is a REALIZES or a capability looked isolated, and so did every
+   * certificate next to it — 486 anomalies on the demo tenant, 3 of them
+   * real. The cluster is now searched on every relation between CIs, from the
+   * applications (a certificate always sits next to what it secures: flagging
+   * it too repeats the same cluster).
+   */
+  isolated_cluster:      { ...empty, enabled: true, severity: 'medium', ciTypes: ['application'], relations: [], threshold: 5 },
   risk_concentration:    { ...empty, enabled: true, severity: 'high', threshold: 5, incidentSeverities: ['critical'] },
 }
 
@@ -164,7 +175,7 @@ export function assertAnomalyRuleSettings(ruleKey: AnomalyRuleKey, raw: unknown,
 
   const relations = stringList(obj['relations'] ?? [], ruleKey, 'relations')
   if (!spec.relations && relations.length) fail(ruleKey, 'this rule does not follow relations', 'notApplicable', { field: 'relations' })
-  if (spec.relations && relations.length === 0) fail(ruleKey, 'choose at least one relation to follow', 'relationsRequired')
+  if (spec.relations && relations.length === 0 && !spec.allRelationsWhenEmpty) fail(ruleKey, 'choose at least one relation to follow', 'relationsRequired')
   for (const r of relations) {
     if (!RELATIONSHIP_TYPE_RE.test(r) || !relationNames.has(r)) fail(ruleKey, `"${r}" is not a relation of this tenant`, 'unknownRelation', { value: r })
   }

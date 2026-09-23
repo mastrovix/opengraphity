@@ -1,11 +1,12 @@
 import { useEffect, useRef, useMemo } from 'react'
-import { useTranslation } from 'react-i18next'
 import * as d3 from 'd3'
-import { lookupOrError, alpha, colors, palette } from '@/lib/tokens'
-import { buildTypeIconMap, iconKeyForType } from '@/lib/ciIconPaths'
-import { CIIcon } from '@/lib/ciIcon'
+import { colors, palette } from '@/lib/tokens'
+import { BROKEN_ICON_COLOR, buildTypeIconMap, iconKeyForType } from '@/lib/ciIconPaths'
+import { humanizeValue } from '@opengraphity/web-core'
+import { linkDistance, type CITypeRelations } from './relationDistance'
+import { NODE_COLOR, EDGE_COLOR, HEALTH_COLOR } from './topologyStyle'
 import {
-  GRAPH_FONT, appendArrowMarker, appendIcon, attachZoom, linkEndpoints, nodeDrag, styleText, truncate,
+  appendArrowMarker, appendIcon, attachZoom, linkEndpoints, nodeDrag, styleText, truncate,
 } from '@/lib/d3/graphPrimitives'
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -36,7 +37,7 @@ export interface TopologyEdge {
   type:   string
 }
 
-export interface CITypeMeta {
+export interface CITypeMeta extends CITypeRelations {
   name:  string
   label: string
   icon:  string
@@ -58,15 +59,7 @@ interface Props {
 // ── Color constants ───────────────────────────────────────────────────────────
 
 const NODE_RADIUS  = 16
-const NODE_COLOR   = 'var(--color-slate)'   // ardesia — uguale per tutti i tipi CI
-const EDGE_COLOR   = 'var(--color-trigger-manual)'   // cyan — uguale per tutti i tipi relazione
 const NODE_SELECTED_COLOR = palette.orange.base  // arancione — nodo evidenziato
-
-/** Colori della salute (stessa palette di CIHealthBadge in pages/events/eventShared). */
-export const HEALTH_COLOR: Record<string, { stroke: string; fill: string }> = {
-  down:     { stroke: palette.danger.dark, fill: palette.danger.tint },
-  degraded: { stroke: palette.warning.dark, fill: palette.warning.tint },
-}
 
 /** Bordo del nodo: salute (se evidenziata) > anelli incident/change (bordo assente) > ardesia. */
 function nodeStroke(d: TopologyNode, highlightHealth: boolean): string {
@@ -82,8 +75,14 @@ function nodeFill(d: TopologyNode, rootNodeId: string | null | undefined, highli
   return d.id === rootNodeId ? EDGE_COLOR : colors.white
 }
 
-const EDGE_DIST: Record<string, number> = {
-  HOSTED_ON: 80, DEPENDS_ON: 120, CONNECTS_TO: 100,
+/** The border drawn: the selected CI is outlined in orange — never the root, which the whole map is about. */
+function nodeOutline(d: TopologyNode, highlightNodeId: string | null | undefined, rootNodeId: string | null | undefined, highlightHealth: boolean): string {
+  return d.id === highlightNodeId && highlightNodeId !== rootNodeId ? NODE_SELECTED_COLOR : nodeStroke(d, highlightHealth)
+}
+
+/** Icon colour, read off the background under it: white on the root's cyan, slate on white or on a health colour. */
+function iconColor(d: TopologyNode, rootNodeId: string | null | undefined, highlightHealth: boolean): string {
+  return nodeFill(d, rootNodeId, highlightHealth) === EDGE_COLOR ? colors.white : NODE_COLOR
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -91,7 +90,6 @@ const EDGE_DIST: Record<string, number> = {
 
 const r   = NODE_RADIUS
 const ec  = () => EDGE_COLOR
-const ed  = (t: string) => lookupOrError(EDGE_DIST, t, 'EDGE_DIST', 110)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const nid = (x: any)   => typeof x === 'object' ? (x as { id: string }).id : String(x)
 
@@ -135,6 +133,37 @@ function drawStatusRings(nodeEl: d3.Selection<SVGGElement, SimNode, SVGGElement,
     .attr('stroke', 'var(--color-trigger-sla-breach)').attr('stroke-width', 3).attr('pointer-events', 'none')
 }
 
+/**
+ * Repaints the icons in place when the background under them changes colour
+ * without a redraw («highlight health», a poll). The red «?» of a type with no
+ * icon in the metamodel keeps its colour: it reports a gap, not a state.
+ */
+function paintIcons(nodeEl: d3.Selection<SVGGElement, SimNode, SVGGElement, unknown>, rootNodeId: string | null | undefined, highlightHealth: boolean): void {
+  nodeEl.each(function(d) {
+    d3.select(this).selectAll<SVGElement, unknown>('.node-icon > *')
+      .filter(function() { return this.getAttribute('stroke') !== BROKEN_ICON_COLOR })
+      .attr('stroke', iconColor(d, rootNodeId, highlightHealth))
+  })
+}
+
+/**
+ * What a poll refreshes in place on a CI already on the map: everything but
+ * `id` and `type`, which only a redraw changes. `satisfies` makes a new field
+ * of TopologyNode a compile error until it is listed here — the comparison
+ * written out by hand had left `inMaintenance` out.
+ */
+const REFRESHED_ON_POLL = {
+  name: true, status: true, inMaintenance: true, environment: true, ownerGroup: true,
+  incidentCount: true, changeCount: true, health: true,
+} as const satisfies Record<Exclude<keyof TopologyNode, 'id' | 'type'>, true>
+
+/** Copies one field of the poll onto the datum the drawing reads; true when it changed. */
+function refreshField<K extends keyof TopologyNode>(d: TopologyNode, fresh: TopologyNode, key: K): boolean {
+  if (d[key] === fresh[key]) return false
+  d[key] = fresh[key]
+  return true
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function TopologyGraph({
@@ -143,6 +172,8 @@ export default function TopologyGraph({
   // Letto dagli effetti che non devono ricostruire il grafo quando cambia.
   const highlightHealthRef = useRef(highlightHealth)
   highlightHealthRef.current = highlightHealth
+  const highlightNodeIdRef = useRef(highlightNodeId)
+  highlightNodeIdRef.current = highlightNodeId
 
   const containerRef = useRef<HTMLDivElement>(null)
   const simRef       = useRef<d3.Simulation<SimNode, SimLink> | null>(null)
@@ -240,7 +271,8 @@ export default function TopologyGraph({
         d3.forceLink<SimNode, SimLink>(simLinks)
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           .id((d: any) => d.id)
-          .distance((d) => ed(d.relType))
+          // D76: every relation type the metamodel declares has a distance; only undeclared ones are reported.
+          .distance(linkDistance(ciTypes))
           .strength(0.5),
       )
       .force('charge',    d3.forceManyBody<SimNode>().strength(-300))
@@ -265,7 +297,7 @@ export default function TopologyGraph({
       .attr('text-anchor', 'middle').attr('font-size', 9)
       .attr('fill', 'var(--color-slate-light)').attr('pointer-events', 'none')
       .style('display', 'none')
-      .text((d) => d.relType.replace(/_/g, ' '))
+      .text((d) => humanizeValue(d.relType))
 
     // ── Nodes ────────────────────────────────────────────────────────────────
     const nodeEl = g.append('g').attr('class', 'nodes')
@@ -295,8 +327,7 @@ export default function TopologyGraph({
 
     // Layer 5: icon — white on root node (cyan bg), slate on all others
     nodeEl.each(function(d) {
-      const iconColor = d.id === rootNodeId && !(highlightHealthRef.current && d.health && HEALTH_COLOR[d.health]) ? colors.white : NODE_COLOR
-      appendIcon(d3.select(this), iconKeyForType(typeIconMap, d.type), iconColor, 18)
+      appendIcon(d3.select(this), iconKeyForType(typeIconMap, d.type), iconColor(d, rootNodeId, highlightHealthRef.current), 18)
     })
 
     styleText(nodeEl.append('text'))
@@ -406,25 +437,19 @@ export default function TopologyGraph({
     nodeEl.each((d) => {
       const f = fresh.get(d.id)
       if (!f) return
-      if (d.incidentCount !== f.incidentCount || d.changeCount !== f.changeCount
-        || d.status !== f.status || d.name !== f.name || d.ownerGroup !== f.ownerGroup || d.environment !== f.environment
-        || d.health !== f.health) {
-        d.incidentCount = f.incidentCount
-        d.changeCount   = f.changeCount
-        d.status        = f.status
-        d.name          = f.name
-        d.ownerGroup    = f.ownerGroup
-        d.environment   = f.environment
-        d.health        = f.health
-        changed = true
+      for (const key of Object.keys(REFRESHED_ON_POLL) as (keyof typeof REFRESHED_ON_POLL)[]) {
+        if (refreshField(d, f, key)) changed = true
       }
     })
     if (!changed) return
     drawStatusRings(nodeEl)
     nodeEl.select<SVGCircleElement>('.node-bg')
       .attr('fill', (d) => nodeFill(d, rootNodeId, highlightHealthRef.current))
-      .attr('stroke', (d) => nodeStroke(d, highlightHealthRef.current))
+      // The selected CI keeps its orange outline through the poll.
+      .attr('stroke', (d) => nodeOutline(d, highlightNodeIdRef.current, rootNodeId, highlightHealthRef.current))
       .attr('opacity', (d) => d.inMaintenance ? 0.65 : 1)
+    // A root whose health changed under «highlight health» changes background: its icon follows.
+    paintIcons(nodeEl, rootNodeId, highlightHealthRef.current)
     nodeEl.select<SVGTextElement>('.node-label')
       .text((d) => nodeLabel(d, rootNodeId))
   }, [nodes, rootNodeId])
@@ -436,27 +461,27 @@ export default function TopologyGraph({
     if (!nodeEl) return
     nodeEl.select<SVGCircleElement>('.node-bg')
       .attr('fill', (d) => nodeFill(d, rootNodeId, highlightHealth))
-      .attr('stroke', (d) => d.id === highlightNodeId && highlightNodeId !== rootNodeId ? NODE_SELECTED_COLOR : nodeStroke(d, highlightHealth))
+      .attr('stroke', (d) => nodeOutline(d, highlightNodeId, rootNodeId, highlightHealth))
+    // The root's icon follows its background: white on cyan, slate on the red of a CI down.
+    paintIcons(nodeEl, rootNodeId, highlightHealth)
   }, [highlightHealth, rootNodeId, highlightNodeId])
 
   // ── Highlight effect (no rebuild) ─────────────────────────────────────────
+  // Also run after every redraw (`snap`): a redrawn map starts plain, and the
+  // selection's outline and fading used to be lost until the selection changed.
   useEffect(() => {
     const nodeEl = nodeElRef.current
     const linkEl = linkElRef.current
     if (!nodeEl || !linkEl) return
 
-    if (!highlightNodeId) {
+    // Nothing selected, or the root, which the whole map is about: nothing
+    // stands out, and a CI selected before gets its size and border back.
+    if (!highlightNodeId || highlightNodeId === rootNodeId) {
       nodeEl.style('opacity', 1)
       nodeEl.select<SVGCircleElement>('.node-bg')
         .attr('stroke-width', 2.5)
         .attr('stroke', (n) => nodeStroke(n, highlightHealthRef.current))
         .attr('r', r)
-      linkEl.attr('stroke-opacity', 0.5).attr('stroke-width', 1.5)
-      return
-    }
-
-    if (highlightNodeId === rootNodeId) {
-      nodeEl.style('opacity', 1)
       linkEl.attr('stroke-opacity', 0.5).attr('stroke-width', 1.5)
       return
     }
@@ -481,7 +506,7 @@ export default function TopologyGraph({
         nid(l.source) === highlightNodeId || nid(l.target) === highlightNodeId ? 0.85 : 0.06)
       .attr('stroke-width', (l) =>
         nid(l.source) === highlightNodeId || nid(l.target) === highlightNodeId ? 2.5 : 1)
-  }, [highlightNodeId, rootNodeId])
+  }, [highlightNodeId, rootNodeId, snap])
 
   return (
     <div
@@ -491,88 +516,6 @@ export default function TopologyGraph({
   )
 }
 
-// ── Legend ───────────────────────────────────────────────────────────────────
-
-function typeLabel(t: string): string {
-  return t.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-}
-
-interface LegendProps {
-  nodes:    TopologyNode[]
-  edges:    TopologyEdge[]
-  ciTypes?: CITypeMeta[]
-  /** Mostra la voce "Salute" (down/degraded) quando l'evidenziazione è attiva. */
-  highlightHealth?: boolean
-}
-
-export function TopologyLegend({ nodes, edges, ciTypes, highlightHealth = false }: LegendProps) {
-  const { t } = useTranslation()
-  const presentNodeTypes = [...new Set(nodes.map((n) => n.type))].sort()
-  const presentEdgeTypes = [...new Set(edges.map((e) => e.type))].sort()
-
-  // Icon lookup by CI type (color is uniform) — stesso registro dei nodi
-  const typeIconMap = buildTypeIconMap(ciTypes ?? [])
-
-  return (
-    <div style={{
-      position: 'absolute', bottom: 16, left: 16,
-      background: alpha.white92, backdropFilter: 'blur(4px)',
-      border: `1px solid ${colors.border}`, borderRadius: 8,
-      padding: '10px 14px', fontSize: 'var(--font-size-table)',
-      fontFamily: GRAPH_FONT,
-      boxShadow: `0 2px 8px ${alpha.black08}`, minWidth: 190,
-    }}>
-      <div style={{ fontWeight: 700, color: 'var(--color-slate-dark)', marginBottom: 8 }}>{t('components.topologyGraph.legend')}</div>
-
-      {presentNodeTypes.length > 0 && (
-        <div style={{ marginBottom: 6 }}>
-          <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-label)', fontWeight: 600, marginBottom: 4, textTransform: 'uppercase' }}>{t('components.topologyGraph.nodes')}</div>
-          {presentNodeTypes.map((type) => (
-            <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-              <CIIcon icon={iconKeyForType(typeIconMap, type)} size={14} color={NODE_COLOR} style={{ flexShrink: 0, margin: 1 }} />
-              <span style={{ color: 'var(--color-slate)' }}>{typeLabel(type)}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {presentEdgeTypes.length > 0 && (
-        <div style={{ marginBottom: 6 }}>
-          <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-label)', fontWeight: 600, marginBottom: 4, textTransform: 'uppercase' }}>{t('components.topologyGraph.edges')}</div>
-          {presentEdgeTypes.map((type) => (
-            <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-              <svg width={20} height={8}>
-                <line x1={0} y1={4} x2={20} y2={4} stroke={EDGE_COLOR} strokeWidth={2} strokeOpacity={0.7} />
-              </svg>
-              <span style={{ color: 'var(--color-slate)' }}>{typeLabel(type)}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {highlightHealth && (
-        <div style={{ marginBottom: 6 }}>
-          <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-label)', fontWeight: 600, marginBottom: 4, textTransform: 'uppercase' }}>{t('components.topologyGraph.health')}</div>
-          {(['down', 'degraded'] as const).map((h) => (
-            <div key={h} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-              <svg width={16} height={16} aria-hidden="true"><circle cx={8} cy={8} r={5} fill={HEALTH_COLOR[h]!.fill} stroke={HEALTH_COLOR[h]!.stroke} strokeWidth={2} /></svg>
-              <span style={{ color: 'var(--color-slate)' }}>{t(h === 'down' ? 'components.topologyGraph.healthDown' : 'components.topologyGraph.healthDegraded')}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div>
-        <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-label)', fontWeight: 600, marginBottom: 4, textTransform: 'uppercase' }}>{t('components.topologyGraph.signals')}</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-          <svg width={16} height={16} aria-hidden="true"><circle cx={8} cy={8} r={5} fill="none" stroke={palette.danger.dark} strokeWidth={2} /></svg>
-          <span style={{ color: 'var(--color-slate)' }}>{t('components.topologyGraph.activeIncident')}</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <svg width={16} height={16} aria-hidden="true"><circle cx={8} cy={8} r={5} fill="none" stroke={palette.purple.light} strokeWidth={1.5} /></svg>
-          <span style={{ color: 'var(--color-slate)' }}>{t('components.topologyGraph.changeInProgress')}</span>
-        </div>
-      </div>
-    </div>
-  )
-}
+// The legend lives in its own module (it has no D3): re-exported here for the pages that import it with the graph.
+export { TopologyLegend } from './TopologyLegend'
+export { HEALTH_COLOR } from './topologyStyle'

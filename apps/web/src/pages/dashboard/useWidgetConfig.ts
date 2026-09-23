@@ -190,11 +190,15 @@ export interface WidgetConfigState {
 interface UseWidgetConfigParams {
   dashboardId: string
   widget?:     CustomWidgetData | null
-  onClose:     () => void
   onSaved:     (widget: CustomWidgetData) => void
 }
 
-export function useWidgetConfig({ dashboardId, widget, onClose, onSaved }: UseWidgetConfigParams): WidgetConfigState {
+/**
+ * The state of the widget form. Closing — Escape included — is the dialog's
+ * job (`useDialogFocus` in WidgetConfigPanel), not the form's: with an Escape
+ * handler here too, one key press closed the dialog twice.
+ */
+export function useWidgetConfig({ dashboardId, widget, onSaved }: UseWidgetConfigParams): WidgetConfigState {
   const { t } = useTranslation()
   const isEdit = !!widget
 
@@ -305,13 +309,6 @@ export function useWidgetConfig({ dashboardId, widget, onClose, onSaved }: UseWi
       setSaving(false)
     }
   }
-
-  // Close on Escape
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [onClose])
 
   return {
     title, setTitle,

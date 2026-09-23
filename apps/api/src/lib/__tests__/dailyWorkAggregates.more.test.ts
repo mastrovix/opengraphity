@@ -25,7 +25,7 @@ vi.mock('@opengraphity/neo4j', () => ({ getSession: () => ({ close: h.close }) }
 vi.mock('../../graphql/resolvers/ci-utils.js', () => ({ runQuery: h.runQuery, runQueryOne: h.runQueryOne }))
 
 const {
-  copertura, azioniUmane, tempiNeiPassi, coppieRipetute, adozioneFunzioniAI, SOGLIE,
+  copertura, azioniUmane, tempiNeiPassi, coppieRipetute, adozioneFunzioniAI, SOGLIE, AI_AUDIT_ACTIONS,
 } = await import('../dailyWorkAggregates.js')
 
 beforeEach(() => {
@@ -158,12 +158,45 @@ describe('coppieRipetute', () => {
     ])
     expect((await coppieRipetute('t1')).map((c) => c.prima)).toEqual(['b.x', 'a.x'])
   })
+
+  /*
+   * D67 (tour of 23 Sep 2026): the pairs were a self-join of the audit log,
+   * one index lookup per entry — 2.4 s on the demo tenant. Grouping the
+   * entries of one person on one object first gives the same 57 pairs
+   * (compared row by row on the demo data) in 0.4 s.
+   */
+  it('groups the entries of one person on one object before pairing them, instead of joining the log with itself', async () => {
+    h.runQuery.mockResolvedValue([])
+    await coppieRipetute('t1')
+    const cypher = String(h.runQuery.mock.calls[0]![1])
+    expect(cypher).toContain('WITH entity, user, collect({action: a.action, at: a.created_at}) AS seq')
+    expect(cypher).toContain('UNWIND range(i + 1, size(seq) - 1) AS j')
+    expect(cypher).not.toContain('MATCH (b:AuditEntry')
+  })
 })
 
 describe('adozioneFunzioniAI', () => {
   it('returns the raw action as the feature, with numbers coerced', async () => {
-    h.runQuery.mockResolvedValue([{ action: 'kb_draft.generated', n: '3', autori: '2' }])
-    expect(await adozioneFunzioniAI('t1')).toEqual([{ feature: 'kb_draft.generated', n: 3, autoriDistinti: 2 }])
+    h.runQuery.mockResolvedValue([{ action: 'kb_article.drafted_by_ai', n: '3', autori: '2' }])
+    expect(await adozioneFunzioniAI('t1')).toEqual([{ feature: 'kb_article.drafted_by_ai', n: 3, autoriDistinti: 2 }])
     expect(h.close).toHaveBeenCalledTimes(1)
+  })
+
+  /*
+   * Tour of 23 Sep 2026: `CONTAINS 'ai'` counted taking a task («claimed»), a
+   * maintenance window and an e-mail preference as AI at work.
+   */
+  it('counts only the entries named as AI at work, never a substring of the action', async () => {
+    h.runQuery.mockResolvedValue([])
+    await adozioneFunzioniAI('t1')
+    const cypher = String(h.runQuery.mock.calls[0]![1])
+    const params = h.runQuery.mock.calls[0]![2] as Record<string, unknown>
+    expect(cypher).toContain('a.action IN $azioniAI')
+    expect(cypher).not.toContain('CONTAINS')
+    expect(params['azioniAI']).toEqual([...AI_AUDIT_ACTIONS])
+    for (const notAI of ['task.claimed', 'user.email_notifications.updated', 'mutation.createMaintenanceWindow', 'proposal.execution_failed', 'domain_matrix_updated']) {
+      expect(AI_AUDIT_ACTIONS).not.toContain(notAI)
+    }
+    expect(AI_AUDIT_ACTIONS).toContain('kb_article.drafted_by_ai')
   })
 })

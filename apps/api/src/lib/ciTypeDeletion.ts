@@ -47,7 +47,7 @@ const GROUP_LABEL = 'DynamicCIGroup'
  */
 export const CI_TYPE_DELETION_IMPACT_CYPHER = `
   CALL {
-    MATCH (ci {tenant_id: $tenantId}) WHERE $label IN labels(ci)
+    MATCH (ci:ConfigurationItem {tenant_id: $tenantId}) WHERE $label IN labels(ci)
     RETURN collect(ci) AS typeCIs
   }
   CALL {
@@ -144,7 +144,7 @@ export function assertCITypeHasNoCIsToHide(impact: CITypeDeletionImpact, type: {
  * l'anteprima letta nella stessa transazione.
  */
 export const DELETE_TYPE_CIS_CYPHER = `
-  MATCH (n {tenant_id: $tenantId}) WHERE $label IN labels(n)
+  MATCH (n:ConfigurationItem {tenant_id: $tenantId}) WHERE $label IN labels(n)
   OPTIONAL MATCH (a:CIAlias {tenant_id: $tenantId})-[:ALIAS_OF]->(n)
   OPTIONAL MATCH (n)-[:HAS_SERVICE_MAP]->(m:ServiceMap {tenant_id: $tenantId})
   OPTIONAL MATCH (m)-[:HAS_HEALTH_HISTORY]->(h:ServiceHealthEntry {tenant_id: $tenantId})

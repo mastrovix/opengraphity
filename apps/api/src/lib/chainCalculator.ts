@@ -39,7 +39,7 @@ export async function calculateChain(ciId: string, tenantId: string): Promise<st
   const session = getSession(undefined, 'WRITE')
   try {
     const result = await session.executeWrite(tx => tx.run(`
-      MATCH (ci {id: $ciId, tenant_id: $tenantId})
+      MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
       WITH ci, labels(ci) AS ciLabels
       UNWIND ciLabels AS lbl
       // La definizione del tipo si risolve come in tutto il resto del prodotto

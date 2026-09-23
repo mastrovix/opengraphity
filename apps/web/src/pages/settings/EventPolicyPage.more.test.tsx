@@ -33,6 +33,9 @@ const POLICY = {
   maintenanceStatuses: ['maintenance'],
   highImpactDependents: 5,
   severityMap: JSON.stringify(MAP),
+  // Severity outside production (alarm policy, 23 Sep 2026): off, production only.
+  productionEnvironments: ['production'],
+  nonProductionSeverityMap: null as string | null,
 }
 
 const matricesMock: GqlMock = {

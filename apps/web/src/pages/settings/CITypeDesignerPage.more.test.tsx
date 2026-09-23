@@ -524,8 +524,9 @@ describe('creating a type', () => {
     const r = renderWithProviders(<CITypeDesignerPage />)
     await r.user.click(screen.getByRole('button', { name: /New/ }))
     await r.user.click(screen.getByRole('button', { name: 'fake create' }))
+    // Apollo 4 rejects with the server's own error, after onError has shown it.
     await waitFor(() => expect(createOutcome.error).toBeInstanceOf(Error))
-    expect(String(createOutcome.error)).toContain('the type was not created')
+    expect(String(createOutcome.error)).toContain('name taken')
   })
 })
 

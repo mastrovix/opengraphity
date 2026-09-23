@@ -15,29 +15,15 @@ import { AlertTriangle } from 'lucide-react'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { StatusLabel } from '@/components/ui/badges'
 import { Pill } from '@/components/ui/Pill'
-import { formatDateTime, formatHourMinute, formatDate } from '@/lib/datetime'
+import { formatDate } from '@/lib/datetime'
 import { colors, palette } from '@/lib/tokens'
 import type { AffectedCI } from '@/types/change'
 import {
   barreDelPiano, contaPerTipo, riepilogoRilascio, taccheDelPiano, vociFiltrate,
   type FiltroDelPiano, type TipoFinestra, type VoceDiPiano,
 } from '../releasePlanSummary'
-
-/**
- * Una finestra come si legge: «21 set 2026, 22:00 → 23:30» quando comincia e
- * finisce nello stesso giorno, altrimenti entrambe le date per intero. Un
- * rilascio che scavalca la mezzanotte è la norma, e scriverlo «22:00 → 01:00»
- * lascerebbe credere che duri tre ore al contrario.
- */
-function finestraLeggibile(start: string, end: string): string {
-  // `formatHourMinute` e non `formatTime`: quest'ultima aggiunge i SECONDI, e
-  // «16:00:00» in una finestra di rilascio è rumore — nessuno pianifica al
-  // secondo (visto dal vivo il 18 set 2026, sullo stesso difetto già corretto
-  // nel calendario).
-  return formatDate(start) === formatDate(end)
-    ? `${formatDateTime(start)} → ${formatHourMinute(end)}`
-    : `${formatDateTime(start)} → ${formatDateTime(end)}`
-}
+// Shared with the preview of the calendar: the same window reads the same way in both.
+import { readableWindow } from '../readableWindow'
 
 /** Validazione e rilascio si distinguono a colpo d'occhio: sono due mestieri diversi. */
 function TipoPill({ tipo }: { tipo: TipoFinestra }) {
@@ -99,7 +85,7 @@ function GanttDelPiano({ voci }: { voci: readonly VoceDiPiano[] }) {
 
       {barre.map((b, i) => {
         const stile = b.voce.tipo === 'release' ? palette.purple : palette.info
-        const quando = finestraLeggibile(b.voce.start, b.voce.end)
+        const quando = readableWindow(b.voce.start, b.voce.end)
         return (
           <div key={`${b.voce.taskCode ?? b.voce.ciId}-${b.voce.tipo}-${String(i)}`}
             style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0' }}>
@@ -191,7 +177,7 @@ export function ReleasePlanCard({ affected }: { affected: readonly AffectedCI[] 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 14 }}>
         <Riquadro label={t('pages.releasePlan.envelope')}>
           {r.inviluppo
-            ? finestraLeggibile(r.inviluppo.start, r.inviluppo.end)
+            ? readableWindow(r.inviluppo.start, r.inviluppo.end)
             : <span style={{ color: colors.slateLight, fontWeight: 400 }}>{t('pages.releasePlan.noWindowYet')}</span>}
           {/* Quante finestre sono: «dal 21 al 25» da solo si legge come un
               fermo di quattro giorni. Se è un blocco unico non serve dirlo. */}
@@ -299,7 +285,7 @@ export function ReleasePlanCard({ affected }: { affected: readonly AffectedCI[] 
               {voci.map((v, i) => (
                 <tr key={`${v.taskCode ?? v.ciId}-${v.tipo}-${i}`} style={{ borderTop: '1px solid var(--color-border-light)' }}>
                   <td style={{ padding: '8px 10px', fontSize: 'var(--font-size-label)', color: 'var(--color-slate-dark)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
-                    {finestraLeggibile(v.start, v.end)}
+                    {readableWindow(v.start, v.end)}
                   </td>
                   <td style={{ padding: '8px 10px' }}><TipoPill tipo={v.tipo} /></td>
                   <td style={{ padding: '8px 10px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{v.stepTitle}</td>

@@ -20,7 +20,7 @@ function clampLimit(limit: unknown, def: number, max: number): number {
 }
 import { config } from '../lib/config.js'
 import { betaTool } from '@anthropic-ai/sdk/helpers/beta/json-schema'
-import { getSession, runQuery } from '@opengraphity/neo4j'
+import { getSession, runQuery, toNumber } from '@opengraphity/neo4j'
 import { getEmbedder, vectorIndexName } from './embeddings.js'
 import { aiDisabledError, aiFeatureEnabled } from '../lib/aiSettings.js'
 import { getAnthropic, registraChiamataFallita, registraDurata, registraRisposta } from '../lib/aiClient.js'
@@ -34,6 +34,9 @@ import { ciLabelsForTenant } from '../lib/ciLabelsForTenant.js'
 // (`completed`, `cancelled`) che nessun workflow produce.
 import { concludedStatusNames } from '../lib/statusStepNames.js'
 import { logger } from '../lib/logger.js'
+import { languageForUser } from '../lib/tenantLanguage.js'
+import { LANGUAGE_NAME_FOR_MODEL } from '../lib/systemText.js'
+import { localDateTimeIn, tenantTimezone } from '../lib/tenantTimezone.js'
 
 const log = logger.child({ module: 'assistant' })
 
@@ -75,16 +78,18 @@ function j(value: unknown): string {
 /** Detto al modello quando l'organizzazione ha spento gli embedding: la ricerca per significato non c'è. */
 const SEMANTIC_SEARCH_OFF = JSON.stringify({ error: 'Semantic search is turned off for this organization (embeddings disabled). Use lista_incident or cerca_ci instead.' })
 
-function buildTools(tenantId: string, permissions: ReadonlySet<Permission>) {
+function buildTools(tenantId: string, permissions: ReadonlySet<Permission>, timeZone: string) {
   const can = (p: Permission) => permissions.has(p)
+  /** Instants reach the model as wall-clock time in the organization's zone (D14), like in the drafts. */
+  const local = (v: unknown) => localDateTimeIn(typeof v === 'string' ? v : null, timeZone)
   const cercaIncident = betaTool({
     name: 'cerca_incident',
-    description: 'Ricerca semantica tra gli incident del tenant (storici e aperti). Usalo per trovare incident per argomento, sintomo o testo libero. Ritorna numero, titolo, stato, severity, team e score di similarità.',
+    description: 'Semantic search among the incidents of the organization (past and open). Use it to find incidents by topic, symptom or free text. Returns number, title, status, severity, team and a similarity score. It is a top-K search, not a count.',
     inputSchema: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'Testo libero da cercare' },
-        limit: { type: 'number', description: 'Max risultati (default 5)' },
+        query: { type: 'string', description: 'Free text to search for' },
+        limit: { type: 'number', description: 'Maximum results (default 5)' },
       },
       required: ['query'],
     },
@@ -110,7 +115,7 @@ function buildTools(tenantId: string, permissions: ReadonlySet<Permission>) {
 
   const dettaglioIncident = betaTool({
     name: 'dettaglio_incident',
-    description: 'Dettaglio completo di un incident dato il numero (es. INC00000012) o l\'id: descrizione, stato, team, CI impattati e ultimi commenti.',
+    description: 'Full detail of an incident by number (e.g. INC00000012) or id: description, status, team, impacted CIs and latest comments.',
     inputSchema: {
       type: 'object',
       properties: { numero_o_id: { type: 'string' } },
@@ -123,21 +128,25 @@ function buildTools(tenantId: string, permissions: ReadonlySet<Permission>) {
         WHERE i.number = $key OR i.id = $key
         OPTIONAL MATCH (i)-[:ASSIGNED_TO_TEAM]->(team:Team)
         OPTIONAL MATCH (i)-[:AFFECTED_BY]->(ci)
+        WITH i, team, collect(DISTINCT ci.name) AS cis
+        // The LATEST comments, as the description promises: the three were
+        // whichever the graph returned first.
         OPTIONAL MATCH (i)-[:HAS_COMMENT]->(c:Comment)
-        WITH i, team, collect(DISTINCT ci.name) AS cis,
-             collect(DISTINCT c.text)[..3] AS commenti
+        WITH i, team, cis, c ORDER BY c.created_at DESC
+        WITH i, team, cis, collect(c.text)[..3] AS commenti
         RETURN i.number AS numero, i.title AS titolo, i.description AS descrizione,
                i.status AS stato, i.severity AS severity, i.category AS categoria,
                i.created_at AS creato, i.resolved_at AS risolto,
                team.name AS team, cis AS ci_impattati, commenti
       `, { tenantId, key: numero_o_id })
-      return rows.length ? j(rows[0]) : j({ errore: `Incident ${numero_o_id} non trovato` })
+      const row = rows[0] as Record<string, unknown> | undefined
+      return row ? j({ ...row, creato: local(row['creato']), risolto: local(row['risolto']) }) : j({ errore: `Incident ${numero_o_id} not found` })
     },
   })
 
   const cercaCI = betaTool({
     name: 'cerca_ci',
-    description: 'Cerca Configuration Item per nome (match parziale, case-insensitive). Ritorna id, nome, tipo, ambiente e stato.',
+    description: 'Search Configuration Items by name (partial, case-insensitive match). Returns id, name, type, environment and status.',
     inputSchema: {
       type: 'object',
       properties: { query: { type: 'string' }, limit: { type: 'number' } },
@@ -146,7 +155,7 @@ function buildTools(tenantId: string, permissions: ReadonlySet<Permission>) {
     run: async (input) => {
       const { query, limit } = input as { query: string; limit?: number }
       const rows = await readQuery(`
-        MATCH (ci {tenant_id: $tenantId})
+        MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
         WHERE any(l IN labels(ci) WHERE l IN $labels)
           AND toLower(ci.name) CONTAINS toLower($query)
         RETURN ci.id AS id, ci.name AS nome, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS tipo,
@@ -159,7 +168,7 @@ function buildTools(tenantId: string, permissions: ReadonlySet<Permission>) {
 
   const analisiImpatto = betaTool({
     name: 'analisi_impatto',
-    description: 'Analisi di impatto di un CI: chi dipende da lui (diretti e a 2 livelli), Business Capability raggiungibili, incident aperti e change che lo toccano. Usalo per domande tipo "se spengo X cosa succede".',
+    description: 'Impact analysis of a CI: who depends on it (directly and at 2 levels), reachable business capabilities, open incidents and changes touching it. Use it for questions like "what happens if I switch X off".',
     inputSchema: {
       type: 'object',
       properties: { ci_id_o_nome: { type: 'string' } },
@@ -168,7 +177,7 @@ function buildTools(tenantId: string, permissions: ReadonlySet<Permission>) {
     run: async (input) => {
       const { ci_id_o_nome } = input as { ci_id_o_nome: string }
       const rows = await readQuery(`
-        MATCH (ci {tenant_id: $tenantId})
+        MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
         WHERE any(l IN labels(ci) WHERE l IN $labels)
           AND (ci.id = $key OR toLower(ci.name) = toLower($key))
         OPTIONAL MATCH (dep)-[:DEPENDS_ON]->(ci)
@@ -196,7 +205,7 @@ function buildTools(tenantId: string, permissions: ReadonlySet<Permission>) {
         changeConcluded:   await concludedStatusNames(tenantId, 'change'),
         seeIncidents: can('incident.read'), seeChanges: can('change.read'),
       })
-      if (!rows.length) return j({ errore: `CI "${ci_id_o_nome}" non trovato — prova cerca_ci per il nome esatto` })
+      if (!rows.length) return j({ errore: `CI "${ci_id_o_nome}" not found: use cerca_ci to find the exact name` })
       // Quello che il ruolo non vede non c'è nemmeno come «zero»: il modello non deve dire «nessun incident».
       const row = { ...(rows[0] as Record<string, unknown>) }
       if (!can('incident.read')) delete row['incident_aperti']
@@ -207,15 +216,15 @@ function buildTools(tenantId: string, permissions: ReadonlySet<Permission>) {
 
   const listaIncident = betaTool({
     name: 'lista_incident',
-    description: 'Elenco e CONTEGGIO ESATTO degli incident, con filtri opzionali su stato, severity e categoria. Usa QUESTO (non cerca_incident) per domande tipo "quanti incident aperti abbiamo" o "elenca gli incident critical": il campo "totale" è il numero esatto nel database.',
+    description: 'List and EXACT COUNT of incidents, with optional filters on status, severity and category. Use THIS (not cerca_incident) for questions like "how many open incidents do we have" or "list the critical incidents": the field "totale" is the exact number in the database; "elencati" is how many are listed.',
     inputSchema: {
       type: 'object',
       properties: {
-        stato:       { type: 'string', description: 'Filtro stato esatto: il NOME del passo di workflow di questo cliente' },
-        solo_aperti: { type: 'boolean', description: 'true = escludi i ticket conclusi (passi risolti e terminali del workflow di questo cliente)' },
-        severity:    { type: 'string', description: 'Filtro severity (low, medium, high, critical)' },
-        categoria:   { type: 'string', description: 'Filtro categoria' },
-        limit:       { type: 'number', description: 'Max incident elencati (default 15; il totale è comunque esatto)' },
+        stato:       { type: 'string', description: "Exact status filter: the NAME of a step of this organization's workflow" },
+        solo_aperti: { type: 'boolean', description: "true = leave out concluded tickets (resolved and terminal steps of this organization's workflow)" },
+        severity:    { type: 'string', description: 'Severity filter (low, medium, high, critical)' },
+        categoria:   { type: 'string', description: 'Category filter' },
+        limit:       { type: 'number', description: 'Maximum incidents listed (default 15; the total is exact anyway)' },
       },
       required: [],
     },
@@ -243,42 +252,69 @@ function buildTools(tenantId: string, permissions: ReadonlySet<Permission>) {
         concluded: solo_aperti === true ? await concludedStatusNames(tenantId, 'incident') : [],
       })
       const r = rows[0] ?? { totale: 0, incident: [] }
-      return j({ totale: r.totale, elencati: Array.isArray(r.incident) ? r.incident.length : 0, incident: r.incident })
+      const listed = (Array.isArray(r.incident) ? r.incident : []) as Array<Record<string, unknown>>
+      return j({ totale: r.totale, elencati: listed.length, incident: listed.map((x) => ({ ...x, creato: local(x['creato']) })) })
     },
   })
 
+  /*
+   * THE EXACT TOTAL, NOT THE FIRST PAGE (tour of 23 Sep 2026, D73).
+   * The tool returned the ten or twenty most recent changes and nothing else:
+   * asked «which changes are in flight», the model answered «20 open changes,
+   * none in implementation, no CI overlap» while there were 602, 44 of them in
+   * deployment and a third with deploy conflicts. Now the tool gives the exact
+   * total and the count per step, says when its list is partial, and the
+   * status comes from the workflow when the change has none (a change in its
+   * first step had no `status`, D3, and `NOT null IN [...]` left it out).
+   */
   const changeAperti = betaTool({
     name: 'change_aperti',
-    description: 'Elenca i change non conclusi del tenant con stato, tipo, rischio e CI toccati. Usalo per domande su change in corso, pianificati o potenzialmente in conflitto.',
+    description: 'EXACT count and list of the changes that are not concluded. "totale" is the exact number of open changes and "per_passo" how many are in each workflow step; "change" lists only the most recent ones ("elencati" of "totale", with status, type, risk and the CIs they touch). Use it for questions about changes in progress, scheduled or waiting for approval. Deploy conflicts are not computed by this tool: never infer them from the list.',
     inputSchema: {
       type: 'object',
-      properties: { limit: { type: 'number', description: 'Max risultati (default 10)' } },
+      properties: { limit: { type: 'number', description: 'Maximum changes listed (default 10; the total and the per-step counts are exact anyway)' } },
       required: [],
     },
     run: async (input) => {
       const { limit } = input as { limit?: number }
+      const concluded = await concludedStatusNames(tenantId, 'change')
+      const perStep = await readQuery<{ passo: string; n: unknown }>(`
+        MATCH (ch:Change {tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+        WHERE coalesce(ch.deleted, false) = false
+        WITH coalesce(ch.status, wi.current_step) AS passo
+        WHERE NOT passo IN $concluded
+        RETURN passo, count(*) AS n
+        ORDER BY n DESC
+      `, { tenantId, concluded })
       const rows = await readQuery(`
-        MATCH (ch:Change {tenant_id: $tenantId})
-        WHERE NOT ch.status IN $concluded AND coalesce(ch.deleted, false) = false
+        MATCH (ch:Change {tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+        WHERE coalesce(ch.deleted, false) = false AND NOT coalesce(ch.status, wi.current_step) IN $concluded
+        WITH ch, wi ORDER BY ch.created_at DESC LIMIT ${clampLimit(limit, 10, 25)}
         // D-10: AFFECTS_CI, e i campi che una change ha DAVVERO: risk_level e
         // planned_start non esistono sul nodo (il rischio sta in
         // aggregate_risk_score), quindi l'assistente rispondeva «rischio:
         // null» su ogni change.
         OPTIONAL MATCH (ch)-[:AFFECTS_CI]->(ci)
-        WITH ch, collect(DISTINCT ci.name) AS cis
-        RETURN coalesce(ch.number, ch.code) AS numero, ch.title AS titolo, ch.status AS stato,
+        WITH ch, wi, collect(DISTINCT ci.name) AS cis
+        RETURN coalesce(ch.number, ch.code) AS numero, ch.title AS titolo, coalesce(ch.status, wi.current_step) AS stato,
                ch.change_type AS tipo, ch.aggregate_risk_score AS punteggio_rischio,
                ch.priority AS priorita, cis AS ci_toccati
         ORDER BY ch.created_at DESC
-        LIMIT ${clampLimit(limit, 10, 25)}
-      `, { tenantId, concluded: await concludedStatusNames(tenantId, 'change') })
-      return j(rows)
+      `, { tenantId, concluded })
+      const totale = perStep.reduce((sum, r) => sum + toNumber(r.n), 0)
+      return j({
+        totale,
+        per_passo: perStep.map((r) => ({ passo: r.passo, n: toNumber(r.n) })),
+        elencati: rows.length,
+        elenco_parziale: rows.length < totale,
+        change: rows,
+      })
     },
   })
 
   const cercaKB = betaTool({
     name: 'cerca_kb',
-    description: 'Ricerca semantica negli articoli pubblicati della Knowledge Base. Ritorna titolo, categoria, slug e score.',
+    description: 'Semantic search in the published Knowledge Base articles. Returns title, category, slug and score.',
     inputSchema: {
       type: 'object',
       properties: { query: { type: 'string' } },
@@ -311,17 +347,30 @@ function buildTools(tenantId: string, permissions: ReadonlySet<Permission>) {
 
 // ── Streaming chat ───────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `Sei l'assistente operativo di OpenGrafo, una piattaforma ITSM basata su un grafo Neo4j (CMDB, incident, change, knowledge base). Rispondi nella lingua in cui ti scrive l'utente, conciso e concreto: anche le frasi che scrivi prima di usare uno strumento sono in quella lingua.
+/*
+ * THE LANGUAGE IS SAID, NOT GUESSED (tour of 23 Sep 2026, D62).
+ * The prompt was written in Italian and asked to «answer in the language the
+ * user writes in»: on an English interface, asked in English, the assistant
+ * started in English and went on in Italian. Now the prompt is in English and
+ * names the language of the person's interface (their own choice, or the
+ * organization's).
+ */
+export function assistantSystemPrompt(language: string, timeZone: string): string {
+  return `You are the operations assistant of OpenGrafo, an ITSM platform built on a Neo4j graph (CMDB, incidents, changes, knowledge base).
+Write every sentence in ${language}, the language of the person's interface, including the sentences you write before using a tool. Be concise and concrete.
 
-Regole:
-- Usa i tool per fondare OGNI risposta sui dati reali del tenant. Non inventare mai numeri di ticket, nomi di CI o stati.
-- Per CONTEGGI o elenchi filtrati usa lista_incident (conteggio esatto); cerca_incident è solo ricerca semantica top-K e non è esaustiva.
-- Cita sempre i numeri delle entità (INC..., CHG...) e i nomi esatti dei CI che riporti.
-- Se un tool non trova nulla, dillo esplicitamente — non riempire il vuoto con supposizioni.
-- Hai SOLO strumenti di lettura: non puoi creare o modificare nulla. Se l'utente chiede un'azione, spiega dove farla nella UI.
-- Per domande di impatto ("se spengo X..."), usa analisi_impatto e riassumi: dipendenti, business capability, incident/change in corso.
-- Hai solo gli strumenti dei dati che il ruolo dell'utente può vedere. Se una domanda riguarda dati per cui non hai uno strumento, dì che il suo ruolo non li vede: non dedurli e non dire che non esistono.
-- Risposte brevi: elenchi puntati dove utile, niente preamboli.`
+Rules:
+- Ground EVERY answer on the organization's real data through the tools. Never invent ticket numbers, CI names or statuses.
+- For COUNTS or filtered lists use lista_incident (exact count) and change_aperti (exact count per step); cerca_incident is a top-K semantic search and is not exhaustive.
+- When a tool returns a partial list ("elencati" smaller than "totale", or "elenco_parziale": true), say that it is partial and never draw conclusions about the whole set from it.
+- Always quote the numbers of the entities (INC..., CHG...) and the exact names of the CIs you mention.
+- Every time in the tool results is local time in the organization's time zone, ${timeZone}: quote times as they are and never convert them.
+- If a tool finds nothing, say so explicitly: do not fill the gap with guesses.
+- You only have READ tools: you cannot create or change anything. If the person asks for an action, explain where to do it in the interface.
+- For impact questions ("what happens if I switch X off"), use analisi_impatto and summarise: dependants, business capabilities, open incidents and changes.
+- You only have the tools for the data the person's role can see. If a question is about data you have no tool for, say that their role does not see it: do not deduce it and do not say it does not exist.
+- Short answers: bullet points where useful, no preamble.`
+}
 
 export interface AssistantMessage { role: 'user' | 'assistant'; content: string }
 
@@ -334,6 +383,7 @@ export interface AssistantEmitter {
 
 export async function streamAssistantChat(
   tenantId: string,
+  userId: string,
   permissions: ReadonlySet<Permission>,
   messages: AssistantMessage[],
   emit: AssistantEmitter,
@@ -348,6 +398,13 @@ export async function streamAssistantChat(
     return
   }
 
+  // The times the tools return are local to the organization (D14): without a zone they could only be raw UTC.
+  const timeZone = await tenantTimezone(tenantId)
+  if (!timeZone) {
+    emit.error('The organization has no time zone, so the assistant cannot write times in local time: choose it in Settings → Organization.')
+    return
+  }
+
   const client = getAnthropic()
   const t0 = Date.now()
   let fullText = ''
@@ -357,8 +414,8 @@ export async function streamAssistantChat(
       model: config.anthropicModel,
       max_tokens: 4000,
       thinking: { type: 'adaptive' },
-      system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-      tools: buildTools(tenantId, permissions),
+      system: [{ type: 'text', text: assistantSystemPrompt(LANGUAGE_NAME_FOR_MODEL[await languageForUser(tenantId, userId)], timeZone), cache_control: { type: 'ephemeral' } }],
+      tools: buildTools(tenantId, permissions, timeZone),
       messages: messages.map(m => ({ role: m.role, content: m.content })),
       stream: true,
       max_iterations: 8,
@@ -385,7 +442,7 @@ export async function streamAssistantChat(
       // può costare di più senza che nessuno se ne accorga.
       registraRisposta('assistant', message.stop_reason === 'refusal' ? 'refused' : 'ok', message)
       if (message.stop_reason === 'refusal') {
-        emit.error('Il modello ha rifiutato la richiesta')
+        emit.error('The model refused the request')
         return
       }
     }

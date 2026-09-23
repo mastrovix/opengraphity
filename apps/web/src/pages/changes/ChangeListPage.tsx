@@ -77,7 +77,7 @@ export function ChangeListPage() {
   const { valuesOf, labelOf } = useDomainVocabularies()
   const filterFields: FieldConfig[] = [
     { key: 'currentStep', label: t('pages.changes.phase'), type: 'enum',
-      options: wfSteps.map((s) => ({ value: s.name, label: labelFor(s.name) ?? s.name })) },
+      options: wfSteps.map((s) => ({ value: s.name, label: labelFor(s.name) })) },
     { key: 'priority', label: t('admin.sla.priority'), type: 'enum',
       // `valuesOf` è null finché i vocabolari non si conoscono: nessun valore
       // inventato, il filtro resta senza opzioni per un istante.

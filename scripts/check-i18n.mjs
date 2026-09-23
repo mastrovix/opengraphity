@@ -81,6 +81,8 @@ function walk(dir, out = []) {
     const p = path.join(dir, e.name)
     if (e.isDirectory()) {
       if (e.name === 'node_modules' || e.name === 'test' && path.relative(WEB_SRC, dir) === '') continue
+      // Test fixtures live in `__tests__/` too, not only in `*.test.*` files: they are not product text (as for the API below).
+      if (e.name === '__tests__') continue
       walk(p, out)
     } else if (/\.(ts|tsx)$/.test(e.name) && !/\.test\.tsx?$/.test(e.name) && !/\.d\.ts$/.test(e.name)) {
       out.push(p)

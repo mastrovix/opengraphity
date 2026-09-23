@@ -45,6 +45,8 @@ export function registerStepEnteredEvents(): void {
       enteredAt:  info.enteredAt,
       // B-4: le note della transizione finiscono nella nota interna sul ticket.
       notes:      info.notes ?? null,
+      // U-8 / D12: signed by the rule that asked for it, when it was a rule.
+      actorLabel: info.actorLabel ?? null,
       fromStep:   info.fromStep,
     })
 

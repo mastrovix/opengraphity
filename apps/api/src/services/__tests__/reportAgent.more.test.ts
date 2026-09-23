@@ -79,6 +79,17 @@ beforeEach(() => {
   vi.mocked(getSession).mockImplementation(() => sessionAnswering(() => []) as never)
 })
 
+// D62 (tour of 23 Sep 2026): asked in English on an English interface, the analysis answered in Italian.
+describe('answer language', () => {
+  it('the system prompt is in English and names the language of the interface', async () => {
+    const { buildSystemPrompt } = await import('../reportAgent.js')
+    const p = buildSystemPrompt('## Neo4j graph schema', 'Italian')
+    expect(p).toContain('Write every sentence in Italian')
+    expect(p).toMatch(/^You are an ITSM analysis assistant/)
+    expect(p).not.toMatch(/Rispondi|REGOLE/)
+  })
+})
+
 describe('schema context', () => {
   it('lists the tenant\'s labels with exact counts and its relationships in the system prompt', async () => {
     const tenantId = freshTenant()
@@ -90,18 +101,83 @@ describe('schema context', () => {
     })
     vi.mocked(getSession).mockReturnValue(session as never)
     const { client, create } = clientReturning(text('ok'))
-    await runReportAgent({ tenantId, messages: [{ role: 'user', content: 'q' }], client })
+    await runReportAgent({ tenantId, language: 'English', messages: [{ role: 'user', content: 'q' }], client })
 
     const system = (create.mock.calls[0]![0] as { system: Array<{ text: string }> }).system[0]!.text
-    expect(system).toContain('- **Incident** (42 nodi): title, status')
+    expect(system).toContain('- **Incident** (42 nodes): title, status')
     // A label with no count row reads 0, not "undefined".
-    expect(system).toContain('- **Team** (0 nodi): name')
+    expect(system).toContain('- **Team** (0 nodes): name')
     expect(system).toContain('- (Incident)-[:ASSIGNED_TO]->(Team)')
     // Every schema read is scoped to the tenant.
     for (const call of session.run.mock.calls as unknown as Array<[string, Record<string, unknown>]>) {
       expect(call[1]).toMatchObject({ tenantId })
     }
     expect(session.close).toHaveBeenCalled()
+  })
+
+  /*
+   * D67 (tour of 23 Sep 2026): the exact counts read every node of the tenant
+   * (2.7 s on the demo tenant) at the first question of every five minutes.
+   * Now only the very first question waits; an expired schema is used while
+   * the next one is built in the background.
+   */
+  it('only the first question waits for the scan; an expired schema is served while a new one is built', async () => {
+    const { getCachedSchema, clearSchemaCache, SCHEMA_TTL_MS } = await import('../reportAgent.js')
+    clearSchemaCache()
+    const tenantId = freshTenant()
+    let version = 1
+    const session = sessionAnswering((cypher) => (cypher.includes('keys(n)') ? [rec({ label: `V${version}`, props: [] })] : []))
+    vi.mocked(getSession).mockReturnValue(session as never)
+    const t0 = Date.now()
+    const now = vi.spyOn(Date, 'now').mockReturnValue(t0)
+
+    expect(await getCachedSchema(tenantId)).toContain('**V1**')
+    const reads = session.run.mock.calls.length
+
+    // fresh: no read at all
+    expect(await getCachedSchema(tenantId)).toContain('**V1**')
+    expect(session.run.mock.calls.length).toBe(reads)
+
+    // expired: the old one is answered at once, the new one is built behind it
+    version = 2
+    now.mockReturnValue(t0 + SCHEMA_TTL_MS + 1)
+    expect(await getCachedSchema(tenantId)).toContain('**V1**')
+    await vi.waitFor(async () => { expect(await getCachedSchema(tenantId)).toContain('**V2**') })
+  })
+
+  it('a failed rebuild is logged, and the previous schema stays in use', async () => {
+    const { getCachedSchema, clearSchemaCache, SCHEMA_TTL_MS } = await import('../reportAgent.js')
+    const { logger } = await import('../../lib/logger.js')
+    clearSchemaCache()
+    const tenantId = freshTenant()
+    vi.mocked(getSession).mockReturnValue(sessionAnswering((cypher) => (cypher.includes('keys(n)') ? [rec({ label: 'Old', props: [] })] : [])) as never)
+    const t0 = Date.now()
+    const now = vi.spyOn(Date, 'now').mockReturnValue(t0)
+    await getCachedSchema(tenantId)
+
+    vi.mocked(getSession).mockReturnValue(sessionAnswering(() => new Error('neo4j busy')) as never)
+    now.mockReturnValue(t0 + SCHEMA_TTL_MS + 1)
+    expect(await getCachedSchema(tenantId)).toContain('**Old**')
+    await vi.waitFor(() => { expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ tenantId }), expect.stringContaining('schema rebuild failed')) })
+  })
+
+  it('the first question of a tenant waits, and concurrent first questions share one scan', async () => {
+    const { getCachedSchema, clearSchemaCache } = await import('../reportAgent.js')
+    clearSchemaCache()
+    const session = sessionAnswering((cypher) => (cypher.includes('keys(n)') ? [rec({ label: 'Incident', props: [] })] : []))
+    vi.mocked(getSession).mockReturnValue(session as never)
+    const tenantId = freshTenant()
+    const [a, b] = await Promise.all([getCachedSchema(tenantId), getCachedSchema(tenantId)])
+    expect(a).toBe(b)
+    // three reads (nodes, relationships, counts), once
+    expect(session.run).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('the tool the model reads (D62)', () => {
+  it('is described in English, like the system prompt', () => {
+    expect(CYPHER_TOOL.description).toMatch(/^Runs a READ-ONLY Cypher query/)
+    expect(JSON.stringify(CYPHER_TOOL)).not.toMatch(/Esegue|Descrizione|rifiutat/)
   })
 })
 
@@ -115,7 +191,7 @@ describe('runReportAgent — input and loop edges', () => {
   it('an answer cut by max_tokens is returned (partial) and logged', async () => {
     const tenantId = freshTenant()
     const { client } = clientReturning(text('partial', 'max_tokens'))
-    await expect(runReportAgent({ tenantId, messages: [{ role: 'user', content: 'q' }], client })).resolves.toBe('partial')
+    await expect(runReportAgent({ tenantId, language: 'English', messages: [{ role: 'user', content: 'q' }], client })).resolves.toBe('partial')
     expect(warn).toHaveBeenCalledWith(expect.objectContaining({ tenantId }), expect.stringContaining('truncated by max_tokens'))
   })
 

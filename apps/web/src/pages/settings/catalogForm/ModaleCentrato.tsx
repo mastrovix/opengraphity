@@ -18,14 +18,21 @@
  *     barre di iOS, uno schermo emulato) e allora il riquadro esce di sotto.
  *     Dentro scorre solo il CORPO.
  *
- * `Escape` chiude, e l'ascoltatore sta su `window`: il fuoco è dentro una
- * casella, e un gestore sul contenitore lo prenderebbe solo per caso.
+ * THE KEYBOARD (tour of 23 Sep 2026). It declares `aria-modal`, and it keeps
+ * that promise the way `Modal` does, through the same hook: the focus moves
+ * inside when it opens, Tab and Shift+Tab cycle inside it, Escape closes it,
+ * and on closing the focus goes back where it was. Before, the focus stayed on
+ * the canvas behind the veil: whoever opened the properties of a field from
+ * the keyboard kept tabbing through the page behind, and reached the dialog
+ * last. Escape is heard on the document, not on the panel: the focus is
+ * usually in a text box, and a handler on the panel would catch it by chance.
  */
-import { useEffect } from 'react'
+import { useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { alpha, colors } from '@/lib/tokens'
+import { useDialogFocus } from '@/hooks/useDialogFocus'
 
 export function ModaleCentrato({ titolo, sottotitolo, largo, onChiudi, children }: {
   titolo: string
@@ -36,15 +43,14 @@ export function ModaleCentrato({ titolo, sottotitolo, largo, onChiudi, children 
   children: React.ReactNode
 }) {
   const { t } = useTranslation()
+  const dialogRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onChiudi() }
-    window.addEventListener('keydown', esc)
-    return () => { window.removeEventListener('keydown', esc) }
-  }, [onChiudi])
+  // Mounted means open: whoever shows this modal renders it only while it is.
+  useDialogFocus(dialogRef, true, onChiudi)
 
   return createPortal(
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-label={titolo}

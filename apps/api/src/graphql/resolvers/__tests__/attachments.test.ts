@@ -119,7 +119,7 @@ describe('attachments(entityType, entityId) — lista scoped per tenant', () => 
     const out = await attachmentResolvers.Query.attachments(null, { entityType: 'incident', entityId: 'inc-1' }, operator)
 
     const [reachCypher, reachParams] = s.txRun.mock.calls[0]!
-    expect(reachCypher).toContain('WHERE (e:Incident)')
+    expect(reachCypher).toContain('MATCH (e:Incident {id: $entityId, tenant_id: $tenantId})')
     expect(reachParams).toEqual({ entityId: 'inc-1', tenantId: 'tenant-1', userId: 'user-1' })
     const [cypher, params] = s.txRun.mock.calls[1]!
     expect(cypher).toContain('MATCH (a:Attachment {tenant_id: $tenantId, entity_type: $entityType, entity_id: $entityId})')

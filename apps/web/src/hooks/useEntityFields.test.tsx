@@ -214,7 +214,8 @@ describe('useEntityFields', () => {
     expect([...byKey.keys()]).toEqual(['state', 'kind', 'status', 'priority', 'rootCause', 'title', 'createdAt', 'dueDate', 'tags'])
 
     // A schema enum without dictionary choices: the value, cleaned up.
-    expect(byKey.get('state')).toMatchObject({ label: 'State', type: 'enum', options: [{ value: 'in_progress', label: 'In Progress' }] })
+    // D29: the one shared rule — a machine key becomes a sentence, not Title Case.
+    expect(byKey.get('state')).toMatchObject({ label: 'State', type: 'enum', options: [{ value: 'in_progress', label: 'In progress' }] })
     expect(byKey.get('state')).not.toHaveProperty('operators')
     // A table-row enum list: list type and only the relation operators.
     expect(byKey.get('kind')).toMatchObject({ label: 'Kind', type: 'multi_enum', options: [{ value: 'a', label: 'Alpha' }] })

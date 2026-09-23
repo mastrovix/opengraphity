@@ -171,6 +171,39 @@ describe('updateReportTemplate', () => {
     expect(calls[0]!.p).toMatchObject({ description: 'd', icon: 'i', visibility: 'public', scheduleEnabled: false, scheduleCron: '* * * * *', scheduleChannelId: 'c' })
   })
 
+  /**
+   * Found in the tour of 23 Sep 2026: every field went through
+   * `COALESCE($x, r.x)`, so the null the settings form sends for «no
+   * description» and «no Slack channel» kept the old value — once set, neither
+   * could ever be removed. The convention of the other updates (M-9): present
+   * and null clears, absent is left alone.
+   */
+  it('a field sent as null clears it, an absent one is left alone (M-9)', async () => {
+    const { calls } = fakeSessions()
+    await Mutation.updateReportTemplate(null, { id: 'tpl-1', input: { name: 'Weekly', description: null, scheduleCron: null, scheduleChannelId: null } }, ctx)
+    const { q, p } = calls[0]!
+    expect(q).toContain('r.description         = CASE WHEN $descriptionGiven THEN $description ELSE r.description END')
+    expect(q).toContain('r.icon                = CASE WHEN $iconGiven THEN $icon ELSE r.icon END')
+    expect(q).toContain('r.schedule_cron       = CASE WHEN $scheduleCronGiven THEN $scheduleCron ELSE r.schedule_cron END')
+    expect(q).toContain('r.schedule_channel_id = CASE WHEN $scheduleChannelIdGiven THEN $scheduleChannelId ELSE r.schedule_channel_id END')
+    expect(p).toMatchObject({
+      description: null, descriptionGiven: true,
+      scheduleCron: null, scheduleCronGiven: true,
+      scheduleChannelId: null, scheduleChannelIdGiven: true,
+      // Not in the input: the icon stays as it is.
+      icon: null, iconGiven: false,
+    })
+  })
+
+  it('a null name, visibility or schedule switch keeps the value: a report cannot be without them', async () => {
+    const { calls } = fakeSessions()
+    await Mutation.updateReportTemplate(null, { id: 'tpl-1', input: { name: null, visibility: null, scheduleEnabled: null } }, ctx)
+    expect(calls[0]!.q).toContain('r.name                = COALESCE($name, r.name)')
+    expect(calls[0]!.q).toContain('r.visibility          = COALESCE($visibility, r.visibility)')
+    expect(calls[0]!.q).toContain('r.schedule_enabled    = COALESCE($scheduleEnabled, r.schedule_enabled)')
+    expect(calls[0]!.p).toMatchObject({ name: null, visibility: null, scheduleEnabled: null })
+  })
+
   it('sharedWithTeamIds replaces the sharing: old links removed, new ones merged, all tenant-scoped', async () => {
     const { calls, sessions } = fakeSessions()
     await Mutation.updateReportTemplate(null, { id: 'tpl-1', input: { sharedWithTeamIds: ['team-z'] } }, ctx)

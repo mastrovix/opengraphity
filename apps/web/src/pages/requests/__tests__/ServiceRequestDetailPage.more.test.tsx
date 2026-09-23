@@ -72,7 +72,8 @@ const request = (over: Record<string, unknown> = {}) => ({
     { toStep: 'rejected', label: 'Reject', labels: [], requiresInput: true, inputField: 'rejection_reason' },
     { toStep: 'approval', label: 'Add note', labels: [], requiresInput: true, inputField: 'notes' },
   ],
-  slaStatus: null, affectedCIs: [], formRevision: null, formAnswers: [], customFields: [], ...over,
+  slaStatus: null, affectedCIs: [], formRevision: null, formAnswers: [], customFields: [],
+  team: { id: 't-desk', name: 'SUP_Service Desk' }, ...over,
 })
 
 beforeEach(() => {
@@ -101,6 +102,19 @@ describe('ServiceRequestDetailPage: when there is no request to show', () => {
     expect(screen.getByText(/network down/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /retry/i }))
     expect(apolloFinto.refetch).toHaveBeenCalled()
+  })
+})
+
+describe('ServiceRequestDetailPage: an action that ends the request badly looks like one (D27)', () => {
+  it('«Reject» — it asks for a rejection reason — is drawn as danger; approving keeps the primary style', async () => {
+    const { user } = mount()
+    expect(screen.getByRole('button', { name: 'Reject' })).toHaveStyle({ backgroundColor: 'var(--color-danger)' })
+    expect(screen.getByRole('button', { name: 'Approve' })).toHaveStyle({ backgroundColor: 'var(--color-brand)' })
+    expect(screen.getByRole('button', { name: 'Add note' })).toHaveStyle({ backgroundColor: 'var(--color-brand)' })
+    // The confirmation of the rejection says the same thing.
+    await user.click(screen.getByRole('button', { name: 'Reject' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('button', { name: 'Confirm' })).toHaveStyle({ backgroundColor: 'var(--color-danger)' })
   })
 })
 
@@ -271,8 +285,8 @@ describe('ServiceRequestDetailPage: CIs and assignee', () => {
   it('unassigning sends null, and a deactivated person is never offered', async () => {
     apolloFinto.risposte['GetServiceRequest'] = { serviceRequest: request({ assignee: { id: 'u-op', name: 'Olga', email: 'o@x' } }) }
     apolloFinto.risposte['GetAssignableUsers'] = { users: [
-      { id: 'u-op', name: 'Olga', permissions: ['ticket.assignable'], active: true },
-      { id: 'u-gone', name: 'Gone', permissions: ['ticket.assignable'], active: false },
+      { id: 'u-op', name: 'Olga', permissions: ['ticket.assignable'], active: true, teams: [{ id: 't-desk' }] },
+      { id: 'u-gone', name: 'Gone', permissions: ['ticket.assignable'], active: false, teams: [{ id: 't-desk' }] },
     ] }
     apolloFinto.esiti['AssignServiceRequestToUser'] = { data: { assignServiceRequestToUser: { id: 'sr-1' } } }
     const { user } = mount()
@@ -304,7 +318,7 @@ describe('ServiceRequestDetailPage: failures are shown, and nothing pretends to 
 
   it('failed CI link, CI removal and assignment each show their error and no success', async () => {
     apolloFinto.risposte['GetAllCIs'] = { allCIs: { items: [{ id: 'ci-web', name: 'web-01' }] } }
-    apolloFinto.risposte['GetAssignableUsers'] = { users: [{ id: 'u-op', name: 'Olga', permissions: ['ticket.assignable'], active: true }] }
+    apolloFinto.risposte['GetAssignableUsers'] = { users: [{ id: 'u-op', name: 'Olga', permissions: ['ticket.assignable'], active: true, teams: [{ id: 't-desk' }] }] }
     apolloFinto.esiti['AddCIToServiceRequest'] = { error: new Error('excluded type') }
     apolloFinto.esiti['RemoveCIFromServiceRequest'] = { error: new Error('not linked') }
     apolloFinto.esiti['AssignServiceRequestToUser'] = { error: new Error('not assignable') }

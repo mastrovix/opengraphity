@@ -17,6 +17,7 @@ import { TASK_STATUS, ASSESSMENT_ROLE } from '@/lib/taskStatus'
 import { formatDate } from '@/lib/datetime'
 import type { TFunction } from 'i18next'
 import { showError } from '@/lib/showError'
+import { reloadQueries } from '@/lib/reloadQueries'
 
 interface MyTask {
   id:         string
@@ -244,12 +245,12 @@ export function MyTasksPage() {
   })
 
   const [claimTicketTask, { loading: prendendo }] = useMutation(CLAIM_TICKET_TASK, {
-    onCompleted: async () => { toast.success(t('toast.task.claimed')); await refetch() },
+    onCompleted: () => { toast.success(t('toast.task.claimed')); reloadQueries(refetch) },
     onError:     (e) => showError(e),
   })
 
   const [claimTask, { loading: claiming }] = useMutation(ASSIGN_ASSESSMENT_TASK_TO_USER, {
-    onCompleted: async () => { toast.success(t('toast.task.claimed')); await refetch() },
+    onCompleted: () => { toast.success(t('toast.task.claimed')); reloadQueries(refetch) },
     onError:     (e) => showError(e),
   })
 

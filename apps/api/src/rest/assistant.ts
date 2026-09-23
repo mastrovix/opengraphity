@@ -102,7 +102,7 @@ async function handleAssistantStream(req: Request, res: Response): Promise<void>
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
   }
 
-  await streamAssistantChat(tenantId, permissions, messages, {
+  await streamAssistantChat(tenantId, req.user!.userId, permissions, messages, {
     text:  (delta)   => send('text', { delta }),
     tool:  (name)    => send('tool', { name }),
     done:  (text)    => { send('done', { text }); res.end() },

@@ -77,6 +77,7 @@ function mapRuleConfig(config: AnomalyRuleConfig, options: AnomalyRuleOptions, o
     incidentSeverities: config.incidentSeverities, forbidden: config.forbidden,
     spec: {
       ciTypes: spec.ciTypes, relations: spec.relations, incidentSeverities: spec.incidentSeverities, forbidden: spec.forbidden,
+      allRelationsWhenEmpty: spec.allRelationsWhenEmpty === true,
       thresholdMin: spec.threshold?.min ?? null, thresholdMax: spec.threshold?.max ?? null,
     },
     isDefault: config.isDefault, updatedAt: config.updatedAt,

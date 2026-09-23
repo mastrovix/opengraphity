@@ -7,7 +7,7 @@
  */
 import * as d3 from 'd3'
 import { fontFamily } from '@/lib/tokens'
-import { iconPathsOrError, isBrokenIconKey, BROKEN_ICON_COLOR } from '@/lib/ciIconPaths'
+import { iconPathsOrError, CI_ICON_KEYS, BROKEN_ICON_COLOR } from '@/lib/ciIconPaths'
 
 /** Font dei testi SVG: token CSS (vale come proprietà `style`, non come attributo). */
 export const GRAPH_FONT = fontFamily
@@ -113,7 +113,10 @@ export function linkEndpoints(
  */
 export function appendIcon(sel: AnySelection, iconKey: string, color: string, size = 18): void {
   const nodes  = iconPathsOrError(iconKey)
-  const stroke = isBrokenIconKey(iconKey) ? BROKEN_ICON_COLOR : color
+  // Unknown = any key the registry does not draw, the reserved one included,
+  // as in `CIIcon` (tour of 23 Sep 2026): only `__broken__` was red, and a key
+  // the API accepted but the registry lacks got the «?» in the node colour.
+  const stroke = CI_ICON_KEYS.includes(iconKey) ? color : BROKEN_ICON_COLOR
   const scale  = size / 24
   const offset = -(size / 2)
   const g = sel.append('g')

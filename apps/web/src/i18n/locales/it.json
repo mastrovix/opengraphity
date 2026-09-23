@@ -234,7 +234,19 @@
       "notFound": "Problem non trovato.",
       "candidatesTitle": "Candidati Problem da incident ricorrenti",
       "candidatesEmpty": "Nessun cluster di incident simili ricorrenti trovato (minimo 3 incident non chiusi con lo stesso pattern).",
-      "candidatesButton": "Candidati Problem"
+      "candidatesButton": "Candidati Problem",
+      "candidates": {
+        "examined_one": "Esaminato {{count}} incident aperto.",
+        "examined_other": "Esaminati {{count}} incident aperti.",
+        "queued_one": "{{count}} non ancora analizzato: l'analisi è stata messa in coda, riprova fra qualche minuto.",
+        "queued_other": "{{count}} non ancora analizzati: l'analisi è stata messa in coda, riprova fra qualche minuto.",
+        "failed_one": "{{count}} non si è potuto analizzare: il calcolo non è riuscito (vedi Coda Jobs).",
+        "failed_other": "{{count}} non si sono potuti analizzare: il calcolo non è riuscito (vedi Coda Jobs).",
+        "capped_one": "È stato esaminato solo l'incident aperto più recente.",
+        "capped_other": "Sono stati esaminati solo i {{count}} incident aperti più recenti.",
+        "noneAnalysed": "Nessun incident aperto è ancora analizzato: l'analisi è stata messa in coda, riprova fra qualche minuto.",
+        "noOpenIncidents": "Non ci sono incident aperti da confrontare."
+      }
     },
     "requests": {
       "title": "Richieste",
@@ -680,6 +692,7 @@
         "resolution": "Risoluzione: {{resolution}}"
       },
       "selectSource": "Scegli una sorgente...",
+      "historySource": "Sorgente di sincronizzazione",
       "pickSourceHint": "Scegli una sorgente per vedere la cronologia delle sincronizzazioni",
       "noRuns": "Nessuna esecuzione",
       "noOpenConflicts": "Nessun conflitto aperto",
@@ -865,6 +878,7 @@
       "noApprovals": "Nessuna richiesta trovata",
       "loadError": "Errore nel caricamento dell'articolo.",
       "cancelRequest": "Annulla la richiesta",
+      "keepRequest": "Mantieni la richiesta",
       "rejectReason": "Motivo del rifiuto (obbligatorio)...",
       "optionalNote": "Nota facoltativa...",
       "anyApprover": "1 approvatore sufficiente",
@@ -1016,7 +1030,8 @@
       "noTeams": "Nessun team coinvolto",
       "viewPath": "Visualizza percorso",
       "summaryImpact": "Se {{target}} diventa indisponibile: CI impattati {{cis}}, servizi {{services}}, team {{teams}}. Rischio {{risk}}/100.",
-      "summaryRemove": "Se {{target}} viene rimosso: CI impattati {{cis}}, servizi {{services}}, team {{teams}}. Rischio {{risk}}/100."
+      "summaryRemove": "Se {{target}} viene rimosso: CI impattati {{cis}}, servizi {{services}}, team {{teams}}. Rischio {{risk}}/100.",
+      "filterNotApplied": "Questo filtro non si può applicare ai CI impattati: {{reason}}. Modificalo, oppure premi «Ripristina»."
     },
     "ci": {
       "navigationLockedWhileEditing": "Salva o annulla la modifica prima di aprire un altro CI",
@@ -1609,7 +1624,9 @@
       "objectiveHint": "Verde da {{target}}%, giallo da {{warning}}%, rosso sotto",
       "noObjectiveHint": "Nessun obiettivo di conformità: nessun colore",
       "inferredNote_one": "{{count}} valutazione è contata dall'apertura del ticket: il ticket è più vecchio della storia delle assegnazioni.",
-      "inferredNote_other": "{{count}} valutazioni sono contate dall'apertura del ticket: quei ticket sono più vecchi della storia delle assegnazioni."
+      "inferredNote_other": "{{count}} valutazioni sono contate dall'apertura del ticket: quei ticket sono più vecchi della storia delle assegnazioni.",
+      "timezone": "Fuso orario",
+      "timezoneHelp": "Il fuso in cui si leggono le ore del calendario: un team di Singapore lavora dalle 9 alle 18 a Singapore. Vuoto: il fuso dell'organizzazione."
     },
     "changeDetail": {
       "notFound": "Change non trovato",
@@ -1667,14 +1684,14 @@
       "taskPlanning": "Pianificazione",
       "notesField": "Note",
       "deployConflicts": {
-        "title": "Conflitti di rilascio",
-        "none": "Nessun conflitto di rilascio: nessun’altra change rilascia su questi CI in una finestra sovrapposta.",
-        "lede": "Queste change rilasciano sullo stesso CI mentre questa è in rilascio. Le finestre di validazione non si confrontano: due prove sullo stesso CI non si disturbano, due rilasci sì.",
+        "title": "Conflitti di deploy delle change",
+        "none": "Nessun conflitto di deploy: nessun’altra change fa il deploy su questi CI in una finestra sovrapposta.",
+        "lede": "Queste change fanno il deploy sullo stesso CI mentre questa è in deploy. Le finestre di validazione non si confrontano: due prove sullo stesso CI non si disturbano, due deploy sì.",
         "mine": "Questa change",
         "theirs": "L’altra change",
         "overlap": "Sovrapposizione",
-        "unreadable_one": "Attenzione: {{count}} piano di rilascio non si è potuto leggere ({{plans}}), quindi il confronto non è completo — «nessun conflitto» qui sotto vale per i piani che si sono aperti.",
-        "unreadable_other": "Attenzione: {{count}} piani di rilascio non si sono potuti leggere ({{plans}}), quindi il confronto non è completo — «nessun conflitto» qui sotto vale per i piani che si sono aperti."
+        "unreadable_one": "Attenzione: {{count}} piano di deploy non si è potuto leggere ({{plans}}), quindi il confronto non è completo — «nessun conflitto» qui sotto vale per i piani che si sono aperti.",
+        "unreadable_other": "Attenzione: {{count}} piani di deploy non si sono potuti leggere ({{plans}}), quindi il confronto non è completo — «nessun conflitto» qui sotto vale per i piani che si sono aperti."
       }
     },
     "changeCalendar": {
@@ -1696,7 +1713,8 @@
       "legendWarn": "Rilasci che si accavallano, CI diversi",
       "clashWith": "Stesso CI di: {{codes}}",
       "warnWith": "Si accavalla con: {{codes}}",
-      "summary": "{{changes}} change · {{releases}} finestre di rilascio",
+      "releaseWindows_one": "{{count}} finestra di rilascio",
+      "releaseWindows_other": "{{count}} finestre di rilascio",
       "clashes_one": "{{count}} finestra sullo stesso CI",
       "clashes_other": "{{count}} finestre sullo stesso CI",
       "warns_one": "{{count}} rilascio che si accavalla",
@@ -1790,7 +1808,10 @@
       "categoryHint": "Una categoria del Dizionario. Le richieste da questa voce la ereditano, e valgono per loro le policy SLA per categoria.",
       "legacyCategory": "«{{text}}»: scegli una categoria",
       "legacyCategoryHint": "Scritta a mano prima che le categorie venissero dal Dizionario, e non corrisponde a nessun valore.",
-      "legacyCategoryEdit": "Era «{{text}}», che non corrisponde a nessuna categoria del Dizionario: scegline una."
+      "legacyCategoryEdit": "Era «{{text}}», che non corrisponde a nessuna categoria del Dizionario: scegline una.",
+      "fulfillmentTeam": "Gruppo di evasione",
+      "fulfillmentTeamHint": "Le richieste di questa voce nascono assegnate a questo team. Senza, nascono senza team e qualcuno deve assegnarle.",
+      "noFulfillmentTeam": "— Nessun gruppo di evasione —"
     },
     "userDetail": {
       "notFound": "Utente non trovato.",
@@ -1907,6 +1928,7 @@
       "kbDraft": "Bozza per la Knowledge Base",
       "rootCausePlaceholder": "Es. perdita di memoria in payment-service v2.3.1...",
       "derivedPriority": "Priorità risultante:",
+      "matrixUnreadable": "sconosciuta — non è stato possibile leggere la matrice delle priorità ({{error}})",
       "rootCauseHint": "Descrivi la causa radice prima di risolvere (minimo 10 caratteri).",
       "transitionNoteHint": "Aggiungi una nota per questa transizione (minimo 10 caratteri).",
       "aiDraft": "Bozza AI dalle attività",
@@ -1917,7 +1939,11 @@
       "declareMajorConfirmTitle": "Dichiarare un Major Incident?",
       "declareMajorConfirmBody": "{{number}} diventa un Major Incident: il Change Manager e le regole di escalation vengono avvisati subito.",
       "revokeMajorConfirmTitle": "Revocare il Major Incident?",
-      "revokeMajorConfirmBody": "{{number}} torna un incident ordinario."
+      "revokeMajorConfirmBody": "{{number}} torna un incident ordinario.",
+      "firingAlarms_one": "L'allarme di monitoraggio {{names}} è ancora attivo. Puoi risolvere comunque, ma il problema potrebbe non essere finito.",
+      "firingAlarms_other": "{{count}} allarmi di monitoraggio sono ancora attivi: {{names}}. Puoi risolvere comunque, ma il problema potrebbe non essere finito.",
+      "firingAlarmsMore_one": "{{names}} e ancora {{count}}",
+      "firingAlarmsMore_other": "{{names}} e altri {{count}}"
     },
     "problemDetail": {
       "rootCause": "Causa radice",
@@ -1928,6 +1954,8 @@
       "pickGroupFirst": "Assegna prima un gruppo, poi potrai scegliere un utente.",
       "noteRequired": "Aggiungi una nota per questo passaggio (almeno 10 caratteri).",
       "noUserInTeam": "Nessun utente nel gruppo {{team}}.",
+      "usersUnreadable": "Non è stato possibile leggere le persone del gruppo {{team}}: {{error}}",
+      "affectedUsersNotNumber": "Il numero di utenti coinvolti non è un numero: non è stato salvato.",
       "deleteTitle": "Eliminare definitivamente il problem {{number}}?",
       "dossier": "Fascicolo d’indagine",
       "dossierTitle": "Fascicolo d’indagine",
@@ -2091,7 +2119,8 @@
       "unassigned": "— Non assegnato —",
       "notFound": "Task non trovato",
       "weight": "Peso {{weight}}",
-      "weightHint": "Quanto conta questa risposta nel punteggio di rischio del CI"
+      "weightHint": "Quanto conta questa risposta nel punteggio di rischio del CI",
+      "questionsUnavailable": "Non è stato possibile leggere le domande dell'assessment: {{error}}"
     },
     "createIncident": {
       "titlePlaceholder": "Es. Il database di produzione non è raggiungibile",
@@ -2099,7 +2128,10 @@
       "title": "Nuovo incident",
       "subtitle": "Compila i dettagli dell'incident da aprire",
       "selectCategory": "-- Seleziona categoria --",
-      "submit": "Crea Incident"
+      "submit": "Crea Incident",
+      "teamFromCI": "Il gruppo di supporto di {{ci}}: puoi scegliere un altro team.",
+      "noSupportGroup_one": "Questo CI non ha un gruppo di supporto: scegli un team, oppure l'incident verrà creato senza.",
+      "noSupportGroup_other": "Nessuno di questi CI ha un gruppo di supporto: scegli un team, oppure l'incident verrà creato senza."
     },
     "createTicket": {
       "searchByName": "Cerca per nome...",
@@ -2164,7 +2196,8 @@
       "complete": "Completa il piano",
       "wrongTeam": "Non sei nel team giusto",
       "fillAll": "Compila tutti i passi prima di completare",
-      "saveFirst": "Salva le modifiche prima di completare"
+      "saveFirst": "Salva le modifiche prima di completare",
+      "removeStep": "Rimuovi il passo {{n}}"
     },
     "teamDetail": {
       "manager": "Responsabile",
@@ -2212,6 +2245,9 @@
       "someTypes_other": "Solo questi {{count}} tipi di CI.",
       "relations": "Relazioni da seguire",
       "relationsHint": "Almeno una.",
+      "allRelations": "Tutte le relazioni fra CI",
+      "someRelations_one": "Solo {{count}} relazione.",
+      "someRelations_other": "Solo queste {{count}} relazioni.",
       "incidentSeverities": "Severità degli incident che contano come critiche",
       "incidentSeveritiesHint": "Valori del dizionario delle severità.",
       "forbidden": "Relazioni vietate",
@@ -2329,6 +2365,7 @@
         "notConfigured": "Non configurato",
         "redirectUri": "Indirizzo di ritorno da registrare presso il provider",
         "spMetadata": "Metadati di OpenGrafo per il provider",
+        "registerEveryAddress": "Registra tutti gli indirizzi: uno per ogni indirizzo da cui si raggiunge la pagina di accesso",
         "displayName": "Nome nella pagina di accesso",
         "tenant": "Tenant (id o dominio)",
         "clientId": "Id del client / dell'applicazione",
@@ -2476,7 +2513,16 @@
         "readOnly": "Sola lettura in questo modulo",
         "readOnlyHelp": "Si vede ma non si compila: il valore arriva da fuori, per esempio da un’automazione. Un campo in sola lettura non può essere obbligatorio, se non ha una formula.",
         "referenceNeedsTypes": "Per offrirlo nel portale, dichiara a quali tipi di CI punta: chi compila da lì sceglie da un elenco (per esempio «le applicazioni di business»), non cerca nella CMDB.",
-        "referencePeopleStaffOnly": "Un riferimento a una persona o a una squadra resta dell'area di lavoro: nel portale non si offre l'elenco del personale."
+        "referencePeopleStaffOnly": "Un riferimento a una persona o a una squadra resta dell'area di lavoro: nel portale non si offre l'elenco del personale.",
+        "ruleField": "Regola {{number}}: campo",
+        "ruleOp": "Regola {{number}}: confronto",
+        "ruleValue": "Regola {{number}}: valore",
+        "libraryNotRefreshed_one": "Il campo è stato creato ed è nel modulo, ma non è stato possibile aggiornare la libreria dei campi: finché non si aggiorna, il modulo lo mostra col suo nome.",
+        "libraryNotRefreshed_other": "I {{count}} campi sono stati creati e sono nel modulo, ma non è stato possibile aggiornare la libreria dei campi: finché non si aggiorna, il modulo li mostra col loro nome.",
+        "itemListNotRefreshed": "«{{name}}» è stata creata, ma non è stato possibile aggiornare l'elenco delle service request.",
+        "libraryNotRefreshedAfterEdit": "Non è stato possibile aggiornare la libreria dei campi: finché non si aggiorna, questa pagina mostra il campo com'era prima della modifica.",
+        "formLoading": "Sto caricando il modulo di «{{item}}»…",
+        "formLoadFailed": "Non è stato possibile caricare il modulo di «{{item}}»: finché non si carica, non si può modificare né pubblicare."
       },
       "library": {
         "intro": "Un campo si definisce una volta e lo riusano tutti i moduli. Il suo nome diventa la proprietà sul ticket — è il motivo per cui si può filtrare e riportare, e il motivo per cui non si può rinominare.",
@@ -2584,6 +2630,7 @@
         "searchReference": "Scrivi almeno due lettere…",
         "noResults": "Nessun risultato",
         "clearReference": "Togli la scelta",
+        "searchFailed": "La ricerca non è riuscita: l'elenco dei candidati non è noto. Riprova.",
         "computed": "calcolato",
         "addRow": "Aggiungi una riga",
         "removeRow": "Togli questa riga"
@@ -3042,7 +3089,9 @@
       "inputField": "Campo di input",
       "deleteTransitionTitle": "Eliminare la transizione {{from}} → {{to}}?",
       "expectedArray": "{{field}}: atteso un array JSON, trovato {{found}}",
-      "isOpenStep": "L'entità è considerata «aperta» in questo step"
+      "isOpenStep": "L'entità è considerata «aperta» in questo step",
+      "moveHint": "Per spostare quest'arco su altri passi, eliminalo e disegnane uno nuovo fra i passi giusti.",
+      "manualNeedsLabel": "Un arco manuale ha bisogno di un'etichetta: è il testo del bottone che si clicca sul ticket."
     },
     "stepType": {
       "standard": "Passo",
@@ -3054,6 +3103,7 @@
     "addStep": "Passo",
     "addStepDialog": "Aggiungi un passo",
     "timerMinutesPlaceholder": "es. 60",
+    "timerHoursPlaceholder": "es. 72",
     "legend": {
       "node": "Nodo / passo",
       "manual": "Manuale",
@@ -3257,7 +3307,8 @@
       "updated": "Regola di visibilità aggiornata",
       "deleted": "Regola di visibilità eliminata",
       "editRule": "Modifica la regola su «{{field}}»",
-      "deleteRule": "Elimina la regola su «{{field}}»"
+      "deleteRule": "Elimina la regola su «{{field}}»",
+      "noTarget": "Nessun altro campo da mostrare o nascondere: una regola di visibilità ha bisogno di almeno due campi."
     },
     "requirement": {
       "title": "CAMPI OBBLIGATORI",
@@ -3310,6 +3361,7 @@
     "unknownUser": "Utente sconosciuto",
     "sending": "Invio…",
     "workflowStep": "Step workflow",
+    "noWorkflowStep": "Nessun workflow",
     "assignedTo": "Assegnato a",
     "notAssigned": "Non assegnato",
     "assignedTeam": "Team assegnato",
@@ -3328,9 +3380,10 @@
     "rootCause": "Causa radice",
     "affectedUsers": "Utenti impattati",
     "reassign": "Riassegna",
-    "selectTeam": "Seleziona team…",
     "selectUser": "Seleziona utente…",
     "assignTeam": "Assegna team",
+    "assignTeamFirst": "Assegna prima un team: l'assegnatario è uno dei suoi membri.",
+    "assigneesUnavailable": "Persone non caricate: {{error}}",
     "assign": "Assegna",
     "assigning": "Assegnazione…",
     "backToList": "Torna alla lista",
@@ -3595,7 +3648,7 @@
     "agentsOnly": "Solo agenti",
     "empty": "Nessun messaggio",
     "edited": "modificato",
-    "placeholder": "Scrivi un messaggio... (Ctrl+Enter per inviare)",
+    "placeholder": "Scrivi un messaggio... ({{shortcut}} per inviare)",
     "send": "Invia",
     "confirmDelete": "Eliminare il messaggio?"
   },
@@ -3642,6 +3695,7 @@
       "resolution": "Risoluzione",
       "tableLabel": "SLA Policies — {{entity}}",
       "scopePriority": "priorità {{value}}",
+      "scopeSeverity": "severità {{value}}",
       "scopeCategory": "categoria {{value}}",
       "scopeTeam": "team {{value}}",
       "previewAll": "Tutti gli {{entity}}",
@@ -3967,7 +4021,9 @@
       "needsCI": "Un incident deve avere almeno un CI impattato.",
       "ciMissing": "Incident non creato: {{missing}} dei {{total}} CI impattati non esistono in questo cliente, o non sono Configuration Item ({{ids}}).",
       "assignedButNotAdvanced": "L'assegnazione è stata salvata, ma l'incident non è passato a «{{step}}»: {{reason}}",
-      "workflowInstance": "L'incident non è stato creato: il suo workflow non è partito ({{reason}}). Controlla nel disegnatore il workflow incident di questa categoria: serve esattamente un passo iniziale."
+      "workflowInstance": "L'incident non è stato creato: il suo workflow non è partito ({{reason}}). Controlla nel disegnatore il workflow incident di questa categoria: serve esattamente un passo iniziale.",
+      "teamNotFound": "Il team scelto non esiste più in questa organizzazione: scegline un altro.",
+      "createdButNotAssigned": "L'incident {{number}} è stato creato, ma l'assegnazione al suo team non è riuscita: {{reason}}"
     },
     "change": {
       "needsCI": "Una change deve avere almeno un CI impattato.",
@@ -4079,7 +4135,8 @@
       "noApproverTarget": "L'approvazione non può partire: le persone o le squadre indicate non hanno nessun membro attivo in questa organizzazione.",
       "lastActiveDefinition": "«{{name}}» è l'ultimo iter {{entityType}} attivo senza categoria: spegnendolo non nascerebbe più nessun {{entityType}}. Attivane un altro prima.",
       "stepTypeNotImplemented": "Il tipo di passo «{{type}}» non è eseguito dal motore dei processi: un passo così si comporterebbe come un passo normale, seguendo una sola transizione. Non si può aggiungere finché il motore non lo implementa.",
-      "taskOnlyOnEnter": "Un task si può creare solo ENTRANDO in un passo, non uscendone ({{field}}): uscendo nascerebbe col nome del passo successivo, e terrebbe fermo quello sbagliato."
+      "taskOnlyOnEnter": "Un task si può creare solo ENTRANDO in un passo, non uscendone ({{field}}): uscendo nascerebbe col nome del passo successivo, e terrebbe fermo quello sbagliato.",
+      "manualTransitionNeedsLabel": "La transizione manuale «{{from}}» → «{{to}}» resterebbe senza etichetta: l'etichetta è il testo del bottone che si clicca sul ticket. Scrivine una, oppure cambiane l'innesco."
     },
     "channel": {
       "platform": "La piattaforma «{{platform}}» non è supportata. Ammesse: {{allowed}}."
@@ -4186,7 +4243,8 @@
       "severityDuplicate": "«{{value}}» compare due volte.",
       "severityLanguage": "Lingua sconosciuta «{{language}}».",
       "severityLabelTooLong": "L'etichetta di «{{value}}» supera i {{max}} caratteri.",
-      "severityNotOffered": "Questa severità non è offerta nel portale. Scegli fra: {{allowed}}."
+      "severityNotOffered": "Questa severità non è offerta nel portale. Scegli fra: {{allowed}}.",
+      "cannotConfirmResolution": "Questo ticket non si può confermare: non è risolto, oppure il suo workflow lo chiude solo in automatico."
     },
     "sync": {
       "unknownCIType": "Il conflitto {{id}} riguarda un tipo di CI sconosciuto: nessun CI è stato creato, perché «{{ciType}}» non è un tipo di questo cliente. Risolvilo alla radice — crea il tipo, o aggiungi un alias nelle regole di mappatura della sorgente — e rilancia la sincronizzazione: il conflitto si chiude da sé.",
@@ -4266,7 +4324,8 @@
       "modelRefused": "Il modello AI ha rifiutato la richiesta: prova a riformularla.",
       "disabled": "La funzione AI «{{feature}}» è spenta per questa organizzazione. Un amministratore può accenderla in Organizzazione → AI.",
       "truncated": "La risposta del modello si è interrotta a metà: la richiesta era troppo grande. Riprova, o riduci quello che stai chiedendo.",
-      "badAnswer": "La risposta del modello non è leggibile. Riprova: se succede ancora, segnalalo a chi amministra la piattaforma."
+      "badAnswer": "La risposta del modello non è leggibile. Riprova: se succede ancora, segnalalo a chi amministra la piattaforma.",
+      "needsTimezone": "L'organizzazione non ha un fuso orario, quindi gli orari della bozza non si possono scrivere in ora locale: sceglilo in Impostazioni → Organizzazione."
     },
     "kb": {
       "onlyFromConcluded": "La bozza per la Knowledge Base si genera solo da incident risolti o chiusi: questo è nel passo «{{step}}». Passi conclusivi del workflow incident: {{concluded}}.",
@@ -4375,7 +4434,8 @@
       "catalogItemWithoutPriority": "La voce del catalogo «{{item}}» non ha una priorità, quindi non si può aprire una richiesta. Un amministratore la imposta da Admin → Catalogo servizi.",
       "catalogItemInactive": "La voce di catalogo «{{item}}» non è attiva: non si possono aprire nuove richieste da lì. Riattivala in Admin → Catalogo Servizi, oppure scegli un'altra voce.",
       "priorityRequired": "Scegli la priorità della richiesta.",
-      "catalogItemPriorityRequired": "Una voce del catalogo deve avere una priorità."
+      "catalogItemPriorityRequired": "Una voce del catalogo deve avere una priorità.",
+      "createdButNotAssigned": "La richiesta {{number}} è stata creata, ma l'assegnazione al suo team non è riuscita: {{reason}}"
     },
     "serviceCalendar": {
       "name": "Un calendario di servizio deve avere un nome di al massimo {{max}} caratteri.",
@@ -4624,7 +4684,8 @@
     "serviceCatalog": {
       "workflowNotFound": "Quel workflow qui non esiste, oppure è spento.",
       "workflowWrongType": "Il workflow «{{name}}» è per {{entityType}}, non per le richieste di servizio.",
-      "workflowNoInitialStep": "Il workflow «{{name}}» non ha un passo iniziale: segnane uno nel disegnatore prima di usarlo qui."
+      "workflowNoInitialStep": "Il workflow «{{name}}» non ha un passo iniziale: segnane uno nel disegnatore prima di usarlo qui.",
+      "fulfillmentTeamNotFound": "Il gruppo di evasione scelto non esiste più in questa organizzazione: scegline un altro."
     },
     "formTable": {
       "noColumns": "La tabella «{{field}}» non ha colonne: aggiungine almeno una nella libreria dei campi.",
@@ -4690,6 +4751,9 @@
     "rest": {
       "repeatedRouteParam": "Il parametro «{{name}}» della rotta è arrivato come elenco: questa rotta dichiara un parametro ripetuto, e chi la usa non se lo aspetta.",
       "missingRouteParam": "Manca il parametro «{{name}}» nella rotta."
+    },
+    "users": {
+      "unknownPermission": "Permesso sconosciuto «{{permission}}»."
     }
   },
   "errorBoundary": {
@@ -4735,6 +4799,7 @@
     "undo": "Annulla (Ctrl+Z)",
     "redo": "Ripristina (Ctrl+Y)",
     "linkPrompt": "URL del link:",
+    "linkRefused": "Questo indirizzo non si può usare come link: {{href}}",
     "imagePrompt": "URL immagine:"
   },
   "conditionEditor": {
@@ -4844,9 +4909,11 @@
       "duplicated_one": "Report duplicato: \"{{name}}\" ({{count}} sezione)",
       "duplicated_other": "Report duplicato: \"{{name}}\" ({{count}} sezioni)",
       "saveFailed": "Errore nel salvataggio",
+      "cronRequired": "Frequenza personalizzata: scrivi l'espressione cron, oppure scegli una delle frequenze dell'elenco.",
       "corruptFilters": "Filtri della sezione corrotti (nodo \"{{node}}\"): {{error}}. Correggi il dato salvato prima di modificare la sezione.",
       "streamError": "Errore durante la generazione della risposta",
       "aiOverloaded": "Servizio AI temporaneamente sovraccarico. Riprova tra qualche secondo.",
+      "noAnswer": "La risposta non è arrivata: la connessione si è chiusa prima della fine. Fai di nuovo la domanda.",
       "droppedFrames_one": "{{count}} frammento della risposta non interpretato ({{reason}}): il testo potrebbe essere incompleto.",
       "droppedFrames_other": "{{count}} frammenti della risposta non interpretati ({{reason}}): il testo potrebbe essere incompleto.",
       "downloadFailed": "Non è stato possibile scaricare il report: {{error}}"
@@ -4917,13 +4984,11 @@
       "saveFailed": "Salvataggio widget fallito: {{error}}",
       "titleRequired": "Inserisci un titolo",
       "removed": "Widget rimosso",
-      "removeFailed": "Rimozione widget fallita: {{error}}",
-      "reorderFailed": "Errore nel riordinamento: {{error}}"
+      "removeFailed": "Rimozione widget fallita: {{error}}"
     },
     "incident": {
       "created": "Incident creato",
       "updated": "Incident aggiornato",
-      "teamAssignmentFailed": "Assegnazione team: {{error}}",
       "slaCoverageUnavailable": "Non è stato possibile verificare se una policy SLA copre l'incident: {{error}}",
       "fieldRulesUnavailable": "Impossibile validare i campi obbligatori: {{error}}",
       "kbDraftCreated": "Bozza KB creata: \"{{title}}\" — la trovi in Knowledge Base Admin",
@@ -4989,6 +5054,7 @@
       "transitionFailed": "Transizione non riuscita",
       "slaCoverageUnavailable": "Non è stato possibile verificare se una policy SLA copre la service request: {{error}}",
       "assigned": "Richiesta assegnata",
+      "teamAssigned": "Team assegnato",
       "ciAdded": "CI collegato alla richiesta",
       "ciRemoved": "CI tolto dalla richiesta"
     },
@@ -5099,6 +5165,7 @@
       "semanticScore": "Somiglianza semantica",
       "title": "Incident simili",
       "pending": "Analisi in corso: il prodotto sta calcolando la somiglianza di questo incident...",
+      "failed": "L'analisi di somiglianza di questo incident non è riuscita: {{reason}}",
       "empty": "Nessun incident passato somiglia a questo.",
       "kb": "Articoli suggeriti",
       "searchError": "Errore ricerca semantica: {{message}}"
@@ -5321,7 +5388,6 @@
       "ignoreLifecycleStatuses": "Stati del ciclo di vita da ignorare",
       "lifecycleUnknown": "Sconosciuto: {{value}}",
       "lifecycleVocabularyUnavailable": "Stati del ciclo di vita non disponibili dal metamodello ({{error}}): restano spuntabili solo quelli già salvati nella policy.",
-      "lifecycleEmptyVocabulary": "Il metamodello non espone nessuno stato del ciclo di vita: non c'è niente da ignorare.",
       "selectedSome": {
         "ignoreLifecycleStatuses_one": "{{count}} stato ignorato.",
         "ignoreLifecycleStatuses_other": "{{count}} stati ignorati.",
@@ -5372,7 +5438,9 @@
         "ignoreLifecycleStatuses": "Gli allarmi sui CI in questi stati non aprono incident e non cambiano la salute del CI: restano in console con il motivo «ciclo di vita ignorato». Di norma basta «decommissioned»: un CI dismesso che il monitoraggio non ha ancora spento non deve svegliare nessuno.",
         "retiredStatuses": "Un CI in questi stati non conta nel calcolo della salute dei servizi: si vede nella mappa, marcato «dismesso», ma non pesa e non porta il servizio in manutenzione. Di fabbrica «inactive» e «decommissioned».",
         "maintenanceStatuses": "Un CI in questi stati non si fa aggiornare la salute dagli allarmi ed esce dal calcolo della mappa, marcato «in manutenzione». È il ciclo di vita del CI, non la finestra di una change. Di fabbrica «maintenance».",
-        "highImpactDependents": "Da quanti CI dipendenti in su la console segna il CI come «un guasto qui si propaga». 0 = nessuna evidenza, si mostra solo quanti dipendono."
+        "highImpactDependents": "Da quanti CI dipendenti in su la console segna il CI come «un guasto qui si propaga». 0 = nessuna evidenza, si mostra solo quanti dipendono.",
+        "productionEnvironments": "I valori del vocabolario degli ambienti che contano come produzione. Un CI senza ambiente conta come produzione.",
+        "nonProductionSeverityMap": "Spento: la tabella qui sopra vale ovunque. Acceso: i CI fuori produzione usano una tabella propria."
       },
       "flapStableMinutes": "Minuti di stabilità prima di riprendere",
       "stormThresholdPerMinute": "Soglia di tempesta (allarmi nuovi al minuto)",
@@ -5389,7 +5457,8 @@
       "validation": {
         "integer": "Inserisci un numero intero (minimo {{min}}).",
         "min": "Il valore minimo è {{min}}.",
-        "blocked": "Correggi i campi segnalati per salvare."
+        "blocked": "Correggi i campi segnalati per salvare.",
+        "productionEnvironmentsRequired": "Scegli almeno un ambiente di produzione: altrimenti ogni CI sarebbe fuori produzione."
       },
       "neverNote": "Non usati con «Mai»: il monitoraggio non apre incident, quindi raggruppamento, ritardo, chiusura automatica e mappa severità non hanno effetto.",
       "unsaved": "Modifiche non salvate",
@@ -5398,7 +5467,7 @@
       "errors": {
         "expectedObject": "severityMap: atteso un oggetto JSON",
         "missingSeverity": "severityMap: manca la severità \"{{severity}}\"",
-        "invalidLevel": "severityMap.{{severity}}: impact/urgency devono essere low | medium | high"
+        "invalidLevel": "severityMap.{{severity}}: impact e urgency sono obbligatori, ciascuno un valore del proprio vocabolario nel Dizionario"
       },
       "retiredStatuses": "Stati che contano come «ritirato»",
       "maintenanceStatuses": "Stati che contano come «in manutenzione»",
@@ -5407,7 +5476,11 @@
         "retiredStatuses": "Nessuno stato conta come ritirato: ogni componente pesa nel calcolo della salute dei servizi, anche se dismesso.",
         "maintenanceStatuses": "Nessuno stato conta come manutenzione: il monitoraggio aggiorna la salute di qualunque CI."
       },
-      "highImpactDependents": "Dipendenti da cui un guasto si propaga"
+      "highImpactDependents": "Dipendenti da cui un guasto si propaga",
+      "productionEnvironments": "Ambienti di produzione",
+      "nonProductionSeverityMap": "Impatto e urgenza diversi fuori produzione",
+      "outsideProduction": "Fuori produzione",
+      "nonProductionMapInvalid": "Mappa di severità fuori produzione non valida ({{error}}): rifalla e salva per correggerla."
     },
     "health": {
       "operational": "Operativo",
@@ -5893,8 +5966,10 @@
         "allTypes": "Tutti i tipi",
         "environment": "Ambiente",
         "allEnvironments": "Tutti gli ambienti",
-        "team": "Squadra",
-        "allTeams": "Tutte le squadre",
+        "team": "Team proprietario",
+        "allTeams": "Tutti i team proprietari",
+        "supportTeam": "Team di supporto",
+        "allSupportTeams": "Tutti i team di supporto",
         "teamsUnavailable": "Squadre non disponibili: {{error}}",
         "enumsUnavailable": "Ambienti non disponibili: {{error}}",
         "search": "Cerca un CI per nome",
@@ -5905,7 +5980,7 @@
         "health": "Salute",
         "alarms": "Allarmi attivi",
         "impact": "Impatto",
-        "team": "Squadra",
+        "supportTeam": "Team di supporto",
         "lastEvent": "Ultimo allarme",
         "source": "Origine",
         "map": "Mappa",
@@ -6457,6 +6532,7 @@
       "portal_severities_stale": "Il portale self-service offre {{values}}, che il vocabolario delle severità non ha più: aprire un ticket lì fallisce. **Si corregge la scelta da Impostazioni → Organizzazione**.",
       "catalog_items_without_priority": "{{count}} voci attive del catalogo non hanno una priorità ({{items}}): da quelle non si aprono richieste, nemmeno dal portale. **Si imposta da Admin → Catalogo servizi**.",
       "catalog_items_legacy_category": "{{count}} voci del catalogo hanno ancora una categoria scritta a mano che non corrisponde a nessuna categoria del Dizionario ({{items}}): le loro richieste nascono senza categoria, e le policy SLA per categoria non le vedono. **Si sceglie da Admin → Catalogo servizi**.",
+      "catalog_items_without_fulfillment_team": "{{count}} voci del catalogo non hanno un gruppo di evasione, quindi le loro richieste nascono senza team: {{items}}. **Si sceglie da Admin → Catalogo servizi**.",
       "inapp_retention_not_set": "Questa organizzazione non ha scelto per quanto conservare le notifiche della campanella: la pulizia notturna la salta e non vengono mai cancellate. **Si sceglie da Impostazioni → Organizzazione**.",
       "migrations_pending": "{{count}} migrazioni del database non sono state applicate ({{migrations}}): il prodotto gira con dati che non corrispondono al suo codice. **Chi gestisce l'installazione lancia migrate.js**.",
       "workflow_step_categories_missing": "Il workflow «{{workflow}}» ({{entityType}}) non ha nessun passo con queste categorie: {{missing}}. Il prodotto riconosce i passi dalla categoria, non dal nome, quindi le operazioni che ne hanno bisogno si fermano con un errore. **Imposta la categoria sul passo nel designer del workflow**.",
@@ -6601,7 +6677,8 @@
       "affected": "CI coinvolti",
       "impacted": "CI impattati"
     },
-    "openTaskOf": "Apri: {{task}}"
+    "openTaskOf": "Apri: {{task}}",
+    "completing": "Completamento in corso…"
   },
   "sync": {
     "createSource": "Crea sorgente",
@@ -6963,7 +7040,9 @@
       "and": "E",
       "or": "O",
       "slaPair": "risposta:{{response}}min risoluzione:{{resolve}}min"
-    }
+    },
+    "corruptConditions": "il campo \"conditions\" salvato non è JSON valido ({{error}})",
+    "corruptActions": "il campo \"actions\" salvato non è JSON valido ({{error}})"
   },
   "inApp": {
     "mention": {
@@ -7463,6 +7542,7 @@
       "itil_type.field_removed": "Campo tolto da un tipo di ticket",
       "kb_article.created": "Articolo della knowledge base scritto",
       "kb_article.deleted": "Articolo della knowledge base cancellato",
+      "kb_article.drafted_by_ai": "Bozza di articolo della knowledge base scritta dall'AI da un incident",
       "kb_article.publication_rejected": "Pubblicazione di un articolo rifiutata",
       "kb_article.updated": "Articolo della knowledge base modificato",
       "kb_article.version_restored": "Versione precedente di un articolo ripristinata",
@@ -7479,6 +7559,7 @@
       "portal.comment.added": "Commento scritto dal portale",
       "portal.ticket.created": "Ticket aperto dal portale",
       "portal.ticket.reopened": "Ticket riaperto dal portale",
+      "portal.ticket.resolution_confirmed": "Risoluzione confermata dal richiedente dal portale",
       "problem.assigned_user": "Problem assegnato a una persona",
       "problem.created": "Problem aperto",
       "problem.deleted": "Problem cancellato",
@@ -7491,6 +7572,8 @@
       "report.export_xlsx": "Report esportato in Excel",
       "report.updated": "Report modificato",
       "request.assigned": "Richiesta di servizio assegnata",
+      "request.assigned_team": "Richiesta di servizio assegnata a un team",
+      "request.unassigned_user": "Richiesta di servizio senza assegnatario",
       "request.ci_added": "CI collegato a una richiesta",
       "request.ci_removed": "CI scollegato da una richiesta",
       "request.created": "Richiesta di servizio aperta",
@@ -7634,5 +7717,29 @@
     "questionCategoryFilter": "Filtra le domande per categoria",
     "questionAssignCiType": "Assegna la domanda al tipo CI {{type}}",
     "scriptCode": "Codice dello script"
+  },
+  "pickers": {
+    "searchPlaceholder": "Scrivi per cercare…",
+    "noMatch": "Nessun risultato per «{{query}}».",
+    "noChoices": "Non c'è niente da scegliere.",
+    "more_one": "Ancora {{count}}: scrivi per restringere.",
+    "more_other": "Altri {{count}}: scrivi per restringere.",
+    "loadFailed": "Scelte non caricate: {{error}}",
+    "teams": {
+      "onlyType": "Solo i team di tipo «{{type}}».",
+      "noneOfType": "Nessun team è di tipo «{{type}}».",
+      "changeManagerOut": "Il team Change Manager approva le change e non è proposto.",
+      "allShown": "Sono mostrati tutti i team.",
+      "showAll": "Mostra tutti i team ({{total}})",
+      "showOnly": "Solo i team di tipo «{{type}}»",
+      "noType": "senza tipo",
+      "none": "— Nessun team —"
+    },
+    "users": {
+      "placeholder": "Cerca una persona per nome o email…",
+      "changeWork": "Le persone il cui ruolo può lavorare sulle change.",
+      "nobody": "Nessuna persona attiva ha un ruolo che può farlo: controlla i ruoli.",
+      "typeToFind": "Scrivi un nome per trovare gli altri."
+    }
   }
 }

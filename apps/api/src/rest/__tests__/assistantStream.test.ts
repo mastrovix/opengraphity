@@ -42,7 +42,7 @@ beforeAll(async () => {
 afterAll(async () => { await new Promise<void>((resolve) => server.close(() => resolve())) })
 beforeEach(() => {
   vi.clearAllMocks()
-  vi.mocked(streamAssistantChat).mockImplementation(async (_t, _p, _m, emit) => { emit.done('ok') })
+  vi.mocked(streamAssistantChat).mockImplementation(async (_t, _u, _p, _m, emit) => { emit.done('ok') })
 })
 
 const post = (role: string) => fetch(base, {
@@ -64,8 +64,10 @@ describe('POST /api/assistant/stream — permesso assistant.use', () => {
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toMatch(/text\/event-stream/)
     await res.text()
-    const [tenantId, permissions] = vi.mocked(streamAssistantChat).mock.calls[0]!
+    const [tenantId, userId, permissions] = vi.mocked(streamAssistantChat).mock.calls[0]!
     expect(tenantId).toBe('tenant-1')
+    // The person, so that the assistant answers in the language of their interface (D62).
+    expect(typeof userId).toBe('string')
     expect([...permissions]).toContain('incident.read')
     expect([...permissions]).not.toContain('incident.write')
   })

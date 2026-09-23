@@ -15,7 +15,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { apolloFinto } from '@/test/apolloFinto'
-import { DomainVocabularyProvider, useDomainVocabularies, type DomainVocabularies } from './DomainVocabularyContext'
+import { DomainVocabularyProvider, useDomainVocabularies, withOwnLabel, type DomainVocabularies } from './DomainVocabularyContext'
 
 // The fake Apollo always answers "loaded"; this flag lets a test hold the query in flight.
 const inFlight = vi.hoisted(() => ({ loading: false }))
@@ -113,5 +113,45 @@ describe('useDomainVocabularies without a provider', () => {
     expect([v.valuesOf('x'), v.labelOf('x', 'y'), v.colorOf('x', 'y'), v.entriesOf('x'), v.vocabularyLabelOf('x')]).toEqual([null, null, null, null, null])
     expect(v.error).toBeNull()
     expect(screen.getByText('ready')).toBeInTheDocument()
+  })
+})
+
+/**
+ * D29 (tour of 23 Sep 2026): a value nobody labelled came with the API's
+ * fallback label — every word capitalised — and «Pick up at the IT desk» was
+ * shown «Pick Up At The IT Desk». The fallback is recognised (it is not among
+ * the labels actually written) and replaced by the one shared rule.
+ */
+describe('the label of a value nobody labelled (D29)', () => {
+  it('a sentence stays as the customer wrote it', () => {
+    expect(withOwnLabel({ value: 'Pick up at the IT desk', label: 'Pick Up At The IT Desk', labels: [] }).label).toBe('Pick up at the IT desk')
+  })
+
+  it('a machine key becomes a sentence', () => {
+    expect(withOwnLabel({ value: 'in_progress', label: 'In Progress', labels: [] }).label).toBe('In progress')
+  })
+
+  it('a label written in the Dictionary is kept, in any case', () => {
+    const written = { value: 'in_progress', label: 'In Progress', labels: [{ language: 'en', label: 'In Progress' }] }
+    expect(withOwnLabel(written)).toBe(written)
+  })
+
+  it('a label written only in ANOTHER language is not this one: the fallback is replaced', () => {
+    const row = { value: 'on_hold', label: 'On Hold', labels: [{ language: 'it', label: 'In attesa' }] }
+    expect(withOwnLabel(row).label).toBe('On hold')
+  })
+
+  it('through the provider: labelOf and entriesOf both read the corrected label', () => {
+    apolloFinto.risposte['GetEnumTypes'] = { enumTypes: [row({
+      name: 'delivery', values: ['Pick up at the IT desk', 'courier'],
+      valueLabels: [
+        { value: 'Pick up at the IT desk', label: 'Pick Up At The IT Desk', labels: [] },
+        { value: 'courier', label: 'By courier', labels: [{ language: 'en', label: 'By courier' }] },
+      ],
+    })] }
+    mount()
+    expect(seen!.labelOf('delivery', 'Pick up at the IT desk')).toBe('Pick up at the IT desk')
+    expect(seen!.labelOf('delivery', 'courier')).toBe('By courier')
+    expect(seen!.entriesOf('delivery')?.map((e) => e.label)).toEqual(['Pick up at the IT desk', 'By courier'])
   })
 })

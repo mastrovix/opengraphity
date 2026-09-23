@@ -1,4 +1,4 @@
-import { useId, useState, useEffect } from 'react'
+import { useId, useState, useEffect, type CSSProperties } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { Trans, useTranslation } from 'react-i18next'
@@ -25,6 +25,8 @@ import {
 import { QUESTION_CATEGORY } from '@/lib/taskStatus'
 import { Pill } from '@/components/ui/Pill'
 import { inputS } from '@/components/ui/styles'
+import { DetailLayout } from '@/components/ui/DetailLayout'
+import { localizedLabel, type LocalizedLabel } from '@/lib/localizedLabel'
 
 type QuestionCategoryKey = typeof QUESTION_CATEGORY[keyof typeof QUESTION_CATEGORY]
 
@@ -49,6 +51,7 @@ interface CIType {
   id:     string
   name:   string
   label:  string
+  labels?: LocalizedLabel[] | null
   active: boolean
 }
 
@@ -126,6 +129,43 @@ function CommitNumberInput({ value, onCommit, disabled, title, min }: {
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
+
+/**
+ * A score typed freely (tour of 23 Sep 2026): emptied, it waits for the next
+ * digit instead of snapping back to 1 at once — clearing it and typing «4»
+ * gave 14. Left empty or below 1, it goes back to the minimum, 1, when the
+ * field is left.
+ */
+function ScoreField({ value, onChange, label, placeholder, style }: {
+  value: number; onChange: (score: number) => void; label: string; placeholder: string; style: CSSProperties
+}) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const valid = (text: string): number | null => {
+    const n = Number(text)
+    return text.trim() !== '' && Number.isInteger(n) && n >= 1 ? n : null
+  }
+  return (
+    <input
+      type="number"
+      min={1}
+      step={1}
+      value={draft ?? value}
+      onChange={(e) => {
+        setDraft(e.target.value)
+        const n = valid(e.target.value)
+        if (n !== null) onChange(n)
+      }}
+      onBlur={() => {
+        if (draft === null) return
+        onChange(valid(draft) ?? 1)
+        setDraft(null)
+      }}
+      placeholder={placeholder}
+      aria-label={label}
+      style={style}
+    />
+  )
+}
 
 export function QuestionAdminPage() {
   const { t } = useTranslation()
@@ -207,7 +247,8 @@ export function QuestionAdminPage() {
     setCategory(QUESTION_CATEGORY.FUNCTIONAL)
     setIsCore(true)
     setIsActive(true)
-    setOptions([{ label: '', score: 0, sortOrder: 0 }])
+    // 1 and not 0: an answer is worth at least 1 (the field's `min` and the API say so).
+    setOptions([{ label: '', score: 1, sortOrder: 0 }])
     setIsNew(true)
   }
 
@@ -215,7 +256,8 @@ export function QuestionAdminPage() {
     if (!text.trim()) { toast.error(t('toast.question.textRequired')); return }
     if (options.length === 0) { toast.error(t('toast.question.optionRequired')); return }
     // L'id delle opzioni che esistono già viaggia con la modifica: le risposte date restano (revisione totale · B-2).
-    const optInput = options.map(o => ({ ...(o.id ? { id: o.id } : {}), label: o.label, score: o.score, sortOrder: o.sortOrder }))
+    // The position is the one on screen: after a removal and an addition two answers could share one.
+    const optInput = options.map((o, i) => ({ ...(o.id ? { id: o.id } : {}), label: o.label, score: o.score, sortOrder: i }))
     if (isNew) {
       void createQuestion({ variables: { input: { text: text.trim(), category, isCore, options: optInput } } })
     } else if (selectedId) {
@@ -238,8 +280,8 @@ export function QuestionAdminPage() {
   const updateOption = (idx: number, patch: Partial<AnswerOption>) => {
     setOptions(p => p.map((o, i) => i === idx ? { ...o, ...patch } : o))
   }
-  const addOption = () => setOptions(p => [...p, { label: '', score: 0, sortOrder: p.length }])
-  const removeOption = (idx: number) => setOptions(p => p.filter((_, i) => i !== idx))
+  const addOption = () => setOptions(p => [...p, { label: '', score: 1, sortOrder: p.length }])
+  const removeOption = (idx: number) => setOptions(p => p.filter((_, i) => i !== idx).map((o, i) => ({ ...o, sortOrder: i })))
   const moveOption = (idx: number, dir: -1 | 1) => {
     setOptions(p => {
       const arr = [...p]
@@ -260,7 +302,7 @@ export function QuestionAdminPage() {
         {t('pages.questions.subtitle')}
       </p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 20, alignItems: 'start' }}>
+      <DetailLayout sideWidth={340} sideFirst gap={20}>
 
         {/* Left: question list */}
         <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
@@ -395,7 +437,7 @@ export function QuestionAdminPage() {
                       return (
                         <div key={ct.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
                           <input
-                            aria-label={t('a11y.questionAssignCiType', { type: ct.name })}
+                            aria-label={t('a11y.questionAssignCiType', { type: localizedLabel(ct) })}
                             type="checkbox"
                             checked={assigned}
                             disabled={assignmentBusy}
@@ -407,7 +449,7 @@ export function QuestionAdminPage() {
                               }
                             }}
                           />
-                          <span style={{ flex: 1, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{ct.label}</span>
+                          <span style={{ flex: 1, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{localizedLabel(ct)}</span>
                           {assigned && (
                             <>
                               <CommitNumberInput
@@ -459,18 +501,15 @@ export function QuestionAdminPage() {
                     {/*
                       `min={1}`: nessuna risposta puo valere 0 (terza revisione).
                       Il server lo rifiuta in `assertQuestionUsable`, e il campo
-                      non deve nemmeno offrirlo. `|| 1` e non `|| 0` perche un
-                      campo svuotato deve tornare al minimo valido, non a un
-                      valore che il salvataggio poi rifiuta.
+                      non deve nemmeno offrirlo. Svuotato, torna al minimo valido
+                      quando si esce dal campo — non mentre si scrive, che
+                      trasformava «svuota e scrivi 4» in 14.
                     */}
-                    <input
-                      type="number"
-                      min={1}
-                      step={1}
+                    <ScoreField
                       value={opt.score}
-                      onChange={e => updateOption(i, { score: parseInt(e.target.value, 10) || 1 })}
+                      onChange={(score) => updateOption(i, { score })}
                       placeholder={t('pages.questions.optionScore')}
-                      aria-label={t('pages.questions.optionScoreFor', { n: i + 1 })}
+                      label={t('pages.questions.optionScoreFor', { n: i + 1 })}
                       style={{ ...inputStyle, width: 90 }}
                     />
                     {/*
@@ -523,7 +562,7 @@ export function QuestionAdminPage() {
             </>
           )}
         </div>
-      </div>
+      </DetailLayout>
     </PageContainer>
   )
 }

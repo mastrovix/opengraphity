@@ -143,7 +143,7 @@ async function updateCIFields(
     // Le etichette sono quelle del metamodello del tenant: con la lista fissa
     // un CI di un tipo del cliente non veniva trovato (A-9).
     const rows = await runQuery<{ label: string | null }>(session, `
-      MATCH (ci {id: $id, tenant_id: $tenantId})
+      MATCH (ci:ConfigurationItem {id: $id, tenant_id: $tenantId})
       WHERE ${await ciLabelPredicateForTenant('ci', ctx.tenantId)}
       RETURN head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS label
     `, { id, tenantId: ctx.tenantId })

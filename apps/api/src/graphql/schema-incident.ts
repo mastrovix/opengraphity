@@ -102,6 +102,12 @@ export function incidentSDL(): string {
     senza SLA: la diagnostica di configurazione non lo conta.
     """
     acknowledgeNoSla: Boolean
+    """
+    The team that takes the incident (the form prefills it with the support
+    group of the selected CI). Absent: the support group of the first impacted
+    CI that has one; none of them has one: no team.
+    """
+    teamId: ID
   }
 
   input UpdateIncidentInput {

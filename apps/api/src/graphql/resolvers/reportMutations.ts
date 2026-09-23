@@ -132,15 +132,25 @@ export const Mutation = {
     return loadFullTemplate(id, ctx.tenantId)
   },
 
+  /**
+   * A field PRESENT as null clears it, an absent one is left alone — the
+   * convention of the other update mutations (review M-9, workflowMutations).
+   * `COALESCE($x, r.x)` everywhere meant a description or a Slack channel,
+   * once set, could never be removed: the settings form sends null for «no
+   * description» and «no channel», and the old value stayed (tour of 23 Sep
+   * 2026). Name, visibility and the schedule switch cannot be empty: for
+   * them null still keeps the value.
+   */
   async updateReportTemplate(
     _: unknown,
     args: { id: string; input: {
-      name?: string; description?: string; icon?: string; visibility?: string
+      name?: string | null; description?: string | null; icon?: string | null; visibility?: string | null
       sharedWithTeamIds?: string[]
-      scheduleEnabled?: boolean; scheduleCron?: string; scheduleChannelId?: string
+      scheduleEnabled?: boolean | null; scheduleCron?: string | null; scheduleChannelId?: string | null
     } },
     ctx: GraphQLContext,
   ) {
+    const given = (field: keyof typeof args.input) => Object.prototype.hasOwnProperty.call(args.input, field)
     const session = getSession(undefined, 'WRITE')
     try {
       await assertReportTemplateAccess(session, args.id, ctx, 'write')
@@ -148,12 +158,12 @@ export const Mutation = {
         tx.run(`
           MATCH (r:ReportTemplate {id: $id, tenant_id: $tenantId})
           SET r.name                = COALESCE($name, r.name),
-              r.description         = COALESCE($description, r.description),
-              r.icon                = COALESCE($icon, r.icon),
+              r.description         = CASE WHEN $descriptionGiven THEN $description ELSE r.description END,
+              r.icon                = CASE WHEN $iconGiven THEN $icon ELSE r.icon END,
               r.visibility          = COALESCE($visibility, r.visibility),
               r.schedule_enabled    = COALESCE($scheduleEnabled, r.schedule_enabled),
-              r.schedule_cron       = COALESCE($scheduleCron, r.schedule_cron),
-              r.schedule_channel_id = COALESCE($scheduleChannelId, r.schedule_channel_id),
+              r.schedule_cron       = CASE WHEN $scheduleCronGiven THEN $scheduleCron ELSE r.schedule_cron END,
+              r.schedule_channel_id = CASE WHEN $scheduleChannelIdGiven THEN $scheduleChannelId ELSE r.schedule_channel_id END,
               r.updated_at          = $now
         `, {
           id: args.id, tenantId: ctx.tenantId,
@@ -164,6 +174,10 @@ export const Mutation = {
           scheduleEnabled: args.input.scheduleEnabled ?? null,
           scheduleCron: args.input.scheduleCron ?? null,
           scheduleChannelId: args.input.scheduleChannelId ?? null,
+          descriptionGiven:       given('description'),
+          iconGiven:              given('icon'),
+          scheduleCronGiven:      given('scheduleCron'),
+          scheduleChannelIdGiven: given('scheduleChannelId'),
           now: new Date().toISOString(),
         }),
       )

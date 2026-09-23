@@ -7,6 +7,7 @@
 import { parseLocalizedLabels, type LocalizedLabel } from '@opengraphity/types'
 
 import type { Session } from 'neo4j-driver'
+import { matchById } from './cypherLookups.js'
 
 // ── Per-request cache ─────────────────────────────────────────────────────────
 // Keyed by tenant_id + entity_type. Keeps identity per request; the module
@@ -147,7 +148,8 @@ export async function getInitialStepName(session: Session, tenantId: string, ent
 
 export async function getEntityCurrentStep(session: Session, entityId: string, tenantId: string): Promise<string | null> {
   const res = await session.executeRead((tx) => tx.run(`
-    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+    ${matchById('e', { labels: 'entities', id: '$entityId' })}
+    MATCH (e)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
     RETURN wi.current_step AS step
   `, { entityId, tenantId }))
   if (!res.records.length) return null
@@ -156,7 +158,8 @@ export async function getEntityCurrentStep(session: Session, entityId: string, t
 
 export async function isEntityInTerminalStep(session: Session, entityId: string, tenantId: string): Promise<boolean> {
   const res = await session.executeRead((tx) => tx.run(`
-    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+    ${matchById('e', { labels: 'entities', id: '$entityId' })}
+    MATCH (e)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
     MATCH (wi)-[:CURRENT_STEP]->(s:WorkflowStep)
     RETURN coalesce(s.is_terminal, s.type = 'end') AS terminal
   `, { entityId, tenantId }))
@@ -167,11 +170,14 @@ export async function isEntityInTerminalStep(session: Session, entityId: string,
 /**
  * Il ticket è in un passo di categoria `closed`: la stessa nozione con cui il
  * portale nasconde la risposta (revisione totale · H-39). Senza istanza: no.
+ * A step of category `failed` is over as well — a rejected request (D27, 23
+ * Sep 2026) takes no more replies than a closed one.
  */
 export async function isEntityClosed(session: Session, entityId: string, tenantId: string): Promise<boolean> {
   const res = await session.executeRead((tx) => tx.run(`
-    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(:WorkflowInstance)-[:CURRENT_STEP]->(s:WorkflowStep)
-    RETURN s.category = 'closed' AS closed
+    ${matchById('e', { labels: 'entities', id: '$entityId' })}
+    MATCH (e)-[:HAS_WORKFLOW]->(:WorkflowInstance)-[:CURRENT_STEP]->(s:WorkflowStep)
+    RETURN s.category IN ['closed', 'failed'] AS closed
   `, { entityId, tenantId }))
   return res.records[0]?.get('closed') === true
 }
@@ -191,8 +197,9 @@ export async function isEntityOpen(session: Session, entityId: string, tenantId:
  */
 export async function isEntityConcluded(session: Session, entityId: string, tenantId: string): Promise<boolean> {
   const res = await session.executeRead((tx) => tx.run(`
-    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(:WorkflowInstance)-[:CURRENT_STEP]->(s:WorkflowStep)
-    RETURN s.category IN ['resolved', 'closed'] OR coalesce(s.is_terminal, false) AS concluded
+    ${matchById('e', { labels: 'entities', id: '$entityId' })}
+    MATCH (e)-[:HAS_WORKFLOW]->(:WorkflowInstance)-[:CURRENT_STEP]->(s:WorkflowStep)
+    RETURN s.category IN ['resolved', 'closed', 'failed'] OR coalesce(s.is_terminal, false) AS concluded
   `, { entityId, tenantId }))
   return res.records[0]?.get('concluded') === true
 }

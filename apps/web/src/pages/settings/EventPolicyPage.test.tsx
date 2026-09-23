@@ -30,6 +30,9 @@ const POLICY = {
   // G-MON-7: la soglia «un guasto qui si propaga» della console della salute.
   highImpactDependents: 5,
   severityMap: JSON.stringify(MAP),
+  // Severity outside production (alarm policy, 23 Sep 2026): off, production only.
+  productionEnvironments: ['production'],
+  nonProductionSeverityMap: null as string | null,
 }
 
 /**
@@ -404,5 +407,62 @@ describe('EventPolicyPage — ciclo di vita del CI: stati ignorati (revisione 2,
     expect(within(group).getAllByRole('checkbox')).toHaveLength(3)
     expect(within(group).getByRole('checkbox', { name: 'Unknown: decommissioned' })).toBeChecked()
     expect(screen.getByRole('alert')).toHaveTextContent('Lifecycle statuses unavailable from the metamodel (metamodel down): only the ones already saved in the policy can be ticked.')
+  })
+})
+
+/**
+ * SEVERITY OUTSIDE PRODUCTION (alarm policy, 23 Sep 2026): which environments
+ * count as production, and a second severity table for the CIs outside it.
+ */
+describe('EventPolicyPage — production environments and severity outside production', () => {
+  it('the environments of the vocabulary are offered, and the ones chosen travel as the complete list', async () => {
+    const seen: Input[] = []
+    const { user } = renderWithProviders(withVocabularyLabels(<EventPolicyPage />), { mocks: [baseCITypeMock(), matricesMock, policyMock(), updateMock(seen)] })
+    const group = await screen.findByRole('group', { name: 'Production environments' })
+    expect(within(group).getByRole('checkbox', { name: 'Production' })).toBeChecked()
+    expect(within(group).getByRole('checkbox', { name: 'Staging' })).not.toBeChecked()
+    await user.click(within(group).getByRole('checkbox', { name: 'DR' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(seen).toHaveLength(1))
+    expect(seen[0]).toMatchObject({ productionEnvironments: ['production', 'dr'], nonProductionSeverityMap: null })
+  })
+
+  it('the switch shows the same table for outside production; saved as JSON, and switched off again as null', async () => {
+    const seen: Input[] = []
+    const { user } = renderWithProviders(withVocabularyLabels(<EventPolicyPage />), { mocks: [baseCITypeMock(), matricesMock, policyMock(), updateMock(seen)] })
+    const toggle = await screen.findByRole('switch', { name: 'Different impact and urgency outside production' })
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
+    expect(screen.queryByLabelText('Outside production – Critical – Impact')).not.toBeInTheDocument()
+    await user.click(toggle)
+    // An empty table is not saved: every severity needs impact and urgency.
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    for (const sev of ['Critical', 'Warning', 'Info']) {
+      await user.selectOptions(screen.getByLabelText(`Outside production – ${sev} – Impact`), 'low')
+      await user.selectOptions(screen.getByLabelText(`Outside production – ${sev} – Urgency`), 'low')
+    }
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(seen).toHaveLength(1))
+    expect(JSON.parse(seen[0]!['nonProductionSeverityMap'] as string)).toEqual({
+      critical: { impact: 'low', urgency: 'low' }, warning: { impact: 'low', urgency: 'low' }, info: { impact: 'low', urgency: 'low' },
+    })
+    // The main table is untouched.
+    expect(JSON.parse(seen[0]!['severityMap'] as string)).toEqual(MAP)
+  })
+
+  it('a table outside production with no production environment is refused here, before the API does', async () => {
+    const outside = JSON.stringify({ critical: { impact: 'low', urgency: 'low' }, warning: { impact: 'low', urgency: 'low' }, info: { impact: 'low', urgency: 'low' } })
+    const { user } = renderWithProviders(withVocabularyLabels(<EventPolicyPage />), { mocks: [baseCITypeMock(), matricesMock, policyMock({ nonProductionSeverityMap: outside })] })
+    const group = await screen.findByRole('group', { name: 'Production environments' })
+    expect(screen.getByRole('switch', { name: 'Different impact and urgency outside production' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByLabelText('Outside production – Critical – Impact')).toHaveValue('low')
+    await user.click(within(group).getByRole('checkbox', { name: 'Production' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Choose at least one production environment')
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+  })
+
+  it('a saved table outside production that cannot be read is said, not silently dropped', async () => {
+    renderWithProviders(withVocabularyLabels(<EventPolicyPage />), { mocks: [baseCITypeMock(), matricesMock, policyMock({ nonProductionSeverityMap: '{broken' })] })
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Invalid severity map outside production/)
+    expect(screen.getByRole('switch', { name: 'Different impact and urgency outside production' })).toHaveAttribute('aria-checked', 'true')
   })
 })

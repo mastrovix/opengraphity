@@ -84,7 +84,7 @@ async function ciGroupMembers(_: unknown, args: { groupId: string }, ctx: GraphQ
            AND ($status IS NULL OR m.status = $status)
            AND ($nameContains IS NULL OR toLower(m.name) CONTAINS toLower($nameContains))`
       rows = await runQuery<{ props: Props; nodeLabels: string[] }>(session,
-        `MATCH (m {tenant_id: $tenantId})
+        `MATCH (m:ConfigurationItem {tenant_id: $tenantId})
          ${criteriaWhere}
          RETURN properties(m) AS props, labels(m) AS nodeLabels
          ORDER BY m.name ASC LIMIT toInteger($limit)`,
@@ -93,7 +93,7 @@ async function ciGroupMembers(_: unknown, args: { groupId: string }, ctx: GraphQ
       // Conteggio reale, stessi criteri, senza LIMIT: il taglio a MEMBERS_LIMIT
       // deve essere visibile al client ("500 di N"), non spacciato per il totale.
       const countRow = await runQueryOne<{ total: number }>(session,
-        `MATCH (m {tenant_id: $tenantId})
+        `MATCH (m:ConfigurationItem {tenant_id: $tenantId})
          ${criteriaWhere}
          RETURN count(m) AS total`,
         params,

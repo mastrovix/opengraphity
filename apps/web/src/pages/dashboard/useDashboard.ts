@@ -14,7 +14,6 @@ import {
 import {
   SAVE_DASHBOARD_LAYOUT,
   DELETE_CUSTOM_WIDGET,
-  REORDER_CUSTOM_WIDGETS,
 } from '@/graphql/mutations'
 import type { PendingWidget } from './DashboardEditMode'
 import type { CustomWidgetData } from './CustomWidgetCard'
@@ -144,17 +143,35 @@ export function useDashboard() {
 
   const [saveLayoutMutation]          = useMutation<{ saveDashboardLayout: { id: string; widgets: DashboardWidgetServer[] } }>(SAVE_DASHBOARD_LAYOUT)
   const [deleteCustomWidgetMutation]  = useMutation(DELETE_CUSTOM_WIDGET)
-  const [reorderCustomWidgetsMutation]= useMutation(REORDER_CUSTOM_WIDGETS)
 
   function enterEditMode() {
     if (activeDash?.widgets) setPendingWidgets(activeDash.widgets.map(serverWidgetToPending))
     setEditMode(true)
   }
 
+  /**
+   * Cancel throws away only what waits for Save: the arrangement of the report
+   * widgets. Custom widgets are created, edited and deleted on the server at
+   * once, so they are left as they are — resetting them to the dashboard as it
+   * was LOADED brought a deleted widget back and dropped a new one (tour of
+   * 23 Sep 2026).
+   */
   function cancelEditMode() {
     if (activeDash?.widgets) setPendingWidgets(activeDash.widgets.map(serverWidgetToPending))
-    if (activeDash?.customWidgets) setCustomWidgets(activeDash.customWidgets)
     setEditMode(false)
+  }
+
+  /**
+   * After the dashboard on screen is deleted, another one is opened at once,
+   * chosen among those that REMAIN: the default, else the first (tour of 23 Sep
+   * 2026). Clearing the selection left the choice to the auto-selection, which
+   * ran on the list still on screen — the deleted dashboard was in it and, when
+   * it was the default, was chosen again: the selector read "…".
+   */
+  function handleDashboardDeleted(deletedId: string) {
+    const remaining = dashboards.filter((d) => d.id !== deletedId)
+    setActiveDashboardId((remaining.find((d) => d.isDefault) ?? remaining[0])?.id ?? null)
+    void refetchList()
   }
 
   // ── Custom widget handlers ───────────────────────────────────────────────────
@@ -178,24 +195,6 @@ export function useDashboard() {
       toast.success(t('toast.widget.removed'))
     } catch (err: unknown) {
       showError(err, t('toast.widget.removeFailed', { error: errorMessage(err) }))
-    }
-  }
-
-  async function handleReorderCustomWidgets(orderedIds: string[]) {
-    if (!activeDashboardId) return
-    try {
-      const result = await reorderCustomWidgetsMutation({
-        variables: { dashboardId: activeDashboardId, widgetIds: orderedIds },
-      })
-      const updated = (result.data as { reorderCustomWidgets: { id: string; position: number }[] }).reorderCustomWidgets
-      setCustomWidgets((prev) =>
-        prev.map((w) => {
-          const u = updated.find((r) => r.id === w.id)
-          return u ? { ...w, position: u.position } : w
-        }).sort((a, b) => a.position - b.position),
-      )
-    } catch (err: unknown) {
-      showError(err, t('toast.widget.reorderFailed', { error: errorMessage(err) }))
     }
   }
 
@@ -331,8 +330,8 @@ export function useDashboard() {
     handleAddWidget,
     toggleTemplate,
     handleSelectDashboard,
+    handleDashboardDeleted,
     handleWidgetSaved,
     handleDeleteCustomWidget,
-    handleReorderCustomWidgets,
   }
 }

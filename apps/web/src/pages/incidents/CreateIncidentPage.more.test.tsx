@@ -91,8 +91,11 @@ const MATRIX: PriorityMatrix = {
 }
 
 const CIS = [
-  { id: 'ci-1', name: 'db-prod-01', type: 'database', environment: 'production' },
-  { id: 'ci-2', name: 'db-prod-02', type: 'database', environment: 'production' },
+  // No support group: the team is a free choice (or none).
+  { id: 'ci-1', name: 'db-prod-01', type: 'database', environment: 'production', supportGroup: null },
+  // With a support group: the team is prefilled with it.
+  { id: 'ci-2', name: 'db-prod-02', type: 'database', environment: 'production', supportGroup: { id: 'tm-2', name: 'DBA' } },
+  { id: 'ci-3', name: 'db-prod-03', type: 'database', environment: 'production', supportGroup: { id: 'tm-1', name: 'Network Ops' } },
 ]
 const TEAMS = [{ id: 'tm-1', name: 'Network Ops' }, { id: 'tm-2', name: 'DBA' }]
 
@@ -100,6 +103,11 @@ beforeEach(() => {
   apolloFinto.reset()
   apolloFinto.risposte['GetAllCIs'] = { allCIs: { items: CIS } }
   apolloFinto.risposte['GetTeams'] = { teams: TEAMS }
+  // D10: the picker offers the support teams; the owner team is in the tenant, not in the list.
+  apolloFinto.risposte['GetTeamChoices'] = { teams: [
+    ...TEAMS.map((t) => ({ ...t, type: 'support', isChangeManager: false })),
+    { id: 'tm-3', name: 'OWN_Billing Owner', type: 'owner', isChangeManager: false },
+  ] }
   apolloFinto.esiti['CreateIncident'] = { data: { createIncident: { id: 'inc-9' } } }
   Object.assign(state, {
     matrix: MATRIX, matrixLoading: false, matrixError: null, rules: {}, rulesError: undefined,
@@ -161,17 +169,21 @@ describe('submit is possible only with the required fields', () => {
 })
 
 describe('what a created incident carries', () => {
-  it('sends trimmed text, the matrix pair, the CIs and the custom fields, then assigns the team and goes back to the list', async () => {
+  it('sends trimmed text, the matrix pair, the CIs, the custom fields and the chosen team, then opens the new incident', async () => {
     state.customDefs = [{ name: 'site', label: 'Site', fieldType: 'string', required: false, enumValues: [], enumTypeName: null, visibleToEndUser: false }]
     const r = render()
     await fillRequired(r)
     await r.user.type(screen.getByLabelText('Site'), ' Milan ')
 
-    // Pick a team from the dropdown, filtering by name.
-    await r.user.type(screen.getByPlaceholderText('Search a team by name...'), 'dba')
-    expect(screen.queryByRole('button', { name: 'Network Ops' })).not.toBeInTheDocument()
-    await r.user.click(screen.getByRole('button', { name: 'DBA' }))
-    expect(screen.queryByPlaceholderText('Search a team by name...')).not.toBeInTheDocument()
+    // Pick a team from the picker, filtering by name: support teams only (D10).
+    const teamBox = screen.getByRole('combobox', { name: 'Team' })
+    await r.user.click(teamBox)
+    expect(await screen.findByRole('option', { name: 'Network Ops' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'OWN_Billing Owner' })).not.toBeInTheDocument()
+    await r.user.type(teamBox, 'dba')
+    expect(screen.queryByRole('option', { name: 'Network Ops' })).not.toBeInTheDocument()
+    await r.user.click(screen.getByRole('option', { name: 'DBA' }))
+    expect(teamBox).toHaveValue('DBA')
 
     await r.user.click(submit())
     await waitFor(() => expect(apolloFinto.chiamata('CreateIncident')).toBeDefined())
@@ -184,13 +196,16 @@ describe('what a created incident carries', () => {
         description: 'Timeouts everywhere',
         affectedCIIds: ['ci-1'],
         customFields: [{ name: 'site', value: 'Milan' }],
+        // The team travels with the creation: one assignment, no second call.
+        teamId: 'tm-2',
       },
     })
     // The SLA check is asked about THIS incident, team included.
     expect(state.sla).toHaveBeenCalledWith(expect.objectContaining({ entityType: 'incident', priority: 'medium', category: 'network', teamId: 'tm-2', teamName: 'DBA' }))
-    await waitFor(() => expect(apolloFinto.chiamata('AssignIncidentToTeam')).toEqual({ id: 'inc-9', teamId: 'tm-2' }))
+    expect(apolloFinto.chiamata('AssignIncidentToTeam')).toBeUndefined()
     expect(toast.success).toHaveBeenCalledWith('Incident created')
-    await attendiURL('/incidents')
+    // Straight to the new incident, as a new change does.
+    await attendiURL('/incidents/inc-9')
   })
 
   it('"Create without SLA" travels as acknowledgeNoSla, and no team means no assignment', async () => {
@@ -199,6 +214,7 @@ describe('what a created incident carries', () => {
     await fillRequired(r)
     await r.user.click(submit())
     await waitFor(() => expect(apolloFinto.chiamata('CreateIncident')).toMatchObject({ input: { acknowledgeNoSla: true } }))
+    expect(apolloFinto.chiamata('CreateIncident')!['input']).not.toHaveProperty('teamId')
     expect(apolloFinto.chiamata('AssignIncidentToTeam')).toBeUndefined()
   })
 
@@ -239,14 +255,89 @@ describe('what a created incident carries', () => {
     expect(screen.getByTestId('location')).toHaveTextContent('/incidents/new')
   })
 
-  it('a failed team assignment is reported with its own message', async () => {
-    apolloFinto.esiti['AssignIncidentToTeam'] = { error: new Error('no such team') }
+  it('a team refused by the API (it no longer exists) is shown, and nothing is half-done', async () => {
+    apolloFinto.esiti['CreateIncident'] = { error: new Error('The chosen team no longer exists in this organization: choose another one.') }
     const r = render()
     await fillRequired(r)
-    await r.user.type(screen.getByPlaceholderText('Search a team by name...'), 'Net')
-    await r.user.click(screen.getByRole('button', { name: 'Network Ops' }))
+    await r.user.type(screen.getByRole('combobox', { name: 'Team' }), 'Net')
+    await r.user.click(await screen.findByRole('option', { name: 'Network Ops' }))
     await r.user.click(submit())
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('Team assignment: no such team')))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('no longer exists')))
+    expect(apolloFinto.chiamata('CreateIncident')).toMatchObject({ input: { teamId: 'tm-1' } })
+    expect(apolloFinto.chiamata('AssignIncidentToTeam')).toBeUndefined()
+  })
+})
+
+/**
+ * THE TEAM OF A NEW INCIDENT IS THE SUPPORT GROUP OF ITS CI (23 Sep 2026, the
+ * owner's rule): prefilled from the first chosen CI that has one, changeable,
+ * never overwritten once changed by hand, and never replaced by the AI.
+ */
+describe('the team of a new incident', () => {
+  it('choosing a CI with a support group prefills the team with it, says where it comes from, and sends it', async () => {
+    const r = render()
+    await pickCI(r, 'db-prod-02')
+    const teamBox = screen.getByRole('combobox', { name: 'Team' })
+    expect(teamBox).toHaveValue('DBA')
+    expect(screen.getByText('The support group of db-prod-02: you can choose another team.')).toBeInTheDocument()
+    await r.user.type(screen.getByRole('textbox', { name: /production database is unreachable/ }), 'DB down')
+    await r.user.selectOptions(screen.getByLabelText(/Category/), 'network')
+    await r.user.type(screen.getByRole('textbox', { name: /Describe what is happening/ }), 'Timeouts')
+    await r.user.click(submit())
+    await waitFor(() => expect(apolloFinto.chiamata('CreateIncident')).toMatchObject({ input: { affectedCIIds: ['ci-2'], teamId: 'tm-2' } }))
+  })
+
+  it('with a support group «no team» is not offered: the incident goes to a team', async () => {
+    const r = render()
+    await pickCI(r, 'db-prod-02')
+    await r.user.click(screen.getByRole('combobox', { name: 'Team' }))
+    expect(await screen.findByRole('option', { name: 'Network Ops' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: '— No team —' })).not.toBeInTheDocument()
+  })
+
+  it('a team changed by hand is kept when more CIs are added', async () => {
+    const r = render()
+    await pickCI(r, 'db-prod-02')
+    const teamBox = screen.getByRole('combobox', { name: 'Team' })
+    await r.user.click(teamBox)
+    await r.user.click(await screen.findByRole('option', { name: 'Network Ops' }))
+    expect(teamBox).toHaveValue('Network Ops')
+    await pickCI(r, 'db-prod-03')
+    expect(teamBox).toHaveValue('Network Ops')
+    expect(screen.queryByText(/The support group of/)).not.toBeInTheDocument()
+  })
+
+  it('several CIs: the first chosen one that has a support group gives the team', async () => {
+    const r = render()
+    await pickCI(r, 'db-prod-01')
+    await pickCI(r, 'db-prod-03')
+    await pickCI(r, 'db-prod-02')
+    expect(screen.getByRole('combobox', { name: 'Team' })).toHaveValue('Network Ops')
+    expect(screen.getByText('The support group of db-prod-03: you can choose another team.')).toBeInTheDocument()
+  })
+
+  it('a CI without a support group: the team starts empty, and the page says what happens', async () => {
+    const r = render()
+    await pickCI(r, 'db-prod-01')
+    expect(screen.getByRole('combobox', { name: 'Team' })).toHaveValue('')
+    expect(screen.getByRole('note')).toHaveTextContent('This CI has no support group: choose a team, or the incident will be created without one.')
+  })
+
+  it('the AI suggestion never replaces the support group of the CI', async () => {
+    const r = render()
+    await pickCI(r, 'db-prod-02')
+    await r.user.click(screen.getByRole('button', { name: 'fake apply triage' }))
+    // It may still set priority and category...
+    expect(screen.getByLabelText(/Category/)).toHaveValue('hardware')
+    // ...but the team stays the CI's support group.
+    expect(screen.getByRole('combobox', { name: 'Team' })).toHaveValue('DBA')
+  })
+
+  it('the AI suggestion fills the team when no CI has a support group and nobody chose', async () => {
+    const r = render()
+    await pickCI(r, 'db-prod-01')
+    await r.user.click(screen.getByRole('button', { name: 'fake apply triage' }))
+    expect(screen.getByRole('combobox', { name: 'Team' })).toHaveValue('Network Ops')
   })
 })
 
@@ -321,11 +412,13 @@ describe('matrix loading and the AI triage suggestion', () => {
     expect(screen.getAllByRole('button', { name: 'high' })[0]).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getAllByRole('button', { name: 'medium' })[1]).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByLabelText(/Category/)).toHaveValue('hardware')
-    expect(screen.getByText('Network Ops')).toBeInTheDocument()
+    const teamBox = screen.getByRole('combobox', { name: 'Team' })
+    expect(teamBox).toHaveValue('Network Ops')
 
-    // The chosen team can be removed, which brings the search back.
-    await r.user.click(screen.getByText('Network Ops').querySelector('button')!)
-    expect(screen.getByPlaceholderText('Search a team by name...')).toHaveValue('')
+    // The chosen team can be removed.
+    await r.user.click(teamBox)
+    await r.user.click(await screen.findByRole('option', { name: '— No team —' }))
+    expect(teamBox).toHaveValue('')
   })
 
   it('a suggested priority the matrix cannot produce leaves the user\'s pair alone; an unknown team is ignored', async () => {
@@ -335,7 +428,7 @@ describe('matrix loading and the AI triage suggestion', () => {
     await r.user.click(screen.getByRole('button', { name: 'fake apply triage' }))
     expect(screen.getAllByRole('button', { name: 'low' })[0]).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByLabelText(/Category/)).toHaveValue('network')
-    expect(screen.getByPlaceholderText('Search a team by name...')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Team' })).toHaveValue('')
   })
 
   it('a suggestion without a team touches only priority and category', async () => {
@@ -343,7 +436,7 @@ describe('matrix loading and the AI triage suggestion', () => {
     const r = render()
     await r.user.click(screen.getByRole('button', { name: 'fake apply triage' }))
     expect(screen.getAllByRole('button', { name: 'low' })[0]).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByPlaceholderText('Search a team by name...')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Team' })).toHaveValue('')
   })
 })
 
@@ -369,11 +462,11 @@ describe('navigation and small interactions', () => {
       screen.getByRole('textbox', { name: /Describe what is happening/ }),
       screen.getByPlaceholderText('Search by name...'),
     ]) { fireEvent.focus(el); fireEvent.blur(el) }
-    // The team dropdown closes a moment after the field loses focus.
-    const teamInput = screen.getByPlaceholderText('Search a team by name...')
+    // The team list closes when the field loses focus.
+    const teamInput = screen.getByRole('combobox', { name: 'Team' })
     await r.user.click(teamInput)
-    expect(screen.getByRole('button', { name: 'DBA' })).toBeInTheDocument()
+    expect(await screen.findByRole('option', { name: 'DBA' })).toBeInTheDocument()
     fireEvent.blur(teamInput)
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'DBA' })).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByRole('option', { name: 'DBA' })).not.toBeInTheDocument())
   })
 })

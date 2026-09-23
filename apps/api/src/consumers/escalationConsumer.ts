@@ -18,6 +18,7 @@ import { getSession } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
 import { v4 as uuidv4 } from 'uuid'
 import { logger } from '../lib/logger.js'
+import { matchById } from '../lib/cypherLookups.js'
 
 const BREACH_EVENTS = new Set(['sla.breached', 'ola.breached'])
 
@@ -40,7 +41,8 @@ export class EscalationConsumer extends BaseConsumer<unknown> {
       // step. No row → no escalation defined for this state → nothing to do.
       const res = await session.executeRead((tx) =>
         tx.run(`
-          MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+          ${matchById('e', { labels: 'entities', id: '$entityId' })}
+          MATCH (e)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId})
           // tenant-ok(traversal): step della definizione dell'istanza dell'entità scopata
           MATCH (cur:WorkflowStep {definition_id: wi.definition_id, name: wi.current_step})
                 -[:TRANSITIONS_TO {trigger: 'sla_breach'}]->(to:WorkflowStep)

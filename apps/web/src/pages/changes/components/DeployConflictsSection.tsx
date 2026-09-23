@@ -64,7 +64,9 @@ export function DeployConflictsSection({ conflitti, illeggibili = [] }: {
       defaultOpen
       /* Rosso solo quando c'è davvero qualcosa: un'intestazione d'allarme su
          «nessun conflitto» insegna che il colore non vuol dire niente. */
-      {...(conflitti.length > 0 ? { activeColor: 'var(--color-danger)' } : {})}
+      /* Sul rosso pieno il testo va in bianco: il turchese di serie su quel
+         fondo non si legge, ed è la testata che deve gridare più forte. */
+      {...(conflitti.length > 0 ? { activeColor: 'var(--color-danger)', activeTextColor: 'var(--color-white)' } : {})}
     >
       {illeggibili.length > 0 && (
         <p style={{
@@ -102,7 +104,7 @@ export function DeployConflictsSection({ conflitti, illeggibili = [] }: {
                 >
                   <Link
                     to={`/changes/${c.changeId}`}
-                    style={{ fontWeight: 600, color: 'var(--color-brand-hover)', textDecoration: 'none', fontFamily: 'var(--font-mono, monospace)' }}
+                    style={{ fontWeight: 600, color: 'var(--color-brand-hover)', textDecoration: 'none' }}
                   >
                     {c.code}
                   </Link>

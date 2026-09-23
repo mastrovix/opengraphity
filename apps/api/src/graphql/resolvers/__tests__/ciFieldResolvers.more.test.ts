@@ -80,7 +80,7 @@ describe.each([
     expect(await R[field]({ id: 'ci1' }, null, ctx)).toMatchObject({ id: 'tm1', name: 'Net' })
     expect(seen[0]!.cypher).toContain(`[:${relType}]`)
     // Both ends are tenant-scoped: the CI and the team.
-    expect(seen[0]!.cypher).toContain('(n {id: $id, tenant_id: $tenantId})')
+    expect(seen[0]!.cypher).toContain('(n:ConfigurationItem {id: $id, tenant_id: $tenantId})')
     expect(seen[0]!.cypher).toContain('(t:Team {tenant_id: $tenantId})')
     expect(seen[0]!.params).toEqual({ id: 'ci1', tenantId: 't1' })
   })

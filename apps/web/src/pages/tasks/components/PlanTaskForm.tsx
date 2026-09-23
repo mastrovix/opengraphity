@@ -23,7 +23,7 @@ const isStepComplete = (s: DeployStep) =>
   !!s.validationWindow.start && !!s.validationWindow.end &&
   !!s.releaseWindow.start    && !!s.releaseWindow.end
 
-export function PlanTaskForm({ task, steps, setSteps, dirty, setDirty, canEdit, onSave, onComplete }: {
+export function PlanTaskForm({ task, steps, setSteps, dirty, setDirty, canEdit, onSave, onComplete, busyLabel = null }: {
   task: DeployPlanTaskData
   steps: DeployStep[]
   setSteps: (s: DeployStep[]) => void
@@ -32,6 +32,8 @@ export function PlanTaskForm({ task, steps, setSteps, dirty, setDirty, canEdit, 
   canEdit: boolean
   onSave: () => void
   onComplete: () => void
+  /** The plan is being saved or completed: «Complete» waits (D24). */
+  busyLabel?: string | null
 }) {
   const { t } = useTranslation()
   const baseId = useId()
@@ -58,6 +60,8 @@ export function PlanTaskForm({ task, steps, setSteps, dirty, setDirty, canEdit, 
             {canEdit && !completed && (
               <button
                 type="button"
+                // Only an icon inside: the name says what it does, and to which step.
+                aria-label={t('pages.planTask.removeStep', { n: i + 1 })}
                 onClick={() => { setSteps(steps.filter((_, j) => j !== i)); setDirty(true) }}
                 style={{ background: 'none', border: `1px solid ${palette.danger.border}`, color: 'var(--color-danger)', cursor: 'pointer', padding: 4, borderRadius: 4 }}
               ><X size={12} /></button>
@@ -124,6 +128,7 @@ export function PlanTaskForm({ task, steps, setSteps, dirty, setDirty, canEdit, 
           disabled={!canEdit || !allComplete || dirty}
           blockReason={!canEdit ? t('pages.planTask.wrongTeam') : !allComplete ? t('pages.planTask.fillAll') : dirty ? t('pages.planTask.saveFirst') : undefined}
           onClick={onComplete}
+          busyLabel={busyLabel}
         />
       )}
     </div>

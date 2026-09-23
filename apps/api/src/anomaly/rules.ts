@@ -196,6 +196,11 @@ const BUILDERS: Record<AnomalyRuleKey, Builder> = {
   // the candidate's reachable set also have a small neighbourhood (≤ threshold).
   // Orphans (reachable=0) are handled separately by the orphan_ci rule. The
   // search depth (6) is the rule's own definition of «reachable».
+  //
+  // Each exploration stops at threshold + 1 distinct CIs (tour of 23 Sep 2026,
+  // D49): past that the answer is already «not isolated», and walking the
+  // whole component of every candidate took 3.4 s on the demo tenant with
+  // four relation types — with all of them it would not end.
   isolated_cluster: (s) => {
     const rels = relPattern(s.relations, 'isolated_cluster')
     return {
@@ -205,16 +210,21 @@ const BUILDERS: Record<AnomalyRuleKey, Builder> = {
         MATCH (ci)
         ${CI_MATCH}
           ${typeFilter('ci', s.ciLabels)}
-        OPTIONAL MATCH (ci)-[:${rels}*1..6]-(reached)
-        WHERE reached:ConfigurationItem
-          AND reached.tenant_id = $tenantId
-        WITH ci, count(DISTINCT reached) AS reachable, collect(DISTINCT reached) AS peers
+        CALL (ci) {
+          OPTIONAL MATCH (ci)-[:${rels}*1..6]-(reached:ConfigurationItem)
+          WHERE reached.tenant_id = $tenantId AND reached <> ci
+          WITH DISTINCT reached LIMIT toInteger($threshold) + 1
+          RETURN collect(reached) AS peers
+        }
+        WITH ci, peers, size(peers) AS reachable
         WHERE reachable >= 1 AND reachable <= $threshold
         UNWIND peers AS p
-        OPTIONAL MATCH (p)-[:${rels}*1..6]-(pr)
-        WHERE pr:ConfigurationItem
-          AND pr.tenant_id = $tenantId
-        WITH ci, reachable, p, count(DISTINCT pr) AS peerReachable
+        CALL (p) {
+          OPTIONAL MATCH (p)-[:${rels}*1..6]-(pr:ConfigurationItem)
+          WHERE pr.tenant_id = $tenantId AND pr <> p
+          WITH DISTINCT pr LIMIT toInteger($threshold) + 1
+          RETURN count(pr) AS peerReachable
+        }
         WITH ci, reachable, max(peerReachable) AS maxPeerReachable
         WHERE maxPeerReachable <= $threshold
         RETURN DISTINCT

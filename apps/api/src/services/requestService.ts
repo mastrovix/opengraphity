@@ -301,7 +301,32 @@ export async function createRequest(
   }, true)
 
   await publishEvent('request.created', ctx.tenantId, ctx.userId, { id, title: input.title, priority: input.priority }, now)
-  return created
+  return assignFulfilmentGroup(created, input.catalogItemId ?? null, ctx)
+}
+
+/**
+ * D56: a request from a catalog item goes to the item's FULFILMENT GROUP,
+ * after `request.created` (the SLA starts there, and the team may change its
+ * policy). An item without a group leaves the request without a team, as
+ * before — the diagnostics lists those items. A failure says that the request
+ * exists and what did not happen, instead of letting the requester retry.
+ */
+async function assignFulfilmentGroup(
+  created: ReturnType<typeof mapRequest>, catalogItemId: string | null, ctx: ServiceCtx,
+): Promise<ReturnType<typeof mapRequest>> {
+  if (!catalogItemId) return created
+  const { assignRequestToTeam, fulfilmentTeamOf } = await import('./requestAssignment.js')
+  const group = await fulfilmentTeamOf(ctx.tenantId, catalogItemId)
+  if (!group) return created
+  try {
+    return (await assignRequestToTeam(String(created.id), group.teamId, ctx, { fromCatalogItem: group.itemName })).request
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    throw new ValidationError(
+      `Request ${String(created.number ?? created.id)} was created, but assigning it to its fulfilment group failed: ${reason}`,
+      { key: 'errors.serviceRequest.createdButNotAssigned', params: { number: String(created.number ?? created.id), reason } },
+    )
+  }
 }
 
 /*

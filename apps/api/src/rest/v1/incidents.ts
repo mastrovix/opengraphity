@@ -86,6 +86,8 @@ router.post('/', requirePermission('incidents:write'), asyncHandler(async (req: 
   const impact      = optionalBodyString(body, 'impact')
   const urgency     = optionalBodyString(body, 'urgency')
   const category    = optionalBodyString(body, 'category')
+  // The team that takes it; absent → the support group of the first impacted CI that has one.
+  const teamId      = optionalBodyString(body, 'teamId')
   const affectedCIIds = body['affectedCIIds']
   if (affectedCIIds !== undefined && (!Array.isArray(affectedCIIds) || affectedCIIds.some((v) => typeof v !== 'string'))) {
     throw new ValidationError('affectedCIIds must be an array of CI ids')
@@ -94,7 +96,7 @@ router.post('/', requirePermission('incidents:write'), asyncHandler(async (req: 
   // incidentService validates the rest (impact+urgency or severity, ≥1 CI).
   const ctx = apiCtx(req)
   const result = await incidentService.createIncident(
-    { title, description, severity, impact, urgency, category, affectedCIIds: affectedCIIds as string[] | undefined, customFields: parseRestCustomFields(body) },
+    { title, description, severity, impact, urgency, category, affectedCIIds: affectedCIIds as string[] | undefined, customFields: parseRestCustomFields(body), teamId },
     { tenantId: ctx.tenantId, userId: ctx.userId },
   )
   res.status(201).json({ data: result })

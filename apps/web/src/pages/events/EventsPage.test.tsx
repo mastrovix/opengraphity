@@ -127,6 +127,16 @@ describe('EventsPage', () => {
     expect(within(rows[2]!).queryByRole('button', { name: 'Acknowledge' })).not.toBeInTheDocument()
   })
 
+  it('readable at 1280px: the title keeps its width, the incident sits by the CI, the actions stay pinned (D36)', async () => {
+    renderPage('operator')
+    const title = await screen.findByRole('link', { name: 'CPU high on web-01' })
+    expect(title.parentElement).toHaveStyle({ minWidth: '240px' })
+    await waitFor(() => expect(screen.getByRole('columnheader', { name: 'Actions' })).toHaveClass('sft-sticky-end'))
+    const headers = screen.getAllByRole('columnheader').map((h) => h.textContent)
+    expect(headers.indexOf('Incident')).toBe(headers.indexOf('CI') + 1)
+    expect(headers.at(-1)).toBe('Actions')
+  })
+
   it('viewer: nessuna azione di mutation nelle righe', async () => {
     renderPage('viewer')
     expect(await screen.findByText('CPU high on web-01')).toBeInTheDocument()

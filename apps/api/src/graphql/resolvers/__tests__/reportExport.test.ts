@@ -26,10 +26,14 @@ const h = vi.hoisted(() => {
   const base = process.env['TMPDIR'] ?? '/tmp'
   const reportDir = `${base.replace(/\/$/, '')}/og-report-export-test-${String(process.pid)}-${String(Date.now())}`
   // Capture the module-level cleanup interval instead of letting it run.
-  const cleanup: { fn: (() => void) | null } = { fn: null }
+  const cleanup: { fn: (() => void) | null; unrefed: boolean } = { fn: null, unrefed: false }
   const realSetInterval = globalThis.setInterval
   globalThis.setInterval = ((fn: () => void, ms?: number, ...rest: unknown[]) => {
-    if (ms === 30 * 60 * 1000) { cleanup.fn = fn; return 0 as never }
+    if (ms === 30 * 60 * 1000) {
+      cleanup.fn = fn
+      const handle = { unref: () => { cleanup.unrefed = true; return handle } }
+      return handle as never
+    }
     return realSetInterval(fn, ms, ...rest)
   }) as typeof setInterval
   return {
@@ -318,6 +322,11 @@ describe('exportReportExcel', () => {
 })
 
 describe('periodic cleanup of exported files', () => {
+  it('the cleanup timer does not keep alive a process that only imports the module', () => {
+    // A script calling the report mutations never ended before (23 Sep 2026).
+    expect(h.cleanup.unrefed).toBe(true)
+  })
+
   it('removes files older than two hours, in tenant folders and in the legacy flat layout', () => {
     const tenantDir = path.join(h.reportDir, 'c-clean')
     fs.mkdirSync(tenantDir, { recursive: true })

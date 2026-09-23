@@ -66,6 +66,7 @@
     "created": "Ticket created! The IT team has been notified.",
     "resolved": "This ticket has been resolved",
     "reopen": "Reopen ticket",
+    "confirmResolution": "It works — close the ticket",
     "reply": "Reply",
     "replyPlaceholder": "Write your reply...",
     "assignedTo": "Assigned to",
@@ -168,7 +169,8 @@
     "removeRow": "Remove this row",
     "searchReference": "Search…",
     "noResults": "No results",
-    "clearReference": "Clear the choice"
+    "clearReference": "Clear the choice",
+    "searchFailed": "The search did not work: the list of candidates is unknown. Try again."
   },
   "notFound": {
     "title": "Page not found",
@@ -192,7 +194,8 @@
       "severityUnknown": "\"{{value}}\" is not a value of the severity dictionary ({{allowed}}).",
       "severityDuplicate": "\"{{value}}\" appears twice.",
       "severityLanguage": "Unknown language \"{{language}}\".",
-      "severityLabelTooLong": "The label of \"{{value}}\" is longer than {{max}} characters."
+      "severityLabelTooLong": "The label of \"{{value}}\" is longer than {{max}} characters.",
+      "cannotConfirmResolution": "This ticket cannot be confirmed: it is not resolved, or its workflow closes it only automatically."
     },
     "serviceRequest": {
       "catalogItemWithoutPriority": "The catalog item «{{item}}» has no priority, so a request cannot be opened from it. An administrator sets it in Admin → Service catalog.",

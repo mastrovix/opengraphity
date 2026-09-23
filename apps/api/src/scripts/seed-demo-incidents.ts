@@ -210,7 +210,7 @@ async function main() {
 
     // ── 3. Carica CI (con support team) e utenti operativi ──────────────────────
     const ciRes = await session.executeRead((tx) => tx.run(`
-      MATCH (ci {tenant_id:$t})-[:SUPPORTED_BY]->(team:Team)
+      MATCH (ci:ConfigurationItem {tenant_id:$t})-[:SUPPORTED_BY]->(team:Team)
       WHERE head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) IN ['Server','Database','Application']
       RETURN ci.id AS id, ci.name AS name, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS type, team.id AS teamId
     `, { t: TENANT }))
@@ -322,7 +322,7 @@ async function main() {
       const chunk = rows.slice(off, off + BATCH)
       await session.executeWrite((tx) => tx.run(`
         UNWIND $rows AS r
-        MATCH (ci {id: r.ciId, tenant_id: $t})
+        MATCH (ci:ConfigurationItem {id: r.ciId, tenant_id: $t})
         MATCH (team:Team {id: r.teamId})
         CREATE (i:Incident {
           id: r.id, tenant_id: $t, number: r.number, title: r.title, description: r.description,

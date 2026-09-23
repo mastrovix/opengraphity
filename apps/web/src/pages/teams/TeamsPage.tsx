@@ -27,6 +27,7 @@ import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { TEAM_TYPE_VOCABULARY } from '@/lib/teamVocabularies'
 import { TEAM_SOURCINGS, teamSourcingKey, type TeamSourcing } from '@/lib/teamSourcing'
 import { showError } from '@/lib/showError'
+import { reloadQueries } from '@/lib/reloadQueries'
 
 interface Team {
   id:          string
@@ -112,7 +113,7 @@ export function TeamsPage() {
     // La diagnostica elenca i team senza interno/esterno: dopo una scrittura
     // va riletta, altrimenti l'avviso in cima continua a contare il team appena sistemato.
     refetchQueries: ['GetConfigurationIssues'],
-    onCompleted: async () => { setCreateOpen(false); setForm({ name: '', description: '', type: '', sourcing: '' }); await refetch(); toast.success(t('toast.team.created')) },
+    onCompleted: () => { setCreateOpen(false); setForm({ name: '', description: '', type: '', sourcing: '' }); toast.success(t('toast.team.created')); reloadQueries(refetch) },
     onError: (e) => showError(e),
   })
   const submitTeam = (e: React.FormEvent) => {

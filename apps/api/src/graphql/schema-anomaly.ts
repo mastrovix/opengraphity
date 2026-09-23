@@ -72,6 +72,8 @@ export function anomalySDL(): string {
   type AnomalyRuleSpec {
     ciTypes:            Boolean!
     relations:          Boolean!
+    """No relation chosen means every relation between the tenant's CIs (isolated cluster, D49); otherwise at least one is required."""
+    allRelationsWhenEmpty: Boolean!
     thresholdMin:       Int
     thresholdMax:       Int
     incidentSeverities: Boolean!

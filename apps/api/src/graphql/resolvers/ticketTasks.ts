@@ -17,6 +17,7 @@ import { requirePermission } from '../../lib/permissions.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { getSession } from '@opengraphity/neo4j'
 import { runQuery, runQueryOne } from './ci-utils.js'
+import { matchById } from '../../lib/cypherLookups.js'
 import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
 import {
@@ -57,7 +58,8 @@ async function tipoDelTicket(tenantId: string, entityId: string): Promise<string
   const session = getSession(undefined, 'READ')
   try {
     const riga = await runQueryOne<{ entityType: string | null }>(session, `
-      MATCH (ticket {id: $entityId, tenant_id: $tenantId})-[:HAS_TASK]->(k:Task {tenant_id: $tenantId})
+      ${matchById('ticket', { id: '$entityId' })}
+      MATCH (ticket)-[:HAS_TASK]->(k:Task {tenant_id: $tenantId})
       RETURN k.entity_type AS entityType
       LIMIT 1
     `, { entityId, tenantId })

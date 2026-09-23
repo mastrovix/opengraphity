@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Modal } from '@/components/Modal'
 import { toast } from 'sonner'
 import { CIIcon } from '@/lib/ciIcon'
+import { CI_ICON_KEYS } from '@/lib/ciIconPaths'
 import {
   inputS, selectS,
   btnPrimary, btnSecondary,
@@ -11,10 +12,6 @@ import { Input, Select } from '@/components/ui/FormControls'
 import { FormField } from './CIFieldInlineEditor'
 import { checkCITypeName, type KnownCIType } from '@/lib/ciTypeNames'
 import { ColorField } from '@/components/ui/ColorField'
-
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-const ICONS = ['box', 'database', 'server', 'shield', 'hard-drive', 'cloud', 'globe', 'cpu', 'network', 'monitor', 'lock']
 
 // ── CreateTypeDialog ──────────────────────────────────────────────────────────
 
@@ -56,7 +53,7 @@ export function CreateTypeDialog({
           <button type="button" style={{ ...btnPrimary, opacity: saving || !!nameError ? 0.6 : 1 }} disabled={saving || !!nameError}
             onClick={async () => {
               if (!form.name || !form.label) { toast.error(t('toast.citype.nameLabelRequired')); return }
-              if (nameError) { toast.error(nameError); return }
+              // A name already taken never gets here: the button is disabled and the field says why.
               setSaving(true)
               // onSave rigetta su errore (toast già mostrato): il dialog resta aperto.
               try { await onSave(form); onClose() } catch { /* errore già notificato */ } finally { setSaving(false) }
@@ -83,7 +80,7 @@ export function CreateTypeDialog({
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, marginBottom: 14 }}>
         <FormField label={t('citypeDesigner.icon')} htmlFor={`${id}-icon`}>
           <Select id={`${id}-icon`} style={selectS} value={form.icon} onChange={(e) => set('icon', e.target.value)}>
-            {ICONS.map((i) => <option key={i} value={i}>{i}</option>)}
+            {CI_ICON_KEYS.map((i) => <option key={i} value={i}>{i}</option>)}
           </Select>
         </FormField>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, paddingTop: 20 }}>

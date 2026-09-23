@@ -87,7 +87,7 @@ describe('Mutation.askReport', () => {
     const out = await reportResolvers.Mutation.askReport(null, { question: 'How many P1?', conversationId: 'c9' }, ctx('report.ai'))
     expect(out).toEqual({ conversationId: 'c9', message: { id: 'm1', role: 'assistant', content: '3' } })
     expect(runReportConversation.mock.calls[0]![0]).toMatchObject({ tenantId: 't1', userId: 'u1', question: 'How many P1?', conversationId: 'c9' })
-    expect(callReportAI).toHaveBeenCalledWith('t1', [{ role: 'user', content: 'before' }], 'How many P1?')
+    expect(callReportAI).toHaveBeenCalledWith('t1', expect.any(String), [{ role: 'user', content: 'before' }], 'How many P1?')
     expect(getSession).toHaveBeenCalledWith(undefined, 'WRITE')
     expect(close).toHaveBeenCalledTimes(1)
   })

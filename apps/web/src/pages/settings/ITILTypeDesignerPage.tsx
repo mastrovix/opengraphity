@@ -11,6 +11,7 @@ import { ITILTypeCIExclusions } from './ITILTypeCIExclusions'
 import { ITILTypeRules } from './ITILTypeRules'
 import { ITILTypePreview } from './ITILTypePreview'
 import { lookupOrError, colors, palette } from '@/lib/tokens'
+import { DetailLayout } from '@/components/ui/DetailLayout'
 
 const ITIL_TYPE_ICONS: Record<string, LucideIcon> = {
   incident:        AlertCircle,
@@ -41,7 +42,7 @@ export function ITILTypeDesignerPage() {
       )}
 
       {!loading && (
-        <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 20, alignItems: 'start' }}>
+        <DetailLayout sideWidth={220} sideFirst gap={20}>
           {/* Left: Type list */}
           <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
             <div style={{ padding: '5px 16px 4px', fontSize: 'var(--font-size-label)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-slate-light)', background: 'var(--color-slate-bg)', borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
@@ -103,7 +104,7 @@ export function ITILTypeDesignerPage() {
               </div>
             )
           })()}
-        </div>
+        </DetailLayout>
       )}
     </PageContainer>
   )

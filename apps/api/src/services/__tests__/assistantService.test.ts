@@ -5,7 +5,8 @@
  *  - i tool passati al runner sono tenant-scoped: ogni Cypher porta il
  *    tenantId del contesto, mai un tenant preso dall'input del modello;
  *  - clamp di `limit` (max reali 15/20/50/25, default 5/8/15/10, trunc);
- *    NaN/negativi NON sono clampati → it.fails (BUG);
+ *    NaN e negativi tornano al default e al minimo (erano «LIMIT NaN» e
+ *    «LIMIT -3», Cypher invalido: corretto);
  *  - tool_use → emit.tool, il tool viene eseguito e il risultato torna al
  *    runner; testo → emit.text/emit.done; refusal/errore → emit.error.
  */
@@ -18,6 +19,13 @@ import { perms } from '../../lib/__tests__/testPermissions.js'
 // tipo non contavano, in silenzio.
 // Ondata 6 di «Nulla cablato»: le funzioni AI sono dell'organizzazione; qui tutte accese.
 vi.mock('../../lib/aiSettings.js', () => import('../../lib/__tests__/aiSettingsFake.js'))
+// The assistant is told the language of the person's interface (D62).
+vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en'), languageForUser: vi.fn(async () => 'en') }))
+// D14: the tools give times as wall-clock time in the organization's zone.
+vi.mock('../../lib/tenantTimezone.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../lib/tenantTimezone.js')>(),
+  tenantTimezone: vi.fn(async () => 'Europe/Rome'),
+}))
 vi.mock('../../lib/ciLabelsForTenant.js', () => ({
   ciLabelsForTenant:         vi.fn(async () => ['Application', 'LoadBalancer', 'Server']),
   ciLabelPredicateForTenant: vi.fn(async (alias: string) => `(${alias}:Application OR ${alias}:LoadBalancer OR ${alias}:Server)`),
@@ -47,6 +55,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: vi.fn(() => h.session),
   runQuery:   vi.fn().mockResolvedValue([]),
+  toNumber:   (v: unknown) => (typeof v === 'object' && v !== null && 'low' in v ? (v as { low: number }).low : Number(v)),
 }))
 vi.mock('../embeddings.js', () => ({
   getEmbedder:     vi.fn(() => ({ embed: vi.fn(async (texts: string[]) => texts.map(() => [0.1, 0.2])) })),
@@ -68,6 +77,7 @@ vi.mock('../../lib/logger.js', () => ({
 
 const { streamAssistantChat } = await import('../assistantService.js')
 const { runQuery, getSession } = await import('@opengraphity/neo4j')
+const { tenantTimezone } = await import('../../lib/tenantTimezone.js')
 import { config } from '../../lib/config.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -98,7 +108,7 @@ function runnerOf(...streams: ReturnType<typeof messageStream>[]) {
 /** Costruisce i tool del tenant catturandoli dal runner (buildTools non è esportata). */
 async function toolsFor(tenantId: string, permissions: ReadonlySet<string> = perms('operator')): Promise<Map<string, ToolLike>> {
   runnerOf(messageStream([]))
-  await streamAssistantChat(tenantId, permissions as never, [{ role: 'user', content: 'ciao' }], emitter())
+  await streamAssistantChat(tenantId, 'user-1', permissions as never, [{ role: 'user', content: 'ciao' }], emitter())
   const params = h.toolRunner.mock.calls.at(-1)![0]
   return new Map(params.tools.map(t => [t.name, t]))
 }
@@ -112,6 +122,8 @@ const queries = () => vi.mocked(runQuery).mock.calls.map(c => ({ cypher: c[1] as
 const limitOf = (q: { cypher: string; params: Record<string, unknown> }): string =>
   q.params['vectorLimit'] !== undefined ? String(q.params['vectorLimit'])
   : /LIMIT (\S+)/.exec(q.cypher)?.[1] ?? /tutti\[\.\.(\S+?)\]/.exec(q.cypher)?.[1] ?? 'NONE'
+/** The query that lists: change_aperti first counts per step (no limit), then lists. */
+const listingQuery = () => queries().find((q) => limitOf(q) !== 'NONE') ?? queries()[0]!
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -126,7 +138,7 @@ describe('streamAssistantChat — configurazione', () => {
   it('ANTHROPIC_API_KEY assente → emit.error esplicito senza istanziare l\'SDK né chiamare il runner', async () => {
     h.cfg.anthropicApiKey = undefined
     const emit = emitter()
-    await streamAssistantChat(TENANT, perms('operator'), [{ role: 'user', content: 'ciao' }], emit)
+    await streamAssistantChat(TENANT, 'user-1', perms('operator'), [{ role: 'user', content: 'ciao' }], emit)
     expect(emit.error).toHaveBeenCalledWith('AI assistant not configured: ANTHROPIC_API_KEY is missing')
     expect(emit.done).not.toHaveBeenCalled()
     expect(h.constructed).toHaveLength(0)
@@ -136,7 +148,7 @@ describe('streamAssistantChat — configurazione', () => {
   it('con la chiave: runner con modello, 7 tool di sola lettura, messaggi mappati, stream e max_iterations', async () => {
     runnerOf(messageStream([]))
     const messages = [{ role: 'user' as const, content: 'q1' }, { role: 'assistant' as const, content: 'a1' }, { role: 'user' as const, content: 'q2' }]
-    await streamAssistantChat(TENANT, perms('operator'), messages, emitter())
+    await streamAssistantChat(TENANT, 'user-1', perms('operator'), messages, emitter())
     expect(h.constructed).toHaveLength(1)
     const params = h.toolRunner.mock.calls[0]![0]
     expect(params).toMatchObject({ model: config.anthropicModel, stream: true, max_iterations: 8, messages })
@@ -153,7 +165,7 @@ describe('streamAssistantChat — streaming', () => {
   it('inoltra i delta di testo e chiude con done(testo completo)', async () => {
     runnerOf(messageStream([textDelta('Ciao '), { type: 'content_block_delta', delta: { type: 'input_json_delta', partial_json: '{' } }, textDelta('mondo')]))
     const emit = emitter()
-    await streamAssistantChat(TENANT, perms('operator'), [{ role: 'user', content: 'ciao' }], emit)
+    await streamAssistantChat(TENANT, 'user-1', perms('operator'), [{ role: 'user', content: 'ciao' }], emit)
     expect(emit.text.mock.calls.map(c => c[0])).toEqual(['Ciao ', 'mondo'])
     expect(emit.done).toHaveBeenCalledWith('Ciao mondo')
     expect(emit.error).not.toHaveBeenCalled()
@@ -172,20 +184,39 @@ describe('streamAssistantChat — streaming', () => {
       },
     }))
     const emit = emitter()
-    await streamAssistantChat(TENANT, perms('operator'), [{ role: 'user', content: 'quanti incident aperti?' }], emit)
+    await streamAssistantChat(TENANT, 'user-1', perms('operator'), [{ role: 'user', content: 'quanti incident aperti?' }], emit)
 
     expect(emit.tool).toHaveBeenCalledWith('lista_incident')
-    expect(JSON.parse(toolResult!)).toEqual({ totale: 2, elencati: 2, incident: [{ numero: 'INC00000001' }, { numero: 'INC00000002' }] })
+    expect(JSON.parse(toolResult!)).toEqual({ totale: 2, elencati: 2, incident: [{ numero: 'INC00000001', creato: null }, { numero: 'INC00000002', creato: null }] })
     expect(queries()[0]!.params).toMatchObject({ tenantId: TENANT, soloAperti: true })
     expect(emit.done).toHaveBeenCalledWith('Hai 2 incident aperti')
     expect(emit.error).not.toHaveBeenCalled()
   })
 
+  // D62 (tour of 23 Sep 2026): an English interface got answers in Italian.
+  it("the system prompt is in English and names the language of the person's interface", async () => {
+    await toolsFor(TENANT)
+    const system = h.toolRunner.mock.calls.at(-1)![0].system as Array<{ text: string }>
+    const text = system[0]!.text
+    expect(text).toContain('Write every sentence in English')
+    expect(text).not.toMatch(/Rispondi|lingua/)
+    // D14: the times the tools return are local, and the model is told so.
+    expect(text).toContain("local time in the organization's time zone, Europe/Rome")
+  })
+
+  it('an organization without a time zone gets an explicit error, and the model is not called', async () => {
+    vi.mocked(tenantTimezone).mockResolvedValueOnce(null)
+    const emit = emitter()
+    await streamAssistantChat(TENANT, 'user-1', perms('operator'), [{ role: 'user', content: 'x' }], emit)
+    expect(emit.error).toHaveBeenCalledWith(expect.stringContaining('The organization has no time zone'))
+    expect(h.toolRunner).not.toHaveBeenCalled()
+  })
+
   it('refusal → emit.error, nessun done', async () => {
     runnerOf(messageStream([textDelta('parziale')], { stop_reason: 'refusal' }))
     const emit = emitter()
-    await streamAssistantChat(TENANT, perms('operator'), [{ role: 'user', content: 'x' }], emit)
-    expect(emit.error).toHaveBeenCalledWith('Il modello ha rifiutato la richiesta')
+    await streamAssistantChat(TENANT, 'user-1', perms('operator'), [{ role: 'user', content: 'x' }], emit)
+    expect(emit.error).toHaveBeenCalledWith('The model refused the request')
     expect(emit.done).not.toHaveBeenCalled()
   })
 
@@ -195,7 +226,7 @@ describe('streamAssistantChat — streaming', () => {
       async *[Symbol.asyncIterator]() { throw new Error('overloaded_error') },
     }))
     const emit = emitter()
-    await streamAssistantChat(TENANT, perms('operator'), [{ role: 'user', content: 'x' }], emit)
+    await streamAssistantChat(TENANT, 'user-1', perms('operator'), [{ role: 'user', content: 'x' }], emit)
     expect(emit.error).toHaveBeenCalledWith('overloaded_error')
     expect(emit.done).not.toHaveBeenCalled()
   })
@@ -260,6 +291,28 @@ describe('tool dell\'assistente — tenant scoping e sola lettura', () => {
     vi.mocked(runQuery).mockClear()
     await tools.get('change_aperti')!.run({})
     expect(queries()[0]!.params['concluded']).toEqual(['archiviata'])
+    expect(queries()[1]!.params['concluded']).toEqual(['archiviata'])
+  })
+
+  // D73 (tour of 23 Sep 2026): the tool gave the first page and the model took it for the whole.
+  it('change_aperti gives the exact total and the count per step, and says when its list is partial', async () => {
+    const tools = await toolsFor(TENANT)
+    vi.mocked(runQuery).mockReset()
+    vi.mocked(runQuery)
+      .mockResolvedValueOnce([{ passo: 'approval', n: { low: 166, high: 0 } }, { passo: 'deployment', n: 44 }])
+      .mockResolvedValueOnce([{ numero: 'CHG1', stato: 'approval' }, { numero: 'CHG2', stato: 'deployment' }])
+    const out = JSON.parse(await tools.get('change_aperti')!.run({ limit: 2 })) as Record<string, unknown>
+    expect(out).toEqual({
+      totale: 210,
+      per_passo: [{ passo: 'approval', n: 166 }, { passo: 'deployment', n: 44 }],
+      elencati: 2,
+      elenco_parziale: true,
+      change: [{ numero: 'CHG1', stato: 'approval' }, { numero: 'CHG2', stato: 'deployment' }],
+    })
+    // A change in its first step may have no status yet: the workflow step counts.
+    expect(queries()[0]!.cypher).toContain('coalesce(ch.status, wi.current_step)')
+    vi.mocked(runQuery).mockReset()
+    vi.mocked(runQuery).mockResolvedValue([])
   })
 
   it('apre una sessione READ e la chiude anche se la query fallisce', async () => {
@@ -267,7 +320,8 @@ describe('tool dell\'assistente — tenant scoping e sola lettura', () => {
     vi.mocked(getSession).mockClear(); h.session.close.mockClear()
     await tools.get('change_aperti')!.run({})
     expect(getSession).toHaveBeenCalledWith(undefined, 'READ')
-    expect(h.session.close).toHaveBeenCalledTimes(1)
+    // Two reads (the counts per step, then the list), each on its own session.
+    expect(h.session.close).toHaveBeenCalledTimes(2)
 
     vi.mocked(runQuery).mockRejectedValueOnce(new Error('neo4j down'))
     h.session.close.mockClear()
@@ -282,12 +336,22 @@ describe('tool dell\'assistente — tenant scoping e sola lettura', () => {
       .toEqual([{ numero: 'INC1', similarita: 0.9, conteggio: 7, altro: { low: 1, high: 0, x: 1 } }])
   })
 
+  it('dettaglio_incident: local times, and the latest three comments in order', async () => {
+    const tools = await toolsFor(TENANT)
+    vi.mocked(runQuery).mockResolvedValueOnce([{ numero: 'INC1', creato: '2026-09-23T04:20:00Z', risolto: null, commenti: ['c3', 'c2', 'c1'] }])
+    expect(JSON.parse(await tools.get('dettaglio_incident')!.run({ numero_o_id: 'INC1' })))
+      .toEqual({ numero: 'INC1', creato: '2026-09-23 06:20', risolto: null, commenti: ['c3', 'c2', 'c1'] })
+    const q = queries().at(-1)!.cypher
+    expect(q).toContain('WITH i, team, cis, c ORDER BY c.created_at DESC')
+    expect(q).toContain('collect(c.text)[..3] AS commenti')
+  })
+
   it('dettaglio_incident / analisi_impatto: nessuna riga → JSON con "errore" esplicito, non un vuoto', async () => {
     const tools = await toolsFor(TENANT)
     expect(JSON.parse(await tools.get('dettaglio_incident')!.run({ numero_o_id: 'INC00000099' })))
-      .toEqual({ errore: 'Incident INC00000099 non trovato' })
+      .toEqual({ errore: 'Incident INC00000099 not found' })
     expect(JSON.parse(await tools.get('analisi_impatto')!.run({ ci_id_o_nome: 'ghost' })))
-      .toEqual({ errore: 'CI "ghost" non trovato — prova cerca_ci per il nome esatto' })
+      .toEqual({ errore: 'CI "ghost" not found: use cerca_ci to find the exact name' })
   })
 
   it('lista_incident: filtri assenti → null (query neutra), solo_aperti → soloAperti boolean; conteggio esatto anche con elenco troncato', async () => {
@@ -302,9 +366,10 @@ describe('tool dell\'assistente — tenant scoping e sola lettura', () => {
     expect(queries()[0]!.params['concluded']).toEqual(['sistemato', 'archiviato'])
     expect(queries()[0]!.cypher).toContain('NOT i.status IN $concluded')
 
-    vi.mocked(runQuery).mockResolvedValue([{ totale: 120, incident: [{ numero: 'a' }] }])
+    vi.mocked(runQuery).mockResolvedValue([{ totale: 120, incident: [{ numero: 'a', creato: '2026-09-23T04:20:00Z' }] }])
+    // D14: the opening time as wall-clock time in Europe/Rome, never raw UTC.
     expect(JSON.parse(await tools.get('lista_incident')!.run({ solo_aperti: true, limit: 1 })))
-      .toEqual({ totale: 120, elencati: 1, incident: [{ numero: 'a' }] })
+      .toEqual({ totale: 120, elencati: 1, incident: [{ numero: 'a', creato: '2026-09-23 06:20' }] })
     expect(JSON.parse(await tools.get('lista_incident')!.run({}))).toMatchObject({ totale: 120 })
   })
 })
@@ -324,7 +389,7 @@ describe('tool dell\'assistente — clamp di limit', () => {
     const run = async (extra: Record<string, unknown>) => {
       vi.mocked(runQuery).mockClear()
       await tools.get(name)!.run({ ...input, ...extra })
-      return limitOf(queries()[0]!)
+      return limitOf(listingQuery())
     }
     expect(await run({})).toBe(def)
     expect(await run({ limit: 999_999 })).toBe(max)
@@ -340,21 +405,21 @@ describe('tool dell\'assistente — clamp di limit', () => {
     expect(limitOf(queries()[0]!)).toBe('5')
   })
 
-  it('limit negativo → clampato a un minimo ≥ 1 — BUG: assistantService.ts:66/115/174/216 usano solo Math.min (LIMIT -3 → Cypher invalido)', async () => {
+  it('limit negativo → clampato a un minimo ≥ 1 (con il solo Math.min era «LIMIT -3», Cypher invalido)', async () => {
     const tools = await toolsFor(TENANT)
     for (const [name, input] of CASES) {
       vi.mocked(runQuery).mockClear()
       await tools.get(name)!.run({ ...input, limit: -3 })
-      expect(Number(limitOf(queries()[0]!)), name).toBeGreaterThanOrEqual(1)
+      expect(Number(limitOf(listingQuery())), name).toBeGreaterThanOrEqual(1)
     }
   })
 
-  it('limit NaN → default — BUG: assistantService.ts:66/115/174/216 (Math.min(NaN, max) = NaN → "LIMIT NaN")', async () => {
+  it('limit NaN → default (Math.min(NaN, max) era NaN, cioè «LIMIT NaN»)', async () => {
     const tools = await toolsFor(TENANT)
     for (const [name, input, def] of CASES) {
       vi.mocked(runQuery).mockClear()
       await tools.get(name)!.run({ ...input, limit: Number.NaN })
-      expect(limitOf(queries()[0]!), name).toBe(def)
+      expect(limitOf(listingQuery()), name).toBe(def)
     }
   })
 })

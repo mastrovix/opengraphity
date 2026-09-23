@@ -9,6 +9,17 @@ export const GET_TEAMS = gql`
   }
 `
 
+/**
+ * The teams a picker offers (D10 / D34): name, type and the Change Manager
+ * flag, which is what `teamsFor` filters on. Its own document so that the
+ * pickers do not change what `GET_TEAMS` returns to the other pages.
+ */
+export const GET_TEAM_CHOICES = gql`
+  query GetTeamChoices {
+    teams { id name type isChangeManager }
+  }
+`
+
 export const GET_TEAM_DETAIL = gql`
   ${USER_REF}
   query GetTeamDetail($id: ID!) {

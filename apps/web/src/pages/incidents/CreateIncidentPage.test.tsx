@@ -19,7 +19,7 @@ import { screen, waitFor } from '@testing-library/react'
 import { CreateIncidentPage } from './CreateIncidentPage'
 import { GET_TEAMS, GET_TICKET_CI_EXCLUSIONS, GET_ALL_CIS } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
-import { domainMatricesMock, itilTypesMock } from '@/test/mocks/gql'
+import { domainMatricesMock, itilTypesMock, teamChoicesMock } from '@/test/mocks/gql'
 
 const teamsMock = (): GqlMock => ({
   request: { query: GET_TEAMS },
@@ -40,7 +40,7 @@ const allCisMock = (): GqlMock => ({
 function render(matrix: GqlMock) {
   return renderWithProviders(
     <CreateIncidentPage />,
-    { mocks: [matrix, teamsMock(), ciRulesMock(), allCisMock(), itilTypesMock()] },
+    { mocks: [matrix, teamsMock(), teamChoicesMock(), ciRulesMock(), allCisMock(), itilTypesMock()] },
   )
 }
 

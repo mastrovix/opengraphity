@@ -755,6 +755,7 @@ export class WorkflowEngine {
             // scrive un punto solo per tutti i cammini.
             notes:       input.notes ?? null,
             actorId:     context.userId,
+            actorLabel:  input.actorLabel ?? null,
             triggerType: input.triggerType,
           })
         } catch (e) {

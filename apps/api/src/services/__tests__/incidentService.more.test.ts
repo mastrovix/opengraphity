@@ -155,8 +155,10 @@ describe('setIncidentTitle', () => {
   it('updates the title in the tenant and re-queues the similarity embedding', async () => {
     vi.mocked(runQueryOne).mockResolvedValue({ id: 'inc-1' })
     await svc.setIncidentTitle('inc-1', ctx, 'Service degraded')
-    expect(vi.mocked(runQueryOne).mock.calls[0]![2]).toMatchObject({ id: 'inc-1', tenantId: 't-1', title: 'Service degraded' })
-    expect(enqueueEmbedding).toHaveBeenCalledWith({ entityType: 'incident', entityId: 'inc-1', tenantId: 't-1' })
+    const params = vi.mocked(runQueryOne).mock.calls[0]![2] as Record<string, unknown>
+    expect(params).toMatchObject({ id: 'inc-1', tenantId: 't-1', title: 'Service degraded' })
+    // D15: the job is versioned by the updated_at just written, as the similarity panel asks for it.
+    expect(enqueueEmbedding).toHaveBeenCalledWith({ entityType: 'incident', entityId: 'inc-1', tenantId: 't-1', updatedAt: params['now'] })
   })
 
   it('an unknown incident is an error and no embedding is queued', async () => {
@@ -255,6 +257,93 @@ describe('createIncident — paths not covered elsewhere', () => {
     await flush()
     expect(logger.error).toHaveBeenCalled()
   })
+
+  /*
+   * THE OWNER'S RULE (23 Sep 2026): «when you create an incident you name a
+   * CI, and it is assigned automatically to its support group»; the form
+   * prefills the team with that group and the person may change it. And the
+   * monitoring's incidents had no team at all (tour of 23 Sep 2026, D61).
+   */
+  describe('the new incident goes to the support group of its CI', () => {
+    const answers = (over: { support?: Record<string, unknown> | null; team?: Record<string, unknown> | null; props?: Record<string, unknown> | null } = {}) =>
+      vi.mocked(runQueryOne).mockImplementation((async (_s: unknown, cypher: string) => {
+        if (cypher.includes('SUPPORTED_BY')) return over.support === undefined ? { teamId: 'team-sup', ciName: 'db-01' } : over.support
+        if (cypher.includes('MATCH (t:Team {id: $teamId')) return over.team === undefined ? { id: 'team-x' } : over.team
+        if (cypher.includes('RETURN properties(i) AS props')) return over.props === undefined ? { props: { id: 'inc-1', status: 'new' } } : over.props
+        return null
+      }) as never)
+    const queryWith = (text: string) => vi.mocked(runQueryOne).mock.calls.find((c) => String(c[1]).includes(text))
+
+    beforeEach(() => {
+      primeCreate()
+      h.state.wi = { instanceId: 'wi-1', currentStep: 'new' }
+      vi.mocked(setTicketTeam).mockResolvedValue({ teamName: 'DBA', previousTeamName: null, unassignedUserName: null })
+      vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'assigned' }] as never)
+    })
+
+    it('no team in the input → the support group of the first CI that has one, in the order given', async () => {
+      answers()
+      const out = await svc.createIncident({ title: 'T', affectedCIIds: ['ci-1', 'ci-2'] }, ctx)
+      const q = queryWith('SUPPORTED_BY')!
+      expect(q[1]).toContain('UNWIND range(0, size($ciIds) - 1) AS idx')
+      expect(q[1]).toContain('ORDER BY idx, t.name')
+      expect(q[2]).toEqual({ tenantId: 't-1', ciIds: ['ci-1', 'ci-2'] })
+      expect(setTicketTeam).toHaveBeenCalledWith(h.session, 'Incident', 'inc-1', 'team-sup', 't-1')
+      // it stays in the group's queue: leaving the first step is the SLA response, a person's (packages/sla)
+      expect(workflowEngine.transition).not.toHaveBeenCalled()
+      const row = writesMatching('STEP_HISTORY')[0]!.params
+      expect(row).toMatchObject({ incidentId: 'inc-1', tenantId: 't-1', notes: 'incident.autoAssignedTeam|{"team":"DBA","ci":"db-01"}' })
+      // one note on the ticket, which says why this team
+      const comments = writesMatching('CREATE (c:Comment').map((r) => String(r.params['text']))
+      expect(comments).toEqual(['incident.autoAssignedTeam|{"team":"DBA","ci":"db-01"}'])
+      // the SLA starts on incident.created, then the assignment may change its policy
+      expect(eventTypes()).toEqual(['incident.created', 'incident.assigned', 'ticket.team_assigned'])
+      // the team is told, and the SLA does not take the routing for a response
+      const assigned = vi.mocked(publishEvent).mock.calls.find((c) => c[0] === 'incident.assigned')!
+      expect(assigned[3]).toMatchObject({ assignedTo: 'DBA', routed_at_creation: true })
+      expect(out).toMatchObject({ id: 'inc-1', title: 'Down' })
+    })
+
+    it('a team chosen in the form wins, and is checked before anything is written', async () => {
+      answers()
+      await svc.createIncident({ title: 'T', affectedCIIds: ['ci-1'], teamId: 'team-x' }, ctx)
+      expect(setTicketTeam).toHaveBeenCalledWith(h.session, 'Incident', 'inc-1', 'team-x', 't-1')
+      expect(queryWith('SUPPORTED_BY')).toBeUndefined()
+      expect(workflowEngine.transition).not.toHaveBeenCalled()
+      expect(writesMatching('STEP_HISTORY')[0]!.params['notes']).toBe('incident.assignedTeam|{"team":"DBA"}')
+
+      vi.clearAllMocks()
+      primeCreate()
+      answers({ team: null })
+      await expect(svc.createIncident({ title: 'T', affectedCIIds: ['ci-1'], teamId: 'team-zz' }, ctx))
+        .rejects.toThrow('Team team-zz does not exist in this organization')
+      expect(vi.mocked(runQuery).mock.calls.some((c) => String(c[1]).includes('CREATE (i:Incident'))).toBe(false)
+    })
+
+    it('no CI with a support group → no team, as before', async () => {
+      answers({ support: null })
+      const out = await svc.createIncident({ title: 'T', affectedCIIds: ['ci-1'] }, ctx)
+      expect(setTicketTeam).not.toHaveBeenCalled()
+      expect(out).toMatchObject({ id: 'inc-1', number: 'INC00000042' })
+      expect(eventTypes()).toEqual(['incident.created'])
+    })
+
+    it('the incident is returned as it is now: assigned to the group, still in its first step', async () => {
+      answers()
+      h.state.props = { id: 'inc-1', status: 'new', team: 'team-sup' }
+      await expect(svc.createIncident({ title: 'T', affectedCIIds: ['ci-1'] }, ctx)).resolves.toMatchObject({ id: 'inc-1', status: 'new', team: 'team-sup' })
+      expect(workflowEngine.getAvailableTransitions).not.toHaveBeenCalled()
+    })
+
+    it('any other failure says that the incident exists and what did not happen', async () => {
+      answers()
+      vi.mocked(setTicketTeam).mockRejectedValue(new Error('neo4j down'))
+      const err = await svc.createIncident({ title: 'T', affectedCIIds: ['ci-1'] }, ctx).catch((e: unknown) => e as GraphQLError)
+      expect(err).toBeInstanceOf(GraphQLError)
+      expect(err.message).toBe('Incident INC00000042 was created, but assigning it to its team failed: neo4j down')
+      expect(err.extensions['i18n']).toEqual({ key: 'errors.incident.createdButNotAssigned', params: { number: 'INC00000042', reason: 'neo4j down' } })
+    })
+  })
 })
 
 describe('resolveIncident', () => {
@@ -335,6 +424,23 @@ describe('assignIncidentToTeam', () => {
     expect(eventTypes()).toEqual(['incident.assigned', 'ticket.team_assigned'])
     expect(vi.mocked(publishEvent).mock.calls[0]![3]).toMatchObject({ assignedTo: 'Network' })
     expect(vi.mocked(publishEvent).mock.calls[1]![3]).toEqual({ entity_type: 'incident', entity_id: 'inc-1', team_id: 'team-1' })
+    // D12: the transition carries the note, and the step-entered trace writes it on
+    // the ticket («Workflow: <step> — <note>»): the service must not write it again.
+    expect(String(vi.mocked(workflowEngine.transition).mock.calls[0]![1].notes)).toContain('incident.reassignedTeam')
+    expect(writesMatching('CREATE (c:Comment')).toHaveLength(0)
+  })
+
+  it('D11: the first team of an incident is «assigned», not «reassigned»', async () => {
+    h.state.wi = { instanceId: 'wi-1', currentStep: 'new' }
+    vi.mocked(setTicketTeam).mockResolvedValue({ teamName: 'Network', previousTeamName: null, unassignedUserName: null })
+    vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'assigned' }] as never)
+    await svc.assignIncidentToTeam('inc-1', 'team-1', ctx)
+    const notes = String(vi.mocked(workflowEngine.transition).mock.calls[0]![1].notes)
+    expect(notes).toContain('incident.assignedTeam')
+    expect(notes).not.toContain('reassigned')
+    // a person's assignment is a response for the SLA: no routing marker
+    const assigned = vi.mocked(publishEvent).mock.calls.find((c) => c[0] === 'incident.assigned')!
+    expect(assigned[3]).not.toHaveProperty('routed_at_creation')
   })
 
   it('same order ties are broken by step name', async () => {
@@ -369,6 +475,8 @@ describe('assignIncidentToTeam', () => {
     await expect(svc.assignIncidentToTeam('inc-1', 'team-1', ctx))
       .rejects.toThrow(/assignment was saved, but the incident did not move to "assigned": missing field/)
     expect(eventTypes()).toEqual(['incident.assigned', 'ticket.team_assigned'])
+    // No transition, so no step note: the service writes the assignment note itself.
+    expect(writesMatching('CREATE (c:Comment')).toHaveLength(1)
   })
 
   it('past the initial step: a history entry and a comment, no transition; a detached assignee is explained', async () => {
@@ -421,15 +529,27 @@ describe('assignIncidentToUser', () => {
     expect(setTicketUser).not.toHaveBeenCalled()
   })
 
-  it('from the initial step it auto-advances with the "assigned" note', async () => {
+  it('from the initial step it auto-advances; the note says «reassigned» because Bruno had it (D11)', async () => {
     h.state.wi = { instanceId: 'wi-1', currentStep: 'new' }
     vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'triage' }] as never)
     const out = await svc.assignIncidentToUser('inc-1', 'u-2', ctx)
     const t = vi.mocked(workflowEngine.transition).mock.calls[0]![1]
     expect(t).toMatchObject({ toStepName: 'triage', triggerType: 'automatic' })
-    expect(String(t.notes)).toContain('incident.assignedUser')
+    expect(String(t.notes)).toContain('incident.reassignedUser')
     expect(out).toMatchObject({ userName: 'Anna', previousUserName: 'Bruno' })
     expect(eventTypes()).toEqual(['incident.assigned'])
+    // D12: the transition wrote «Workflow: <step> — <note>»; no second copy of the note.
+    expect(writesMatching('CREATE (c:Comment')).toHaveLength(0)
+  })
+
+  it('D11: the first person on the incident is an assignment, in the history and in the note alike', async () => {
+    h.state.wi = { instanceId: 'wi-1', currentStep: 'working' }
+    vi.mocked(setTicketUser).mockResolvedValue({ userName: 'Anna', previousUserName: null })
+    await svc.assignIncidentToUser('inc-1', 'u-2', ctx)
+    expect(String(writesMatching('STEP_HISTORY')[0]!.params['notes'])).toContain('incident.assignedUser')
+    const comments = writesMatching('CREATE (c:Comment').map((r) => String(r.params['text']))
+    expect(comments).toHaveLength(1)
+    expect(comments[0]).toContain('incident.assignedUser')
   })
 
   it('past the initial step it only records history — never an arbitrary transition', async () => {

@@ -1,6 +1,7 @@
 import { useId } from 'react'
 import { InvalidFilterNotice } from '@/components/InvalidFilterNotice'
 import { useQuery, useMutation } from '@apollo/client/react'
+import i18n from '@/i18n/i18n'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { PageContainer } from '@/components/PageContainer'
@@ -90,11 +91,16 @@ const emptyForm = (): FormData => ({
  * Opening the editor with silently-emptied conditions/actions would let a
  * save overwrite (destroy) the original data without the user ever knowing.
  */
-function parseJSON<T>(s: string | null | undefined, fallback: T, what: string): T {
+/**
+ * The reason, in the language of the interface (tour of 23 Sep 2026): it was
+ * built in Italian, «JSON corrotto in "conditions"», inside an English toast.
+ */
+const CORRUPT_JSON_KEY = { conditions: 'automation.corruptConditions', actions: 'automation.corruptActions' } as const
+function parseJSON<T>(s: string | null | undefined, fallback: T, what: keyof typeof CORRUPT_JSON_KEY): T {
   if (!s) return fallback
   try { return JSON.parse(s) as T }
   catch (e) {
-    throw new Error(`JSON corrotto in "${what}": ${e instanceof Error ? e.message : String(e)}`, { cause: e })
+    throw new Error(i18n.t(CORRUPT_JSON_KEY[what], { error: e instanceof Error ? e.message : String(e) }), { cause: e })
   }
 }
 

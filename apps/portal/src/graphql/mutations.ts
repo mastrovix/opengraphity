@@ -24,6 +24,15 @@ export const REOPEN_TICKET = gql`
   }
 `
 
+/** «It works»: the requester closes the resolved ticket now (tour of 23 Sep 2026, D51). */
+export const CONFIRM_TICKET_RESOLUTION = gql`
+  mutation ConfirmTicketResolution($ticketId: ID!) {
+    confirmTicketResolution(ticketId: $ticketId) {
+      id status updatedAt
+    }
+  }
+`
+
 export const RATE_KB_ARTICLE = gql`
   mutation RateKBArticle($id: ID!, $helpful: Boolean!) {
     rateKBArticle(id: $id, helpful: $helpful) {

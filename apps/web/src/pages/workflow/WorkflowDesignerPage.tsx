@@ -44,7 +44,6 @@ export function WorkflowDesignerPage() {
     handlePaneClick,
     handleSaveLocally,
     handleSaveStepLocally,
-    handleReconnect,
     onStepSaved,
     onEdgeSaved,
   } = useWorkflowDesigner(def)
@@ -65,6 +64,9 @@ export function WorkflowDesignerPage() {
 
   // Draw a new arrow → create the transition (trigger defaults to 'manual';
   // edit it to sla_breach/etc. in the panel, then Save). Reload to render it.
+  // A manual arrow is a button on the ticket: it starts with the label of the
+  // step it leads to («Resolved»), which the panel can change. It was created
+  // with an empty label — a blank button on every ticket (tour of 23 Sep 2026).
   const handleConnect = useCallback(async (c: { source: string; target: string; sourceHandle?: string | null; targetHandle?: string | null }) => {
     if (!def) return
     const fromStepName = idToName[c.source]
@@ -73,7 +75,7 @@ export function WorkflowDesignerPage() {
     try {
       await addTransition({ variables: {
         definitionId: def.id, fromStepName, toStepName,
-        trigger: 'manual', label: '',
+        trigger: 'manual', label: def.steps.find((s) => s.id === c.target)!.label,
         sourceHandle: c.sourceHandle ?? null, targetHandle: c.targetHandle ?? null,
       } })
       toast.success(t('toast.workflow.transitionCreated'))
@@ -176,7 +178,6 @@ export function WorkflowDesignerPage() {
         onNodeClick={handleNodeClick}
         onEdgeClick={handleEdgeClick}
         onPaneClick={handlePaneClick}
-        onReconnect={handleReconnect}
         onConnect={handleConnect}
         loading={loading}
         def={def}

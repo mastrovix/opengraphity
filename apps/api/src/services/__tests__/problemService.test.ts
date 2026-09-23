@@ -272,7 +272,7 @@ describe('createProblem — numero, workflow, evento e link', () => {
       { id: expect.any(String), tenantId: 'tenant-1', ciId: 'ci-1' },
       { id: expect.any(String), tenantId: 'tenant-1', ciId: 'ci-2' },
     ])
-    expect(affects[0]![0]).toContain('MATCH (ci {id: $ciId, tenant_id: $tenantId})')
+    expect(affects[0]![0]).toContain('MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})')
     // Ondata 6 (A-9): il predicato viene dal metamodello del tenant, quindi
     // comprende il tipo creato dal cliente; e il MERGE ritorna il conteggio.
     expect(affects[0]![0]).toContain('ci:LoadBalancer')

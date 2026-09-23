@@ -324,7 +324,7 @@ export async function addCIToChange(_: unknown, args: { changeId: string; ciId: 
     await session.executeWrite(async (tx) => {
       await tx.run(`
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
-      MATCH (ci {id: $ciId, tenant_id: $tenantId})
+      MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
       MATCH (ci)-[:OWNED_BY]->(ownerTeam:Team)
       MATCH (ci)-[:SUPPORTED_BY]->(supportTeam:Team)
       MERGE (c)-[r_aci:AFFECTS_CI]->(ci)

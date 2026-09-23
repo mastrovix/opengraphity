@@ -38,7 +38,8 @@ interface Provider {
   hostedDomain: string | null; metadataUrl: string | null; redirectUri: string; samlSpMetadataUrl: string | null
 }
 interface Check { key: string; ok: boolean; detail: string | null }
-interface Addresses { kind: ProviderKind; redirectUri: string; samlSpMetadataUrl: string | null }
+/** The addresses to register at the provider: one per origin through which people reach the sign-in page. */
+interface Addresses { kind: ProviderKind; redirectUris: string[]; samlSpMetadataUrls: string[] }
 
 const KINDS: readonly ProviderKind[] = ['microsoft', 'google', 'saml']
 
@@ -154,18 +155,45 @@ function PasswordRulesSection({ saved, outOfRange, loading, error, onRetry }: { 
   )
 }
 
-function CopyField({ label, value }: { label: string; value: string }) {
+/** One address and its «Copy» button; the button is described by the address, so several read apart. */
+function CopyValue({ value }: { value: string }) {
   const { t } = useTranslation()
+  const id = useId()
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <code id={id} style={{ flex: 1, padding: '6px 10px', background: 'var(--color-slate-bg)', borderRadius: 6, fontSize: 'var(--font-size-label)', wordBreak: 'break-all' }}>{value}</code>
+      <Button variant="secondary" size="xs" icon={<Copy size={13} aria-hidden="true" />} aria-describedby={id} onClick={() => { void navigator.clipboard.writeText(value); toast.success(t('toast.integration.copied')) }}>
+        {t('admin.integrations.copy')}
+      </Button>
+    </div>
+  )
+}
+
+function CopyField({ label, values }: { label: string; values: readonly string[] }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       <FieldLabel>{label}</FieldLabel>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <code style={{ flex: 1, padding: '6px 10px', background: 'var(--color-slate-bg)', borderRadius: 6, fontSize: 'var(--font-size-label)', wordBreak: 'break-all' }}>{value}</code>
-        <Button variant="secondary" size="xs" icon={<Copy size={13} aria-hidden="true" />} onClick={() => { void navigator.clipboard.writeText(value); toast.success(t('toast.integration.copied')) }}>
-          {t('admin.integrations.copy')}
-        </Button>
-      </div>
+      {values.map((v) => <CopyValue key={v} value={v} />)}
     </div>
+  )
+}
+
+/**
+ * THE ADDRESSES TO REGISTER AT THE PROVIDER, ALL OF THEM (D71, tour of 23 Sep
+ * 2026). There is one per origin through which people reach the sign-in page
+ * (the local one, the Tailscale host, the public domain): the page showed
+ * only the first — the localhost one, useless to register at Microsoft or
+ * Google. When there are several, one line says to register every one.
+ */
+function ProviderAddresses({ addresses }: { addresses: Addresses }) {
+  const { t } = useTranslation()
+  const several = addresses.redirectUris.length > 1 || addresses.samlSpMetadataUrls.length > 1
+  return (
+    <>
+      {several && <Hint>{t('pages.loginSecurity.providers.registerEveryAddress')}</Hint>}
+      <CopyField label={t('pages.loginSecurity.providers.redirectUri')} values={addresses.redirectUris} />
+      {addresses.samlSpMetadataUrls.length > 0 && <CopyField label={t('pages.loginSecurity.providers.spMetadata')} values={addresses.samlSpMetadataUrls} />}
+    </>
   )
 }
 
@@ -236,8 +264,7 @@ function ProviderCard({ kind, provider, addresses }: { kind: ProviderKind; provi
           : <Pill bg="var(--color-slate-bg)" color={colors.slate} radius={4}>{t('pages.loginSecurity.providers.notConfigured')}</Pill>}
       </div>
       <p style={{ margin: 0, fontSize: 'var(--font-size-label)', color: colors.slate, lineHeight: 1.5 }}>{t(`pages.loginSecurity.providers.help.${kind}`)}</p>
-      {addresses && <CopyField label={t('pages.loginSecurity.providers.redirectUri')} value={addresses.redirectUri} />}
-      {addresses?.samlSpMetadataUrl && <CopyField label={t('pages.loginSecurity.providers.spMetadata')} value={addresses.samlSpMetadataUrl} />}
+      {addresses && <ProviderAddresses addresses={addresses} />}
       {field('displayName', t('pages.loginSecurity.providers.displayName'), { placeholder: t(`pages.loginSecurity.providers.kind.${kind}`) })}
       {kind === 'microsoft' && field('tenant', t('pages.loginSecurity.providers.tenant'), { placeholder: 'acme.onmicrosoft.com' })}
       {kind !== 'saml' && field('clientId', t('pages.loginSecurity.providers.clientId'))}

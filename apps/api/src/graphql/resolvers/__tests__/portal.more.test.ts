@@ -400,3 +400,91 @@ describe('reopenTicket — guards and target choice', () => {
     expect(await code(() => M.reopenTicket(null, { ticketId: 'sr-1' }, ctx))).toMatch(/ServiceRequest sr-1 vanished after reopen transition/)
   })
 })
+
+/*
+ * «Yes, it works» (tour of 23 Sep 2026, D51). The only way from «resolved» to
+ * «closed» was the 72-hour timer: nobody could confirm and close sooner.
+ */
+describe('confirmTicketResolution — the requester closes a resolved ticket now', () => {
+  const check = (over: Row = {}) => ['OPTIONAL MATCH (e)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)', [{ createdBy: 'user-1', status: 'resolved', instanceId: 'wi-1', labels: ['Incident'], ...over }]] as [string, Row[]]
+  const after: [string, Row[]] = ['RETURN properties(e) AS props', [{ props: incident({ status: 'closed' }) }]]
+
+  it('closes along the manual move to the closed step, with the requester\'s words, and says so in the Audit Log', async () => {
+    h.routes = [check(), after]
+    wf.getAvailableTransitions.mockResolvedValue([{ toStep: 'in_progress' }, { toStep: 'closed' }])
+    wf.transition.mockResolvedValue({ success: true })
+    const out = await M.confirmTicketResolution(null, { ticketId: 'inc-1' }, ctx)
+    expect(wf.transition.mock.calls[0]?.[1]).toMatchObject({ instanceId: 'wi-1', toStepName: 'closed', triggerType: 'manual', triggeredBy: 'user-1', tenantId: 't1' })
+    expect(out).toMatchObject({ id: 'inc-1', status: 'closed' })
+    expect(audit).toHaveBeenCalledWith(ctx, 'portal.ticket.resolution_confirmed', 'Incident', 'inc-1', { fromStep: 'resolved', toStep: 'closed' })
+  })
+
+  it('someone else\'s ticket is FORBIDDEN, and nothing moves', async () => {
+    h.routes = [check({ createdBy: 'other' })]
+    expect(await code(() => M.confirmTicketResolution(null, { ticketId: 'inc-1' }, ctx))).toBe('FORBIDDEN')
+    expect(wf.transition).not.toHaveBeenCalled()
+  })
+
+  it('a ticket not in the tenant is FORBIDDEN', async () => {
+    expect(await code(() => M.confirmTicketResolution(null, { ticketId: 'x' }, ctx))).toBe('FORBIDDEN')
+  })
+
+  it('a ticket that is not resolved cannot be confirmed', async () => {
+    h.routes = [check({ status: 'in_progress' })]
+    wf.getAvailableTransitions.mockResolvedValue([{ toStep: 'closed' }])
+    expect(await code(() => M.confirmTicketResolution(null, { ticketId: 'inc-1' }, ctx))).toBe('CONFLICT')
+    expect(wf.transition).not.toHaveBeenCalled()
+  })
+
+  it('a workflow that closes only by its timer (no manual move to a closed step) is a CONFLICT, not a forced close', async () => {
+    h.routes = [check()]
+    wf.getAvailableTransitions.mockResolvedValue([{ toStep: 'in_progress' }])
+    expect(await code(() => M.confirmTicketResolution(null, { ticketId: 'inc-1' }, ctx))).toBe('CONFLICT')
+    expect(wf.transition).not.toHaveBeenCalled()
+  })
+
+  it('a ticket without a workflow instance cannot be confirmed', async () => {
+    h.routes = [check({ instanceId: null })]
+    expect(await code(() => M.confirmTicketResolution(null, { ticketId: 'inc-1' }, ctx))).toBe('CONFLICT')
+  })
+
+  it('a transition the engine refuses says why', async () => {
+    h.routes = [check()]
+    wf.getAvailableTransitions.mockResolvedValue([{ toStep: 'closed' }])
+    wf.transition.mockResolvedValue({ success: false, error: 'condition not met' })
+    let err: GraphQLError | undefined
+    try { await M.confirmTicketResolution(null, { ticketId: 'inc-1' }, ctx) } catch (e) { err = e as GraphQLError }
+    expect(err?.message).toBe('Confirmation failed: condition not met')
+  })
+
+  it('a ticket that vanishes after the confirmation fails loud', async () => {
+    h.routes = [check({ labels: ['ServiceRequest'] })]
+    wf.getAvailableTransitions.mockResolvedValue([{ toStep: 'closed' }])
+    wf.transition.mockResolvedValue({ success: true })
+    expect(await code(() => M.confirmTicketResolution(null, { ticketId: 'sr-1' }, ctx))).toMatch(/ServiceRequest sr-1 vanished after the confirmation/)
+  })
+})
+
+describe('myTicket — canConfirmResolution tells the portal whether to offer the button', () => {
+  const detail = (status: string): Array<[string, Row[]]> => [
+    ['OPTIONAL MATCH (e)-[:ASSIGNED_TO_TEAM]->(t:Team)', [{ props: incident({ status }), labels: ['Incident'], assignedTeam: null, instanceId: 'wi-1' }]],
+  ]
+
+  it('resolved, with a manual move to the closed step: offered', async () => {
+    h.routes = detail('resolved')
+    wf.getAvailableTransitions.mockResolvedValue([{ toStep: 'closed' }])
+    expect(await Q.myTicket(null, { id: 'inc-1' }, ctx)).toMatchObject({ canConfirmResolution: true })
+  })
+
+  it('resolved, closed only by the timer: not offered', async () => {
+    h.routes = detail('resolved')
+    wf.getAvailableTransitions.mockResolvedValue([{ toStep: 'in_progress' }])
+    expect(await Q.myTicket(null, { id: 'inc-1' }, ctx)).toMatchObject({ canConfirmResolution: false })
+  })
+
+  it('not resolved: not offered, and the workflow is not even asked', async () => {
+    h.routes = detail('in_progress')
+    expect(await Q.myTicket(null, { id: 'inc-1' }, ctx)).toMatchObject({ canConfirmResolution: false })
+    expect(wf.getAvailableTransitions).not.toHaveBeenCalled()
+  })
+})

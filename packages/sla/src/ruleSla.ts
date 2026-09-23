@@ -10,7 +10,7 @@
  * fuso del tenant, lo stato sostituito, i tre controlli programmati.
  */
 import { randomUUID } from 'crypto'
-import { DEFAULT_SLA_WARNING_MINUTES } from '@opengraphity/types'
+import { DEFAULT_SLA_WARNING_MINUTES, matchById } from '@opengraphity/types'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { calculateDeadline } from './policy.js'
 import { mapToSLAStatus, getSLAStatus, SLA_STATUS_PROJECTION, type SLAStatus } from './status.js'
@@ -86,8 +86,7 @@ export async function applyRuleSLA(input: RuleSLAInput): Promise<SLAStatus> {
   let status: SLAStatus
   try {
     const rows = await runQuery<Record<string, unknown>>(session, `
-      MATCH (e {id: $entityId, tenant_id: $tenantId})
-      WHERE e:Incident OR e:Problem OR e:ServiceRequest
+      ${matchById('e', { labels: ['Incident', 'Problem', 'ServiceRequest'], id: '$entityId' })}
       OPTIONAL MATCH (e)-[:HAS_SLA]->(old:SLAStatus)
       DETACH DELETE old
       WITH DISTINCT e

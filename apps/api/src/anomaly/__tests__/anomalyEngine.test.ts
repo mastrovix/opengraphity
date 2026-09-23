@@ -58,9 +58,10 @@ vi.mock('../rules.js', () => ({
 // Ondata 5 di «Nulla cablato»: le regole vengono dalla configurazione del
 // cliente. Una accesa e una spenta: la spenta non esegue query ma chiude le
 // sue anomalie aperte (una scrittura).
-vi.mock('../ruleConfig.js', () => {
+vi.mock('../ruleConfig.js', async (importOriginal) => {
   const base = { severity: 'medium', ciTypes: [], relations: [], threshold: null, incidentSeverities: [], forbidden: [], isDefault: false, updatedAt: null }
   return {
+    ANOMALY_RULE_SPECS: (await importOriginal<typeof import('../ruleConfig.js')>()).ANOMALY_RULE_SPECS,
     loadAnomalyRuleConfigs: vi.fn(async () => [
       { ...base, ruleKey: 'orphan_ci', enabled: true },
       { ...base, ruleKey: 'missing_owner', enabled: false },

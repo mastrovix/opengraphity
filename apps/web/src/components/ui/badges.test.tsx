@@ -5,7 +5,7 @@ import { RiskBandContext, bandForScore, type RiskBandThreshold } from '@/context
 import { palette } from '@/lib/tokens'
 import { DomainVocabularyContext } from '@/contexts/DomainVocabularyContext'
 import { NEUTRAL_VALUE_STYLE } from '@/lib/domainStyle'
-import { enumLabel } from '@/lib/ciEnums'
+import { humanizeValue } from '@opengraphity/web-core'
 
 const BROKEN_BG = 'var(--color-danger)'
 let consoleError: ReturnType<typeof vi.spyOn>
@@ -48,7 +48,7 @@ describe('SeverityBadge', () => {
    */
   it.each(SEVERITIES)('%s → il colore che il Dizionario gli assegna', (sev) => {
     withVocabulary(SEVERITIES, <SeverityBadge value={sev} />, {}, FACTORY_COLORS)
-    const pill = screen.getByText(enumLabel(sev))
+    const pill = screen.getByText(humanizeValue(sev))
     const family = palette[FACTORY_COLORS[sev as keyof typeof FACTORY_COLORS]]
     expect(pill).toHaveStyle({ background: family.tint, color: family.text, textTransform: 'uppercase' })
     expect(consoleError).not.toHaveBeenCalled()

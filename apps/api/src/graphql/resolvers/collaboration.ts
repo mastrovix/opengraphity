@@ -12,8 +12,10 @@ import { sseManager } from '@opengraphity/notifications'
 import { GraphQLError } from 'graphql'
 import { COMMENTABLE_LABELS } from '../../lib/ticketComments.js'
 import { hasPermission, requirePermission } from '../../lib/permissions.js'
-import { roleHasPermission } from '../../lib/roles.js'
-import { TICKET_WORKER_PERMISSION } from '@opengraphity/types'
+import { roleHasPermission, tenantRoles } from '../../lib/roles.js'
+import { TICKET_WORKER_PERMISSION, isPermission } from '@opengraphity/types'
+import { ValidationError } from '../../lib/errors.js'
+import { matchById } from '../../lib/cypherLookups.js'
 
 type Props = Record<string, unknown>
 
@@ -170,7 +172,7 @@ async function autoWatch(tenantId: string, userId: string, entityId: string): Pr
   await withSession(async (s) => {
     await runQuery(s, `
       MATCH (u:User {id: $userId, tenant_id: $tenantId})
-      MATCH (e {id: $entityId, tenant_id: $tenantId})
+      ${matchById('e', { labels: 'entities', id: '$entityId' })}
       MERGE (u)-[:WATCHES {watched_at: $now}]->(e)
     `, { userId, tenantId, entityId, now: new Date().toISOString() })
   }, true)
@@ -178,23 +180,39 @@ async function autoWatch(tenantId: string, userId: string, entityId: string): Pr
 
 async function getEntityTitle(tenantId: string, entityId: string): Promise<string> {
   const row = await withSession(async (s) =>
-    runQueryOne<{ title: string }>(s, `MATCH (e {id: $id, tenant_id: $t}) RETURN e.title AS title`, { id: entityId, t: tenantId }),
+    runQueryOne<{ title: string }>(s, `${matchById('e', { labels: 'entities', id: '$id', tenant: '$t' })} RETURN e.title AS title`, { id: entityId, t: tenantId }),
   )
   return row?.title ?? entityId
 }
 
 // ── Search Users ─────────────────────────────────────────────────────────────
 
-async function searchUsers(_: unknown, args: { search: string; limit?: number }, ctx: GraphQLContext) {
+/**
+ * The roles of the organization that grant `permission` — the same source
+ * as a person's `permissions` field (`tenantRoles`). Null when no permission
+ * is asked; an unknown permission is an error, not «nobody».
+ */
+async function rolesGranting(tenantId: string, permission: string | null | undefined): Promise<string[] | null> {
+  if (permission == null) return null
+  if (!isPermission(permission)) {
+    throw new ValidationError(`Unknown permission "${permission}"`, { key: 'errors.users.unknownPermission', params: { permission } })
+  }
+  return [...(await tenantRoles(tenantId)).values()].filter((r) => r.permissions.has(permission)).map((r) => r.key)
+}
+
+async function searchUsers(_: unknown, args: { search: string; limit?: number; permission?: string | null }, ctx: GraphQLContext) {
   const limit = Math.min(args.limit ?? 5, 20)
+  const roles = await rolesGranting(ctx.tenantId, args.permission)
+  if (roles !== null && roles.length === 0) return []
   return withSession(async (s) => {
     const rows = await runQuery<{ id: string; name: string; email: string }>(s, `
       MATCH (u:User {tenant_id: $tenantId})
       WHERE (toLower(u.name) CONTAINS toLower($search) OR toLower(u.email) CONTAINS toLower($search))
         AND coalesce(u.active, true) = true
+        AND ($roles IS NULL OR u.role IN $roles)
       RETURN u.id AS id, u.name AS name, u.email AS email
       ORDER BY u.name LIMIT toInteger($limit)
-    `, { tenantId: ctx.tenantId, search: args.search, limit })
+    `, { tenantId: ctx.tenantId, search: args.search, limit, roles })
     return rows
   })
 }

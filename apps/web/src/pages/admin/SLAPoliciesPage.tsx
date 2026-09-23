@@ -99,9 +99,12 @@ function fmtMinutes(m: number, t: TFunction): string {
   return d === Math.floor(d) ? u('days', d) : `${u('days', Math.floor(d))} ${fmtMinutes(m % 1440, t)}`
 }
 
-function scopeParts(priority: string | null, category: string | null, teamName: string | null, t: TFunction, label: (vocab: string, v: string) => string): string[] {
+function scopeParts(entityType: string, priority: string | null, category: string | null, teamName: string | null, t: TFunction, label: (vocab: string, v: string) => string): string[] {
   const parts: string[] = []
-  if (priority) parts.push(t('admin.sla.scopePriority', { value: label('priority', priority) }))
+  // For an incident the stored `priority` is the severity the engine matches: say so, as the form does.
+  if (priority) parts.push(entityType === 'incident'
+    ? t('admin.sla.scopeSeverity', { value: label('severity', priority) })
+    : t('admin.sla.scopePriority', { value: label('priority', priority) }))
   if (category) parts.push(t('admin.sla.scopeCategory', { value: label('category', category) }))
   if (teamName) parts.push(t('admin.sla.scopeTeam',     { value: teamName }))
   return parts
@@ -216,7 +219,7 @@ export function SLAPoliciesPage() {
       <span style={{ fontWeight: 500, color: 'var(--color-slate-dark)' }}>{String(v)}</span>
     ) },
     { key: 'priority', label: t('admin.sla.appliesToColumn'), sortable: false, render: (_v, row) => {
-      const scope = scopeParts(row.priority, row.category, row.teamName, t, vocabLabel)
+      const scope = scopeParts(row.entityType, row.priority, row.category, row.teamName, t, vocabLabel)
       return (
         <span style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>
           {scope.length === 0 ? t('common.all') : scope.join(', ')}
@@ -247,7 +250,7 @@ export function SLAPoliciesPage() {
   // ── Preview text for modal form ───────────────────────────────────────────
   function formPreview(): string {
     const team = teams.find(tm => tm.id === form.teamId)
-    const scope = scopeParts(form.priority, form.category, team?.name ?? null, t, vocabLabel)
+    const scope = scopeParts(form.entityType, form.priority, form.category, team?.name ?? null, t, vocabLabel)
     return scope.length === 0
       ? t('admin.sla.previewAll',  { entity: typeLabel(form.entityType) })
       : t('admin.sla.previewSome', { entity: typeLabel(form.entityType), scope: scope.join(', ') })

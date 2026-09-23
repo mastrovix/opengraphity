@@ -64,8 +64,8 @@ describe('entityExistsCypher', () => {
     expect(() => entityExistsCypher([])).toThrow(ValidationError)
   })
 
-  it('embeds the extra access condition next to the label predicate', () => {
+  it('embeds the extra access condition after the indexed lookup', () => {
     expect(entityExistsCypher(['Incident'], 'e.reported_by = $userId'))
-      .toContain('WHERE (e:Incident) AND (e.reported_by = $userId)')
+      .toContain('RETURN e } WITH e WHERE e.reported_by = $userId RETURN e.id AS id LIMIT 1')
   })
 })

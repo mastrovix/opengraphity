@@ -18,7 +18,7 @@ export function CIIcon({
   color?: string
   style?: React.CSSProperties
 }) {
-  const known  = isBrokenIconKey(icon) ? false : icon in CI_ICON_PATHS
+  const known  = isBrokenIconKey(icon) ? false : Object.hasOwn(CI_ICON_PATHS, icon)
   const nodes  = iconPathsOrError(icon)
   const stroke = known ? (color ?? 'currentColor') : BROKEN_ICON_COLOR
   return (

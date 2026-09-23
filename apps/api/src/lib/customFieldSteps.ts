@@ -27,6 +27,7 @@
  */
 import type { Session } from 'neo4j-driver'
 import { ValidationError } from './errors.js'
+import { matchById } from './cypherLookups.js'
 
 export type StepVisibility =
   | { mode: 'always' }
@@ -133,7 +134,8 @@ export function fieldStepState(visibility: StepVisibility, editability: StepEdit
 /** La fase corrente del ticket e quelle in cui è entrato (dalla storia del workflow); null senza istanza. */
 export async function ticketStepContext(session: Session, tenantId: string, ticketId: string): Promise<StepContext | null> {
   const res = await session.executeRead((tx) => tx.run(`
-    MATCH (e {id: $ticketId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+    ${matchById('e', { labels: 'entities', id: '$ticketId' })}
+    MATCH (e)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
     OPTIONAL MATCH (wi)-[:STEP_HISTORY]->(x:WorkflowStepExecution)
     RETURN wi.current_step AS current, collect(DISTINCT x.step_name) AS visited
   `, { ticketId, tenantId }))

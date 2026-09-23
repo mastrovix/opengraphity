@@ -36,6 +36,10 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
     (condition   || null) === transition.condition  &&
     (timerHours ? parseInt(timerHours, 10) : null) === transition.timerHours
 
+  // A manual arrow is a button on the ticket, and its label is the button's
+  // text: the server refuses to leave one blank, so the panel says it first.
+  const unlabelled = trigger === 'manual' && label.trim() === ''
+
   return (
     <div style={panelStyle}>
       <PanelHeader title={t('pages.workflowStep.editTransition')} onClose={onClose} />
@@ -44,10 +48,19 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
         <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
           <code>{transition.fromStepName}</code> → <code>{transition.toStepName}</code>
         </span>
+        {/* The canvas cannot move an arrow's ends: the server has no way to move a transition. */}
+        <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', lineHeight: 1.4 }}>
+          {t('workflow.panel.moveHint')}
+        </span>
       </PanelField>
 
       <PanelField label={t('workflow.panel.label')}>
         <Input value={label} onChange={(e) => setLabel(e.target.value)} style={inputStyle} />
+        {unlabelled && (
+          <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-warning-text)', lineHeight: 1.4 }}>
+            {t('workflow.panel.manualNeedsLabel')}
+          </span>
+        )}
       </PanelField>
 
       <PanelField label={t('workflow.panel.trigger')}>
@@ -68,7 +81,7 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
             checked={requiresInput}
             onChange={(e) => { setRequiresInput(e.target.checked); if (!e.target.checked) setInputField('') }}
           />
-          <span style={{ fontSize: 'var(--font-size-body)' }}>{requiresInput ? 'Sì' : 'No'}</span>
+          <span style={{ fontSize: 'var(--font-size-body)' }}>{requiresInput ? t('common.yes') : t('common.no')}</span>
         </label>
       </PanelField>
 
@@ -119,7 +132,7 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
             min={1}
             value={timerHours}
             onChange={(e) => setTimerHours(e.target.value)}
-            placeholder="ore"
+            placeholder={t('workflow.timerHoursPlaceholder')}
             style={inputStyle}
           />
         </PanelField>
@@ -141,8 +154,8 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
           onSaved({ label, trigger, requiresInput, inputField: change.inputField, condition: change.condition, timerHours: change.timerHours })
           toast.success(t('toast.workflow.savedLocally'))
         }}
-        disabled={unchanged}
-        style={saveButtonStyle(unchanged)}
+        disabled={unchanged || unlabelled}
+        style={saveButtonStyle(unchanged || unlabelled)}
       >
         {t('common.save')}
       </button>

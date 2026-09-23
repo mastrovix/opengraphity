@@ -15,7 +15,7 @@ vi.mock('@opengraphity/neo4j', () => ({
 const invalidateNotificationLocale = vi.fn()
 vi.mock('@opengraphity/notifications', () => ({ invalidateNotificationLocale }))
 
-const { setTenantTimezone, isTimeZone, availableTimeZones } = await import('../tenantTimezone.js')
+const { setTenantTimezone, isTimeZone, availableTimeZones, localDateTimeIn } = await import('../tenantTimezone.js')
 const { ValidationError, NotFoundError } = await import('../errors.js')
 
 describe('tenant timezone', () => {
@@ -54,5 +54,25 @@ describe('tenant timezone', () => {
   it('tenant inesistente → NotFoundError', async () => {
     runQueryOne.mockResolvedValueOnce(null)
     await expect(setTenantTimezone('nope', 'UTC')).rejects.toBeInstanceOf(NotFoundError)
+  })
+})
+
+/**
+ * D14 (tour of 23 Sep 2026): the AI drafts receive wall-clock times in the
+ * organization's zone, never raw UTC next to a description in local time.
+ */
+describe('localDateTimeIn', () => {
+  it('writes the instant as wall-clock time in the zone, across daylight saving', () => {
+    expect(localDateTimeIn('2026-09-23T04:20:00.000Z', 'Europe/Rome')).toBe('2026-09-23 06:20')
+    expect(localDateTimeIn('2026-01-15T23:30:00Z', 'Europe/Rome')).toBe('2026-01-16 00:30')
+    expect(localDateTimeIn('2026-09-23T04:20:00Z', 'America/New_York')).toBe('2026-09-23 00:20')
+    expect(localDateTimeIn('2026-09-23T04:20:00Z', 'UTC')).toBe('2026-09-23 04:20')
+  })
+
+  it('a missing instant stays missing, one that is not a date is an error', () => {
+    expect(localDateTimeIn(null, 'Europe/Rome')).toBeNull()
+    expect(localDateTimeIn(undefined, 'Europe/Rome')).toBeNull()
+    expect(localDateTimeIn('', 'Europe/Rome')).toBeNull()
+    expect(() => localDateTimeIn('yesterday', 'Europe/Rome')).toThrow(/"yesterday" is not an instant/)
   })
 })

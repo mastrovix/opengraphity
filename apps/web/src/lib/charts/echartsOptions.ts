@@ -85,12 +85,19 @@ function axisLabel(compact: boolean, extra: Record<string, unknown> = {}) {
   return { color: t.text, fontSize: compact ? t.fsTable : t.fsBody, fontFamily: t.font, ...extra }
 }
 
-function categoryAxis(labels: string[], compact: boolean, rotate = 0) {
+/**
+ * `passo`: a time axis whose step between two shown labels is known (D5). The
+ * labels are drawn at 0, passo, 2·passo… — the same ones `etichetteTemporali`
+ * gave the year to — and never rotated. Without it the axis keeps what it did:
+ * every label (report) or ECharts' own choice (compact card).
+ */
+function categoryAxis(labels: string[], compact: boolean, rotate = 0, passo?: number) {
   const t = theme()
+  const scelta = passo !== undefined ? { interval: passo - 1, rotate: 0 } : compact ? {} : { interval: 0, rotate }
   return {
     type: 'category' as const,
     data: labels,
-    axisLabel: axisLabel(compact, compact ? {} : { interval: 0, rotate }),
+    axisLabel: axisLabel(compact, scelta),
     axisLine: { lineStyle: { color: t.border } },
     axisTick: { show: false },
   }
@@ -145,21 +152,78 @@ function grigliaConEtichette(
   }
 }
 
+// ── Assi temporali: quante etichette ci stanno (D5) ─────────────────────────
+
+/**
+ * HOW MANY TIME LABELS FIT (D5, tour of 23 Sep 2026).
+ *
+ * «Incidents per month» — a full-width widget — showed month and year without
+ * overlapping; «Requests per month», the same chart at half the width, drew
+ * all its forty labels on top of each other: a report chart forces every
+ * label (`interval: 0`), and forty «Sep» do not fit in 450px.
+ *
+ * The step is chosen from the WIDTH the chart really has, measured by the
+ * component that draws it: every label that fits is shown, one in two, three,
+ * four, six or twelve when they do not. The step is a round number of
+ * periods, so the labels fall on the same months every year, and
+ * `etichetteTemporali` gives the year to the first SHOWN label of each year
+ * — with ECharts' automatic thinning the label carrying the year could be
+ * the one that disappeared.
+ */
+const PASSI_TONDI = [1, 2, 3, 4, 6, 12, 24] as const
+/** The plot area is the chart minus the value axis and the margins. */
+const MARGINI_ASSE = 72
+/** Room between two labels, in px. */
+const SPAZIO_FRA_ETICHETTE = 12
+/** Average width of a character, as a share of the font size. */
+const LARGHEZZA_CARATTERE = 0.62
+
+export function passoEtichette(quante: number, larghezza: number | undefined, caratteri: number, fontPx: number): number {
+  if (!larghezza || larghezza <= 0 || quante <= 1 || !(fontPx > 0)) return 1
+  const posto = caratteri * fontPx * LARGHEZZA_CARATTERE + SPAZIO_FRA_ETICHETTE
+  const massimo = Math.max(1, Math.floor(Math.max(larghezza - MARGINI_ASSE, posto) / posto))
+  if (quante <= massimo) return 1
+  const minimo = Math.ceil(quante / massimo)
+  return PASSI_TONDI.find((p) => p >= minimo) ?? minimo
+}
+
+/** The longest line of the labels (a two-line label counts its longest line). */
+function caratteriMassimi(etichette: readonly string[]): number {
+  return Math.max(1, ...etichette.flatMap((e) => e.split('\n')).map((r) => r.length))
+}
+
+/**
+ * The labels of a category axis and, when they are dates and the width is
+ * known, the step between the shown ones. `passo` undefined = not a time axis,
+ * or a width nobody measured: the axis keeps its old behaviour.
+ */
+function etichetteAsse(
+  labels: string[], style: { locale?: string; granularita?: string | null; larghezza?: number; compact?: boolean },
+): { etichette: string[]; passo: number | undefined } {
+  const locale = style.locale ?? 'en'
+  const tutte = etichetteTemporali(labels, locale, { granularita: style.granularita })
+  if (tutte === null) return { etichette: labels, passo: undefined }
+  if (!style.larghezza) return { etichette: tutte, passo: undefined }
+  const t = theme()
+  const passo = passoEtichette(labels.length, style.larghezza, caratteriMassimi(tutte), style.compact ? t.fsTable : t.fsBody)
+  return { etichette: passo > 1 ? (etichetteTemporali(labels, locale, { granularita: style.granularita, passo }) ?? tutte) : tutte, passo }
+}
+
 // ── Builder ──────────────────────────────────────────────────────────────────
 
-export function buildBarOption(points: ChartPoint[], style: ChartStyle & { locale?: string; granularita?: string | null } = {}) {
+export function buildBarOption(points: ChartPoint[], style: ChartStyle & { locale?: string; granularita?: string | null; larghezza?: number } = {}) {
   const t = theme()
   const compact = style.compact ?? false
   const palette = chartPalette()
-  // Anche un istogramma può essere raggruppato per mese: stesse etichette.
-  const etichette = etichetteTemporali(points.map((p) => p.label), style.locale ?? 'en', { granularita: style.granularita })
-    ?? points.map((p) => p.label)
+  // Anche un istogramma può essere raggruppato per mese: stesse etichette, e
+  // lo stesso diradamento quando non ci stanno tutte (D5).
+  const { etichette, passo } = etichetteAsse(points.map((p) => p.label), style)
   return {
     tooltip: tooltip('axis', { axisPointer: { type: 'shadow' } }),
     grid: grigliaConEtichette(compact
       ? { top: 12, right: 12, bottom: 20, left: 40, containLabel: true }
       : { left: 16, right: 16, bottom: 48, top: 16, containLabel: true }, style.showValueLabels),
-    xAxis: categoryAxis(etichette, compact, points.length > 6 ? 30 : 0),
+    xAxis: categoryAxis(etichette, compact, points.length > 6 ? 30 : 0, passo),
     yAxis: valueAxis(compact),
     series: [{
       type: 'bar',
@@ -217,7 +281,7 @@ export function buildHorizontalBarOption(points: ChartPoint[], style: ChartStyle
  */
 export function etichetteTemporali(
   labels: readonly string[], locale: string,
-  opts: { unaRiga?: boolean; granularita?: string | null } = {},
+  opts: { unaRiga?: boolean; granularita?: string | null; passo?: number } = {},
 ): string[] | null {
   const ISO = /^(\d{4})-(\d{2})-(\d{2})$/
   const pezzi = labels.map((l) => ISO.exec(l))
@@ -239,7 +303,10 @@ export function etichetteTemporali(
   const mensile = !annuale && (opts.granularita === 'month'
     || (opts.granularita == null && pezzi.every((m) => m![3] === '01')))
   let annoPrecedente = ''
-  return pezzi.map((m) => {
+  // D5: with a step, only the labels at 0, passo, 2·passo… are drawn, and the
+  // year goes to the first DRAWN label of each year, not to one that is hidden.
+  const passo = Math.max(1, Math.floor(opts.passo ?? 1))
+  return pezzi.map((m, i) => {
     const [, anno, mese, giorno] = m!
     if (annuale) return anno!
     // Mezzogiorno UTC: costruire la data a mezzanotte la farebbe scivolare al
@@ -255,24 +322,25 @@ export function etichetteTemporali(
      * l'anno sempre, altrimenti «gen» da solo non dice di quale anno è.
      */
     if (opts.unaRiga === true) return `${periodo} ${anno!}`
+    if (i % passo !== 0) return periodo
     const nuovo = anno !== annoPrecedente
     annoPrecedente = anno!
     return nuovo ? `${periodo}\n${anno!}` : periodo
   })
 }
 
-export function buildLineOption(points: ChartPoint[], style: ChartStyle & { area?: boolean; locale?: string; granularita?: string | null } = {}) {
+export function buildLineOption(points: ChartPoint[], style: ChartStyle & { area?: boolean; locale?: string; granularita?: string | null; larghezza?: number } = {}) {
   const t = theme()
   const compact = style.compact ?? false
   const color = style.color ?? t.brand
-  const etichette = etichetteTemporali(points.map((p) => p.label), style.locale ?? 'en', { granularita: style.granularita })
-    ?? points.map((p) => p.label)
+  // D5: month and year, and as many labels as the measured width holds.
+  const { etichette, passo } = etichetteAsse(points.map((p) => p.label), style)
   return {
     tooltip: tooltip('axis'),
     grid: grigliaConEtichette(compact
       ? { top: 12, right: 12, bottom: 20, left: 40, containLabel: true }
       : { left: 16, right: 16, bottom: 48, top: 16, containLabel: true }, style.showValueLabels),
-    xAxis: categoryAxis(etichette, compact),
+    xAxis: categoryAxis(etichette, compact, 0, passo),
     yAxis: valueAxis(compact),
     series: [{
       type: 'line',

@@ -30,6 +30,7 @@ import { useTranslation } from 'react-i18next'
 import type { ValueColor } from '@opengraphity/types'
 import { GET_ENUM_TYPES } from '@/graphql/queries'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
+import { humanizeValue } from '@opengraphity/web-core'
 
 interface LocalizedLabelRow { language: string; label: string }
 interface EnumValueLabelRow { value: string; label: string; labels: LocalizedLabelRow[] }
@@ -81,6 +82,22 @@ export const DomainVocabularyContext = createContext<DomainVocabularies>({
   error:     null,
 })
 
+/**
+ * THE LABEL OF A VALUE NOBODY LABELLED (D29, tour of 23 Sep 2026).
+ *
+ * The API sends a `label` for every value: the one written in the Dictionary
+ * (it is then among `labels`, the languages actually written) or, when there
+ * is none, its own fallback — every word capitalised. That fallback turned
+ * «Pick up at the IT desk» into «Pick Up At The IT Desk» in every form. The
+ * fallback is recognised here — a label that is not among the written ones —
+ * and replaced by the one rule of the product, `humanizeValue`: a sentence
+ * stays as it is, a machine key becomes «In progress».
+ */
+export function withOwnLabel(row: EnumValueLabelRow): EnumValueLabelRow {
+  const written = (row.labels ?? []).some((l) => l.label === row.label)
+  return written ? row : { ...row, label: humanizeValue(row.value) }
+}
+
 export function DomainVocabularyProvider({ children }: { children: ReactNode }) {
   /*
     La lingua fa parte della CHIAVE della query: l'API non la conosce (non c'e'
@@ -99,7 +116,7 @@ export function DomainVocabularyProvider({ children }: { children: ReactNode }) 
     const own     = new Map<string, EnumTypeRow>()
     const shipped = new Map<string, EnumTypeRow>()
     for (const row of data?.enumTypes ?? []) {
-      (row.isShipped ? shipped : own).set(row.name, row)
+      (row.isShipped ? shipped : own).set(row.name, { ...row, valueLabels: row.valueLabels.map(withOwnLabel) })
     }
     const ready = !loading && !error
     /** Il vocabolario che vince per questo cliente, o `undefined`. */

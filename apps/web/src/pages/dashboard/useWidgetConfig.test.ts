@@ -54,9 +54,9 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers() })
 
 const monta = (widget: unknown = null) => {
-  const onClose = vi.fn(); const onSaved = vi.fn()
-  const h = renderHook(() => useWidgetConfig({ dashboardId: 'd1', widget: widget as never, onClose, onSaved }))
-  return { ...h, onClose, onSaved }
+  const onSaved = vi.fn()
+  const h = renderHook(() => useWidgetConfig({ dashboardId: 'd1', widget: widget as never, onSaved }))
+  return { ...h, onSaved }
 }
 
 describe('the pure helpers', () => {
@@ -183,16 +183,7 @@ describe('useWidgetConfig', () => {
     expect(result.current.saving).toBe(false)
   })
 
-  it('Escape closes the panel, and the listener goes away with it', () => {
-    const { onClose, unmount } = monta()
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
-    expect(onClose).not.toHaveBeenCalled()
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
-    expect(onClose).toHaveBeenCalledOnce()
-    unmount()
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
-    expect(onClose).toHaveBeenCalledOnce()
-  })
+  // Escape is the dialog's (useDialogFocus), pinned in WidgetConfigPanel.test.tsx.
 
   it('the small setters all work', () => {
     const { result } = monta()

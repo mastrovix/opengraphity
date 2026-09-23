@@ -71,7 +71,7 @@ describe('calculateChain', () => {
 
   it('risolve il tipo dal metamodello per etichetta, senza filtrare per tipo', async () => {
     await calculateChain('ci-1', 'tenant-1')
-    expect(queries[0]).toContain('MATCH (ci {id: $ciId, tenant_id: $tenantId})')
+    expect(queries[0]).toContain('MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})')
     expect(queries[0]).toContain('OPTIONAL MATCH (td:CITypeDefinition {neo4j_label: lbl})')
     expect(queries[0]).not.toMatch(/ci:Application OR ci:Server/)
   })

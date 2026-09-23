@@ -7,11 +7,32 @@
  * fallire il test.
  */
 import { describe, it, expect } from 'vitest'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import it_ from '@/i18n/locales/it.json'
 import en from '@/i18n/locales/en.json'
 
-/** Sorgenti dell'app (non i test né gli helper di test), letti come testo da Vite. */
-const SOURCES = import.meta.glob<string>('/src/**/*.{ts,tsx}', { query: '?raw', import: 'default', eager: true })
+/**
+ * Sorgenti dell'app (non i test né gli helper di test), letti DAL DISCO.
+ *
+ * Tour of 23 Sep 2026: they were read with `import.meta.glob(…, { query:
+ * '?raw', eager: true })`, which makes Vite load every source file as a text
+ * module. Coverage then counted each of those files as LOADED — by a module
+ * with no code — and reported 113 files that no test runs with 0 statements
+ * instead of all their statements uncovered: 6,271 statements out of 19,281
+ * were invisible, and the web read 97.5% where it was about 66%.
+ */
+const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+function readSources(dir: string, out: Record<string, string> = {}): Record<string, string> {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name)
+    if (entry.isDirectory()) readSources(full, out)
+    else if (/\.tsx?$/.test(entry.name)) out['/src/' + path.relative(SRC, full).split(path.sep).join('/')] = fs.readFileSync(full, 'utf8')
+  }
+  return out
+}
+const SOURCES = readSources(SRC)
 
 function flatten(obj: Record<string, unknown>, prefix = '', out: Record<string, string> = {}): Record<string, string> {
   for (const [k, v] of Object.entries(obj)) {

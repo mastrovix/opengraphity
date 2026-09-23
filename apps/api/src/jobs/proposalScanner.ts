@@ -33,6 +33,7 @@ import { randomUUID } from 'node:crypto'
 import { getSession } from '@opengraphity/neo4j'
 import { getQueue, createWorker, getSharedRedis } from '../lib/bullmq.js'
 import { logger } from '../lib/logger.js'
+import { audit } from '../lib/audit.js'
 import { analizzaConfigurazione } from '../lib/proposalAnalysts.js'
 import { analizzaPiattaforma } from '../lib/platformAnalyst.js'
 import { analizzaLavoroQuotidiano } from '../lib/dailyWorkAnalyst.js'
@@ -140,6 +141,8 @@ export async function proposalScannerProcessor(job: Job<ProposalScanJobData>): P
       const esito = await conIlLucchetto(tenantId, () => analizzaCliente(tenantId))
       if (esito === null) {
         logger.info({ module: 'proposals', tenantId }, 'proposal-scanner: already running, skipped')
+      } else {
+        await recordAnalysisRun(tenantId, esito, richiesto ? 'queued' : 'nightly')
       }
     } catch (err) {
       falliti.push(tenantId)
@@ -152,6 +155,22 @@ export async function proposalScannerProcessor(job: Job<ProposalScanJobData>): P
   if (falliti.length > 0) {
     throw new Error(`proposal-scanner: ${String(falliti.length)} tenant(s) failed: ${falliti.join(', ')} — see log`)
   }
+}
+
+/**
+ * THE RUN LEAVES ITS TRACE (tour of 23 Sep 2026).
+ *
+ * The page says when the analysis last ran, and tells «never ran» apart from
+ * «ran and found nothing» — reading the `proposal.analysis_run` entries. Only
+ * the button wrote one: a tenant analysed every night for a month, with
+ * nothing to propose, read «never ran». The run by the queue writes the same
+ * entry, as the product (`system`), so it stays out of what people did.
+ */
+export async function recordAnalysisRun(
+  tenantId: string, esito: { create: number; saltate: Record<string, number> }, source: 'nightly' | 'queued',
+): Promise<void> {
+  await audit({ tenantId, userId: 'system', userEmail: 'system', role: 'system' } as never,
+    'proposal.analysis_run', 'Proposal', tenantId, { created: esito.create, skipped: esito.saltate, source })
 }
 
 export function getProposalScannerQueue() {

@@ -67,6 +67,18 @@ export interface OLAContractRule {
   resolveMinutes: number
   businessHours:  boolean
   calendar:       ServiceCalendar | null
+  /**
+   * The contract's own time zone; null = the organization's (tour of 23 Sep
+   * 2026). A team in Singapore works 9-18 in Singapore: counted in the
+   * organization's zone, its calendar was six or seven hours off, so the demo
+   * could give OLAs only to the teams in the organization's zone.
+   */
+  timezone:       string | null
+}
+
+/** The zone a contract counts in: its own, or the organization's. */
+export function olaTimezone(contract: Pick<OLAContractRule, 'timezone'>, organizationTimezone: string): string {
+  return contract.timezone ?? organizationTimezone
 }
 
 export type OLATeamState = 'met' | 'breached' | 'running' | 'handed_off' | 'scheduled'
@@ -92,7 +104,8 @@ function iso(v: string, what: string): Date {
 }
 
 /** La misura di un contratto su un ticket, adesso (`now`). */
-export function olaTeamMeasure(ticket: OLATicketFacts, contract: OLAContractRule, timezone: string, now: Date = new Date()): OLATeamMeasure {
+export function olaTeamMeasure(ticket: OLATicketFacts, contract: OLAContractRule, organizationTimezone: string, now: Date = new Date()): OLATeamMeasure {
+  const timezone = olaTimezone(contract, organizationTimezone)
   const concluded = ticket.concludedAt ? iso(ticket.concludedAt, 'conclusion') : null
   const until = concluded ?? now
   const contractFrom = contract.createdAt ? iso(contract.createdAt, 'contract creation') : null

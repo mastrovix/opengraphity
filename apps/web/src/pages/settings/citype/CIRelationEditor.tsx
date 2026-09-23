@@ -129,9 +129,9 @@ export function CIRelationTable({ relations, onRemove, readOnly = false }: Relat
       <tbody>
         {[...relations].sort((a: CIRelationDef, b: CIRelationDef) => a.order - b.order).map(r => (
           <tr key={r.id} style={{ borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
-            <td style={{ padding: '8px', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", fontSize: 'var(--font-size-body)' }}>{r.name}</td>
+            <td style={{ padding: '8px', fontFamily: 'var(--font-family)', fontSize: 'var(--font-size-body)' }}>{r.name}</td>
             <td style={{ padding: '8px' }}>{shippedLabel('relation', r.name, r.label)}</td>
-            <td style={{ padding: '8px', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", fontSize: 'var(--font-size-body)' }}>{r.relationshipType}</td>
+            <td style={{ padding: '8px', fontFamily: 'var(--font-family)', fontSize: 'var(--font-size-body)' }}>{r.relationshipType}</td>
             <td style={{ padding: '8px', fontSize: 'var(--font-size-body)' }}>{r.targetType === 'any' ? t('common.any') : (getCIType(r.targetType)?.label ?? r.targetType)}</td>
             <td style={{ padding: '8px', fontSize: 'var(--font-size-body)' }}>{r.cardinality === 'one' ? t('citypeDesigner.relation.cardinalityOne') : r.cardinality === 'many' ? t('citypeDesigner.relation.cardinalityMany') : r.cardinality}</td>
             <td style={{ padding: '8px', fontSize: 'var(--font-size-body)' }}>{r.direction === 'outgoing' ? t('citypeDesigner.relation.directionOutgoing') : r.direction === 'incoming' ? t('citypeDesigner.relation.directionIncoming') : r.direction}</td>

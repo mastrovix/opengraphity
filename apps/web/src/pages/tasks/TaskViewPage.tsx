@@ -9,7 +9,7 @@
  */
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { useQuery, useMutation } from '@apollo/client/react'
+import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ChevronRight, RotateCcw } from 'lucide-react'
@@ -25,23 +25,8 @@ import {
   GET_TEAM_DETAIL,
 } from '@/graphql/queries'
 import { useMe } from '@/hooks/useMe'
-import {
-  SUBMIT_ASSESSMENT_RESPONSE,
-  COMPLETE_ASSESSMENT_TASK,
-  ASSIGN_ASSESSMENT_TASK_TO_USER,
-  ASSIGN_DEPLOY_PLAN_TASK_TO_USER,
-  SAVE_DEPLOY_PLAN,
-  COMPLETE_DEPLOY_PLAN_TASK,
-  COMPLETE_VALIDATION_TEST,
-  COMPLETE_DEPLOYMENT,
-  COMPLETE_REVIEW,
-  REOPEN_TASK,
-  REOPEN_DEPLOY_PLAN,
-  REOPEN_VALIDATION,
-  REOPEN_DEPLOYMENT,
-  REOPEN_REVIEW,
-} from '@/graphql/mutations'
-import type { AffectedCI, ChangeData, DeployStep, MeData, QuestionData } from '@/types/change'
+import { useTaskMutations } from './useTaskMutations'
+import type { AffectedCI, AssessmentTaskData, ChangeData, DeployPlanTaskData, DeployStep, MeData, QuestionData } from '@/types/change'
 import { AssessmentTaskForm } from './components/AssessmentTaskForm'
 import { PlanTaskForm } from './components/PlanTaskForm'
 import { ValidationTaskForm } from './components/ValidationTaskForm'
@@ -52,12 +37,13 @@ import { ReopenModal } from './components/ReopenModal'
 import { TeamGatePanel } from './components/TeamGatePanel'
 import { KIND_TITLE_KEY, inputStyle } from './components/shared'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
+import { DetailLayout } from '@/components/ui/DetailLayout'
 import { colors, palette } from '@/lib/tokens'
 import { plannedWindowStart, beforePlannedWindow } from './components/plannedWindow'
 import { useConfirm } from '@/hooks/useConfirm'
 import { formatDateTime } from '@/lib/datetime'
-import { showError } from '@/lib/showError'
 import { useCILabels } from '@/hooks/useCILabels'
+import { reloadQueries } from '@/lib/reloadQueries'
 
 interface TaskDetail {
   id: string; code: string; kind: string
@@ -65,6 +51,20 @@ interface TaskDetail {
   ciId: string; ciName: string; ciType: string | null; ciEnv: string | null
 }
 interface CatalogEntry { weight: number; sortOrder: number; question: QuestionData }
+
+/** Whether the task is done: each kind reads its own row of the CI in the change. */
+function taskCompleted(kind: string, { assessTask, planTask, ciAffected }: {
+  assessTask: AssessmentTaskData | null
+  planTask: DeployPlanTaskData | null
+  ciAffected: AffectedCI | null
+}): boolean {
+  if (kind === 'assessment') return assessTask?.status === TASK_STATUS.COMPLETED
+  if (kind === 'deploy-plan') return planTask?.status === TASK_STATUS.COMPLETED
+  if (kind === 'validation') return ciAffected?.validation?.status === TASK_STATUS.COMPLETED
+  if (kind === 'deployment') return ciAffected?.deployment?.status === TASK_STATUS.COMPLETED
+  if (kind === 'review') return ciAffected?.review?.status === TASK_STATUS.COMPLETED
+  return false
+}
 
 export function TaskViewPage() {
   const { t } = useTranslation()
@@ -78,8 +78,8 @@ export function TaskViewPage() {
 
   const { data: changeData } = useQuery<{ change: ChangeData | null }>(GET_CHANGE, { variables: { id: task?.changeId ?? '' }, skip: !task, fetchPolicy: 'cache-and-network' })
   const { data: affectedData, refetch: refetchAffected } = useQuery<{ changeAffectedCIs: AffectedCI[] }>(GET_CHANGE_AFFECTED_CIS, { variables: { changeId: task?.changeId ?? '' }, skip: !task, fetchPolicy: 'cache-and-network' })
-  const { data: funcCat } = useQuery<{ assessmentQuestionCatalog: CatalogEntry[] }>(GET_QUESTION_CATALOG, { variables: { category: QUESTION_CATEGORY.FUNCTIONAL }, skip: !task || (task.kind !== 'assessment') })
-  const { data: techCat } = useQuery<{ assessmentQuestionCatalog: CatalogEntry[] }>(GET_QUESTION_CATALOG, { variables: { category: QUESTION_CATEGORY.TECHNICAL }, skip: !task || (task.kind !== 'assessment') })
+  const funcCat = useQuery<{ assessmentQuestionCatalog: CatalogEntry[] }>(GET_QUESTION_CATALOG, { variables: { category: QUESTION_CATEGORY.FUNCTIONAL }, skip: !task || (task.kind !== 'assessment') })
+  const techCat = useQuery<{ assessmentQuestionCatalog: CatalogEntry[] }>(GET_QUESTION_CATALOG, { variables: { category: QUESTION_CATEGORY.TECHNICAL }, skip: !task || (task.kind !== 'assessment') })
   const { me, can } = useMe()
   const meData: { me: MeData | null } = { me }
   const { byName: changeStepByName } = useWorkflowSteps('change')
@@ -105,27 +105,16 @@ export function TaskViewPage() {
     return (teamData?.team?.members ?? []).map(u => ({ id: u.id, name: u.name }))
   }
 
-  const refetchAll = async () => { await refetchAffected() }
+  const refetchAll = () => { reloadQueries(refetchAffected) }
   const goToChange = () => {
     const cid = taskData?.taskById?.changeId
     if (cid) { toast.success(t('toast.task.completed')); navigate(`/changes/${cid}`) }
   }
 
-  const [submitAnswer]     = useMutation(SUBMIT_ASSESSMENT_RESPONSE,   { onCompleted: refetchAll, onError: (e) => showError(e) })
-  const [completeAssess]   = useMutation(COMPLETE_ASSESSMENT_TASK,     { onCompleted: goToChange, onError: (e) => showError(e) })
-  const [assignUser]       = useMutation(ASSIGN_ASSESSMENT_TASK_TO_USER, { onCompleted: async () => { toast.success(t('toast.task.assignmentUpdated')); await refetchAll() }, onError: (e) => showError(e) })
-  const [assignPlanUser]   = useMutation(ASSIGN_DEPLOY_PLAN_TASK_TO_USER, { onCompleted: async () => { toast.success(t('toast.task.assignmentUpdated')); await refetchAll() }, onError: (e) => showError(e) })
-  const [savePlan]         = useMutation(SAVE_DEPLOY_PLAN,             { onCompleted: async () => { toast.success(t('toast.task.planSaved')); await refetchAll() }, onError: (e) => showError(e) })
-  const [completePlan]     = useMutation(COMPLETE_DEPLOY_PLAN_TASK,    { onCompleted: goToChange, onError: (e) => showError(e) })
-  const [completeVal]      = useMutation(COMPLETE_VALIDATION_TEST,     { onCompleted: goToChange, onError: (e) => showError(e) })
-  const [completeDep]      = useMutation(COMPLETE_DEPLOYMENT,          { onCompleted: goToChange, onError: (e) => showError(e) })
-  const [completeRev]      = useMutation(COMPLETE_REVIEW,              { onCompleted: goToChange, onError: (e) => showError(e) })
-
-  const [reopenAssess]     = useMutation(REOPEN_TASK,          { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => showError(e) })
-  const [reopenPlan]       = useMutation(REOPEN_DEPLOY_PLAN,   { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => showError(e) })
-  const [reopenVal]        = useMutation(REOPEN_VALIDATION,    { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => showError(e) })
-  const [reopenDep]        = useMutation(REOPEN_DEPLOYMENT,    { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => showError(e) })
-  const [reopenRev]        = useMutation(REOPEN_REVIEW,        { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => showError(e) })
+  // D24: the mutations live in one hook, which also says when a completion,
+  // an answer or the plan is in flight — the buttons wait for it.
+  const m = useTaskMutations({ refetchAll, goToChange })
+  const busyLabel = m.completing ? t('changeTasks.completing') : m.saving ? t('common.saving') : null
 
   // Completare prima della finestra pianificata si può, ma lo si conferma.
   const confirm = useConfirm()
@@ -154,11 +143,11 @@ export function TaskViewPage() {
     setShowReopenModal(false)
     const kind = task?.kind
     if (!kind) return
-    if (kind === 'assessment') void reopenAssess({ variables: { taskId: id, reason } })
-    else if (kind === 'deploy-plan') void reopenPlan({ variables: { taskId: id, reason } })
-    else if (kind === 'validation') void reopenVal({ variables: { id, reason } })
-    else if (kind === 'deployment') void reopenDep({ variables: { id, reason } })
-    else if (kind === 'review') void reopenRev({ variables: { id, reason } })
+    if (kind === 'assessment') void m.reopenAssess({ variables: { taskId: id, reason } })
+    else if (kind === 'deploy-plan') void m.reopenPlan({ variables: { taskId: id, reason } })
+    else if (kind === 'validation') void m.reopenVal({ variables: { id, reason } })
+    else if (kind === 'deployment') void m.reopenDep({ variables: { id, reason } })
+    else if (kind === 'review') void m.reopenRev({ variables: { id, reason } })
   }
 
   if (taskLoading && !task) return <PageContainer><p>{t('common.loading')}</p></PageContainer>
@@ -170,11 +159,10 @@ export function TaskViewPage() {
     : null
 
   const assessRole = assessTask?.responderRole ?? null
-  const catalog = assessRole === ASSESSMENT_ROLE.OWNER
-    ? (funcCat?.assessmentQuestionCatalog ?? [])
-    : assessRole === ASSESSMENT_ROLE.SUPPORT
-      ? (techCat?.assessmentQuestionCatalog ?? [])
-      : []
+  // The questionnaire of this responder; `null` while it is not known (not read yet, or not
+  // readable). Taken for an empty one, it offered «Complete (0/0)», which the API always refuses.
+  const catalogRead = assessRole === ASSESSMENT_ROLE.OWNER ? funcCat : assessRole === ASSESSMENT_ROLE.SUPPORT ? techCat : null
+  const catalog = catalogRead ? (catalogRead.data?.assessmentQuestionCatalog ?? null) : []
 
   const ciOwnerTeamId = ciAffected?.ci.ownerGroup?.id ?? null
   const ciSupportTeamId = ciAffected?.ci.supportGroup?.id ?? null
@@ -188,14 +176,7 @@ export function TaskViewPage() {
 
   const taskTitle = KIND_TITLE_KEY[task.kind] ? t(KIND_TITLE_KEY[task.kind]!) : task.kind
 
-  const isTaskCompleted = (() => {
-    if (task.kind === 'assessment') return assessTask?.status === TASK_STATUS.COMPLETED
-    if (task.kind === 'deploy-plan') return planTask?.status === TASK_STATUS.COMPLETED
-    if (task.kind === 'validation') return ciAffected?.validation?.status === TASK_STATUS.COMPLETED
-    if (task.kind === 'deployment') return ciAffected?.deployment?.status === TASK_STATUS.COMPLETED
-    if (task.kind === 'review') return ciAffected?.review?.status === TASK_STATUS.COMPLETED
-    return false
-  })()
+  const isTaskCompleted = taskCompleted(task.kind, { assessTask, planTask, ciAffected })
 
   const responsibleTeamId = (() => {
     if (task.kind === 'assessment') return assessRole === ASSESSMENT_ROLE.OWNER ? ciOwnerTeamId : ciSupportTeamId
@@ -229,7 +210,7 @@ export function TaskViewPage() {
             // «Non assegnato» (valore vuoto) manda userId null e TOGLIE
             // l'assegnazione: prima l'opzione c'era e non faceva nulla
             // (revisione totale · F-4).
-            const assign = task.kind === 'deploy-plan' ? assignPlanUser : assignUser
+            const assign = task.kind === 'deploy-plan' ? m.assignPlanUser : m.assignUser
             void assign({ variables: { taskId: tsk.id, userId: e.target.value || null } })
           }}
           style={{ ...inputStyle, flex: 1, maxWidth: 250 }}
@@ -253,7 +234,7 @@ export function TaskViewPage() {
         <span aria-current="page" style={{ color: 'var(--color-slate-dark)', fontWeight: 500 }}>{taskTitle}</span>
       </nav>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 24, alignItems: 'start' }}>
+      <DetailLayout sideWidth={360}>
         <div>
           {showReopenModal && <ReopenModal onConfirm={handleReopen} onCancel={() => setShowReopenModal(false)} />}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
@@ -291,15 +272,22 @@ export function TaskViewPage() {
             />
           )}
 
-          {task.kind === 'assessment' && assessTask && (
+          {task.kind === 'assessment' && assessTask && catalog === null && (
+            catalogRead?.error
+              ? <QueryError message={t('pages.taskView.questionsUnavailable', { error: catalogRead.error.message })} onRetry={() => void catalogRead.refetch()} />
+              : <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{t('common.loading')}</p>
+          )}
+
+          {task.kind === 'assessment' && assessTask && catalog !== null && (
             <AssessmentTaskForm
               task={assessTask}
               catalog={catalog}
               canEdit={canEdit}
+              busyLabel={busyLabel}
               onSubmitAnswer={(questionId, optionId) =>
-                void submitAnswer({ variables: { taskId: assessTask.id, questionId, optionId } })
+                void m.submitAnswer({ variables: { taskId: assessTask.id, questionId, optionId } })
               }
-              onComplete={() => void completeAssess({ variables: { taskId: assessTask.id } })}
+              onComplete={() => void m.completeAssess({ variables: { taskId: assessTask.id } })}
             />
           )}
 
@@ -311,32 +299,36 @@ export function TaskViewPage() {
               dirty={planDirty}
               setDirty={setPlanDirty}
               canEdit={canEdit}
+              busyLabel={busyLabel}
               onSave={() => {
-                void savePlan({ variables: { taskId: planTask.id, steps: planSteps } })
+                void m.savePlan({ variables: { taskId: planTask.id, steps: planSteps } })
                 setPlanDirty(false)
               }}
-              onComplete={() => void completePlan({ variables: { taskId: planTask.id } })}
+              onComplete={() => void m.completePlan({ variables: { taskId: planTask.id } })}
             />
           )}
 
           {task.kind === 'validation' && (
             <ValidationTaskForm
               canEdit={canEdit}
-              onComplete={(result) => void confirmBeforeWindow('validation').then((ok) => { if (ok) void completeVal({ variables: { changeId: task.changeId, ciId: task.ciId, result } }) })}
+              busyLabel={busyLabel}
+              onComplete={(result) => void confirmBeforeWindow('validation').then((ok) => { if (ok) void m.completeVal({ variables: { changeId: task.changeId, ciId: task.ciId, result } }) })}
             />
           )}
 
           {task.kind === 'deployment' && (
             <DeploymentTaskForm
               canEdit={canEdit}
-              onComplete={() => void confirmBeforeWindow('deployment').then((ok) => { if (ok) void completeDep({ variables: { changeId: task.changeId, ciId: task.ciId } }) })}
+              busyLabel={busyLabel}
+              onComplete={() => void confirmBeforeWindow('deployment').then((ok) => { if (ok) void m.completeDep({ variables: { changeId: task.changeId, ciId: task.ciId } }) })}
             />
           )}
 
           {task.kind === 'review' && (
             <ReviewTaskForm
               canEdit={canEdit}
-              onComplete={(result) => void completeRev({ variables: { changeId: task.changeId, ciId: task.ciId, result } })}
+              busyLabel={busyLabel}
+              onComplete={(result) => void m.completeRev({ variables: { changeId: task.changeId, ciId: task.ciId, result } })}
             />
           )}
 
@@ -356,7 +348,7 @@ export function TaskViewPage() {
           stepCategory={currentStepMeta?.category ?? null}
           onRowClick={() => navigate(`/changes/${task.changeId}`)}
         />
-      </div>
+      </DetailLayout>
     </PageContainer>
   )
 }

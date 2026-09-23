@@ -4,8 +4,10 @@ import { AIDisabledNotice } from '@/components/ai/AIDisabledNotice'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { PageTitle } from '@/components/PageTitle'
 import { apiUrl, authHeader } from '@/lib/apiBase'
+import { exportToCsv } from '@/lib/csvExport'
 import { timeAgo } from '@/lib/datetime'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -51,18 +53,148 @@ interface ReportConversation {
   messages: ReportMessage[]
 }
 
+/** A frame of the report stream, read: what it carries depends on its event. */
+type ReportFrame =
+  | { event: 'chunk'; text: string }
+  | { event: 'tool'; description: string }
+  | { event: 'conversation'; conversationId: string }
+  | { event: 'done'; message: ReportMessage; conversationId?: string }
+  | { event: 'error'; message: string }
+  /** F-10: a frame the client could not interpret, and why — counted and reported, never dropped in silence. */
+  | { event: 'unreadable'; reason: string }
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function extractCSV(content: string): string | null {
-  const tableRegex = /\|(.+)\|\n\|[-| :]+\|\n((?:\|.+\|\n?)+)/g
-  const match = tableRegex.exec(content)
+/**
+ * The first table of an answer, cell by cell (tour of 23 Sep 2026). The CSV
+ * used to split the rows on `|` dropping the empty cells, and to join them
+ * unquoted: «Rome, Milan» became two columns, an empty cell vanished, and
+ * every value after either moved one column left. The cells are now split as
+ * the table is drawn — an empty cell stays, `\|` is a pipe inside a cell —
+ * and `exportToCsv` quotes them.
+ */
+function extractTable(content: string): { headers: string[]; rows: string[][] } | null {
+  const match = /\|(.+)\|\n\|[-| :]+\|\n((?:\|.+\|\n?)+)/.exec(content)
   if (!match) return null
-  const headers = match[1].split('|').map((h) => h.trim()).filter(Boolean)
-  const rows = match[2].trim().split('\n').map((row) =>
-    row.split('|').map((c) => c.trim()).filter(Boolean),
-  )
-  const lines = [headers.join(','), ...rows.map((r) => r.join(','))]
-  return lines.join('\n')
+  const cells = (inner: string) => inner.split(/(?<!\\)\|/).map((c) => c.trim().replaceAll('\\|', '|'))
+  return {
+    headers: cells(match[1]),
+    rows: match[2].trim().split('\n').map((row) => cells(row.trim().slice(1, -1))),
+  }
+}
+
+/**
+ * Why the server refused the question (tour of 23 Sep 2026): the page said
+ * only «HTTP 403». The report stream refuses before opening the stream, with
+ * the reason in a JSON body: `{ error: '…' }` from the route and the auth
+ * middleware (a missing permission, an empty question), `{ error: { code,
+ * message } }` from the REST error handler and when the organisation has
+ * turned the AI off — that one is said in the reader's language. A body
+ * without a reason (a proxy's error page) leaves the status.
+ */
+async function refusalReason(res: Response, t: TFunction): Promise<string> {
+  let body: unknown = null
+  try {
+    body = await res.json()
+  } catch {
+    // Not JSON: the status below is all there is to say.
+  }
+  const error = (body as { error?: unknown } | null)?.error
+  if (typeof error === 'string' && error.trim()) return error
+  if (error && typeof error === 'object') {
+    const { code, message } = error as { code?: unknown; message?: unknown }
+    if (code === 'AI_DISABLED') return t('errors.ai.disabled', { feature: t('pages.organization.aiFeature.reportAnalysis') })
+    if (typeof message === 'string' && message.trim()) return message
+  }
+  return `HTTP ${res.status}`
+}
+
+/** An error said in the chat where the answer would be (a `tmp-` message: it is not saved). */
+const errorNote = (content: string): ReportMessage => ({
+  id: `tmp-err-${Date.now()}`, role: 'assistant', content, createdAt: new Date().toISOString(),
+})
+
+/**
+ * The frames of one SSE block, in order: an `event: …` line names the event,
+ * the `data: …` line after it carries its payload. An error frame ends the
+ * block — what follows it in the same block is not read.
+ */
+function reportFrames(block: string, t: TFunction): ReportFrame[] {
+  const frames: ReportFrame[] = []
+  const lines = block.split('\n')
+  let currentEvent = ''
+  let lastEventWasError = false
+  for (const line of lines) {
+    if (line.startsWith('event: ')) {
+      currentEvent = line.slice(7).trim()
+      lastEventWasError = currentEvent === 'error'
+    } else if (line.startsWith('data: ')) {
+      if (lastEventWasError) {
+        let errMsg = t('toast.report.streamError')
+        try {
+          const errorData = JSON.parse(line.slice(6)) as { message?: string }
+          errMsg = errorData.message?.includes('overloaded')
+            ? t('toast.report.aiOverloaded')
+            : (errorData.message ?? errMsg)
+        } catch {
+          // Frame di errore malformato: mostriamo comunque un errore generico
+          // invece di ingoiarlo in silenzio.
+        }
+        frames.push({ event: 'error', message: errMsg })
+        // Niente da azzerare: il `return` esce da reportFrames, e le due
+        // variabili nascono con ogni blocco. Le due assegnazioni che
+        // stavano qui non le leggeva nessuno.
+        return frames
+      }
+      try {
+        const payload = JSON.parse(line.slice(6)) as {
+          text?: string
+          description?: string
+          conversationId?: string
+          message?: ReportMessage
+        }
+        if (currentEvent === 'chunk' && payload.text) {
+          frames.push({ event: 'chunk', text: payload.text })
+        } else if (currentEvent === 'tool' && payload.description) {
+          frames.push({ event: 'tool', description: payload.description })
+        } else if (currentEvent === 'conversation' && payload.conversationId) {
+          frames.push({ event: 'conversation', conversationId: payload.conversationId })
+        } else if (currentEvent === 'done' && payload.message) {
+          frames.push({ event: 'done', message: payload.message, conversationId: payload.conversationId })
+        } else {
+          frames.push({ event: 'unreadable', reason: t('pages.aiAnalysis.unexpectedPayload', { event: currentEvent || '—' }) })
+        }
+      } catch (e) {
+        frames.push({ event: 'unreadable', reason: t('pages.aiAnalysis.invalidJson', { message: e instanceof Error ? e.message : String(e) }) })
+      }
+      currentEvent = ''
+      lastEventWasError = false
+    }
+  }
+  return frames
+}
+
+/**
+ * Reads a body of server-sent events block by block (a block ends with a
+ * blank line): a block split across two packets is handed on once whole, and
+ * a last block without its blank line still counts.
+ */
+async function readSSEBlocks(body: ReadableStream<Uint8Array>, onBlock: (block: string) => void): Promise<void> {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    const chunk = decoder.decode(value, { stream: true })
+    buffer += chunk
+    const blocks = buffer.split('\n\n')
+    buffer = blocks.pop() ?? ''
+    for (const block of blocks) {
+      onBlock(block)
+    }
+  }
+  if (buffer.trim()) onBlock(buffer)
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -83,6 +215,18 @@ export default function ReportsPage() {
   const textareaRef                   = useRef<HTMLTextAreaElement>(null)
   const abortRef                      = useRef<AbortController | null>(null)
   const suppressSyncRef               = useRef(false)
+  /**
+   * The answer streaming INTO THE CONVERSATION ON SCREEN (tour of 23 Sep
+   * 2026). Opening another conversation while an answer streamed used to
+   * put the question and the answer in the messages on screen — the other
+   * conversation's. Now the stream owns the screen only until the person
+   * moves (`leaveStream`): it keeps running, the server saves the answer in
+   * its own conversation and the list is reloaded at the end, but it draws
+   * nothing more here. The ref is for the stream's callbacks, the state for
+   * the render.
+   */
+  const onScreenStreamRef             = useRef<object | null>(null)
+  const [streamOnScreen, setStreamOnScreen] = useState(false)
 
   const conversations = data?.reportConversations ?? []
   const active = conversations.find((c) => c.id === activeId) ?? null
@@ -119,6 +263,10 @@ export default function ReportsPage() {
       content: question,
       createdAt: new Date().toISOString(),
     }
+    const stream = {}
+    onScreenStreamRef.current = stream
+    const onScreen = () => onScreenStreamRef.current === stream
+    setStreamOnScreen(true)
     setLocalMessages((prev) => [...prev, userMsg])
     setIsStreaming(true)
     setStreamingText('')
@@ -141,11 +289,9 @@ export default function ReportsPage() {
         signal: abort.signal,
       })
 
-      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
+      if (!res.ok) throw new Error(await refusalReason(res, t))
+      if (!res.body) throw new Error(`HTTP ${res.status}`)
 
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
       let pendingConvId: string | null = null
       let accumulatedText = ''
       let donePayload: { message: ReportMessage; conversationId?: string } | null = null
@@ -155,84 +301,37 @@ export default function ReportsPage() {
       let droppedFrames = 0
       let firstDropReason: string | null = null
 
-      // Parse SSE with event names
+      // What each frame of a block does to the page (the frames are read by reportFrames)
       const processSSEChunk = (block: string) => {
-        const lines = block.split('\n')
-        let currentEvent = ''
-        let lastEventWasError = false
-        for (const line of lines) {
-          if (line.startsWith('event: ')) {
-            currentEvent = line.slice(7).trim()
-            lastEventWasError = currentEvent === 'error'
-          } else if (line.startsWith('data: ')) {
-            if (lastEventWasError) {
-              let errMsg = t('toast.report.streamError')
-              try {
-                const errorData = JSON.parse(line.slice(6)) as { message?: string }
-                errMsg = errorData.message?.includes('overloaded')
-                  ? t('toast.report.aiOverloaded')
-                  : (errorData.message ?? errMsg)
-              } catch {
-                // Frame di errore malformato: mostriamo comunque un errore generico
-                // invece di ingoiarlo in silenzio.
-              }
-              errorOccurred = true
-              setIsStreaming(false)
+        for (const frame of reportFrames(block, t)) {
+          if (frame.event === 'error') {
+            errorOccurred = true
+            setIsStreaming(false)
+            // Il messaggio utente resta visibile; l'errore compare in chat.
+            // (In the chat of the question, if it is still on screen.)
+            if (onScreen()) {
               setStreamingText('')
-              // Il messaggio utente resta visibile; l'errore compare in chat.
-              setLocalMessages((prev) => [
-                ...prev,
-                { id: `tmp-err-${Date.now()}`, role: 'assistant', content: t('pages.aiAnalysis.errorMessage', { message: errMsg }), createdAt: new Date().toISOString() },
-              ])
-              toast.error(errMsg)
-              // Niente da azzerare: il `return` esce da processSSEChunk, e le due
-              // variabili nascono con ogni blocco. Le due assegnazioni che
-              // stavano qui non le leggeva nessuno.
-              return
+              setLocalMessages((prev) => [...prev, errorNote(t('pages.aiAnalysis.errorMessage', { message: frame.message }))])
             }
-            try {
-              const payload = JSON.parse(line.slice(6)) as {
-                text?: string
-                description?: string
-                conversationId?: string
-                message?: ReportMessage
-              }
-              if (currentEvent === 'chunk' && payload.text) {
-                accumulatedText += payload.text
-                setStreamingText((prev) => prev + payload.text!)
-              } else if (currentEvent === 'tool' && payload.description) {
-                setToolStatus(payload.description)
-              } else if (currentEvent === 'conversation' && payload.conversationId) {
-                // Don't call setActiveId here — it triggers useEffect that wipes localMessages
-                if (isNewConv) pendingConvId = payload.conversationId
-              } else if (currentEvent === 'done' && payload.message) {
-                donePayload = { message: payload.message, conversationId: payload.conversationId }
-              } else {
-                droppedFrames++
-                firstDropReason ??= t('pages.aiAnalysis.unexpectedPayload', { event: currentEvent || '—' })
-              }
-            } catch (e) {
-              droppedFrames++
-              firstDropReason ??= t('pages.aiAnalysis.invalidJson', { message: e instanceof Error ? e.message : String(e) })
-            }
-            currentEvent = ''
-            lastEventWasError = false
+            showError(frame)
+          } else if (frame.event === 'chunk') {
+            accumulatedText += frame.text
+            if (onScreen()) setStreamingText((prev) => prev + frame.text)
+          } else if (frame.event === 'tool') {
+            if (onScreen()) setToolStatus(frame.description)
+          } else if (frame.event === 'conversation') {
+            // Don't call setActiveId here — it triggers useEffect that wipes localMessages
+            if (isNewConv) pendingConvId = frame.conversationId
+          } else if (frame.event === 'done') {
+            donePayload = { message: frame.message, conversationId: frame.conversationId }
+          } else {
+            droppedFrames++
+            firstDropReason ??= frame.reason
           }
         }
       }
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        const chunk = decoder.decode(value, { stream: true })
-        buffer += chunk
-        const blocks = buffer.split('\n\n')
-        buffer = blocks.pop() ?? ''
-        for (const block of blocks) {
-          processSSEChunk(block)
-        }
-      }
-      if (buffer.trim()) processSSEChunk(buffer)
+      await readSSEBlocks(res.body, processSSEChunk)
 
       if (droppedFrames > 0) {
         if (import.meta.env.DEV) console.warn('[reports] SSE frames dropped:', droppedFrames, firstDropReason)
@@ -242,7 +341,11 @@ export default function ReportsPage() {
       // TS 5.4 narrows closure-assigned vars to null — use explicit cast to restore union type
       type DonePayload = { message: ReportMessage; conversationId?: string }
       const doneFinal = donePayload as DonePayload | null
-      if (!errorOccurred && doneFinal) {
+      if (!errorOccurred && doneFinal && !onScreen()) {
+        // The person opened another conversation meanwhile: the answer is
+        // saved in its own, which the reloaded list brings back.
+        void refetch()
+      } else if (!errorOccurred && doneFinal) {
         const finalConvId = doneFinal.conversationId ?? pendingConvId
         const assistantMsg: ReportMessage = {
           id: doneFinal.message.id,
@@ -261,7 +364,12 @@ export default function ReportsPage() {
         if (isNewConv && finalConvId) setActiveId(finalConvId)
         void (refetch() as Promise<unknown>).then(() => { suppressSyncRef.current = false })
       } else if (!errorOccurred) {
-        setLocalMessages((prev) => prev.filter((m) => !m.id.startsWith('tmp-')))
+        // Neither the answer nor an error: a proxy that cut the connection, a
+        // server that stopped halfway (tour of 23 Sep 2026). The question used
+        // to vanish from the chat without a word; it stays, and it is said.
+        const errMsg = t('toast.report.noAnswer')
+        toast.error(errMsg)
+        if (onScreen()) setLocalMessages((prev) => [...prev, errorNote(t('pages.aiAnalysis.errorMessage', { message: errMsg }))])
       }
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
@@ -269,18 +377,42 @@ export default function ReportsPage() {
         const errMsg = err instanceof Error ? err.message : String(err)
         toast.error(errMsg)
         // Il messaggio utente resta in chat, seguito da un errore visibile.
-        setLocalMessages((prev) => [
-          ...prev,
-          { id: `tmp-err-${Date.now()}`, role: 'assistant', content: t('pages.aiAnalysis.errorMessage', { message: errMsg }), createdAt: new Date().toISOString() },
-        ])
+        if (onScreen()) setLocalMessages((prev) => [...prev, errorNote(t('pages.aiAnalysis.errorMessage', { message: errMsg }))])
       }
     } finally {
-      setIsStreaming(false)
-      setStreamingText('')
-      setToolStatus(null)
-      abortRef.current = null
+      // Only the latest question says the page is idle: after an error frame
+      // a new one may already be streaming.
+      if (abortRef.current === abort) {
+        setIsStreaming(false)
+        abortRef.current = null
+      }
+      if (onScreen()) {
+        onScreenStreamRef.current = null
+        setStreamOnScreen(false)
+        setStreamingText('')
+        setToolStatus(null)
+      }
     }
   }, [activeId, isStreaming, refetch, t])
+
+  /**
+   * The person moves to another conversation, or to a new one: the answer
+   * streaming, if any, stops drawing here (see `onScreenStreamRef`).
+   */
+  const leaveStream = () => {
+    onScreenStreamRef.current = null
+    setStreamOnScreen(false)
+    setStreamingText('')
+    setToolStatus(null)
+  }
+
+  const openConversation = (c: ReportConversation) => {
+    // Already on screen: nothing to open, and an answer streaming into it stays.
+    if (c.id === activeId) return
+    leaveStream()
+    setActiveId(c.id)
+    setLocalMessages(c.messages)
+  }
 
   const loading = isStreaming
 
@@ -292,6 +424,7 @@ export default function ReportsPage() {
   }
 
   const handleNewConversation = () => {
+    leaveStream()
     setActiveId(null)
     setLocalMessages([])
     setInput('')
@@ -305,20 +438,18 @@ export default function ReportsPage() {
       showError(err)
       return
     }
-    if (activeId === id) { setActiveId(null); setLocalMessages([]) }
+    if (activeId === id) { leaveStream(); setActiveId(null); setLocalMessages([]) }
     void refetch()
   }
 
   const handleExportCSV = () => {
     const lastAsst = [...localMessages].reverse().find((m) => m.role === 'assistant')
     if (!lastAsst) return
-    const csv = extractCSV(lastAsst.content)
-    if (!csv) { alert(t('pages.aiAnalysis.noTableInAnswer')); return }
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url; a.download = 'report.csv'; a.click()
-    URL.revokeObjectURL(url)
+    const table = extractTable(lastAsst.content)
+    if (!table) { alert(t('pages.aiAnalysis.noTableInAnswer')); return }
+    // One column per header, as the table is drawn: a row with fewer cells
+    // gets empty ones, cells beyond the header are neither drawn nor exported.
+    exportToCsv('report.csv', table.headers.map((label, i) => ({ key: i, label })), table.rows)
   }
 
   // F-04: the messages column carries `report-print-area`; the print CSS below
@@ -335,7 +466,7 @@ export default function ReportsPage() {
   const hasMessages = localMessages.length > 0
 
   return (
-    <div className="card-border" style={{ display: 'flex', height: 'calc(var(--vh-app) - 56px - 48px)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", overflow: 'hidden' }}>
+    <div className="card-border" style={{ display: 'flex', height: 'calc(var(--vh-app) - 56px - 48px)', fontFamily: 'var(--font-family)', overflow: 'hidden' }}>
 
       {/* ── Sidebar sinistra ────────────────────────────────────────────── */}
       <div style={{
@@ -375,8 +506,8 @@ export default function ReportsPage() {
                 role="button"
                 tabIndex={0}
                 aria-current={activeId === c.id ? 'true' : undefined}
-                onClick={() => { setActiveId(c.id); setLocalMessages(c.messages) }}
-                onKeyDown={keyActivate(() => { setActiveId(c.id); setLocalMessages(c.messages) })}
+                onClick={() => openConversation(c)}
+                onKeyDown={keyActivate(() => openConversation(c))}
                 style={{
                   padding: '8px 10px', borderRadius: 6, cursor: 'pointer', marginBottom: 2,
                   background: activeId === c.id ? colors.border : 'transparent',
@@ -482,7 +613,7 @@ export default function ReportsPage() {
                           ),
                           li: ({ children }) => <li style={{ margin: '3px 0' }}>{children}</li>,
                           code: ({ children }) => (
-                            <code style={{ background: 'var(--color-slate-bg)', padding: '1px 6px', borderRadius: 4, fontSize: 'var(--font-size-body)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: colors.slateDark }}>{children}</code>
+                            <code style={{ background: 'var(--color-slate-bg)', padding: '1px 6px', borderRadius: 4, fontSize: 'var(--font-size-body)', fontFamily: 'var(--font-family)', color: colors.slateDark }}>{children}</code>
                           ),
                         }}
                       >
@@ -494,7 +625,7 @@ export default function ReportsPage() {
               </div>
             ))}
 
-            {isStreaming && (
+            {isStreaming && streamOnScreen && (
               <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
                 <div style={{
                   maxWidth: '85%',
@@ -547,7 +678,7 @@ export default function ReportsPage() {
                           ),
                           li: ({ children }) => <li style={{ margin: '3px 0' }}>{children}</li>,
                           code: ({ children }) => (
-                            <code style={{ background: 'var(--color-slate-bg)', padding: '1px 6px', borderRadius: 4, fontSize: 'var(--font-size-body)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: colors.slateDark }}>{children}</code>
+                            <code style={{ background: 'var(--color-slate-bg)', padding: '1px 6px', borderRadius: 4, fontSize: 'var(--font-size-body)', fontFamily: 'var(--font-family)', color: colors.slateDark }}>{children}</code>
                           ),
                         }}
                       >
@@ -590,7 +721,7 @@ export default function ReportsPage() {
               style={{
                 flex: 1, fontSize: 'var(--font-size-body)', padding: '10px 14px',
                 border: '1px solid var(--color-border-strong)', borderRadius: 8,
-                resize: 'none', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", lineHeight: 1.5,
+                resize: 'none', fontFamily: 'var(--font-family)', lineHeight: 1.5,
                 maxHeight: 96, overflowY: 'auto', outline: 'none',
               }}
               onInput={(e) => {

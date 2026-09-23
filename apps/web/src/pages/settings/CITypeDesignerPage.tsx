@@ -14,6 +14,7 @@ import {
 } from '@/graphql/mutations'
 import { EmptyState } from '@/components/EmptyState'
 import { CIIcon } from '@/lib/ciIcon'
+import { CI_ICON_KEYS } from '@/lib/ciIconPaths'
 import { CIDynamicForm } from '@/components/CIDynamicForm'
 import type { CITypeDef, CIFieldDef, CIRelationDef } from '@/contexts/MetamodelContext'
 import { CITypeList } from './citype/CITypeList'
@@ -39,6 +40,7 @@ import { colors, palette } from '@/lib/tokens'
 import { isShippedType } from '@/lib/ciTypeNames'
 import { Package } from 'lucide-react'
 import { ColorField } from '@/components/ui/ColorField'
+import { DetailLayout } from '@/components/ui/DetailLayout'
 
 /**
  * I ruoli che un tipo può dichiarare per la mappa di un servizio (ondata 6 ·
@@ -48,15 +50,14 @@ import { ColorField } from '@/components/ui/ColorField'
  */
 const SERVICE_ROLES = ['component', 'infrastructure', 'certificate'] as const
 
-// ── Style helpers ──────────────────────────────────────────────────────────────
-
-const ICONS = ['box', 'database', 'server', 'shield', 'hard-drive', 'cloud', 'globe', 'cpu', 'network', 'monitor', 'lock']
-
 interface EnumTypeOption extends EnumTypeRef { name: string }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 type Tab = 'settings' | 'fields' | 'relations' | 'rules' | 'preview'
+
+/** The look of an action a shipped type does not allow. */
+const readOnlyIf = (on: boolean) => (on ? { opacity: 0.5, cursor: 'not-allowed' as const } : {})
 
 export function CITypeDesignerPage() {
   const { t } = useTranslation()
@@ -103,7 +104,6 @@ export function CITypeDesignerPage() {
   // Le lingue in cui il cliente scrive le sue etichette (hooks/useLingue).
   const lingue = useLingue()
   const shippedNote = selected ? t('citypeDesigner.shippedNote', { type: selected.label }) : ''
-  const readOnlyIf = (on: boolean) => (on ? { opacity: 0.5, cursor: 'not-allowed' as const } : {})
 
   const selectType = (t: CITypeDef) => {
     setSelectedBase(false)
@@ -148,7 +148,8 @@ export function CITypeDesignerPage() {
         defaultScript:    form.defaultScript    || null,
       }
       const run = selectedBase ? updateBaseField : updateField
-      await run({ variables: { typeId: targetId, fieldId, input: patch } })
+      // Refused: its onError has said why, and the editor stays open (only onCompleted closes it).
+      try { await run({ variables: { typeId: targetId, fieldId, input: patch } }) } catch { /* said by onError */ }
       return
     }
     const input = {
@@ -163,11 +164,12 @@ export function CITypeDesignerPage() {
       visibilityScript: form.visibilityScript || null,
       defaultScript:    form.defaultScript    || null,
     }
-    if (selectedBase) {
-      await addBaseField({ variables: { typeId: targetId, input } })
-    } else {
-      await addField({ variables: { typeId: targetId, input } })
-    }
+    // A refused save rejects after its onError has said why (Apollo 4): the
+    // editor stays open, since only onCompleted closes it.
+    try {
+      if (selectedBase) await addBaseField({ variables: { typeId: targetId, input } })
+      else await addField({ variables: { typeId: targetId, input } })
+    } catch { /* said by the mutation's onError */ }
   }
 
   return (
@@ -182,7 +184,7 @@ export function CITypeDesignerPage() {
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 20, alignItems: 'start' }}>
+      <DetailLayout sideWidth={220} sideFirst gap={20}>
 
         {/* Left: type list */}
         <CITypeList
@@ -342,7 +344,7 @@ export function CITypeDesignerPage() {
                       <FormField label={t('citypeDesigner.icon')}>
                         <Select style={selectS} value={settingsForm.icon}
                           onChange={(e) => setSettingsForm((p) => p && ({ ...p, icon: e.target.value }))}>
-                          {ICONS.map((i) => <option key={i} value={i}>{i}</option>)}
+                          {CI_ICON_KEYS.map((i) => <option key={i} value={i}>{i}</option>)}
                         </Select>
                       </FormField>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 20 }}>
@@ -431,7 +433,7 @@ export function CITypeDesignerPage() {
                               // prodotto invece di restare quello di prima.
                               serviceRole: settingsForm.serviceRole || null,
                             } } })
-                          } finally { setSettingsSaving(false) }
+                          } catch { /* said by the mutation's onError */ } finally { setSettingsSaving(false) }
                         }}>
                         {settingsSaving ? t('common.saving') : t('citypeDesigner.saveSettings')}
                       </button>
@@ -595,7 +597,7 @@ export function CITypeDesignerPage() {
             </>
           )}
         </div>
-      </div>
+      </DetailLayout>
 
       {/* Dialogs */}
       <CreateTypeDialog
@@ -603,12 +605,9 @@ export function CITypeDesignerPage() {
         onClose={() => setShowCreate(false)}
         // A-12: i nomi già presi, dal metamodello vivo.
         existingTypes={ciTypes}
-        onSave={async (form) => {
-          const res = await createType({ variables: { input: form } })
-          // Con onError la promise si risolve anche in caso di fallimento:
-          // senza dati la creazione è fallita e il dialog non deve chiudersi.
-          if (!res.data) throw new Error('createCIType returned no data: the type was not created')
-        }}
+        // A refused creation REJECTS (Apollo 4, after onError has said why): the
+        // dialog catches it and stays open instead of pretending the type exists.
+        onSave={async (form) => { await createType({ variables: { input: form } }) }}
       />
 
       {/* Modal only for base type fields */}
@@ -629,12 +628,14 @@ export function CITypeDesignerPage() {
         allTypes={ciTypes}
         onSave={async (form: RelationForm) => {
           if (!selected) return
-          await addRelation({
-            variables: {
-              typeId: selected.id,
-              input: { name: form.name, label: form.label, relationshipType: form.relationshipType, targetType: form.targetType, cardinality: form.cardinality, direction: form.direction, order: form.order },
-            },
-          })
+          try {
+            await addRelation({
+              variables: {
+                typeId: selected.id,
+                input: { name: form.name, label: form.label, relationshipType: form.relationshipType, targetType: form.targetType, cardinality: form.cardinality, direction: form.direction, order: form.order },
+              },
+            })
+          } catch { /* said by the mutation's onError: the dialog stays open, only onCompleted closes it */ }
         }}
       />
     </PageContainer>

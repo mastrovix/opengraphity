@@ -58,6 +58,9 @@ export {
   type CatalogFormFile,
   type CatalogFormReference,
 } from './CatalogFormRenderer.js'
+// D29: a value without a label, shown the way a person wrote it (one rule for web, portal and the catalog form).
+export { humanizeValue, optionLabel } from './valueLabel.js'
+export { remarkUnderline, UNDERLINE_OPEN, UNDERLINE_CLOSE } from './markdownUnderline.js'
 // Le formule dei campi calcolati (ondata 6): il renderer le usa da sé, e la
 // pagina della libreria le usa per il pulsante «Prova».
 export { runFormula, computeFormulas, type FormulaEsito } from './formulaRunner.js'

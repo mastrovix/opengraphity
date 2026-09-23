@@ -12,6 +12,7 @@
 import ReactECharts from 'echarts-for-react'
 import { useTranslation } from 'react-i18next'
 import { lookupOrError, palette } from '@/lib/tokens'
+import { useElementWidth } from '@/lib/charts/useElementWidth'
 import {
   buildBarOption, buildGaugeOption, buildLineOption, buildPieOption, type ChartPoint,
 } from '@/lib/charts/echartsOptions'
@@ -40,10 +41,11 @@ const CHART_KIND: Record<string, ChartKind> = {
   chart_bar: 'bar', chart_line: 'line', chart_pie: 'pie', chart_donut: 'donut', gauge: 'gauge',
 }
 
-function buildOption(kind: ChartKind, points: ChartPoint[], data: WidgetSeriesData, color: string): object {
+function buildOption(kind: ChartKind, points: ChartPoint[], data: WidgetSeriesData, color: string, larghezza: number | undefined): object {
   switch (kind) {
-    case 'bar':   return buildBarOption(points, { color, compact: true })
-    case 'line':  return buildLineOption(points, { color, compact: true, area: true })
+    // D5: a time axis shows the labels its measured width holds.
+    case 'bar':   return buildBarOption(points, { color, compact: true, larghezza })
+    case 'line':  return buildLineOption(points, { color, compact: true, area: true, larghezza })
     case 'pie':   return buildPieOption(points, { compact: true })
     case 'donut': return buildPieOption(points, { compact: true, donut: true })
     case 'gauge': return buildGaugeOption(data.value, { color })
@@ -96,13 +98,21 @@ export function WidgetBody({ widgetType, color, data, caption, height = 180, lar
     )
   }
 
+  return <WidgetChart widgetType={widgetType} color={color} data={data} height={height} />
+}
+
+/** The chart of a widget, which knows its width (D5): hooks live here, after the counter and table returns. */
+function WidgetChart({ widgetType, color, data, height }: { widgetType: string; color: string; data: WidgetSeriesData; height: number }) {
+  const [ref, larghezza] = useElementWidth<HTMLDivElement>()
   const kind = lookupOrError(CHART_KIND, widgetType, 'CHART_KIND', 'bar')
   const points: ChartPoint[] = data.series.map((s) => ({ label: s.label, value: s.value }))
   return (
-    <ReactECharts
-      option={buildOption(kind, points, data, color)}
-      style={{ height: kind === 'gauge' ? Math.min(height, 160) : height }}
-      opts={{ renderer: 'svg' }}
-    />
+    <div ref={ref} style={{ width: '100%' }}>
+      <ReactECharts
+        option={buildOption(kind, points, data, color, larghezza)}
+        style={{ height: kind === 'gauge' ? Math.min(height, 160) : height }}
+        opts={{ renderer: 'svg' }}
+      />
+    </div>
   )
 }

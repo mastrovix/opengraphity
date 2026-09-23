@@ -36,6 +36,7 @@ import {
   type NodePropagation, type ServiceMapStatus, type ServiceNodeRole, type ServiceRoleByLabel,
 } from '../../lib/serviceVocabularies.js'
 import { isRetiredLifecycle, resolveCILifecycleSemantics, type CILifecycleSemantics } from '../../lib/ciLifecycle.js'
+import { getEventPolicy } from '../events/policy.js'
 
 const log = logger.child({ module: 'service-impact' })
 
@@ -127,11 +128,27 @@ export function proposeNodeSettings(roles: ServiceRoleByLabel, labels: readonly 
 interface EntryRow { serviceName: string; apps: { ciId: string; name: string; labels: string[]; status: string | null; health: string | null }[] }
 interface ExpandedRow { ciId: string; name: string; level: number; via: string; labels: string[]; status: string | null; health: string | null }
 
+/**
+ * ONLY PRODUCTION (browser tour of 23 Sep 2026, D44 — the owner's choice).
+ *
+ * The map of a business service counted every CI the relations reached,
+ * development and test included: on the demo tenant 268 of 526 components
+ * were not production, and a development database made a production service
+ * «Degraded». A component whose environment is not one of the tenant's
+ * production environments (`production_environments` of the event policy)
+ * is neither in the map nor walked through; a CI without an environment
+ * counts as production. An empty list declares no production environment:
+ * then every environment counts.
+ */
+export function productionOnly(alias: string): string {
+  return `(size($productionEnvironments) = 0 OR coalesce(${alias}.environment, '') = '' OR ${alias}.environment IN $productionEnvironments)`
+}
+
 /** Livello 1: le applicazioni realizzate dal servizio (solo CI del metamodello, stesso tenant). */
 export const ENTRY_NODES_CYPHER = `
   MATCH (ba:BusinessApplication {id: $serviceId, tenant_id: $tenantId})
   OPTIONAL MATCH (ba)-[:REALIZES]->(app {tenant_id: $tenantId})
-  WHERE ANY(l IN labels(app) WHERE l IN $ciLabels)
+  WHERE ANY(l IN labels(app) WHERE l IN $ciLabels) AND ${productionOnly('app')}
   RETURN ba.name AS serviceName,
          [a IN collect(app) | {ciId: a.id, name: a.name, labels: [l IN labels(a) WHERE l <> 'ConfigurationItem'],
                                status: a.status, health: a.health}] AS apps`
@@ -143,12 +160,20 @@ export const ENTRY_NODES_CYPHER = `
  * `limit` = tetto + 1 così il superamento è rilevabile.
  */
 export const EXPAND_NODES_CYPHER = `
-  MATCH (app {tenant_id: $tenantId})
+  MATCH (app:ConfigurationItem {tenant_id: $tenantId})
   WHERE app.id IN $appIds
   WITH collect(app) AS apps
+  // D44: the components outside production are not walked through, so a
+  // production CI reached only behind a development one is not in the map.
+  CALL (apps) {
+    OPTIONAL MATCH (x:ConfigurationItem {tenant_id: $tenantId})
+    WHERE NOT ${productionOnly('x')}
+    RETURN collect(x) AS outside
+  }
   CALL apoc.path.expandConfig(apps, {
     relationshipFilter: $relFilter,
     labelFilter:        $labelFilter,
+    blacklistNodes:     outside,
     uniqueness:         'NODE_GLOBAL',
     bfs:                true,
     minLevel:           1,
@@ -177,8 +202,9 @@ export async function buildServiceMap(session: Queryable, tenantId: string, serv
   const ciLabels = await ciLabelsForTenant(tenantId)
   const roles = await serviceRolesForTenant(tenantId)
   const semantics = await resolveCILifecycleSemantics(tenantId)
+  const productionEnvironments = (await getEventPolicy(tenantId)).production_environments
 
-  const entry = await runQueryOne<EntryRow>(session, ENTRY_NODES_CYPHER, { serviceId, tenantId, ciLabels: [...ciLabels] })
+  const entry = await runQueryOne<EntryRow>(session, ENTRY_NODES_CYPHER, { serviceId, tenantId, ciLabels: [...ciLabels], productionEnvironments })
   if (!entry) throw new NotFoundError('BusinessApplication', serviceId)
   const apps = entry.apps
   if (apps.length === 0) {
@@ -189,7 +215,7 @@ export async function buildServiceMap(session: Queryable, tenantId: string, serv
   const nodes: ProposedNode[] = apps.map((a) => ({ ciId: a.ciId, name: a.name ?? '', labels: a.labels, status: a.status ?? null, health: a.health ?? null, level: 1, via: null, ...proposeNodeSettings(roles, a.labels, 1, a.status ?? null, semantics) }))
   if (depth > 1) {
     const expanded = await runQuery<ExpandedRow>(session, EXPAND_NODES_CYPHER, {
-      tenantId, appIds: apps.map((a) => a.ciId),
+      tenantId, appIds: apps.map((a) => a.ciId), productionEnvironments,
       relFilter: relationshipFilterOf(types), labelFilter: await apocLabelFilterForTenant(tenantId),
       maxLevel: depth - 1, limit: SERVICE_MAP_MAX_NODES + 1,
     })
@@ -244,7 +270,7 @@ export const CREATE_SERVICE_MAP_CYPHER = `
   CALL {
     WITH m
     UNWIND $nodes AS n
-    MATCH (ci {id: n.ciId, tenant_id: $tenantId})
+    MATCH (ci:ConfigurationItem {id: n.ciId, tenant_id: $tenantId})
     CREATE (m)-[:INCLUDES {level: toInteger(n.level), role: n.role, propagate: n.propagate, weight: toInteger(n.weight),
                            critical: n.critical, via: n.via, added_by: 'auto', added_at: $now}]->(ci)
     RETURN count(ci) AS linked

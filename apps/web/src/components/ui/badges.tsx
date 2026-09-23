@@ -19,7 +19,7 @@ import { useCallback } from 'react'
 import { vocabularyValueStyle, NEUTRAL_VALUE_STYLE, type ValueStyle } from '@/lib/domainStyle'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useRiskBands } from '@/contexts/RiskBandContext'
-import { enumLabel } from '@/lib/ciEnums'
+import { humanizeValue } from '@opengraphity/web-core'
 import { styleForCategory } from '@/lib/workflowStepStyle'
 import { TASK_STATUS, REVIEW_RESULT } from '@/lib/taskStatus'
 
@@ -42,7 +42,7 @@ export function SeverityBadge({ value, vocabulary = 'severity' }: { value: strin
   // è quello che si cerca nei filtri e che si trova nei log.
   return (
     <Pill bg={s.bg} color={s.color} style={{ fontSize: 'var(--font-size-label)', textTransform: 'uppercase' }} title={value}>
-      {labelOf(vocabulary, value) ?? enumLabel(value)}
+      {labelOf(vocabulary, value) ?? humanizeValue(value)}
     </Pill>
   )
 }
@@ -116,7 +116,7 @@ export function RiskBadge({ score, compact = false }: { score: number | null | u
     )
   }
   const s = vocabularyValueStyle(RISK_BAND_VOCABULARY, band, valuesOf(RISK_BAND_VOCABULARY), colorOf(RISK_BAND_VOCABULARY, band))
-  const label = (labelOf(RISK_BAND_VOCABULARY, band) ?? enumLabel(band)).toUpperCase()
+  const label = (labelOf(RISK_BAND_VOCABULARY, band) ?? humanizeValue(band)).toUpperCase()
   return (
     <Pill bg={s.bg} color={s.color} style={{ fontSize: 'var(--font-size-label)', flexShrink: 0 }}>
       <span title={`${label} · score ${score}`}>{compact ? score : `${label} · ${score}`}</span>

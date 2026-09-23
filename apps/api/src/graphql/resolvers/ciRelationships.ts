@@ -96,8 +96,8 @@ async function addCIRelationship(
     //    belong to the tenant. (One query, not two concurrent session.run() —
     //    a Neo4j session can't run queries in parallel.)
     const endpoints = await runQueryOne<{ sLabels: string[]; tLabels: string[] }>(session, `
-      MATCH (s {id: $sourceId, tenant_id: $tenantId})
-      MATCH (t {id: $targetId, tenant_id: $tenantId})
+      MATCH (s:ConfigurationItem {id: $sourceId, tenant_id: $tenantId})
+      MATCH (t:ConfigurationItem {id: $targetId, tenant_id: $tenantId})
       RETURN labels(s) AS sLabels, labels(t) AS tLabels
     `, { sourceId, targetId, tenantId })
 
@@ -117,7 +117,7 @@ async function addCIRelationship(
     // 4. Cycle detection (DEPENDS_ON only)
     if (relationType === 'DEPENDS_ON') {
       const cycleRow = await runQueryOne<{ hasCycle: boolean }>(session, `
-        MATCH path = (target {id: $targetId, tenant_id: $tenantId})-[:DEPENDS_ON*1..10]->(source {id: $sourceId, tenant_id: $tenantId})
+        MATCH path = (target:ConfigurationItem {id: $targetId, tenant_id: $tenantId})-[:DEPENDS_ON*1..10]->(source:ConfigurationItem {id: $sourceId, tenant_id: $tenantId})
         RETURN count(path) > 0 AS hasCycle
       `, { sourceId, targetId, tenantId })
       if (cycleRow?.hasCycle) {
@@ -127,8 +127,8 @@ async function addCIRelationship(
 
     // 5. Create the relationship (relationType is validated, safe to interpolate)
     await session.executeWrite(tx => tx.run(`
-      MATCH (a {id: $sourceId, tenant_id: $tenantId}),
-            (b {id: $targetId, tenant_id: $tenantId})
+      MATCH (a:ConfigurationItem {id: $sourceId, tenant_id: $tenantId}),
+            (b:ConfigurationItem {id: $targetId, tenant_id: $tenantId})
       MERGE (a)-[:${relationType}]->(b)
     `, { sourceId, targetId, tenantId }))
 
@@ -180,7 +180,7 @@ async function removeCIRelationship(
     const ciA = await ciLabelPredicateForTenant('a', tenantId)
     const ciB = await ciLabelPredicateForTenant('b', tenantId)
     const row = await runQueryOne<{ deleted: number }>(session, `
-      MATCH (a {id: $sourceId, tenant_id: $tenantId})-[r]->(b {id: $targetId, tenant_id: $tenantId})
+      MATCH (a:ConfigurationItem {id: $sourceId, tenant_id: $tenantId})-[r]->(b:ConfigurationItem {id: $targetId, tenant_id: $tenantId})
       WHERE type(r) = $relType AND ${ciA} AND ${ciB}
       DELETE r
       RETURN count(r) AS deleted

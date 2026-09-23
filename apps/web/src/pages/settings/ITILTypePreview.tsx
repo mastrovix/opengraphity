@@ -11,6 +11,11 @@ export interface ITILTypePreviewProps {
 
 export function ITILTypePreview({ selectedType, setActiveTab }: ITILTypePreviewProps) {
   const { t } = useTranslation()
+  // Only the customer's fields: the system ones are drawn by the ticket
+  // itself. The form hides them but still validated them, so a required
+  // system field — an incident's title — made «Save» do nothing, with no
+  // message (tour of 23 Sep 2026).
+  const customerFields = selectedType.fields.filter((f) => !f.isSystem)
   const previewType: CITypeDef = {
     id:               selectedType.id,
     name:             selectedType.name,
@@ -28,7 +33,7 @@ export function ITILTypePreview({ selectedType, setActiveTab }: ITILTypePreviewP
     chainFamilies:    ['Application', 'Infrastructure'],
     relations:        [],
     systemRelations:  [],
-    fields:           selectedType.fields.map((f) => ({
+    fields:           customerFields.map((f) => ({
       ...f,
       defaultValue:     null,
       validationScript: null,
@@ -42,7 +47,7 @@ export function ITILTypePreview({ selectedType, setActiveTab }: ITILTypePreviewP
       <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 16 }}>
         {t('itilDesigner.previewNote')}
       </p>
-      {selectedType.fields.length === 0
+      {customerFields.length === 0
         ? <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{t('itilDesigner.previewNoFields')}</p>
         : <CIDynamicForm
             ciType={previewType}

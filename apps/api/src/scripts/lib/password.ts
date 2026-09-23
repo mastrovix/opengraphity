@@ -39,8 +39,16 @@ export function assertNoPasswordInArgv(argv: readonly string[] = process.argv.sl
 }
 
 /** 18 byte casuali in base64url → 24 caratteri, ~144 bit di entropia. */
+/**
+ * A temporary password that a new realm's rules accept (D70): 24 random
+ * characters did not always contain a digit — about once in 60 — and the
+ * realm now requires one, an uppercase and a lowercase letter.
+ */
 export function generateTemporaryPassword(bytes = 18): string {
-  return randomBytes(bytes).toString('base64url')
+  for (;;) {
+    const candidate = randomBytes(bytes).toString('base64url')
+    if (/[A-Z]/.test(candidate) && /[a-z]/.test(candidate) && /[0-9]/.test(candidate)) return candidate
+  }
 }
 
 /** Legge tutta stdin; rimuove SOLO il newline finale. Vuota → errore. */

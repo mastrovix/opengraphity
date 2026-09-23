@@ -36,6 +36,11 @@ describe('iconPathsOrError', () => {
     expect(iconPathsOrError('rocket')).not.toBe(CI_ICON_PATHS['box'])
     expect(consoleError).toHaveBeenCalledWith('[CI_ICON_PATHS] unknown value: "rocket"')
   })
+  // 23 Sep 2026: the API accepts any icon key, and «constructor» came back as Object's function.
+  it('a key every object inherits is an unknown icon: the red «?»', () => {
+    expect(iconPathsOrError('constructor')).toBe(BROKEN_ICON_PATHS)
+    expect(iconPathsOrError('toString')).toBe(BROKEN_ICON_PATHS)
+  })
   it('la chiave riservata __broken__ ritorna il "?" senza loggare (già segnalato a monte)', () => {
     expect(iconPathsOrError(BROKEN_ICON_KEY)).toBe(BROKEN_ICON_PATHS)
     expect(consoleError).not.toHaveBeenCalled()

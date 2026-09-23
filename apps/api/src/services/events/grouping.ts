@@ -22,7 +22,7 @@ import { publishEvent } from '../../lib/publishEvent.js'
 import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
 import { withRedisLock, type RedisLockOptions } from '../../lib/redisLock.js'
-import type { EventPolicy } from '../../lib/eventPolicy.js'
+import type { EventPolicy, SeverityMapEntry } from '../../lib/eventPolicy.js'
 import type { CorrelationOutcome, EventSeverity } from '../../lib/eventVocabularies.js'
 import { incidentsAutoOpenedTotal, incidentsReopenedTotal } from '../../middleware/metrics.js'
 import { incidents, queue } from './deps.js'
@@ -93,6 +93,32 @@ export interface OpenIncidentArgs {
 }
 
 /**
+ * Impact and urgency for an alarm on this CI (tour of 23 Sep 2026): outside
+ * production the organization's `non_production_severity_map`, when it has
+ * one («High in production, Medium elsewhere»). A CI without an environment
+ * counts as production: missing data never downgrades an outage. (The team
+ * is not chosen here: every incident goes to the support group of its CI,
+ * in `createIncident`.)
+ */
+async function severityFor(tenantId: string, ciId: string, severity: EventSeverity, policy: EventPolicy): Promise<SeverityMapEntry> {
+  if (policy.non_production_severity_map === null) return policy.severity_map[severity]
+  const session = getSession(undefined, 'READ')
+  let row: { environment: string | null } | null
+  try {
+    row = await runQueryOne(session, `
+      MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
+      RETURN ci.environment AS environment
+    `, { ciId, tenantId })
+  } finally {
+    await session.close()
+  }
+  if (!row) throw new Error(`CI ${ciId} of tenant ${tenantId} not found: the incident cannot be opened on it`)
+  const environment = row.environment ?? ''
+  const outsideProduction = environment !== '' && !policy.production_environments.includes(environment)
+  return outsideProduction ? policy.non_production_severity_map[severity] : policy.severity_map[severity]
+}
+
+/**
  * Crea l'incident dall'evento (priorità e impatto/urgenza dalla severity_map
  * della policy, il CI come impattato), lo collega con CORRELATED_INTO e
  * scrive `correlation = 'opened'`. Un evento orfano è rifiutato: un incident
@@ -107,7 +133,7 @@ export async function openIncidentFromEvent(args: OpenIncidentArgs) {
   }
   const severity = assertSeverity(props['severity'], eventId)
   const policy = args.policy ?? await getEventPolicy(tenantId)
-  const iu = policy.severity_map[severity]
+  const iu = await severityFor(tenantId, ciId, severity, policy)
 
   // Testo salvato sul ticket: nella lingua del cliente e con le date nel suo
   // fuso, non in italiano con gli istanti ISO (giro del 14 set 2026).

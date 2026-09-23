@@ -15,6 +15,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { perms } from '../../lib/__tests__/testPermissions.js'
 
 vi.mock('../../lib/aiSettings.js', () => import('../../lib/__tests__/aiSettingsFake.js'))
+// The assistant is told the language of the person's interface (D62).
+vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en'), languageForUser: vi.fn(async () => 'en') }))
+// D14: the tools give times as wall-clock time in the organization's zone.
+vi.mock('../../lib/tenantTimezone.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../lib/tenantTimezone.js')>(),
+  tenantTimezone: vi.fn(async () => 'Europe/Rome'),
+}))
 vi.mock('../../lib/ciLabelsForTenant.js', () => ({
   ciLabelsForTenant: vi.fn(async () => ['Server']),
   ciLabelPredicateForTenant: vi.fn(async (alias: string) => `(${alias}:Server)`),
@@ -36,6 +43,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: vi.fn(() => ({ close: vi.fn(async () => undefined) })),
   runQuery: vi.fn().mockResolvedValue([]),
+  toNumber:   (v: unknown) => (typeof v === 'object' && v !== null && 'low' in v ? (v as { low: number }).low : Number(v)),
 }))
 vi.mock('../embeddings.js', () => ({
   getEmbedder: () => ({ embed: h.embed }),
@@ -81,7 +89,7 @@ describe('organization switches', () => {
   it('assistant turned off → explicit error, the model is never called', async () => {
     aiOff('assistant')
     const emit = emitter()
-    await streamAssistantChat('t1', perms('operator'), [{ role: 'user', content: 'hi' }], emit)
+    await streamAssistantChat('t1', 'u1', perms('operator'), [{ role: 'user', content: 'hi' }], emit)
     expect(emit.error).toHaveBeenCalledWith(expect.stringMatching(/"assistant" is turned off/))
     expect(h.toolRunner).not.toHaveBeenCalled()
     expect(emit.done).not.toHaveBeenCalled()
@@ -90,7 +98,7 @@ describe('organization switches', () => {
   it.each(['cerca_incident', 'cerca_kb'])('embeddings turned off → %s tells the model search is off, without embedding or querying', async (toolName) => {
     aiOff('embeddings')
     runnerOf(messageStream([]))
-    await streamAssistantChat('t1', perms('operator'), [{ role: 'user', content: 'hi' }], emitter())
+    await streamAssistantChat('t1', 'u1', perms('operator'), [{ role: 'user', content: 'hi' }], emitter())
     const tool = h.toolRunner.mock.calls[0]![0].tools.find((t) => t.name === toolName)!
     const answer = JSON.parse(await tool.run({ query: 'disk full' })) as { error: string }
     expect(answer.error).toMatch(/Semantic search is turned off/)
@@ -106,7 +114,7 @@ describe('paragraphs between text blocks', () => {
       messageStream([textStart(), textDelta('**CI:** db-01')]),
     )
     const emit = emitter()
-    await streamAssistantChat('t1', perms('operator'), [{ role: 'user', content: 'hi' }], emit)
+    await streamAssistantChat('t1', 'u1', perms('operator'), [{ role: 'user', content: 'hi' }], emit)
     expect(emit.done).toHaveBeenCalledWith('Let me look.\n\n**CI:** db-01')
     expect(emit.text.mock.calls.map((c) => c[0])).toEqual(['Let me look.', '\n\n', '**CI:** db-01'])
     expect(emit.tool).toHaveBeenCalledWith('cerca_ci')
@@ -115,7 +123,7 @@ describe('paragraphs between text blocks', () => {
   it('no extra blank line when the text already ends with a newline', async () => {
     runnerOf(messageStream([textStart(), textDelta('Line\n'), textStart(), textDelta('Next')]))
     const emit = emitter()
-    await streamAssistantChat('t1', perms('operator'), [{ role: 'user', content: 'hi' }], emit)
+    await streamAssistantChat('t1', 'u1', perms('operator'), [{ role: 'user', content: 'hi' }], emit)
     expect(emit.done).toHaveBeenCalledWith('Line\nNext')
   })
 })

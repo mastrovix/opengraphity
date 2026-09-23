@@ -533,6 +533,7 @@ interface CIHealthFilter {
   type?: string | null
   environment?: string | null
   team?: string | null
+  supportTeam?: string | null
   search?: string | null
 }
 
@@ -540,6 +541,7 @@ interface CIHealthOverviewRow {
   id: string; name: string; label: string | null; environment: string | null
   health: string; healthSource: string | null; healthSince: unknown; lastEventAt: unknown
   firingEvents: unknown; dependents: unknown; servicesCount: unknown; ownerTeam: string | null
+  supportTeam: string | null
 }
 
 /** Ordine di gravità delle righe: prima ciò che è giù, poi degradato, poi operativo. */
@@ -579,6 +581,7 @@ function mapCIHealthRow(tenantId: string, r: CIHealthOverviewRow) {
     dependents:   toNumber(r.dependents),
     servicesCount: toNumber(r.servicesCount),
     ownerTeam:    r.ownerTeam ?? null,
+    supportTeam:  r.supportTeam ?? null,
   }
 }
 
@@ -623,6 +626,7 @@ async function ciHealthOverview(_: unknown, args: { filter?: CIHealthFilter | nu
   if (f.type?.trim())        { conditions.push('$typeLabel IN labels(ci)'); params['typeLabel'] = await labelOfType(ctx.tenantId, f.type.trim()) }
   if (f.environment?.trim()) { conditions.push('ci.environment = $environment'); params['environment'] = f.environment.trim() }
   if (f.team?.trim())        { conditions.push('EXISTS { (ci)-[:OWNED_BY]->(:Team {id: $team, tenant_id: $tenantId}) }'); params['team'] = f.team.trim() }
+  if (f.supportTeam?.trim()) { conditions.push('EXISTS { (ci)-[:SUPPORTED_BY]->(:Team {id: $supportTeam, tenant_id: $tenantId}) }'); params['supportTeam'] = f.supportTeam.trim() }
   if (f.search?.trim())      { conditions.push('toLower(ci.name) CONTAINS $search'); params['search'] = f.search.trim().toLowerCase() }
   const where = 'WHERE ' + conditions.join(' AND ')
 
@@ -667,7 +671,8 @@ async function ciHealthOverview(_: unknown, args: { filter?: CIHealthFilter | nu
           firingEvents: COUNT { (:Event {tenant_id: $tenantId, status: 'firing'})-[:RAISED_ON]->(ci) },
           dependents: dependents,
           servicesCount: COUNT { (:ServiceMap {tenant_id: $tenantId, status: 'active'})-[:INCLUDES]->(ci) },
-          ownerTeam: head([(ci)-[:OWNED_BY]->(t:Team {tenant_id: $tenantId}) | t.name])
+          ownerTeam: head([(ci)-[:OWNED_BY]->(t:Team {tenant_id: $tenantId}) | t.name]),
+          supportTeam: head([(ci)-[:SUPPORTED_BY]->(t:Team {tenant_id: $tenantId}) | t.name])
         }) AS items
       }
       RETURN down, degraded, operational, unmonitored, downDependents, degradedDependents, total, items

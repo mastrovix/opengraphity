@@ -107,8 +107,12 @@ export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: s
             {t('reportBuilder.root')}
           </span>
         )}
+        {/* `nodrag`: React Flow's own drag listener sits on the node and runs
+            before React's stopPropagation, so the star in the drag handle
+            dragged the node when pressed (tour of 23 Sep 2026). */}
         <button
           type="button"
+          className="nodrag nopan"
           onMouseDown={e => e.stopPropagation()}
           onClick={d.onToggleResult}
           title={t(d.isResult ? 'reportBuilder.removeFromResult' : 'reportBuilder.includeInResult')}

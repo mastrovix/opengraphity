@@ -71,8 +71,12 @@ export function LimitsCard() {
       toast.error(t('pages.catalogForms.limits.outOfRange', { min: tetti.min, max: tetti.max }))
       return
     }
-    const r = await salva({ variables: { maxLibraryFields: a, maxFieldsPerForm: b, maxTableRows: c } })
-    if (!r.data) return
+    try {
+      await salva({ variables: { maxLibraryFields: a, maxFieldsPerForm: b, maxTableRows: c } })
+    } catch {
+      // The mutation's onError has already told the user; the boxes stay open with what was typed.
+      return
+    }
     toast.success(t('pages.catalogForms.limits.saved'))
     setAperto(false)
     void refetch()

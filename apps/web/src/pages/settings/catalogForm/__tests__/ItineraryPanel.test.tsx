@@ -14,7 +14,29 @@ import { screen, within, waitFor } from '@testing-library/react'
 import { renderWithProviders } from '@/test/utils'
 import { apolloFinto } from '@/test/apolloFinto'
 
-vi.mock('@apollo/client/react', async () => (await import('@/test/apolloFinto')).moduloApollo())
+/*
+ * Apollo Client 4 calls a mutation's `onError` AND then rejects its promise
+ * (`react/hooks/useMutation.js`); the shared fake resolves instead. Here a
+ * refused mutation rejects, as it does in the app — and a refusal the panel
+ * forgot to catch fails the run as an unhandled rejection.
+ */
+vi.mock('@apollo/client/react', async () => {
+  const { moduloApollo } = await import('@/test/apolloFinto')
+  const base = moduloApollo()
+  type Execute = (o?: Record<string, unknown>) => Promise<{ data?: unknown; errors?: Error[] }>
+  return {
+    ...base,
+    useMutation: (doc: Parameters<typeof base.useMutation>[0], opts?: Parameters<typeof base.useMutation>[1]) => {
+      const [execute, state] = base.useMutation(doc, opts) as unknown as [Execute, unknown]
+      const likeApollo4 = async (o?: Record<string, unknown>) => {
+        const r = await execute(o)
+        if (r.errors?.[0]) throw r.errors[0]
+        return r
+      }
+      return [likeApollo4, state]
+    },
+  }
+})
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 vi.mock('sonner', () => ({ toast }))
 

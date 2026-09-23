@@ -281,6 +281,10 @@ export interface EventPolicy {
   maintenanceStatuses:  string[]
   /** Mappa severità → impatto/urgenza, JSON serializzato. */
   severityMap:          string
+  /** Values of the tenant's `environment` vocabulary that count as production. */
+  productionEnvironments: string[]
+  /** Like `severityMap`, for the CIs outside production; null = `severityMap` everywhere. */
+  nonProductionSeverityMap: string | null
 }
 
 // ── Ondata 2: sorgenti di monitoraggio e configurazione senza codice ─────────
@@ -385,6 +389,8 @@ export interface CIHealthRow {
   /** Quante mappe di servizio attive includono questo CI (ondata 3 dei Servizi monitorati). */
   servicesCount: number
   ownerTeam:    string | null
+  /** The team that acts on the CI when it is unhealthy: its support group (SUPPORTED_BY). */
+  supportTeam:  string | null
 }
 
 /** Contatori di tutto il tenant (indipendenti dal filtro) + righe filtrate e paginate. */
@@ -409,6 +415,8 @@ export interface CIHealthFilterVars {
   environment?: string
   /** Id del team proprietario (OWNED_BY). */
   team?:        string
+  /** Id of the support group (SUPPORTED_BY). */
+  supportTeam?: string
   search?:      string
 }
 

@@ -66,6 +66,7 @@ export const UPDATE_EVENT_POLICY = gql`
       stormThresholdPerMinute stormCooldownMinutes retentionDays matchShortHostname severityMap
       ignoreLifecycleStatuses retiredStatuses maintenanceStatuses
       highImpactDependents
+      productionEnvironments nonProductionSeverityMap
     }
   }
 `

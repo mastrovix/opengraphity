@@ -75,7 +75,10 @@ export const PAVIMENTI = {
   },
 
   // ── Gli altri: un pavimento solo, che è quello che avevano (nessuno) ──────
-  'apps/web':                  { lines: 97, statements: 96, functions: 96, branches: 92 },  // 99.49/98.58/98.96/94.67
+  // apps/web: the 22 Sep figures (99.49/98.58/98.96/94.67) were false — a test loaded the sources as text
+  // modules and 101 untested files counted as empty (see src/__tests__/coverageHonest.test.ts). True measure on
+  // 23 Sep: 65.8% statements; after the tests of that day, the numbers below, over every file.
+  'apps/web':                  { lines: 97, statements: 97, functions: 97, branches: 94 },  // 99.93/99.3/99.8/96.69
   'apps/portal':               { lines: 95, statements: 93, functions: 91, branches: 85 },  // 97.37/95.74/93.54/87.52
   'apps/console':              { lines: 94, statements: 94, functions: 89, branches: 92 },  // 96.15/96.26/91.3/94.36
   'packages/workflow':         { lines: 98, statements: 97, functions: 96, branches: 97 },  // 100/99.82/98.79/99.34

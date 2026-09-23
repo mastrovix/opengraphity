@@ -42,8 +42,8 @@ export function SectionCard({
   const panelId = useId()
   const isControlled = controlledOpen !== undefined
   const open = isControlled ? controlledOpen : internalOpen
+  // Only the toggle button calls it, and that exists only when the card is collapsible.
   const handleToggle = () => {
-    if (!collapsible) return
     if (isControlled) onToggle?.()
     else              setInternalOpen(p => !p)
   }

@@ -55,7 +55,9 @@ beforeEach(() => {
   toast.success.mockReset()
   toast.error.mockReset()
   apolloFinto.risposte['GetPreApprovedChangeTypes'] = { preApprovedChangeTypes: { types: [] } }
-  apolloFinto.risposte['GetUsers'] = { users: [{ id: 'u1', name: 'Ada Lovelace', email: 'ada@x' }] }
+  // D21: the owner is chosen among the active people whose role can work on
+  // changes — the server answers with those only (searchUsers with the permission).
+  apolloFinto.risposte['SearchUsers'] = { searchUsers: [{ id: 'u1', name: 'Ada Lovelace', email: 'ada@x' }] }
   apolloFinto.risposte['GetTicketCIExclusions'] = { ticketCIExclusions: [{ ticketType: 'change', ciTypes: ['person'] }] }
   apolloFinto.risposte['GetTicketCreationCustomFields'] = { ticketCreationCustomFields: [] }
   apolloFinto.risposte['GetAllCIs'] = { allCIs: { items: [DB, APP, ORPHAN] } }
@@ -84,7 +86,11 @@ describe('CreateChangePage — writing a change from scratch', () => {
     await user.type(screen.getByLabelText(/^Why/), ' EOL ')
     await user.type(screen.getByLabelText(/^What/), ' pg 16 ')
     expect(submit()).toBeDisabled()
-    await user.selectOptions(screen.getByLabelText('Change owner'), 'Ada Lovelace')
+    await user.click(screen.getByRole('combobox', { name: 'Change owner' }))
+    // The page asks the server for the people who can work on changes.
+    expect(apolloFinto.chiamata('SearchUsers')).toMatchObject({ permission: 'change.write' })
+    await user.type(screen.getByRole('combobox', { name: 'Change owner' }), 'ada')
+    await user.click(screen.getByRole('option', { name: /Ada Lovelace/ }))
     await addCI(user, 'orders-db')
     // The search is cleared and the excluded CI types are never proposed.
     expect(screen.getByPlaceholderText('Search a CI by name...')).toHaveValue('')

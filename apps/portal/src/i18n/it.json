@@ -66,6 +66,7 @@
     "created": "Ticket creato! Il team IT è stato notificato.",
     "resolved": "Questo ticket è stato risolto",
     "reopen": "Riapri ticket",
+    "confirmResolution": "Funziona: chiudi il ticket",
     "reply": "Rispondi",
     "replyPlaceholder": "Scrivi la tua risposta...",
     "assignedTo": "Assegnato a",
@@ -168,7 +169,8 @@
     "removeRow": "Togli questa riga",
     "searchReference": "Cerca…",
     "noResults": "Nessun risultato",
-    "clearReference": "Togli la scelta"
+    "clearReference": "Togli la scelta",
+    "searchFailed": "La ricerca non è riuscita: l'elenco dei candidati non è noto. Riprova."
   },
   "notFound": {
     "title": "Pagina non trovata",
@@ -192,7 +194,8 @@
       "severityUnknown": "«{{value}}» non è un valore del vocabolario delle severità ({{allowed}}).",
       "severityDuplicate": "«{{value}}» compare due volte.",
       "severityLanguage": "Lingua sconosciuta «{{language}}».",
-      "severityLabelTooLong": "L'etichetta di «{{value}}» supera i {{max}} caratteri."
+      "severityLabelTooLong": "L'etichetta di «{{value}}» supera i {{max}} caratteri.",
+      "cannotConfirmResolution": "Questo ticket non si può confermare: non è risolto, oppure il suo workflow lo chiude solo in automatico."
     },
     "serviceRequest": {
       "catalogItemWithoutPriority": "La voce del catalogo «{{item}}» non ha una priorità, quindi non si può aprire una richiesta. Un amministratore la imposta da Admin → Catalogo servizi.",

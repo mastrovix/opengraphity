@@ -23,6 +23,7 @@ export const GET_ASSIGNABLE_USERS = gql`
   query GetAssignableUsers {
     users(sortField: "name", sortDirection: "asc") {
       id name permissions active
+      teams { id }
     }
   }
 `
@@ -63,7 +64,7 @@ export const GET_USER = gql`
  * which loads the whole directory into N differently-named cache entries.
  */
 export const SEARCH_USERS = gql`
-  query SearchUsers($search: String!, $limit: Int) {
-    searchUsers(search: $search, limit: $limit) { id name email }
+  query SearchUsers($search: String!, $limit: Int, $permission: String) {
+    searchUsers(search: $search, limit: $limit, permission: $permission) { id name email }
   }
 `

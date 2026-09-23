@@ -12,6 +12,7 @@ import { PageContainer } from '@/components/PageContainer'
 import { QueryError } from '@/components/QueryError'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { DetailField } from '@/components/ui/DetailField'
+import { DetailLayout } from '@/components/ui/DetailLayout'
 import { Pill } from '@/components/ui/Pill'
 import { Skeleton } from '@/components/ui/skeleton'
 import { WatcherBar } from '@/components/WatcherBar'
@@ -26,8 +27,8 @@ import { Input, Textarea, Select, FieldLabel } from '@/components/ui/FormControl
 import { Pencil } from 'lucide-react'
 import { keycloak } from '@/lib/keycloak'
 import { colors } from '@/lib/tokens'
-import { GET_SERVICE_REQUEST, GET_ASSIGNABLE_USERS, GET_ALL_CIS } from '@/graphql/queries'
-import { EXECUTE_WORKFLOW_TRANSITION, UPDATE_SERVICE_REQUEST, ASSIGN_SERVICE_REQUEST_TO_USER, ADD_CI_TO_SERVICE_REQUEST, REMOVE_CI_FROM_SERVICE_REQUEST } from '@/graphql/mutations'
+import { GET_SERVICE_REQUEST, GET_ALL_CIS } from '@/graphql/queries'
+import { EXECUTE_WORKFLOW_TRANSITION, UPDATE_SERVICE_REQUEST, ADD_CI_TO_SERVICE_REQUEST, REMOVE_CI_FROM_SERVICE_REQUEST } from '@/graphql/mutations'
 import { AffectedCIList, type AffectedCIRef } from '@/components/ticket/AffectedCIList'
 import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
 import { SlaBadge, type SlaStatusInfo } from '@/components/SlaBadge'
@@ -35,11 +36,13 @@ import { useSlaSettling } from '@/hooks/useSlaSettling'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useEnumValues } from '@/hooks/useEnumValues'
-import { styleForCategory } from '@/lib/workflowStepStyle'
+import { styleForCategory, transitionButtonColors } from '@/lib/workflowStepStyle'
 import { transitionErrorText, type TransitionFailure } from '@/lib/transitionError'
 import { useValueStyle } from '@/hooks/useValueStyle'
 import { withLocalizedLabel } from '@/lib/localizedLabel'
 import { showError } from '@/lib/showError'
+import { RequestAssignment } from './RequestAssignment'
+import { reloadQueries } from '@/lib/reloadQueries'
 
 interface WorkflowTransition { toStep: string; label: string; requiresInput: boolean; inputField: string | null }
 interface ServiceRequest {
@@ -49,6 +52,8 @@ interface ServiceRequest {
   createdAt: string; updatedAt: string; completedAt: string | null
   requestedBy: { id: string; name: string; email: string } | null
   assignee: { id: string; name: string; email: string } | null
+  /** The team of the request (D56): at creation the fulfilment group of its catalog item. */
+  team: { id: string; name: string } | null
   workflowInstance: { id: string; currentStep: string; status: string } | null
   availableTransitions: WorkflowTransition[]
   slaStatus: SlaStatusInfo | null
@@ -60,22 +65,13 @@ interface ServiceRequest {
   formAnswers: FormAnswer[]
 }
 
-/**
- * Chi può ricevere una richiesta: le persone il cui ruolo ha `ticket.assignable`,
- * lo stesso permesso che l'API controlla (ondata 7); qui serve solo a non
- * offrire nella tendina chi verrebbe rifiutato.
- */
-const ASSIGNABLE_PERMISSION = 'ticket.assignable'
-
-
-
 export function ServiceRequestDetailPage() {
   const { t } = useTranslation()
   // F9: il colore della priorità dal Dizionario del cliente.
   const styleOf = useValueStyle()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const ids = { title: useId(), description: useId(), priority: useId(), dueDate: useId(), notes: useId(), assignee: useId() }
+  const ids = { title: useId(), description: useId(), priority: useId(), dueDate: useId(), notes: useId() }
   const { can } = useMe()
   // Il permesso, non il NOME del ruolo (revisione totale · F-2): dall'ondata
   // «Nulla cablato» i ruoli sono del cliente, e l'API concede
@@ -98,11 +94,11 @@ export function ServiceRequestDetailPage() {
   const [transitionModal, setTransitionModal] = useState<{ toStep: string; label: string; inputField: string | null } | null>(null)
   const [transitionNotes, setTransitionNotes] = useState('')
   const [executeTransition, { loading: transitioning }] = useMutation<{ executeWorkflowTransition?: TransitionFailure & { success: boolean } }>(EXECUTE_WORKFLOW_TRANSITION, {
-    onCompleted: async (res) => {
+    onCompleted: (res) => {
       const r = res.executeWorkflowTransition
       if (r && !r.success) { toast.error(transitionErrorText(r, t('toast.request.transitionFailed'))); return }
       setTransitionModal(null); setTransitionNotes('')
-      await refetch()
+      reloadQueries(refetch)
     },
     onError: (e) => showError(e),
   })
@@ -125,20 +121,10 @@ export function ServiceRequestDetailPage() {
     onError: (e) => showError(e),
   })
 
-  // Giro del 14 set 2026 (#41): la richiesta non si poteva assegnare.
-  const { data: usersData } = useQuery<{ users: Array<{ id: string; name: string; permissions: string[]; active: boolean }> }>(GET_ASSIGNABLE_USERS)
-  // Le persone disattivate non ricevono lavoro (revisione totale · M-6).
-  const assignable = (usersData?.users ?? []).filter((u) => u.active && u.permissions.includes(ASSIGNABLE_PERMISSION))
-  const [assigneeChoice, setAssigneeChoice] = useState<string | null>(null)
-  const [assignRequest, { loading: assigning }] = useMutation(ASSIGN_SERVICE_REQUEST_TO_USER, {
-    onCompleted: async () => { setAssigneeChoice(null); await refetch(); toast.success(t('toast.request.assigned')) },
-    onError: (e) => showError(e),
-  })
-
   const [editOpen, setEditOpen] = useState(false)
   const [editForm, setEditForm] = useState({ title: '', description: '', priority: 'medium', dueDate: '' })
   const [updateRequest, { loading: savingEdit }] = useMutation(UPDATE_SERVICE_REQUEST, {
-    onCompleted: async () => { setEditOpen(false); await refetch(); toast.success(t('toast.request.updated')) },
+    onCompleted: () => { setEditOpen(false); toast.success(t('toast.request.updated')); reloadQueries(refetch) },
     onError: (e) => showError(e),
   })
   const openEdit = () => {
@@ -218,8 +204,8 @@ export function ServiceRequestDetailPage() {
         </div>
       </div>
 
-      {/* Body */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 24 }}>
+      {/* Body: the main column shrinks, the side one keeps its width (D9) */}
+      <DetailLayout sideWidth={300}>
         <div>
           {/* Description */}
           <div style={{ marginBottom: 16 }}>
@@ -287,7 +273,8 @@ export function ServiceRequestDetailPage() {
                           runTransition(sr.workflowInstance!.id, tr.toStep)
                         }
                       }}
-                      style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid var(--color-brand)', background: 'var(--color-brand)', color: colors.white, cursor: transitioning ? 'default' : 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600, opacity: transitioning ? 0.6 : 1, textAlign: 'left' }}
+                      // D27: «Reject» and the other transitions that end the request badly are drawn as danger.
+                      style={{ padding: '9px 12px', borderRadius: 8, borderWidth: 1, borderStyle: 'solid', ...transitionButtonColors(stepCategory(tr.toStep), tr.inputField, 'brand'), cursor: transitioning ? 'default' : 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600, opacity: transitioning ? 0.6 : 1, textAlign: 'left' }}
                     >
                       {tr.label}
                     </button>
@@ -301,35 +288,14 @@ export function ServiceRequestDetailPage() {
             <DetailField label={t('detail.ticketNumber')} value={<span style={{ fontWeight: 600 }}>{sr.number}</span>} />
             <DetailField label="SLA" value={sr.slaStatus ? <SlaBadge sla={sr.slaStatus} /> : t('pages.serviceRequestDetail.noSla')} />
             <DetailField label={t('detail.requester')} value={sr.requestedBy?.name ?? null} />
-            {sr.completedAt ? (
-              <DetailField label={t('detail.assignee')} value={sr.assignee?.name ?? null} />
-            ) : (() => {
-              const current = sr.assignee?.id ?? ''
-              const chosen = assigneeChoice ?? current
-              return (
-                <DetailField label={t('detail.assignee')} value={
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <Select id={ids.assignee} aria-label={t('detail.assignee')} value={chosen} onChange={(e) => setAssigneeChoice(e.target.value)}>
-                      <option value="">{t('detail.unassign')}</option>
-                      {assignable.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                    </Select>
-                    <Button
-                      variant="secondary"
-                      disabled={assigning || chosen === current}
-                      onClick={() => void assignRequest({ variables: { id: sr.id, userId: chosen || null } })}
-                    >
-                      {assigning ? t('detail.assigning') : t('detail.assign')}
-                    </Button>
-                  </div>
-                } />
-              )
-            })()}
+            {/* D56: the team first (support teams, searchable), then one of its members. */}
+            <RequestAssignment request={sr} onChanged={refetch} />
             <DetailField label={t('detail.dueDate')} value={sr.dueDate ? formatDate(sr.dueDate) : null} />
             <DetailField label={t('detail.createdAt')} value={formatDate(sr.createdAt)} />
             {sr.completedAt && <DetailField label={t('detail.completedAt')} value={formatDate(sr.completedAt)} />}
           </SectionCard>
         </div>
-      </div>
+      </DetailLayout>
 
       {/* Edit fields modal */}
       <Modal
@@ -382,7 +348,7 @@ export function ServiceRequestDetailPage() {
                 type="button"
                 disabled={transitioning || transitionNotes.trim().length === 0}
                 onClick={() => runTransition(sr.workflowInstance!.id, transitionModal.toStep, transitionNotes)}
-                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: colors.white, cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: (transitioning || transitionNotes.trim().length === 0) ? 0.6 : 1 }}
+                style={{ padding: '8px 16px', borderRadius: 8, borderWidth: 1, borderStyle: 'solid', ...transitionButtonColors(stepCategory(transitionModal.toStep), transitionModal.inputField, 'brand'), cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: (transitioning || transitionNotes.trim().length === 0) ? 0.6 : 1 }}
               >
                 {t('common.confirm')}
               </button>

@@ -27,9 +27,10 @@ function session(count: unknown) {
 }
 
 describe('20261007_1010_delete_ownerless_report_conversations', () => {
-  it('is registered last, after the 20261006 ones', () => {
+  it('is registered right after the 20261006 ones', () => {
     const ids = MIGRATIONS.map((m) => m.id)
-    expect(ids.at(-1)).toBe('20261007_1010_delete_ownerless_report_conversations')
+    expect(ids.indexOf('20261007_1010_delete_ownerless_report_conversations'))
+      .toBe(ids.indexOf('20261006_1050_ai_settings_configuration_assist') + 1)
   })
 
   it('matches ONLY conversations without an owner, and deletes their messages with them', async () => {

@@ -52,6 +52,9 @@ export type CIHealth = (typeof CI_HEALTHS)[number]
  */
 export const CI_STATUS_VOCABULARY = 'ci_status'
 
+/** The vocabulary of the CI environment (`ci.environment`): the name is the code's, the values are the tenant's. */
+export const ENVIRONMENT_VOCABULARY = 'environment'
+
 /**
  * Ciclo di vita del CI (`ci.status`): il **seme** del vocabolario `ci_status`
  * (lib/seedEnumTypes.ts e scripts/seed-metamodel.ts lo seminano da qui, la

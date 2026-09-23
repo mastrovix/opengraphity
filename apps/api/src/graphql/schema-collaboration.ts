@@ -29,7 +29,13 @@ export const collaborationSchema = `
   }
 
   extend type Query {
-    searchUsers(search: String!, limit: Int): [UserSuggestion!]!
+    """
+    Active people whose name or e-mail contains the text. With \`permission\`,
+    only the people whose role grants it (tour of 23 Sep 2026): the pickers
+    that offer «who can do this job» ask the server as the user types instead
+    of downloading every person of the organization.
+    """
+    searchUsers(search: String!, limit: Int, permission: String): [UserSuggestion!]!
     watchers(entityType: String!, entityId: ID!): [Watcher!]!
     isWatching(entityType: String!, entityId: ID!): Boolean!
     internalMessages(entityType: String!, entityId: ID!, limit: Int, before: String): [InternalMessage!]!

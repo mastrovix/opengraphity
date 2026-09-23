@@ -19,6 +19,7 @@ import { shippedLabel } from '@/lib/shippedLabel'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { localizedLabel } from '@/lib/localizedLabel'
+import { humanizeValue } from '@opengraphity/web-core'
 
 // ── Metamodel field metas (automazione) ──────────────────────────────────────
 
@@ -229,12 +230,6 @@ function camelToLabel(key: string): string {
     .trim()
 }
 
-// ── Enum value label: "in_progress" → "In Progress" ──────────────────────────
-
-function enumLabel(v: string): string {
-  return v.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-}
-
 // ── Main hook ─────────────────────────────────────────────────────────────────
 
 export function useEntityFields(typeName: string): { fields: FieldConfig[]; error: Error | null } {
@@ -279,7 +274,8 @@ export function useEntityFields(typeName: string): { fields: FieldConfig[]; erro
         // altrimenti il valore ripulito, che è quello che si faceva prima.
         options: f.choices.length > 0
           ? f.choices
-          : (f.enumValues ?? []).map((v) => ({ value: v, label: enumLabel(v) })),
+          // D29: the one shared rule — «in_progress» → «In progress», a sentence as it is.
+          : (f.enumValues ?? []).map((v) => ({ value: v, label: humanizeValue(v) })),
       })
       continue
     }

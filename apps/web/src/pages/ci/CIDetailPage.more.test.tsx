@@ -119,7 +119,12 @@ beforeEach(() => {
   apolloFinto.reset()
   Object.values(toast).forEach((f) => f.mockReset())
   apolloFinto.risposte['DynamicDetail_Server'] = { server: SRV }
-  apolloFinto.risposte['GetTeams'] = { teams: [{ id: 'tm-1', name: 'Ops' }, { id: 'tm-2', name: 'Network' }] }
+  // D34: owner teams for the owner group, support teams for the support group.
+  apolloFinto.risposte['GetTeamChoices'] = { teams: [
+    { id: 'tm-1', name: 'Ops', type: 'owner', isChangeManager: false },
+    { id: 'tm-2', name: 'Network', type: 'support', isChangeManager: false },
+    { id: 'tm-3', name: 'Apps Owners', type: 'owner', isChangeManager: false },
+  ] }
   apolloFinto.risposte['GetBlastRadius'] = { blastRadius: [{ distance: 1, parentId: 'srv-1', ci: ref('x-1', 'lb') }] }
 })
 
@@ -227,21 +232,37 @@ describe('editing', () => {
 })
 
 describe('owner and support groups', () => {
+  /** D34: a searchable picker — open it, then choose a name. */
+  async function pick(user: ReturnType<typeof show>['user'], group: string, name: string) {
+    await user.click(screen.getByRole('combobox', { name: group }))
+    await user.click(await screen.findByRole('option', { name }))
+  }
+
+  it('each group offers the teams of its type: owner teams for the owner, support teams for the support', async () => {
+    const { user } = show()
+    await user.click(screen.getByRole('combobox', { name: 'Owner Group' }))
+    expect(await screen.findByRole('option', { name: 'Apps Owners' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Network' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('combobox', { name: 'Support Group' }))
+    expect(await screen.findByRole('option', { name: 'Network' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Apps Owners' })).not.toBeInTheDocument()
+  })
+
   it('assigning says "updated", choosing "not assigned" says "removed" and sends null', async () => {
     const { user } = show()
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Support Group' }), 'tm-2')
+    await pick(user, 'Support Group', 'Network')
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Support group updated'))
     expect(apolloFinto.chiamata('AssignCISupportGroup')).toEqual({ ciId: 'srv-1', teamId: 'tm-2' })
 
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Owner Group' }), '')
+    await pick(user, 'Owner Group', '— not assigned —')
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Owner group removed'))
     // null, not '': the API removes the edge only on null.
     expect(apolloFinto.chiamata('AssignCIOwner')).toEqual({ ciId: 'srv-1', teamId: null })
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Owner Group' }), 'tm-2')
+    await pick(user, 'Owner Group', 'Apps Owners')
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Owner group updated'))
 
     apolloFinto.esiti['AssignCISupportGroup'] = { data: {} }
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Support Group' }), '')
+    await pick(user, 'Support Group', '— not assigned —')
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Support group removed'))
   })
 
@@ -249,9 +270,9 @@ describe('owner and support groups', () => {
     apolloFinto.esiti['AssignCIOwner'] = { error: new Error('owner required') }
     apolloFinto.esiti['AssignCISupportGroup'] = { error: new Error('team archived') }
     const { user } = show()
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Owner Group' }), 'tm-2')
+    await pick(user, 'Owner Group', 'Apps Owners')
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('owner required'))
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Support Group' }), 'tm-1')
+    await pick(user, 'Support Group', 'Network')
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('team archived'))
   })
 })

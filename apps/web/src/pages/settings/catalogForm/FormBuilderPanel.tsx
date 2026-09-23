@@ -34,35 +34,48 @@
  *    si aggiunge anche con Invio — senza questo, il costruttore sarebbe
  *    diventato inutilizzabile per chi non usa il mouse.
  */
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { ChevronDown, ChevronRight, GripVertical, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
-  CATALOG_FORM_VERSION, FORM_CONDITION_OPS, FORM_CONDITION_OPS_WITHOUT_VALUE, FORM_FIELD_TYPES,
-  canBeConditionSubject, emptyCatalogForm, freeSectionId, localizedText, nomeDaEtichetta,
+  FORM_CONDITION_OPS, FORM_CONDITION_OPS_WITHOUT_VALUE, FORM_FIELD_TYPES,
+  canBeConditionSubject, freeSectionId, localizedText,
   sectionsFromProposal,
-  type CatalogFormDefinition, type CatalogFormItem, type CatalogFormSection,
+  type CatalogFormItem, type CatalogFormSection,
   type FormAnswerValue, type FormAnswers, type FormCondition, type FormConditionOp,
 } from '@opengraphity/types'
 import { CatalogFormRenderer } from '@opengraphity/web-core'
-import { GET_CATALOG_FORM, GET_ENUM_TYPES, GET_FORM_FIELDS, GET_SERVICE_CATALOG_ADMIN, GET_TENANT_LANGUAGE_SETTINGS } from '@/graphql/queries'
-import { CREATE_FORM_FIELD, CREATE_SERVICE_CATALOG_ITEM, SAVE_CATALOG_FORM, UPDATE_FORM_FIELD } from '@/graphql/mutations'
+import { GET_ENUM_TYPES, GET_SERVICE_CATALOG_ADMIN, GET_TENANT_LANGUAGE_SETTINGS } from '@/graphql/queries'
+import { UPDATE_FORM_FIELD } from '@/graphql/mutations'
 import { useAIFeature } from '@/hooks/useAIFeature'
+import { QueryError } from '@/components/QueryError'
 import { showError } from '@/lib/showError'
-import { useConfirm } from '@/hooks/useConfirm'
-import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { alpha, colors, fontWeight, palette } from '@/lib/tokens'
-import { Input, LabelledField, Select } from '@/components/ui/FormControls'
+import { Input, Select } from '@/components/ui/FormControls'
 import type { FormFieldRow } from './FieldLibraryPanel'
-import { FieldEditor, inputDaBozza, BOZZA_VUOTA, type Bozza } from './FieldEditor'
+import { inputDaBozza, BOZZA_VUOTA, type Bozza } from './FieldEditor'
 import { FormCanvas, IconaTipo, type Selezione } from './FormCanvas'
 import { EditorDelCampoDiLibreria, ProprietaSezione, ProprietaVoce } from './ItemProperties'
 import { ModaleCentrato } from './ModaleCentrato'
+import { NewFieldModal } from './NewFieldModal'
+import { NewItemModal, type CatalogItem, type NewItemDraft } from './NewItemModal'
 import { ModaleProgettoAI, type Progetto } from './ProgettoAI'
+import { useFieldLibrary } from './useFieldLibrary'
+import { useItemForm } from './useItemForm'
 
-interface CatalogItem { id: string; name: string; active: boolean; category: string | null }
+/**
+ * IL CAMPO NUOVO IN CORSO DI BATTESIMO: tipo, dove cadrà, e le etichette che
+ * si stanno scrivendo. Finché è qui non esiste niente sul server.
+ */
+interface NuovoCampo {
+  iSez:  number
+  /** `null` = in fondo alla sezione. */
+  iVoce: number | null
+  /** Tutto il campo che si sta scrivendo: è la stessa bozza della libreria. */
+  bozza: Bozza
+}
 
 const bottone: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 7,
@@ -399,11 +412,20 @@ function Maniglia({ etichetta, onAfferra, onSu, onGiu, evidenziata }: {
 /** Un identificativo di sezione stabile e valido (minuscole, cifre, trattino basso). */
 export function FormBuilderPanel() {
   const { t, i18n } = useTranslation()
-  const confirm = useConfirm()
   const lingua = i18n.language
 
   const { data: catalogData, refetch: rileggiVoci } = useQuery<{ serviceCatalogItems: CatalogItem[] }>(GET_SERVICE_CATALOG_ADMIN, { fetchPolicy: 'cache-and-network' })
-  const voci = (catalogData?.serviceCatalogItems ?? []).filter((v) => v.active)
+  /**
+   * An item created here whose list could not be read again afterwards. It
+   * EXISTS, so it is offered and named as if the list had it: without it the
+   * canvas would open on a form the selector cannot name, and publishing would
+   * ask to replace the form of «».
+   */
+  const [unlistedItem, setUnlistedItem] = useState<CatalogItem | null>(null)
+  const listedItems = (catalogData?.serviceCatalogItems ?? []).filter((v) => v.active)
+  const voci = unlistedItem === null || listedItems.some((v) => v.id === unlistedItem.id)
+    ? listedItems
+    : [...listedItems, unlistedItem]
   /*
    * NESSUNA VOCE PRESELEZIONATA (18 set 2026).
    *
@@ -420,24 +442,16 @@ export function FormBuilderPanel() {
   const { data: lingueData } = useQuery<{ tenantLanguageSettings: { available: string[] } }>(GET_TENANT_LANGUAGE_SETTINGS)
   const lingue = lingueData?.tenantLanguageSettings.available ?? ['en', 'it']
 
-  const { data: libreriaData, refetch: rileggiLibreria } = useQuery<{ formFields: FormFieldRow[] }>(GET_FORM_FIELDS, {
-    variables: { language: lingua }, fetchPolicy: 'cache-and-network',
-  })
-  // `?? []` crea un array nuovo a ogni render: dentro le dipendenze di un
-  // useMemo lo farebbe ricalcolare sempre (avviso react-hooks).
-  const libreria = useMemo(() => libreriaData?.formFields ?? [], [libreriaData])
-  const perNome = useMemo(() => {
-    const m = new Map<string, FormFieldRow>()
-    for (const f of libreria) m.set(f.name, f)
-    return m
-  }, [libreria])
+  const { fields: libreria, byName: perNome, refetch: refetchLibrary, reload: reloadLibrary } = useFieldLibrary(lingua)
 
-  const { data: formData, refetch } = useQuery<{ catalogForm: { itemId: string; itemName: string; revision: number; definition: string } }>(
-    GET_CATALOG_FORM, { variables: { itemId: voceId }, skip: !voceId, fetchPolicy: 'network-only' },
-  )
-
-  const [bozza, setBozza] = useState<CatalogFormDefinition>(emptyCatalogForm())
-  const [toccato, setToccato] = useState(false)
+  /*
+   * The chosen item's form: the stored one, the draft the canvas edits (every
+   * change goes through `cambia`), and its publication — see `useItemForm`.
+   */
+  const {
+    storedForm, loadError: formError, draft: bozza, touched: toccato, ready: formReady, retrying: retryingForm,
+    publishing: salvando, retry: retryForm, edit: cambia, askBeforeDiscarding, discard: discardDraft, publish: salvaModulo,
+  } = useItemForm(voceId, voceScelta?.name ?? '')
 
   /*
    * IL PROGETTISTA AI (19 set 2026).
@@ -461,13 +475,6 @@ export function FormBuilderPanel() {
    */
   const [progettoInAttesa, setProgettoInAttesa] = useState<{ progetto: Progetto; itemId: string } | null>(null)
 
-  useEffect(() => {
-    if (!formData?.catalogForm) return
-    try { setBozza(JSON.parse(formData.catalogForm.definition) as CatalogFormDefinition) }
-    catch { setBozza(emptyCatalogForm()) }
-    setToccato(false)
-  }, [formData])
-
   /*
    * IL PROGETTO CHE ASPETTA LA SUA VOCE (19 set 2026, corretto dalla revisione).
    *
@@ -477,7 +484,7 @@ export function FormBuilderPanel() {
    * mettessimo le sezioni prima, quella lettura le cancellerebbe.
    *
    * IL DIFETTO che questa guardia chiude: la condizione era «c'è un progetto
-   * in attesa E `formData` esiste», e `formData` esiste GIÀ — è il modulo
+   * in attesa E `storedForm` esiste», e `storedForm` esiste GIÀ — è il modulo
    * della voce aperta in quel momento. Chi aveva aperto una service request
    * per darle un'occhiata e poi chiedeva all'AI una richiesta NUOVA si
    * ritrovava le sezioni proposte sulla tela di QUELL'ALTRA, con un toast che
@@ -495,25 +502,32 @@ export function FormBuilderPanel() {
    * campi, invece di lasciarli trovare per caso.
    */
   const scartaProgettoInAttesa = () => {
-    setProgettoInAttesa((p) => {
-      if (p !== null && p.progetto.newFields.length > 0) {
-        toast.info(t('pages.catalogForms.ai.abandoned', { count: p.progetto.newFields.length }))
-      }
-      return null
-    })
+    // Said here and not inside a state updater: React may run an updater twice
+    // (StrictMode does, in development), and the toast came out twice.
+    if (progettoInAttesa !== null && progettoInAttesa.progetto.newFields.length > 0) {
+      toast.info(t('pages.catalogForms.ai.abandoned', { count: progettoInAttesa.progetto.newFields.length }))
+    }
+    setProgettoInAttesa(null)
   }
 
   useEffect(() => {
-    if (progettoInAttesa === null || !formData?.catalogForm) return
-    if (progettoInAttesa.itemId === '' || formData.catalogForm.itemId !== progettoInAttesa.itemId) return
+    if (progettoInAttesa === null || !storedForm) return
+    if (progettoInAttesa.itemId === '' || storedForm.itemId !== progettoInAttesa.itemId) return
     const p = progettoInAttesa.progetto
     setProgettoInAttesa(null)
     void (async () => {
-      await rileggiLibreria()
-      setBozza((d) => ({ ...d, sections: [...d.sections.filter((x) => x.items.length > 0 || haTitolo(x)), ...sezioniDaProgetto(p, d.sections.map((x) => x.id))] }))
-      setToccato(true)
+      /*
+       * The fields and the item exist by now. A library that cannot be read
+       * again must not stop the design from landing — nothing is pending any
+       * more, so it would be lost — it only means the new fields show by
+       * their name for a while, and that is said.
+       */
+      if (!(await reloadLibrary()) && p.newFields.length > 0) {
+        toast.error(t('pages.catalogForms.builder.libraryNotRefreshed', { count: p.newFields.length }))
+      }
+      cambia((d) => ({ ...d, sections: [...d.sections.filter((x) => x.items.length > 0 || haTitolo(x)), ...sezioniDaProgetto(p, d.sections.map((x) => x.id))] }))
     })()
-  }, [formData, progettoInAttesa, rileggiLibreria])
+  }, [storedForm, progettoInAttesa, reloadLibrary, cambia, t])
 
   /**
    * CAMBIARE VOCE NON BUTTA IL DISEGNO SENZA CHIEDERE.
@@ -524,26 +538,20 @@ export function FormBuilderPanel() {
    * ricaricava la definizione salvata e il lavoro svaniva in silenzio
    * (revisione del 17 set 2026).
    */
-  const chiediPrimaDiPerdere = async (): Promise<boolean> => {
-    if (!toccato) return true
-    return await confirm({
-      title: t('pages.catalogForms.builder.discardTitle'),
-      body:  t('pages.catalogForms.builder.discardBody'),
-      danger: true,
-    })
-  }
   const cambiaVoce = async (id: string) => {
-    if (!(await chiediPrimaDiPerdere())) return
+    // The same item again changes nothing: its draft stays.
+    if (id === voceId) return
+    if (!(await askBeforeDiscarding())) return
     setVoceId(id)
+    // The selection is a pair of POSITIONS in the draft, and the draft becomes
+    // another item's form: kept, it opened the properties of a field nobody
+    // selected there, and edits went into that draft.
+    closeProperties()
+    // The old draft goes with the old item (see `draftItemId` in `useItemForm`).
+    discardDraft()
   }
 
   const [risposteAnteprima, setRisposteAnteprima] = useState<Record<string, FormAnswerValue>>({})
-  const [salva, { loading: salvando }] = useMutation(SAVE_CATALOG_FORM, { onError: (e) => showError(e) })
-
-  const cambia = (f: (d: CatalogFormDefinition) => CatalogFormDefinition) => {
-    setBozza((d) => f(d))
-    setToccato(true)
-  }
 
   const sostituisciSezione = (indice: number, s: CatalogFormSection) =>
     cambia((d) => ({ ...d, sections: d.sections.map((x, i) => (i === indice ? s : x)) }))
@@ -585,30 +593,7 @@ export function FormBuilderPanel() {
   })
   const { bersaglio } = trascinamento
 
-  /**
-   * IL CAMPO NUOVO IN CORSO DI BATTESIMO: tipo, dove cadrà, e le etichette che
-   * si stanno scrivendo. Finché è qui non esiste niente sul server.
-   */
-  interface NuovoCampo {
-    iSez:  number
-    /** `null` = in fondo alla sezione. */
-    iVoce: number | null
-    /** Tutto il campo che si sta scrivendo: è la stessa bozza della libreria. */
-    bozza: Bozza
-  }
   const [nuovoCampo, setNuovoCampo] = useState<NuovoCampo | null>(null)
-  const [creando, setCreando] = useState(false)
-  /* `Escape` chiude il modale. Sta su `window` e non sul riquadro: il fuoco è
-     dentro una casella dell'editor, e un gestore sul contenitore lo prende
-     solo per caso — oltre a essere un ascoltatore su un elemento che non è
-     interattivo, che è quello che dice il lint. */
-  useEffect(() => {
-    if (!nuovoCampo) return
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setNuovoCampo(null) }
-    window.addEventListener('keydown', esc)
-    return () => { window.removeEventListener('keydown', esc) }
-  }, [nuovoCampo])
-  const [creaCampo] = useMutation(CREATE_FORM_FIELD, { onError: (e) => showError(e) })
   const { data: enumData } = useQuery<{ enumTypes: Array<{ name: string; label: string }> }>(GET_ENUM_TYPES, { fetchPolicy: 'cache-first' })
 
   /** La sezione che riceve un campo aggiunto da tastiera: l'ultima toccata. */
@@ -656,15 +641,15 @@ export function FormBuilderPanel() {
    * due cose che si decidono all'inizio e non dopo: la categoria (da lei
    * dipende quale workflow segue) e se serve un'approvazione.
    */
-  const [nuovaVoce, setNuovaVoce] = useState<{ name: string; description: string; category: string; priority: string; requiresApproval: boolean } | null>(null)
-  const [creandoVoce, setCreandoVoce] = useState(false)
-  const [creaVoce] = useMutation(CREATE_SERVICE_CATALOG_ITEM, { onError: (e) => showError(e) })
-  const { entriesOf } = useDomainVocabularies()
+  const [nuovaVoce, setNuovaVoce] = useState<NewItemDraft | null>(null)
 
   const [campoInModifica, setCampoInModifica] = useState<Bozza | null>(null)
   const [salvandoCampo, setSalvandoCampo] = useState(false)
   const [aggiornaCampo] = useMutation(UPDATE_FORM_FIELD, { onError: (e) => showError(e) })
   const idVoce = useId()
+
+  /** Closes the properties modal, with the library field being edited in it. */
+  const closeProperties = () => { setSelezione(null); setCampoInModifica(null) }
 
   const sostituisciVoce = (iSez: number, iVoce: number, v: CatalogFormItem) =>
     cambia((d) => ({
@@ -722,40 +707,6 @@ export function FormBuilderPanel() {
   }
 
   /**
-   * CREA IL CAMPO E LO METTE DOVE È CADUTO.
-   *
-   * Il campo nasce nella LIBRERIA — è condiviso da tutti i moduli, e il suo
-   * nome diventa una proprietà del ticket — e solo dopo entra nel modulo. Se
-   * la creazione fallisce (nome riservato, libreria piena, vocabolario
-   * inesistente) non si tocca la bozza: meglio niente che una voce che punta
-   * a un campo che non c'è.
-   */
-  const confermaNuovoCampo = async () => {
-    if (!nuovoCampo) return
-    const b = nuovoCampo.bozza
-    const comune = inputDaBozza(b, b.fieldType)
-    if (comune.label === '') { toast.error(t('pages.catalogForms.library.labelNeeded')); return }
-    const nome = b.name.trim() === '' ? nomeDaEtichetta(comune.label, libreria.map((f) => f.name)) : b.name.trim()
-    setCreando(true)
-    try {
-      const r = await creaCampo({ variables: { input: { ...comune, name: nome, fieldType: b.fieldType } } })
-      if (!r.data) return
-      // La libreria si rilegge PRIMA di mettere la voce nella bozza: se no la
-      // riga comparirebbe col nome tecnico al posto dell'etichetta.
-      await rileggiLibreria()
-      aggiungiCampo(nuovoCampo.iSez, nome, nuovoCampo.iVoce ?? undefined)
-      setNuovoCampo(null)
-    } catch {
-      /*
-       * L'avviso lo mostra già il link degli errori di Apollo, tradotto: qui
-       * si prende il rifiuto solo per non lasciare una promessa non gestita, e
-       * si TIENE APERTO il modale — chi ha appena scritto dieci caselle deve
-       * correggere quello che non va, non ricominciare.
-       */
-    } finally { setCreando(false) }
-  }
-
-  /**
    * LE SEZIONI DELLA PROPOSTA ATTERRANO SULLA TELA (19 set 2026).
    *
    * Non si salva niente: si tocca solo la bozza, e l'avviso «non pubblicato»
@@ -765,148 +716,37 @@ export function FormBuilderPanel() {
    *
    * La libreria si rilegge PRIMA: se no le righe nuove comparirebbero col
    * nome tecnico al posto dell'etichetta (lo stesso motivo per cui lo fa
-   * `confermaNuovoCampo`).
+   * `NewFieldModal`).
    */
   const mettiSullaTela = async (progetto: Progetto) => {
-    await rileggiLibreria()
+    // It throws: a library that cannot be read again stops the landing, and the AI modal says so.
+    await refetchLibrary()
     cambia((d) => ({ ...d, sections: [...d.sections.filter((x) => x.items.length > 0 || haTitolo(x)), ...sezioniDaProgetto(progetto, d.sections.map((x) => x.id))] }))
   }
 
-  /**
-   * IL MODALE DEL CAMPO NUOVO.
-   *
-   * Dentro c'è l'EDITOR DELLA LIBRERIA, lo stesso: etichette, aiuto,
-   * obbligatorio, colonna nelle liste, il vocabolario di una tendina, le
-   * colonne di una tabella, la formula e lo script di validazione. Un editor
-   * ridotto avrebbe voluto dire che certe cose si possono impostare solo
-   * sapendo che esiste un'altra scheda — ed è esattamente il difetto da cui
-   * è nata la palette dei tipi.
-   *
-   * Un modale e non più un riquadro in linea: le caselle sono tante (compreso
-   * il JavaScript), e infilarle dentro la sezione spingeva il modulo in fondo
-   * allo schermo proprio mentre lo si sta guardando.
-   */
-  const modaleNuovaVoce = () => {
-    if (!nuovaVoce) return null
-    const pronto = nuovaVoce.name.trim() !== '' && nuovaVoce.priority !== ''
-    return (
-      <ModaleCentrato
-        titolo={t('pages.catalogForms.builder.newItemTitle')}
-        sottotitolo={t('pages.catalogForms.builder.newItemHelp')}
-        largo={560}
-        onChiudi={() => { setNuovaVoce(null); scartaProgettoInAttesa() }}
-      >
-        <div style={{ display: 'grid', gap: 12 }}>
-          <LabelledField label={t('pages.catalogForms.builder.newItemName')}>
-            <Input value={nuovaVoce.name} onChange={(e) => { setNuovaVoce({ ...nuovaVoce, name: e.target.value }) }} />
-          </LabelledField>
-          <LabelledField label={t('pages.catalogForms.builder.newItemDescription')}>
-            <Input value={nuovaVoce.description} onChange={(e) => { setNuovaVoce({ ...nuovaVoce, description: e.target.value }) }} />
-          </LabelledField>
-          <div className="og-pair">
-            {/* La CATEGORIA non e un'etichetta: da lei dipende quale workflow
-                segue la richiesta, se questa voce non ne fissa uno suo. */}
-            <LabelledField label={t('pages.catalogForms.builder.newItemCategory')}>
-              <Select value={nuovaVoce.category} onChange={(e) => { setNuovaVoce({ ...nuovaVoce, category: e.target.value }) }}>
-                <option value="">{t('common.select')}</option>
-                {(entriesOf('category') ?? []).map((v) => <option key={v.value} value={v.value}>{v.label || v.value}</option>)}
-              </Select>
-            </LabelledField>
-            <LabelledField label={t('pages.catalogForms.builder.newItemPriority')}>
-              <Select value={nuovaVoce.priority} onChange={(e) => { setNuovaVoce({ ...nuovaVoce, priority: e.target.value }) }}>
-                <option value="">{t('common.select')}</option>
-                {(entriesOf('priority') ?? []).map((v) => <option key={v.value} value={v.value}>{v.label || v.value}</option>)}
-              </Select>
-            </LabelledField>
-          </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>
-            <input type="checkbox" checked={nuovaVoce.requiresApproval}
-              onChange={(e) => { setNuovaVoce({ ...nuovaVoce, requiresApproval: e.target.checked }) }} />
-            {t('pages.catalogForms.builder.newItemApproval')}
-          </label>
-
-          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-            <button
-              type="button"
-              disabled={!pronto || creandoVoce}
-              onClick={() => {
-                void (async () => {
-                  setCreandoVoce(true)
-                  try {
-                    const r = await creaVoce({ variables: { input: {
-                      name: nuovaVoce.name.trim(),
-                      description: nuovaVoce.description.trim() || null,
-                      category: nuovaVoce.category || null,
-                      priority: nuovaVoce.priority,
-                      requiresApproval: nuovaVoce.requiresApproval,
-                    } } })
-                    const creata = (r.data as { createServiceCatalogItem?: { id: string } } | null | undefined)?.createServiceCatalogItem
-                    if (!creata) return
-                    // Il progetto dell'AI aspettava proprio questa voce: da
-                    // adesso sa qual è, e atterrerà solo sul suo modulo.
-                    setProgettoInAttesa((p) => (p === null ? null : { ...p, itemId: creata.id }))
-                    await rileggiVoci()
-                    // Si apre SUBITO sul modulo della voce appena creata: e il
-                    // motivo per cui la si crea da qui.
-                    await cambiaVoce(creata.id)
-                    setNuovaVoce(null)
-                    toast.success(t('toast.catalog.created'))
-                  } catch {
-                    /* L'avviso lo mostra il link degli errori: qui si prende il
-                       rifiuto per non lasciare una promessa non gestita, e si
-                       tiene aperto il modale. */
-                  } finally { setCreandoVoce(false) }
-                })()
-              }}
-              style={{
-                padding: '7px 14px', borderRadius: 8, border: 'none',
-                background: pronto ? 'var(--color-brand)' : 'var(--color-surface-alt)',
-                color: pronto ? colors.white : 'var(--color-slate-light)',
-                fontSize: 'var(--font-size-body)', fontWeight: fontWeight.medium,
-                cursor: pronto && !creandoVoce ? 'pointer' : 'not-allowed',
-              }}
-            >
-              {creandoVoce ? t('common.saving') : t('pages.catalogForms.builder.newItemCreate')}
-            </button>
-            <button type="button" onClick={() => { setNuovaVoce(null); scartaProgettoInAttesa() }} style={bottone}>{t('common.cancel')}</button>
-          </div>
-        </div>
-      </ModaleCentrato>
-    )
-  }
-
-  const modaleNuovoCampo = () => {
-    if (!nuovoCampo) return null
-    return (
-      <ModaleCentrato
-        titolo={t('pages.catalogForms.builder.newFieldOfType', { type: t(`pages.catalogForms.fieldType.${nuovoCampo.bozza.fieldType}`) })}
-        sottotitolo={t('pages.catalogForms.builder.newFieldInSection', {
-          section: localizedText(bozza.sections[nuovoCampo.iSez]?.title ?? {}, lingua, '') || bozza.sections[nuovoCampo.iSez]?.id || '',
-        })}
-        onChiudi={() => { setNuovoCampo(null) }}
-      >
-        {/*
-          Dentro c'è l'EDITOR DELLA LIBRERIA, lo stesso: etichette, aiuto,
-          obbligatorio, colonna nelle liste, vocabolario, tipi di CI di un
-          riferimento, colonne di una tabella, formula e script di validazione.
-          Un editor ridotto avrebbe voluto dire che certe cose si impostano solo
-          sapendo che esiste un'altra scheda — il difetto da cui è nata la
-          palette dei tipi.
-        */}
-        <FieldEditor
-          bozza={nuovoCampo.bozza}
-          onBozza={(b) => { setNuovoCampo({ ...nuovoCampo, bozza: b }) }}
-          vocabolari={enumData?.enumTypes ?? []}
-          onSalva={confermaNuovoCampo}
-          onAnnulla={() => { setNuovoCampo(null) }}
-          salvando={creando}
-          etichettaSalva={t('pages.catalogForms.builder.createField')}
-          nomeDallEtichetta
-          nomiPresi={libreria.map((f) => f.name)}
-          campiLeggibili={libreria.map((f) => ({ name: f.name, label: f.label }))}
-        />
-      </ModaleCentrato>
-    )
+  /** The item created in `NewItemModal`: the modal closes, and the item opens here. */
+  const onItemCreated = async (creata: CatalogItem) => {
+    // Il progetto dell'AI aspettava proprio questa voce: da
+    // adesso sa qual è, e atterrerà solo sul suo modulo.
+    setProgettoInAttesa((p) => (p === null ? null : { ...p, itemId: creata.id }))
+    /*
+     * FROM HERE THE ITEM EXISTS, and nothing below may leave this
+     * modal open: pressing «Create and design» again made a
+     * second one. It closes now, as on success; a list that
+     * cannot be read again is said on its own, and the item is
+     * offered all the same (`unlistedItem`).
+     */
+    setNuovaVoce(null)
+    toast.success(t('toast.catalog.created'))
+    try {
+      await rileggiVoci()
+    } catch {
+      setUnlistedItem(creata)
+      toast.error(t('pages.catalogForms.builder.itemListNotRefreshed', { name: creata.name }))
+    }
+    // Si apre SUBITO sul modulo della voce appena creata: e il
+    // motivo per cui la si crea da qui.
+    await cambiaVoce(creata.id)
   }
 
   const larghezzaInBlocco = (iSez: number, larghezza: 'full' | 'half') =>
@@ -953,7 +793,6 @@ export function FormBuilderPanel() {
     if (!selezione) return null
     const sezione = bozza.sections[selezione.iSez]
     if (!sezione) return null
-    const chiudi = () => { setSelezione(null); setCampoInModifica(null) }
 
     if (selezione.tipo === 'section') {
       return (
@@ -961,7 +800,7 @@ export function FormBuilderPanel() {
           titolo={t('pages.catalogForms.builder.sectionProperties')}
           sottotitolo={localizedText(sezione.title, lingua, '') || sezione.id}
           largo={560}
-          onChiudi={chiudi}
+          onChiudi={closeProperties}
         >
           <ProprietaSezione
             sezione={sezione}
@@ -970,7 +809,7 @@ export function FormBuilderPanel() {
             onLarghezzaInBlocco={(l) => { larghezzaInBlocco(selezione.iSez, l) }}
             onRimuovi={() => {
               cambia((d) => ({ ...d, sections: d.sections.filter((_, i) => i !== selezione.iSez) }))
-              chiudi()
+              closeProperties()
             }}
           />
         </ModaleCentrato>
@@ -985,7 +824,7 @@ export function FormBuilderPanel() {
         titolo={t('pages.catalogForms.builder.fieldProperties')}
         sottotitolo={campo?.label ?? item.field}
         largo={560}
-        onChiudi={chiudi}
+        onChiudi={closeProperties}
       >
         <ProprietaVoce
           item={item}
@@ -994,7 +833,7 @@ export function FormBuilderPanel() {
           onItem={(v) => { sostituisciVoce(selezione.iSez, selezione.iVoce, v) }}
           onRimuovi={() => {
             sostituisciSezione(selezione.iSez, { ...sezione, items: sezione.items.filter((_, j) => j !== selezione.iVoce) })
-            chiudi()
+            closeProperties()
           }}
           campoDiLibreria={campo && (
             <EditorDelCampoDiLibreria
@@ -1008,18 +847,26 @@ export function FormBuilderPanel() {
                 if (!campoInModifica) return
                 setSalvandoCampo(true)
                 try {
-                  const r = await aggiornaCampo({
+                  await aggiornaCampo({
                     variables: { id: campo.id, input: inputDaBozza(campoInModifica, campo.fieldType) },
                   })
-                  if (!r.data) return
-                  await rileggiLibreria()
-                  setCampoInModifica(null)
-                  toast.success(t('pages.catalogForms.library.saved'))
                 } catch {
-                  /* L'avviso lo mostra il link degli errori di Apollo: qui si
-                     prende il rifiuto per non lasciare una promessa non
-                     gestita, e si TIENE APERTO l'editor. */
-                } finally { setSalvandoCampo(false) }
+                  // The mutation's onError has already told the user; the editor stays open with what they wrote.
+                  setSalvandoCampo(false)
+                  return
+                }
+                /*
+                 * WHAT WAS SAVED IS SAVED (tour of 23 Sep 2026). A library that
+                 * could not be read again kept the editor open with no word of
+                 * success, inviting a second save of what was already saved.
+                 * It closes as on success and says so; the stale library is
+                 * said on its own.
+                 */
+                const refreshed = await reloadLibrary()
+                setCampoInModifica(null)
+                setSalvandoCampo(false)
+                toast.success(t('pages.catalogForms.library.saved'))
+                if (!refreshed) toast.error(t('pages.catalogForms.builder.libraryNotRefreshedAfterEdit'))
               }}
             />
           )}
@@ -1035,25 +882,6 @@ export function FormBuilderPanel() {
         />
       </ModaleCentrato>
     )
-  }
-
-  const salvaModulo = async () => {
-    /*
-     * LA CONFERMA NOMINA LA VOCE, e per questo esiste: pubblicare scrive sul
-     * modulo di UNA voce, e il 18 set 2026 un campo è finito su quella
-     * sbagliata senza che niente lo dicesse. Non è una conferma di cortesia —
-     * è l'ultimo punto in cui si legge il nome prima che il modulo cambi.
-     */
-    const sicuro = await confirm({
-      title: t('pages.catalogForms.builder.publishConfirmTitle'),
-      body:  t('pages.catalogForms.builder.publishConfirmBody', { item: voceScelta?.name ?? '' }),
-    })
-    if (!sicuro) return
-    const r = await salva({ variables: { itemId: voceId, definition: JSON.stringify({ ...bozza, version: CATALOG_FORM_VERSION }) } })
-    if (!r.data) return
-    toast.success(t('pages.catalogForms.builder.published', { revision: (r.data as { saveCatalogForm: { revision: number } }).saveCatalogForm.revision }))
-    setToccato(false)
-    void refetch()
   }
 
   if (voci.length === 0) {
@@ -1161,25 +989,29 @@ export function FormBuilderPanel() {
 
         <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12, alignSelf: 'flex-end' }}>
           {/* LO STATO come pastiglia: «mai pubblicata» è un avviso, una
-              revisione è un fatto, e due grigi uguali non lo dicevano. */}
-          <span style={{
-            fontSize: 'var(--font-size-table)', padding: '4px 10px', borderRadius: 999,
-            background: formData?.catalogForm?.revision ? 'var(--color-surface-alt)' : palette.warning.tint,
-            color: formData?.catalogForm?.revision ? 'var(--color-slate)' : palette.warning.text,
-            whiteSpace: 'nowrap',
-          }}>
-            {formData?.catalogForm?.revision
-              ? t('pages.catalogForms.builder.revision', { revision: formData.catalogForm.revision })
-              : t('pages.catalogForms.builder.neverPublished')}
-          </span>
-          <button type="button" onClick={() => void salvaModulo()} disabled={salvando || !toccato || !voceId}
+              revisione è un fatto, e due grigi uguali non lo dicevano. While
+              the chosen item's form is not in hand there is no state to tell:
+              «No form yet» there would be a guess. */}
+          {(voceId === '' || formReady) && (
+            <span style={{
+              fontSize: 'var(--font-size-table)', padding: '4px 10px', borderRadius: 999,
+              background: storedForm?.revision ? 'var(--color-surface-alt)' : palette.warning.tint,
+              color: storedForm?.revision ? 'var(--color-slate)' : palette.warning.text,
+              whiteSpace: 'nowrap',
+            }}>
+              {storedForm?.revision
+                ? t('pages.catalogForms.builder.revision', { revision: storedForm.revision })
+                : t('pages.catalogForms.builder.neverPublished')}
+            </span>
+          )}
+          <button type="button" onClick={() => void salvaModulo()} disabled={salvando || !toccato || !formReady}
             style={{
               padding: '9px 18px', borderRadius: 8, border: 'none',
-              background: toccato && voceId ? 'var(--color-brand)' : 'var(--color-surface-alt)',
-              color: toccato && voceId ? colors.white : 'var(--color-slate-light)',
+              background: toccato && formReady ? 'var(--color-brand)' : 'var(--color-surface-alt)',
+              color: toccato && formReady ? colors.white : 'var(--color-slate-light)',
               fontSize: 'var(--font-size-body)', fontWeight: fontWeight.medium,
-              cursor: toccato && voceId ? 'pointer' : 'not-allowed',
-              boxShadow: toccato && voceId ? `0 1px 2px ${alpha.black15}` : 'none',
+              cursor: toccato && formReady ? 'pointer' : 'not-allowed',
+              boxShadow: toccato && formReady ? `0 1px 2px ${alpha.black15}` : 'none',
             }}>
             {salvando ? t('common.saving') : t('pages.catalogForms.builder.publish')}
           </button>
@@ -1192,7 +1024,21 @@ export function FormBuilderPanel() {
         </p>
       )}
 
-      {voceId !== '' && vista === 'canvas' && (
+      {/* The chosen item's form is not in hand yet: it is loading, or it
+          could not be loaded — said, with a retry, and nothing to publish. */}
+      {voceId !== '' && !formReady && (formError !== undefined && !retryingForm
+        ? (
+          <QueryError
+            message={t('pages.catalogForms.builder.formLoadFailed', { item: voceScelta?.name ?? '' })}
+            onRetry={() => { void retryForm() }}
+          />
+        ) : (
+          <p role="status" style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
+            {t('pages.catalogForms.builder.formLoading', { item: voceScelta?.name ?? '' })}
+          </p>
+        ))}
+
+      {formReady && vista === 'canvas' && (
         <>
           {/*
             GLI ATTREZZI, in una colonna a sinistra (chiesto dal proprietario:
@@ -1370,7 +1216,7 @@ export function FormBuilderPanel() {
         </>
       )}
 
-      {voceId !== '' && vista === 'preview' && (
+      {formReady && vista === 'preview' && (
         <div>
           <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', margin: '0 0 12px' }}>
             {t('pages.catalogForms.builder.previewHelp')}
@@ -1397,8 +1243,29 @@ export function FormBuilderPanel() {
         <OmbraTrascinata etichetta={trascinamento.etichetta} posizione={trascinamento.posizione} />
       )}
 
-      {modaleNuovaVoce()}
-      {modaleNuovoCampo()}
+      {nuovaVoce && (
+        <NewItemModal
+          draft={nuovaVoce}
+          onDraft={setNuovaVoce}
+          onClose={() => { setNuovaVoce(null); scartaProgettoInAttesa() }}
+          onCreated={onItemCreated}
+        />
+      )}
+      {nuovoCampo && (
+        <NewFieldModal
+          draft={nuovoCampo.bozza}
+          onDraft={(b) => { setNuovoCampo({ ...nuovoCampo, bozza: b }) }}
+          sectionName={localizedText(bozza.sections[nuovoCampo.iSez]?.title ?? {}, lingua, '') || bozza.sections[nuovoCampo.iSez]?.id || ''}
+          library={libreria}
+          vocabularies={enumData?.enumTypes ?? []}
+          reloadLibrary={reloadLibrary}
+          onCreated={(nome) => {
+            aggiungiCampo(nuovoCampo.iSez, nome, nuovoCampo.iVoce ?? undefined)
+            setNuovoCampo(null)
+          }}
+          onClose={() => { setNuovoCampo(null) }}
+        />
+      )}
       {progettoAI !== null && (
         <ModaleProgettoAI
           itemId={progettoAI.itemId}
@@ -1502,17 +1369,19 @@ function omettiCondizione(item: CatalogFormItem): CatalogFormItem {
  * lingua di chi guarda). Un sì/no offre Sì e No. Tutto il resto resta testo,
  * perché è testo davvero.
  */
-function ValoreDellaRegola({ campo, valore, onValore }: {
+function ValoreDellaRegola({ campo, valore, onValore, label }: {
   campo: FormFieldRow | undefined
   valore: string
   onValore: (v: string) => void
+  /** The accessible name: the control has no visible label next to it. */
+  label: string
 }) {
   const { t } = useTranslation()
   const stile = { width: 'auto', minWidth: 120, padding: '2px 22px 2px 6px', fontSize: 'var(--font-size-table)' }
 
   if (campo && campo.options.length > 0) {
     return (
-      <Select value={valore} style={stile} onChange={(e) => onValore(e.target.value)}>
+      <Select aria-label={label} value={valore} style={stile} onChange={(e) => onValore(e.target.value)}>
         <option value="">{t('common.select')}</option>
         {campo.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         {/* Un valore salvato che il Dizionario non ha più resta visibile invece
@@ -1525,7 +1394,7 @@ function ValoreDellaRegola({ campo, valore, onValore }: {
   }
   if (campo?.fieldType === 'boolean') {
     return (
-      <Select value={valore} style={stile} onChange={(e) => onValore(e.target.value)}>
+      <Select aria-label={label} value={valore} style={stile} onChange={(e) => onValore(e.target.value)}>
         <option value="">{t('common.select')}</option>
         <option value="true">{t('common.yes')}</option>
         <option value="false">{t('common.no')}</option>
@@ -1533,7 +1402,7 @@ function ValoreDellaRegola({ campo, valore, onValore }: {
     )
   }
   return (
-    <Input value={valore} style={{ width: 120, padding: '2px 6px', fontSize: 'var(--font-size-table)' }}
+    <Input aria-label={label} value={valore} style={{ width: 120, padding: '2px 6px', fontSize: 'var(--font-size-table)' }}
       onChange={(e) => onValore(e.target.value)} />
   )
 }
@@ -1552,7 +1421,7 @@ function EditorCondizione({ condizione, soggetti, etichettaDi, campoDi, onChange
   onChange: (c: FormCondition | undefined) => void
 }) {
   const { t } = useTranslation()
-  const regole = condizione?.rules ?? []
+  const showWhenId = useId()
 
   return (
     <div style={{ marginTop: 8, paddingLeft: 10, borderLeft: `2px solid ${colors.slateBg}` }}>
@@ -1573,69 +1442,88 @@ function EditorCondizione({ condizione, soggetti, etichettaDi, campoDi, onChange
       <div style={{ fontSize: 'var(--font-size-table)', fontWeight: fontWeight.medium, color: 'var(--color-slate)', marginBottom: 4 }}>
         {t('pages.catalogForms.builder.visibilityTitle')}
       </div>
-      {soggetti.length === 0 && regole.length === 0 ? (
-        <p style={{ margin: 0, fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', maxWidth: '62ch' }}>
-          {t('pages.catalogForms.builder.visibilityNoSubjects')}
-        </p>
-      ) : regole.length === 0 ? (
-        <button type="button" style={{ ...bottone, padding: '3px 8px', fontSize: 'var(--font-size-table)' }}
-          onClick={() => onChange({ match: 'all', rules: [{ field: soggetti[0]!, op: 'eq', value: '' }] })}>
-          <Plus size={12} /> {t('pages.catalogForms.builder.addCondition')}
-        </button>
-      ) : null}
-      {soggetti.length > 0 && regole.length === 0 ? (
-        <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', maxWidth: '62ch' }}>
-          {t('pages.catalogForms.builder.visibilityHelp')}
-        </p>
-      ) : (
+      {/*
+        THREE STATES, and only the one with rules draws them (tour of 23 Sep
+        2026). With no rule and nothing to look at, the second of two ternaries
+        fell into the rules block and read `match` on an undefined condition:
+        every single-field form, and every form whose other fields are notes,
+        files, references or tables, took the builder down instead of saying
+        why no condition can be written.
+      */}
+      {condizione !== undefined && condizione.rules.length > 0 ? (
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: 'var(--font-size-table)', color: 'var(--color-slate)' }}>
-            <span>{t('pages.catalogForms.builder.showWhen')}</span>
-            <Select value={condizione!.match} style={{ width: 'auto', padding: '2px 22px 2px 6px', fontSize: 'var(--font-size-table)' }}
-              onChange={(e) => onChange({ ...condizione!, match: e.target.value as 'all' | 'any' })}>
+            <span id={showWhenId}>{t('pages.catalogForms.builder.showWhen')}</span>
+            <Select aria-labelledby={showWhenId} value={condizione.match} style={{ width: 'auto', padding: '2px 22px 2px 6px', fontSize: 'var(--font-size-table)' }}
+              onChange={(e) => onChange({ ...condizione, match: e.target.value as 'all' | 'any' })}>
               <option value="all">{t('pages.catalogForms.builder.matchAll')}</option>
               <option value="any">{t('pages.catalogForms.builder.matchAny')}</option>
             </Select>
           </div>
-          {regole.map((regola, i) => (
+          {condizione.rules.map((regola, i) => (
             <div key={i} style={{ display: 'flex', gap: 5, alignItems: 'center', marginBottom: 5, flexWrap: 'wrap' }}>
-              <Select value={regola.field} style={{ width: 'auto', padding: '2px 22px 2px 6px', fontSize: 'var(--font-size-table)' }}
-                onChange={(e) => onChange({ ...condizione!, rules: condizione!.rules.map((r, j) => (j === i ? { ...r, field: e.target.value } : r)) })}>
+              <Select aria-label={t('pages.catalogForms.builder.ruleField', { number: i + 1 })} value={regola.field}
+                style={{ width: 'auto', padding: '2px 22px 2px 6px', fontSize: 'var(--font-size-table)' }}
+                onChange={(e) => onChange({ ...condizione, rules: condizione.rules.map((r, j) => (j === i ? { ...r, field: e.target.value } : r)) })}>
                 {soggetti.map((n) => <option key={n} value={n}>{etichettaDi(n)}</option>)}
+                {/* A rule on a field that can no longer be looked at (taken off
+                    the form) shows that field, instead of reading as the first
+                    choice: the server refuses it, and the reason must be seen. */}
+                {!soggetti.includes(regola.field) && <option value={regola.field}>{etichettaDi(regola.field)}</option>}
               </Select>
-              <Select value={regola.op} style={{ width: 'auto', padding: '2px 22px 2px 6px', fontSize: 'var(--font-size-table)' }}
+              <Select aria-label={t('pages.catalogForms.builder.ruleOp', { number: i + 1 })} value={regola.op}
+                style={{ width: 'auto', padding: '2px 22px 2px 6px', fontSize: 'var(--font-size-table)' }}
                 onChange={(e) => {
                   const op = e.target.value as FormConditionOp
                   const senzaValore = (FORM_CONDITION_OPS_WITHOUT_VALUE as readonly string[]).includes(op)
                   onChange({
-                    ...condizione!,
-                    rules: condizione!.rules.map((r, j) => (j === i ? (senzaValore ? { field: r.field, op } : { field: r.field, op, value: r.value ?? '' }) : r)),
+                    ...condizione,
+                    rules: condizione.rules.map((r, j) => (j === i ? (senzaValore ? { field: r.field, op } : { field: r.field, op, value: r.value ?? '' }) : r)),
                   })
                 }}>
                 {FORM_CONDITION_OPS.map((op) => <option key={op} value={op}>{t(`pages.catalogForms.conditionOp.${op}`)}</option>)}
               </Select>
               {!(FORM_CONDITION_OPS_WITHOUT_VALUE as readonly string[]).includes(regola.op) && (
                 <ValoreDellaRegola
+                  label={t('pages.catalogForms.builder.ruleValue', { number: i + 1 })}
                   campo={campoDi(regola.field)}
                   valore={regola.value ?? ''}
-                  onValore={(v) => onChange({ ...condizione!, rules: condizione!.rules.map((r, j) => (j === i ? { ...r, value: v } : r)) })}
+                  onValore={(v) => onChange({ ...condizione, rules: condizione.rules.map((r, j) => (j === i ? { ...r, value: v } : r)) })}
                 />
               )}
               <button type="button" aria-label={t('pages.catalogForms.builder.removeCondition')}
                 onClick={() => {
-                  const restanti = condizione!.rules.filter((_, j) => j !== i)
-                  onChange(restanti.length === 0 ? undefined : { ...condizione!, rules: restanti })
+                  const restanti = condizione.rules.filter((_, j) => j !== i)
+                  onChange(restanti.length === 0 ? undefined : { ...condizione, rules: restanti })
                 }}
                 style={iconaAzione}>
                 <Trash2 size={12} />
               </button>
             </div>
           ))}
-          <button type="button" style={{ ...bottone, padding: '3px 8px', fontSize: 'var(--font-size-table)' }}
-            onClick={() => onChange({ ...condizione!, rules: [...condizione!.rules, { field: soggetti[0]!, op: 'eq', value: '' }] })}>
-            <Plus size={12} /> {t('pages.catalogForms.builder.addRule')}
-          </button>
+          {/* A new rule needs a field to look at: with none left, the rules
+              there can only be changed or removed. */}
+          {soggetti.length > 0 && (
+            <button type="button" style={{ ...bottone, padding: '3px 8px', fontSize: 'var(--font-size-table)' }}
+              onClick={() => onChange({ ...condizione, rules: [...condizione.rules, { field: soggetti[0]!, op: 'eq', value: '' }] })}>
+              <Plus size={12} /> {t('pages.catalogForms.builder.addRule')}
+            </button>
+          )}
         </>
+      ) : soggetti.length > 0 ? (
+        <>
+          <button type="button" style={{ ...bottone, padding: '3px 8px', fontSize: 'var(--font-size-table)' }}
+            onClick={() => onChange({ match: 'all', rules: [{ field: soggetti[0]!, op: 'eq', value: '' }] })}>
+            <Plus size={12} /> {t('pages.catalogForms.builder.addCondition')}
+          </button>
+          <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', maxWidth: '62ch' }}>
+            {t('pages.catalogForms.builder.visibilityHelp')}
+          </p>
+        </>
+      ) : (
+        <p style={{ margin: 0, fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', maxWidth: '62ch' }}>
+          {t('pages.catalogForms.builder.visibilityNoSubjects')}
+        </p>
       )}
     </div>
   )

@@ -64,8 +64,9 @@ const statCard: React.CSSProperties = {
   minWidth:     120,
 }
 
+/** A state not known yet (no answer, or the health query failed) is grey: the page knows nothing of an outage. */
 function StatusDot({ status }: { status: string }) {
-  const color = status === 'ok' ? 'var(--color-success)' : 'var(--color-danger)'
+  const color = status === 'ok' ? 'var(--color-success)' : status === 'unknown' ? 'var(--color-slate-light)' : 'var(--color-danger)'
   return (
     <div style={{
       width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0,
@@ -163,9 +164,13 @@ export function MonitoringPage() {
                 <StatusDot status={check?.status ?? 'unknown'} />
                 <div>
                   <div style={{ fontSize: 'var(--font-size-body)', color: colors.slate }}>{label}</div>
-                  <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: check?.status === 'ok' ? 'var(--color-success)' : 'var(--color-danger)' }}>
-                    {check?.status === 'ok' ? t('pages.monitoring.health.ok') : t('pages.monitoring.health.error')}
-                  </div>
+                  {check ? (
+                    <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: check.status === 'ok' ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                      {check.status === 'ok' ? t('pages.monitoring.health.ok') : t('pages.monitoring.health.error')}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: colors.slateLight }}>—</div>
+                  )}
                   {check?.latencyMs !== null && check?.latencyMs !== undefined && (
                     <div style={{ fontSize: 'var(--font-size-table)', color: colors.slateLight, marginTop: 2 }}>
                       {t('pages.monitoring.health.latency')}: {check.latencyMs}ms

@@ -4,6 +4,7 @@
  */
 import path from 'node:path'
 import { ValidationError } from './errors.js'
+import { matchById } from './cypherLookups.js'
 import { FORM_DRAFT_ENTITY_TYPE, FORM_FIELD_NAME_RE, type Permission } from '@opengraphity/types'
 
 /**
@@ -107,8 +108,8 @@ export function entityExistsCypher(labels: readonly string[], condition = 'true'
   for (const l of labels) {
     if (!LABEL_RE.test(l)) throw new ValidationError(`entityExistsCypher: invalid label "${l}"`)
   }
-  const predicate = labels.map((l) => `e:${l}`).join(' OR ')
-  return `MATCH (e {id: $entityId, tenant_id: $tenantId}) WHERE (${predicate}) AND (${condition}) RETURN e.id AS id LIMIT 1`
+  // One index seek per label (D25): `MATCH (e {id: …}) WHERE e:A OR e:B` read every node.
+  return `${matchById('e', { labels, id: '$entityId' })} WITH e WHERE ${condition} RETURN e.id AS id LIMIT 1`
 }
 
 /**

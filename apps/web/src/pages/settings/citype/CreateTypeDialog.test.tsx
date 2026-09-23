@@ -59,6 +59,18 @@ describe('CreateTypeDialog', () => {
     expect(onSave).toHaveBeenCalledWith({ name: 'firewall_box', label: 'Firewall box', icon: 'shield', color: '#112233' })
   })
 
+  // The icons offered are the registry's own list (tour of 23 Sep 2026): the
+  // pickers kept their own, and one of them offered icons drawn as the red «?».
+  it('every icon offered is drawn as itself', async () => {
+    renderWithProviders(<CreateTypeDialog open onClose={vi.fn()} onSave={vi.fn()} />)
+    const offered = Array.from((screen.getByLabelText('Icon') as HTMLSelectElement).options, (o) => o.value)
+    expect(offered.length).toBeGreaterThan(0)
+    for (const icon of offered) {
+      await userEvent.selectOptions(screen.getByLabelText('Icon'), icon)
+      expect(screen.getByRole('img', { name: icon })).toBeInTheDocument()
+    }
+  })
+
   it('stays open with the typed values when the save fails, and re-enables the button', async () => {
     const onClose = vi.fn()
     let reject!: (e: Error) => void

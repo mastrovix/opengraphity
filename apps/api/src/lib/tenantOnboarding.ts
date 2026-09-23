@@ -40,6 +40,7 @@ import { USERS_ADMIN_PERMISSION, type Tenant } from '@opengraphity/types'
 import { seedSystemEnumTypes } from './seedEnumTypes.js'
 import { provisionTenantData } from './provisionTenantData.js'
 import { DEFAULT_EVENT_POLICY_JSON } from './eventPolicy.js'
+import { INITIAL_PASSWORD_RULES, realmPasswordSettings } from './tenantLogin.js'
 import { PLAN_SETTINGS } from './tenantPlans.js'
 import { CATALOG_FORM_LIMIT_DEFAULTS } from './catalogFormLimits.js'
 import type { KeycloakAdmin } from '../scripts/lib/keycloakAdmin.js'
@@ -105,6 +106,8 @@ export async function onboardTenant(
     enabled:     true,
     sslRequired: spec.production ? 'external' : 'none',
     displayName: spec.slug,
+    // D70: a realm with no password rules accepts a one-character password and never locks an account.
+    ...realmPasswordSettings(INITIAL_PASSWORD_RULES, null),
   })
   passo(realm.created ? `realm "${spec.slug}" created` : `realm "${spec.slug}" already existed — left as it was`)
 

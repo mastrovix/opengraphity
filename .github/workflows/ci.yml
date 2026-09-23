@@ -75,6 +75,12 @@ jobs:
       - name: Check token visivi (console ↔ portale)
         run: node scripts/check-token-visivi.mjs
 
+      # Un carattere solo, e dichiarato in un posto solo: i bottoni non
+      # ereditano il font, e la regola che glielo dava viveva in un foglio
+      # di stile che nessuno importava (22 set 2026).
+      - name: Un carattere solo in tutto il prodotto
+        run: node scripts/check-font.mjs
+
       - name: Check etichette dei controlli
         run: node scripts/check-etichette-controlli.mjs
 

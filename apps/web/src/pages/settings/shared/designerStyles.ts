@@ -5,7 +5,7 @@
 export {
   inputS, selectS, textareaS, labelS,
   btnPrimary, btnSecondary, btnDanger,
-  enumChipStyle, activeCardStyle, inactiveCardStyle,
+  activeCardStyle, inactiveCardStyle,
 } from '@/components/ui/styles'
 
 export const FIELD_TYPES = ['string', 'number', 'date', 'boolean', 'enum'] as const

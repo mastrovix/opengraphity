@@ -120,8 +120,36 @@ async function dirStats(dir: string): Promise<{ files: number; bytes: number }> 
 
 interface GraphExport {
   nodeCount: number; relCount: number
+  /** Counted before the streams and again after them, in the same transaction. */
   dbNodeCount: number; dbRelCount: number
+  dbNodeCountAfter: number; dbRelCountAfter: number
   nodesByLabel: Record<string, number>; relsByType: Record<string, number>
+}
+
+/**
+ * Whether what was written is the whole graph (tour of 23 Sep 2026, D60).
+ *
+ * The check compared the lines written with a count taken at the start of the
+ * same transaction, assuming a transaction sees a frozen graph. Neo4j gives
+ * «read committed»: a write committed by someone else while the streams run
+ * is visible to them. On a live installation — logs, audit, monitoring —
+ * one node more was enough to refuse the nightly backup (18 Sep: 291,049
+ * written, 291,048 counted). What must hold is that nothing was lost: the
+ * lines written lie between the count before and the count after. A
+ * truncated stream still falls outside and is refused.
+ */
+export function graphCountProblems(g: Pick<GraphExport, 'nodeCount' | 'relCount' | 'dbNodeCount' | 'dbRelCount' | 'dbNodeCountAfter' | 'dbRelCountAfter'>): string[] {
+  const problems: string[] = []
+  const check = (what: string, written: number, before: number, after: number) => {
+    const lo = Math.min(before, after)
+    const hi = Math.max(before, after)
+    if (written < lo || written > hi) {
+      problems.push(`${what}: ${String(written)} written, ${before === after ? String(before) : `between ${String(lo)} and ${String(hi)}`} counted in the same transaction`)
+    }
+  }
+  check('nodes', g.nodeCount, g.dbNodeCount, g.dbNodeCountAfter)
+  check('relationships', g.relCount, g.dbRelCount, g.dbRelCountAfter)
+  return problems
 }
 
 const NODES_CYPHER = 'MATCH (n) RETURN elementId(n) AS id, labels(n) AS labels, properties(n) AS props'
@@ -134,18 +162,22 @@ const RELS_CYPHER  = `
 async function exportGraph(session: Session, stagingDir: string, log: BackupLogger): Promise<GraphExport> {
   const nodesStream = createWriteStream(join(stagingDir, NODES_FILE), { encoding: 'utf8' })
   const relsStream  = createWriteStream(join(stagingDir, RELS_FILE),  { encoding: 'utf8' })
-  const out: GraphExport = { nodeCount: 0, relCount: 0, dbNodeCount: 0, dbRelCount: 0, nodesByLabel: {}, relsByType: {} }
+  const out: GraphExport = { nodeCount: 0, relCount: 0, dbNodeCount: 0, dbRelCount: 0, dbNodeCountAfter: 0, dbRelCountAfter: 0, nodesByLabel: {}, relsByType: {} }
 
   // One explicit READ transaction for counts + both streams: every row comes
   // from the same transactional view, in whatever order the store yields it
   // (no pagination, so no ordering assumption at all).
   const tx = session.beginTransaction()
-  try {
+  const countGraph = async (): Promise<{ nodes: number; rels: number }> => {
     const counts = await tx.run('MATCH (n) WITH count(n) AS nodes MATCH ()-[r]->() RETURN nodes, count(r) AS rels')
     const c = counts.records[0]
     if (!c) throw new Error('count query returned no row')
-    out.dbNodeCount = toNative(c.get('nodes')) as number
-    out.dbRelCount  = toNative(c.get('rels'))  as number
+    return { nodes: toNative(c.get('nodes')) as number, rels: toNative(c.get('rels')) as number }
+  }
+  try {
+    const before = await countGraph()
+    out.dbNodeCount = before.nodes
+    out.dbRelCount  = before.rels
     log.info({ nodes: out.dbNodeCount, rels: out.dbRelCount }, 'Graph counts read')
 
     const nodesResult: Result = tx.run(NODES_CYPHER)
@@ -168,6 +200,13 @@ async function exportGraph(session: Session, stagingDir: string, log: BackupLogg
       out.relCount++
       tally(out.relsByType, [relType])
       if (out.relCount % 50_000 === 0) log.info({ rels: out.relCount }, 'Relationships exported so far')
+    }
+    const after = await countGraph()
+    out.dbNodeCountAfter = after.nodes
+    out.dbRelCountAfter  = after.rels
+    if (after.nodes !== before.nodes || after.rels !== before.rels) {
+      log.warn({ nodesBefore: before.nodes, nodesAfter: after.nodes, relsBefore: before.rels, relsAfter: after.rels },
+        'The graph changed while the backup was running: the archive holds a state between the two counts')
     }
     await tx.commit()
   } catch (err) {
@@ -287,9 +326,7 @@ export async function runBackup(opts: BackupOptions): Promise<BackupResult> {
     // Archive as .partial first, then verify, then publish by rename.
     await execFileAsync('tar', ['-czf', partial, '-C', outputDir, name])
 
-    const problems: string[] = []
-    if (graph.nodeCount !== graph.dbNodeCount) problems.push(`nodes: ${graph.nodeCount} written, ${graph.dbNodeCount} counted in the same transaction`)
-    if (graph.relCount  !== graph.dbRelCount)  problems.push(`relationships: ${graph.relCount} written, ${graph.dbRelCount} counted in the same transaction`)
+    const problems = graphCountProblems(graph)
     if (problems.length) {
       throw new Error(`Backup NOT published (left as ${basename(partial)}): ${problems.join('; ')}`)
     }

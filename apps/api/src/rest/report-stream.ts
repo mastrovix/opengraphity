@@ -62,6 +62,7 @@ async function handleReportStream(req: Request, res: Response): Promise<void> {
       onConversationCreated: (id) => send('conversation', { conversationId: id }),
       ask: (history, q) => streamReportAI(
         tenantId,
+        userId,
         history,
         q,
         (chunk) => send('chunk', { text: chunk }),

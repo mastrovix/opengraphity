@@ -184,10 +184,12 @@ export function useITILTypeDesigner() {
     })
   }
 
-  const handleSaveSettings = async () => {
+  // Nothing waits for the save: its onCompleted/onError say how it went. Awaited, a
+  // refused save (Apollo 4 rejects after onError) was an unhandled rejection.
+  const handleSaveSettings = () => {
     if (!selectedType || !settingsForm) return
     setSettingsSaving(true)
-    await updateType({ variables: { id: selectedType.id, input: {
+    void updateType({ variables: { id: selectedType.id, input: {
       label:            settingsForm.label,
       icon:             settingsForm.icon             || null,
       color:            settingsForm.color            || null,

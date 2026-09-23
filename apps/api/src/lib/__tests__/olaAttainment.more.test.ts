@@ -23,7 +23,7 @@ import {
 } from '../olaAttainment.js'
 
 const TEAM = 'team-net'
-const contract = { teamId: TEAM, createdAt: null, resolveMinutes: 120, businessHours: false, calendar: null }
+const contract = { teamId: TEAM, createdAt: null, resolveMinutes: 120, businessHours: false, calendar: null, timezone: null }
 const seg = (startedAt: string, endedAt: string | null, inferred = false) => ({ teamId: TEAM, startedAt, endedAt, inferred })
 const ticket = (over: Partial<OLATicketFacts>): OLATicketFacts =>
   ({ createdAt: '2026-09-15T08:00:00Z', concludedAt: null, currentTeamId: TEAM, segments: [], ...over })

@@ -46,7 +46,7 @@ async function seed(TENANT_ID: string) {
 
   // Load servers
   const serversResult = await session.run(
-    `MATCH (c {tenant_id: $tenantId})
+    `MATCH (c:ConfigurationItem {tenant_id: $tenantId})
      WHERE (c:Server OR c:VirtualMachine)
      RETURN c.id AS id`,
     { tenantId: TENANT_ID }

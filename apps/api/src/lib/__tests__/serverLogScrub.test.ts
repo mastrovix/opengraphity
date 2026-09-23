@@ -230,11 +230,17 @@ describe('la maiuscola conta, ed è la metà che regge', () => {
 
 describe('e quello che il prodotto SA di scrivere resta leggibile', () => {
   it('i messaggi veri del prodotto passano intatti', () => {
-    // Presi dall'archivio vero il 20 set 2026: 9 su 10 passano identici.
+    /*
+     * Presi dall'archivio vero il 20 set 2026: 9 su 10 passano identici.
+     * Il messaggio dell'ascolto in-app è stato riallineato il 22 set 2026 a
+     * quello che il prodotto scrive OGGI (`inAppBus.ts`): la riga d'archivio
+     * conteneva «reconnects», una parola che il prodotto non scrive più in
+     * inglese, e passava solo perché il vocabolario si rileggeva.
+     */
     for (const vero of [
       '[bullmq] worker error (connection/internal) — worker keeps running',
       '[bullmq] queue connection error',
-      '[inapp] listening connection error — ioredis reconnects; until then this process does not receive notifications delivered elsewhere',
+      '[inapp] subscription FAILED: this process will not receive notifications delivered elsewhere',
       'SSE notification channel down — reconnecting',
       'Database driver error masked for the client',
       'proposals: accepted action failed',

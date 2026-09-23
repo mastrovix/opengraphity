@@ -9,6 +9,7 @@
  * and the counter resets at the first successful reconnection.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { Activity } from 'react'
 import { renderHook, waitFor, act } from '@testing-library/react'
 
 type Handlers = {
@@ -124,6 +125,46 @@ describe('the channel', () => {
     await act(async () => { vi.advanceTimersByTime(10_000) })
     expect(s.calls).toHaveLength(1)
     expect(s.log.warn).not.toHaveBeenCalled()
+  })
+
+  /*
+   * A «StrictMode» guard stood in the effect and could never fire: the
+   * cleanup reset it before the second run (tour of 23 Sep 2026). What keeps
+   * the channel single is the cleanup itself, which aborts the stream before
+   * the effect runs again: this pins it, and the guard is gone.
+   */
+  it('under StrictMode the effect runs twice and still leaves ONE live channel', async () => {
+    const { result, unmount } = renderHook(() => useNotifications(), { reactStrictMode: true })
+    await waitFor(() => expect(s.calls).toHaveLength(2))
+    expect(s.calls.map((c) => c.signal.aborted)).toEqual([true, false])
+    // The live one is the one the hook listens to.
+    await act(async () => { await s.calls[1]!.onopen({ ok: true, status: 200 }) })
+    expect(result.current.connected).toBe(true)
+    act(() => { s.calls[1]!.onmessage(frame({ id: 'live' })) })
+    expect(result.current.notifications.map((n) => n.id)).toEqual(['live'])
+    unmount()
+    expect(s.calls.every((c) => c.signal.aborted)).toBe(true)
+  })
+
+  it('a reconnection still waiting when the effects are torn down does not open a second channel', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    // `Activity` tears the effects down and runs them again on the SAME hook,
+    // as StrictMode does at mount and Fast Refresh does on every edit.
+    let mode: 'visible' | 'hidden' = 'visible'
+    const { rerender } = renderHook(() => useNotifications(), {
+      wrapper: ({ children }) => <Activity mode={mode}>{children}</Activity>,
+    })
+    await waitFor(() => expect(s.calls).toHaveLength(1))
+    // A drop: the next attempt is due in 5 s.
+    await act(async () => { s.rejecters[0]!(new Error('network')); await Promise.resolve() })
+    mode = 'hidden'
+    rerender()
+    mode = 'visible'
+    rerender()
+    await waitFor(() => expect(s.calls).toHaveLength(2))
+    await act(async () => { vi.advanceTimersByTime(10_000) })
+    expect(s.calls).toHaveLength(2)
+    expect(s.calls.filter((c) => !c.signal.aborted)).toHaveLength(1)
   })
 })
 

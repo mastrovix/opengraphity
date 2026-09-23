@@ -194,7 +194,7 @@ async function setCITeamRelation(
       // CI dichiara obbligatorio lasciava il CI senza owner, e le change su di
       // lui fallivano dopo, lontano da chi l'aveva tolto.
       const found = await runQueryOne<{ label: string | null }>(session, `
-        MATCH (ci {id: $ciId, tenant_id: $tenantId}) WHERE ${ciPredicate}
+        MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId}) WHERE ${ciPredicate}
         RETURN head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS label
       `, { ciId: args.ciId, tenantId: ctx.tenantId })
       if (!found) throw new NotFoundError('ConfigurationItem', args.ciId)
@@ -206,14 +206,14 @@ async function setCITeamRelation(
     // (breaks change creation, which assumes exactly one owner team).
     const cypher = args.teamId == null
       ? `
-      MATCH (ci {id: $ciId, tenant_id: $tenantId})
+      MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
       WHERE ${ciPredicate}
       OPTIONAL MATCH (ci)-[old:${relType}]->(:Team)
       DELETE old
       RETURN properties(ci) as props, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS label
     `
       : `
-      MATCH (ci {id: $ciId, tenant_id: $tenantId})
+      MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
       WHERE ${ciPredicate}
       MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
       WITH ci, t

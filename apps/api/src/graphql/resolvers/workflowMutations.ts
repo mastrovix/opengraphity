@@ -33,6 +33,7 @@ import { assertRolesExist, roleKeysInActions } from '../../lib/roles.js'
 import { labelTranslationsCypher } from '../../lib/workflowLabelTranslations.js'
 import { assignTeamCypher, TEAM_NOW_PARAM } from '../../lib/ticketTeamHistory.js'
 import { workflowChangeDetails, workflowSnapshot } from '../../lib/workflowAuditDetails.js'
+import { matchById } from '../../lib/cypherLookups.js'
 
 // Safe label map — prevents Cypher injection when creating entities dynamically.
 // Le richieste di servizio c'erano nel workflow ma NON qui (revisione totale ·
@@ -455,6 +456,30 @@ export function assertTransitionCondition(raw: string | null | undefined, label:
 }
 
 /**
+ * A MANUAL transition is a button on the ticket, and its label is the button's
+ * text: a write must not leave one blank (tour of 23 Sep 2026). The designer
+ * blanked the label of a return arrow in its data, and saving any other change
+ * of that arrow wrote `label: ''` over «Reopen» — an empty button on every
+ * ticket in that step, with nothing said.
+ *
+ * The check reads the transitions as the write LEFT them (the query returns
+ * `blankManualLabel`, `fromStep`, `toStep` per transition), so it holds whatever
+ * the call changed — the label, the trigger, or both. It runs inside the write
+ * transaction: throwing here rolls the whole write back.
+ */
+export function assertManualTransitionsLabelled<R extends { records: Array<{ get: (key: string) => unknown }> }>(written: R): R {
+  const blank = written.records.find((r) => r.get('blankManualLabel') === true)
+  if (!blank) return written
+  const from = String(blank.get('fromStep'))
+  const to   = String(blank.get('toStep'))
+  throw new GraphQLError(
+    `The manual transition «${from}» → «${to}» would be left without a label: its label is the text of the button `
+    + `people click on the ticket. Give it a label, or change its trigger.`,
+    { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.manualTransitionNeedsLabel', params: { from, to } } } },
+  )
+}
+
+/**
  * Il workflow delle change deve conservare **un posto dove approvare**
  * (revisione delle otto ondate · B·N-1).
  *
@@ -716,8 +741,8 @@ export async function updateWorkflowTransition(
    */
   const given = (field: keyof typeof input) => Object.prototype.hasOwnProperty.call(input, field)
   return withSession(async (session) => {
-    const written = await session.executeWrite((tx) =>
-      tx.run(`
+    const written = await session.executeWrite(async (tx) => assertManualTransitionsLabelled(
+      await tx.run(`
         // La transizione DEVE essere di questa definizione (revisione totale ·
         // B-26): prima era cercata per solo id, e il «customizzato» veniva
         // segnato sulla definizione dello step di partenza — cioè un'altra
@@ -734,7 +759,9 @@ export async function updateWorkflowTransition(
             t.input_field    = CASE WHEN $inputFieldGiven THEN $inputField ELSE t.input_field END,
             t.condition      = CASE WHEN $conditionGiven  THEN $condition  ELSE t.condition   END,
             t.timer_hours    = CASE WHEN $timerHoursGiven THEN $timerHours ELSE t.timer_hours END
-        RETURN t.id AS id
+        // Read by assertManualTransitionsLabelled: the arrow as this write left it.
+        RETURN t.id AS id, src.name AS fromStep, endNode(t).name AS toStep,
+               (t.trigger = 'manual' AND trim(coalesce(t.label, '')) = '') AS blankManualLabel
       `, {
         transitionId,
         definitionId,
@@ -746,16 +773,17 @@ export async function updateWorkflowTransition(
         inputField:    inputField    ?? null,
         condition:     condition     ?? null,
         timerHours:    timerHours    ?? null,
-        // M-9: presente e null = cancella; assente = lascia com'è. L'etichetta
-        // vuota non cancella (un arco senza etichetta non si può cliccare):
-        // per lei «presente» vale solo con un testo.
+        // M-9: given and null = cleared; absent = left as it is. Not for the
+        // label: null leaves it, and an EMPTY label on a manual transition is
+        // refused by assertManualTransitionsLabelled (tour of 23 Sep 2026 — the
+        // comment here promised it, the code wrote the '').
         labelGiven:      given('label') && label != null,
         triggerGiven:    given('trigger'),
         inputFieldGiven: given('inputField'),
         conditionGiven:  given('condition'),
         timerHoursGiven: given('timerHours'),
       }),
-    )
+    ))
     // B-26: se la transizione non è di questa definizione non si tocca nulla e
     // lo si dice, invece di restituire la definizione come se fosse cambiata.
     if (!written.records.length) throw new NotFoundError('WorkflowTransition', transitionId)
@@ -793,6 +821,19 @@ export async function addWorkflowTransition(
   ctx: GraphQLContext,
 ) {
   const resolvedTrigger = assertTransitionTrigger(trigger, `new transition ${fromStepName} → ${toStepName}`) ?? 'manual'
+  /*
+   * Tour of 23 Sep 2026: a new arrow was created with `label: ''` (what the
+   * designer sent) or with a fixed English 'New transition' (when none was
+   * sent) — a blank or foreign button on every ticket. The label of a manual
+   * transition is the text people click: it is required, as on every save.
+   */
+  const trimmedLabel = (label ?? '').trim()
+  if (resolvedTrigger === 'manual' && !trimmedLabel) {
+    throw new GraphQLError(
+      `The manual transition «${fromStepName}» → «${toStepName}» needs a label: it is the text of the button people click on the ticket.`,
+      { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.manualTransitionNeedsLabel', params: { from: fromStepName, to: toStepName } } } },
+    )
+  }
   return withSession(async (session) => {
     const id = uuidv4()
     const result = await session.executeWrite(async (tx) => {
@@ -832,7 +873,7 @@ export async function addWorkflowTransition(
       `, {
         definitionId, tenantId: ctx.tenantId, fromStepName, toStepName, id,
         trigger: resolvedTrigger,
-        label: label ?? 'New transition',
+        label: trimmedLabel,
         sourceHandle: sourceHandle ?? null, targetHandle: targetHandle ?? null,
         ...customizedParams(ctx),
       })
@@ -927,7 +968,7 @@ export async function executeWorkflowTransition(
     const entityDataResult = await session.executeRead((tx) =>
       tx.run(`
         MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})
-        OPTIONAL MATCH (entity {id: wi.entity_id, tenant_id: $tenantId})
+        ${matchById('entity', { labels: 'entities', id: 'wi.entity_id', imports: ['wi'], optional: true })}
         OPTIONAL MATCH (entity)-[:ASSIGNED_TO]->(assignee)
         OPTIONAL MATCH (entity)-[:ASSIGNED_TO_TEAM]->(team)
         RETURN properties(entity) AS entityData,
@@ -983,14 +1024,14 @@ export async function executeWorkflowTransition(
         await session.executeWrite((tx) =>
           targetType === 'team'
             ? tx.run(
-              `MATCH (e {id: $entityId, tenant_id: $tenantId})
+              `${matchById('e', { labels: 'entities', id: '$entityId' })}
                MATCH (t:Team {id: $targetId, tenant_id: $tenantId})
                ${assignTeamCypher('e', 't')}
                SET e.updated_at = $now`,
               { entityId, tenantId: ctx.tenantId, targetId, now, [TEAM_NOW_PARAM]: now },
             )
             : tx.run(
-              `MATCH (e {id: $entityId, tenant_id: $tenantId})
+              `${matchById('e', { labels: 'entities', id: '$entityId' })}
                MATCH (u:User {id: $targetId, tenant_id: $tenantId})
                OPTIONAL MATCH (e)-[old:ASSIGNED_TO]->(:User)
                DELETE old
@@ -1357,9 +1398,9 @@ export async function saveWorkflowChanges(
         )
       }
 
-      // Update each transition
+      // Update each transition; a manual one left without a label rolls the whole save back.
       if (transitions.length > 0) {
-        await tx.run(`
+        assertManualTransitionsLabelled(await tx.run(`
           MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
           UNWIND $transitions AS tr
           // tenant-ok(traversal): wd già scopata sopra
@@ -1372,7 +1413,10 @@ export async function saveWorkflowChanges(
               t.input_field    = tr.inputField,
               t.condition      = tr.condition,
               t.timer_hours    = tr.timerHours
-        `, { transitions: transitionRows, definitionId, tenantId: ctx.tenantId })
+          // Read by assertManualTransitionsLabelled: each arrow as this write left it.
+          RETURN src.name AS fromStep, endNode(t).name AS toStep,
+                 (t.trigger = 'manual' AND trim(coalesce(t.label, '')) = '') AS blankManualLabel
+        `, { transitions: transitionRows, definitionId, tenantId: ctx.tenantId }))
       }
       // Update step properties (label, enterActions, exitActions, metadata)
       if (steps && steps.length > 0) {

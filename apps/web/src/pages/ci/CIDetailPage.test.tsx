@@ -7,7 +7,7 @@ import { MetamodelProvider } from '@/contexts/MetamodelContext'
 import { GET_CI_TYPES, GET_BLAST_RADIUS, GET_CI_INCIDENTS, GET_CI_PROBLEMS, GET_CI_CHANGES, GET_WORKFLOW_DEFINITION, GET_CI_HEALTH, GET_CI_ALIASES, GET_EVENTS, GET_SERVICES_IMPACTED_BY_CI } from '@/graphql/queries'
 import { SET_CI_HEALTH_OVERRIDE } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
-import { teamsMock, meMock } from '@/test/mocks/gql'
+import { teamsMock, teamChoicesMock, meMock } from '@/test/mocks/gql'
 /*
  * Lo spazio prima della parentesi non c'e' piu' (21 set 2026): jsdom 30 non
  * inserisce uno spazio fra elementi IN LINEA quando calcola il nome
@@ -95,7 +95,7 @@ const healthMock = (health: string | null, healthSource: string | null = health 
 })
 
 const mocks = (health: string | null = null, role = 'operator') => [
-  ciTypesMock, detailMock, teamsMock(), meMock(role, { maxUsageCount: Number.POSITIVE_INFINITY }),
+  ciTypesMock, detailMock, teamsMock(), teamChoicesMock(), meMock(role, { maxUsageCount: Number.POSITIVE_INFINITY }),
   any(GET_BLAST_RADIUS, { blastRadius: [] }),
   any(GET_CI_INCIDENTS, { ciIncidents: [] }),
   any(GET_CI_PROBLEMS, { ciProblems: [] }),
@@ -216,15 +216,18 @@ describe('CIDetailPage', () => {
       { __typename: 'CISystemRelation', id: 'sr-sup', name: 'supportGroup', label: 'Support Group', relationshipType: 'SUPPORTED_BY', targetEntity: 'Team', required: false, order: 2 },
     ]
     const list = mocks().map((m) => (m === ciTypesMock ? { ...ciTypesMock, result: types } : m))
-      .map((m) => (m.request.query === teamsMock().request.query ? teamsMock([{ id: 'tm-1', name: 'Sistemi e Server' }]) : m))
-    renderPage({ mocks: list })
+      .map((m) => (m.request.query === teamChoicesMock().request.query ? teamChoicesMock([{ id: 'tm-1', name: 'Sistemi e Server', type: 'owner' }]) : m))
+    const { user } = renderPage({ mocks: list })
     const owner = await screen.findByRole('combobox', { name: T('pages.cmdb.ownerGroup') })
-    expect(within(owner).queryByRole('option', { name: T('pages.ci.notAssignedOption') })).toBeNull()
-    expect(within(owner).getByRole('option', { name: T('pages.ci.requiredGroupOption') })).toBeDisabled()
+    // The box asks for a group (D34: a searchable picker now, not a select).
+    expect(owner).toHaveAttribute('placeholder', T('pages.ci.requiredGroupOption'))
     expect(owner).toHaveAttribute('aria-invalid', 'true')
     expect(screen.getByTestId('ci-required-group-missing')).toBeInTheDocument()
-    const support = screen.getByRole('combobox', { name: T('pages.ci.supportGroup') })
-    expect(within(support).getByRole('option', { name: T('pages.ci.notAssignedOption') })).toBeInTheDocument()
+    await user.click(owner)
+    expect(await screen.findByRole('option', { name: 'Sistemi e Server' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: T('pages.ci.notAssignedOption') })).toBeNull()
+    await user.click(screen.getByRole('combobox', { name: T('pages.ci.supportGroup') }))
+    expect(await screen.findByRole('option', { name: T('pages.ci.notAssignedOption') })).toBeInTheDocument()
   })
 })
 

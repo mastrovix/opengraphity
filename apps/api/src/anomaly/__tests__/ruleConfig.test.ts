@@ -59,7 +59,20 @@ describe('assertAnomalyRuleSettings', () => {
   it('una regola salvata che cita un tipo tolto dal metamodello ha un problema con la sua chiave', () => {
     const cfg = { ruleKey: 'isolated_cluster' as const, ...FACTORY_ANOMALY_RULES.isolated_cluster, isDefault: false, updatedAt: null }
     expect(anomalyRuleProblem(cfg, options)).toBeNull()
-    const problem = anomalyRuleProblem(cfg, { ...options, ciTypes: options.ciTypes.filter((t) => t.name !== 'certificate') })
-    expect(problem?.extensions['i18n']).toMatchObject({ key: 'errors.anomalyRule.unknownCIType', params: { value: 'certificate' } })
+    const problem = anomalyRuleProblem(cfg, { ...options, ciTypes: options.ciTypes.filter((t) => t.name !== 'application') })
+    expect(problem?.extensions['i18n']).toMatchObject({ key: 'errors.anomalyRule.unknownCIType', params: { value: 'application' } })
+  })
+
+  /*
+   * D49 (tour of 23 Sep 2026): measured on four relation types, «cut off from
+   * the main graph» flagged 486 CIs of the demo tenant, 3 of them isolated for
+   * real. The factory now follows every relation between CIs (an empty list,
+   * resolved when the rule runs) and starts from the applications only.
+   */
+  it('the isolated cluster: an empty relation list means every relation, and certificates are not candidates any more', () => {
+    expect(FACTORY_ANOMALY_RULES.isolated_cluster).toMatchObject({ ciTypes: ['application'], relations: [], threshold: 5 })
+    expect(() => assertAnomalyRuleSettings('isolated_cluster', FACTORY_ANOMALY_RULES.isolated_cluster, options)).not.toThrow()
+    // the other rules that follow relations still need at least one
+    expect(() => assertAnomalyRuleSettings('dependency_cycle', { ...FACTORY_ANOMALY_RULES.dependency_cycle, relations: [] }, options)).toThrow(/at least one relation/)
   })
 })

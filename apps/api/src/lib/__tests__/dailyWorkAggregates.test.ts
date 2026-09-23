@@ -72,7 +72,11 @@ describe('l\'anello: gli aggregati non guardano sé stessi', () => {
     await coppieRipetute('t1', 30)
     const q = ultimaQuery()
     expect(q).toContain('NOT a.action IN $__azioniDelProgramma')
-    expect(q, 'anche la seconda azione della coppia').toContain('NOT b.action IN $__azioniDelProgramma')
+    // D67: both actions of a pair come from the same filtered entries — the
+    // exclusion is applied before the entries are grouped and paired, so it
+    // holds for the second action too, with no second read of the log.
+    expect(q.indexOf('NOT a.action IN $__azioniDelProgramma'), 'anche la seconda azione della coppia').toBeLessThan(q.indexOf('collect({action: a.action'))
+    expect(q).not.toContain('MATCH (b:AuditEntry')
   })
 })
 

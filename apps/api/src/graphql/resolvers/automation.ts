@@ -14,7 +14,7 @@ import { ValidationError } from '../../lib/errors.js'
 import { getWorkflowSteps } from '../../lib/workflowHelpers.js'
 import type { Session } from 'neo4j-driver'
 import { selectSLAForEntity, assertRuleSLAMinutes } from '@opengraphity/sla'
-import { assertTimeZone } from '../../lib/tenantTimezone.js'
+import { optionalTimeZone } from '../../lib/tenantTimezone.js'
 import {
   SLA_ENTITY_TYPES, SLA_CATEGORY_ENTITY_TYPES,
   AUTOMATION_ENTITY_TYPES, TRIGGER_EVENT_TYPES, RULE_EVENT_TYPES, AUTOMATION_EVENT_ENTITIES, automationEventSupported,
@@ -740,9 +740,7 @@ function assertWarningMinutes(warning: unknown, resolve: unknown): number {
  * 2026 · F7.
  */
 function policyTimezone(value: unknown): string | null {
-  if (value == null) return null
-  if (typeof value === 'string' && value.trim() === '') return null
-  return assertTimeZone(typeof value === 'string' ? value.trim() : value)
+  return optionalTimeZone(value)
 }
 
 async function createSLAPolicy(_: unknown, args: { input: Props }, ctx: GraphQLContext) {

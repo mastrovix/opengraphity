@@ -27,3 +27,17 @@ export async function catalogItemsWithLegacyCategory(session: Session, tenantId:
   `, { tenantId }))
   return r.records.map((rec) => ({ name: rec.get('name') as string, legacy: rec.get('legacy') as string }))
 }
+
+/**
+ * The active items without a FULFILMENT GROUP (D56, 23 Sep 2026): their
+ * requests are born without a team, so nobody's queue shows them and the OLA
+ * contracts on requests cannot measure them.
+ */
+export async function catalogItemsWithoutFulfillmentTeam(session: Session, tenantId: string): Promise<string[]> {
+  const r = await session.executeRead((tx) => tx.run(`
+    MATCH (ci:ServiceCatalogItem {tenant_id: $tenantId})
+    WHERE coalesce(ci.active, true) = true AND NOT EXISTS { (ci)-[:FULFILLED_BY]->(:Team) }
+    RETURN ci.name AS name ORDER BY name
+  `, { tenantId }))
+  return r.records.map((rec) => rec.get('name') as string)
+}

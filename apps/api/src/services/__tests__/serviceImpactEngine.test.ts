@@ -30,7 +30,9 @@ vi.mock('../events/policy.js', () => ({ getEventPolicy: vi.fn().mockResolvedValu
   // Ondata 7 · C-4: la SEMANTICA del ciclo di vita («ritirato», «in
   // manutenzione») è dato del cliente e vive sulla policy. Qui i valori
   // iniziali, gli stessi che il codice aveva come costanti.
-  retired_statuses: ['inactive', 'decommissioned'], maintenance_statuses: ['maintenance'], ignore_lifecycle_statuses: ['decommissioned'] }) }))
+  retired_statuses: ['inactive', 'decommissioned'], maintenance_statuses: ['maintenance'], ignore_lifecycle_statuses: ['decommissioned'],
+  // D44 (23 Sep 2026): a service map counts only the components of the production environments.
+  production_environments: ['production', 'dr'] }) }))
 
 vi.mock('../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../lib/logger.js', () => {
@@ -163,18 +165,24 @@ describe('buildServiceMap', () => {
     expect(e.cypher).toContain("WHERE ANY(l IN labels(app) WHERE l IN $ciLabels)")
     expect(e.cypher).toContain('status: a.status, health: a.health')
     // Ondata 6 · C-1: le etichette sono quelle del TENANT (il tipo del cliente compreso), non la costante.
-    expect(e.params).toEqual({ serviceId: 'ba-1', tenantId: 't1', ciLabels: TENANT_CI_LABELS })
+    expect(e.params).toEqual({ serviceId: 'ba-1', tenantId: 't1', ciLabels: TENANT_CI_LABELS, productionEnvironments: ['production', 'dr'] })
+    // D44: only production applications enter; a CI without an environment counts as production
+    expect(e.cypher).toContain("(size($productionEnvironments) = 0 OR coalesce(app.environment, '') = '' OR app.environment IN $productionEnvironments)")
     expect(e.params['ciLabels']).toContain('ErpSystem')
     const x = callMatching(/apoc\.path\.expandConfig/)!
     expect(x.cypher).toBe(EXPAND_NODES_CYPHER)
-    expect(x.cypher).toMatch(/MATCH \(app \{tenant_id: \$tenantId\}\)\s+WHERE app\.id IN \$appIds\s+WITH collect\(app\) AS apps/)
+    expect(x.cypher).toMatch(/MATCH \(app:ConfigurationItem \{tenant_id: \$tenantId\}\)\s+WHERE app\.id IN \$appIds\s+WITH collect\(app\) AS apps/)
     expect(x.cypher).toContain("uniqueness:         'NODE_GLOBAL'")
     expect(x.cypher).toContain('bfs:                true')
     expect(x.cypher).toContain('maxLevel:           toInteger($maxLevel)')
     expect(x.cypher).toContain('WHERE ALL(n IN nodes(path) WHERE n.tenant_id = $tenantId)')
     expect(x.cypher).toContain('WITH last(nodes(path)) AS node, length(path) + 1 AS level, nodes(path)[-2] AS pred')
     expect(x.cypher).toContain('node.status AS status, node.health AS health')
+    // D44: the components outside production are not walked through (blacklisted), not filtered after
+    expect(x.cypher).toContain("WHERE NOT (size($productionEnvironments) = 0 OR coalesce(x.environment, '') = '' OR x.environment IN $productionEnvironments)")
+    expect(x.cypher).toContain('blacklistNodes:     outside,')
     expect(x.params).toEqual({
+      productionEnvironments: ['production', 'dr'],
       tenantId: 't1', appIds: ['app-3'], relFilter: 'DEPENDS_ON>|HOSTED_ON>|INSTALLED_ON>|USES_CERTIFICATE>',
       labelFilter: TENANT_CI_LABELS.map((l: string) => `+${l}`).join('|'),
       maxLevel: 3, limit: SERVICE_MAP_MAX_NODES + 1,
@@ -645,7 +653,7 @@ describe('createServiceMap', () => {
     // ondata 5: mappa viva per default, mai sincronizzata finora
     expect(c.cypher).toContain('auto_sync: $autoSync, synced_at: null')
     expect(c.cypher).toContain("CREATE (m)-[:INCLUDES {level: toInteger(n.level), role: n.role, propagate: n.propagate, weight: toInteger(n.weight)")
-    expect(c.cypher).toContain('MATCH (ci {id: n.ciId, tenant_id: $tenantId})')
+    expect(c.cypher).toContain('MATCH (ci:ConfigurationItem {id: n.ciId, tenant_id: $tenantId})')
     expect(c.params).toEqual({
       serviceId: 'ba-1', tenantId: 't1', mapId: r.mapId, status: 'active', autoSync: true, maxDepth: 4, relationshipTypes: ['DEPENDS_ON', 'HOSTED_ON'],
       rules: DEFAULT_SERVICE_IMPACT_RULES_JSON, actorId: 'u-1', now: NOW,

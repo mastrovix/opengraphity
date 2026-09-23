@@ -119,6 +119,7 @@ describe('login aziendale', () => {
     expect(provider).toEqual({
       kind: 'microsoft', displayName: 'Microsoft', enabled: true, clientId: 'app-1', tenant: 'acme.onmicrosoft.com', hostedDomain: null, metadataUrl: null,
       redirectUri: 'https://sso.example.com/realms/c-test/broker/microsoft/endpoint', samlSpMetadataUrl: null,
+      redirectUris: ['https://sso.example.com/realms/c-test/broker/microsoft/endpoint'], samlSpMetadataUrls: [],
     })
     expect(JSON.stringify(provider)).not.toContain('s3cret')
     const idp = state.idps[0]!
@@ -138,5 +139,14 @@ describe('login aziendale', () => {
     const { provider } = await saveLoginProvider('c-test', { kind: 'google', hostedDomain: 'acme.com' }, false)
     expect(provider).toMatchObject({ kind: 'google', enabled: false, hostedDomain: 'acme.com', clientId: '1-a.apps.googleusercontent.com' })
     expect((await loginProviders('c-test')).map((p) => p.kind)).toEqual(['google'])
+  })
+})
+
+/** D70 (tour of 23 Sep 2026): the rules a new organization starts with are valid rules of the page. */
+describe('INITIAL_PASSWORD_RULES', () => {
+  it('stay inside the ranges the page governs, and fit in the minimum length', async () => {
+    const { INITIAL_PASSWORD_RULES, passwordRulesOutOfRange } = await import('../tenantLogin.js')
+    expect(passwordRulesOutOfRange(INITIAL_PASSWORD_RULES)).toEqual([])
+    expect(assertPasswordRules(INITIAL_PASSWORD_RULES)).toEqual(INITIAL_PASSWORD_RULES)
   })
 })

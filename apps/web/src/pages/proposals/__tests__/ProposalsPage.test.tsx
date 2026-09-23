@@ -121,6 +121,19 @@ describe('ProposalsPage: running the analysis', () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Nothing new to propose.'))
   })
 
+  // Tour of 23 Sep 2026: a reload that failed after a run that worked was
+  // reported as «the run failed», and the run's result was never shown.
+  it('a run that worked is reported even when the list cannot be reloaded', async () => {
+    apolloFinto.risposte['GetProposals'] = page([])
+    apolloFinto.esiti['RunProposalAnalysis'] = { data: {} }
+    apolloFinto.refetch.mockRejectedValueOnce(new Error('network down'))
+    const { user } = mount()
+    await user.click(screen.getByRole('button', { name: 'Analyse now' }))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Nothing new to propose.'))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('network down'))
+    expect(toast.error).not.toHaveBeenCalledWith(expect.stringMatching(/run/i))
+  })
+
   it('a failed run is an error, not a success', async () => {
     apolloFinto.risposte['GetProposals'] = page([])
     apolloFinto.esiti['RunProposalAnalysis'] = { error: new Error('model unavailable') }
@@ -204,6 +217,17 @@ describe('ProposalsPage: deciding', () => {
     expect(screen.queryByRole('button', { name: 'Not now' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Accept' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Reject' })).toBeInTheDocument()
+  })
+
+  // Tour of 23 Sep 2026: the same, for a decision.
+  it('a decision that worked is not called a failure when the list cannot be reloaded', async () => {
+    apolloFinto.risposte['GetProposals'] = page([proposal({ actionType: 'x' })])
+    apolloFinto.refetch.mockRejectedValueOnce(new Error('network down'))
+    const { user } = mount()
+    await user.click(screen.getByRole('button', { name: 'Accept' }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('network down'))
+    expect(toast.error).not.toHaveBeenCalledWith('That did not work.')
+    expect(screen.getByRole('button', { name: 'Accept' })).toBeEnabled()
   })
 
   it('a failed decision says so and frees the buttons again', async () => {

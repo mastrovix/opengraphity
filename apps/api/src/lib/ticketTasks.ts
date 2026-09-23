@@ -46,6 +46,7 @@ import { runQuery, runQueryOne } from '../graphql/resolvers/ci-utils.js'
 import { nextSequenceBlock, type SessionOrTx } from './sequence.js'
 import { firstTeamCypher, TEAM_NOW_PARAM } from './ticketTeamHistory.js'
 import { logger } from './logger.js'
+import { matchById } from './cypherLookups.js'
 
 /** Gli stati di un compito. Non è un vocabolario del cliente: è il suo ciclo di vita. */
 export const TASK_STATE = {
@@ -211,7 +212,7 @@ export async function creaCompito(task: TaskToCreate): Promise<string> {
        * motivo di conoscerla.
        */
       const riga = await runQueryOne<{ teamId: string | null }>(session, `
-        MATCH (ticket {id: $entityId, tenant_id: $tenantId})
+        ${matchById('ticket', { id: '$entityId' })}
         OPTIONAL MATCH (ticket)-[:FORM_REFERS_TO_TEAM {field: $campo}]->(diretta:Team {tenant_id: $tenantId})
         OPTIONAL MATCH (ticket)-[:FORM_REFERS_TO_CI {field: $campo}]->(:ConfigurationItem)-[:SUPPORTED_BY]->(delCi:Team {tenant_id: $tenantId})
         RETURN coalesce(diretta.id, delCi.id) AS teamId
@@ -259,8 +260,8 @@ export async function creaCompito(task: TaskToCreate): Promise<string> {
      * compito di tipo incident a una change.
      */
     const righe = await runQuery<Record<string, unknown>>(session, `
-      MATCH (ticket {id: $entityId, tenant_id: $tenantId})
-      WHERE $etichetta IN labels(ticket)
+      ${matchById('ticket', { id: '$entityId' })}
+      WITH ticket WHERE $etichetta IN labels(ticket)
       OPTIONAL MATCH (squadra:Team {id: $teamId, tenant_id: $tenantId})
       MERGE (ticket)-[:HAS_TASK]->(k:Task {tenant_id: $tenantId, task_key: $taskKey})
         ON CREATE SET
@@ -367,7 +368,8 @@ export async function compitiDaFareNelPasso(
   stepName: string,
 ): Promise<number> {
   const righe = await runQuery<{ quanti: unknown }>(session, `
-    MATCH (ticket {id: $entityId, tenant_id: $tenantId})-[:HAS_TASK]->(k:Task {tenant_id: $tenantId})
+    ${matchById('ticket', { id: '$entityId' })}
+    MATCH (ticket)-[:HAS_TASK]->(k:Task {tenant_id: $tenantId})
     WHERE k.step_name = $stepName AND k.state IN $daFare
     RETURN count(k) AS quanti
   `, { entityId, tenantId, stepName, daFare: [TASK_STATE.OPEN, TASK_STATE.WAITING] })
@@ -399,7 +401,8 @@ export async function annullaCompitiDelTicketConcluso(
   const session = getSession(undefined, 'WRITE')
   try {
     const righe = await runQuery<{ quanti: unknown }>(session, `
-      MATCH (ticket {id: $entityId, tenant_id: $tenantId})-[:HAS_TASK]->(k:Task {tenant_id: $tenantId})
+      ${matchById('ticket', { id: '$entityId' })}
+      MATCH (ticket)-[:HAS_TASK]->(k:Task {tenant_id: $tenantId})
       WHERE k.state IN $daFare
       SET k.state = $annullato, k.completed_at = $ora, k.completed_by = $attore, k.cancel_reason = $motivo
       RETURN count(k) AS quanti
@@ -419,7 +422,8 @@ export async function compitiDelTicket(tenantId: string, entityId: string): Prom
   const session = getSession(undefined, 'READ')
   try {
     const righe = await runQuery<Record<string, unknown>>(session, `
-      MATCH (ticket {id: $entityId, tenant_id: $tenantId})-[:HAS_TASK]->(k:Task {tenant_id: $tenantId})
+      ${matchById('ticket', { id: '$entityId' })}
+      MATCH (ticket)-[:HAS_TASK]->(k:Task {tenant_id: $tenantId})
       OPTIONAL MATCH (k)-[:ASSIGNED_TO_TEAM]->(team:Team)
       OPTIONAL MATCH (k)-[:ASSIGNED_TO]->(assignee:User)
       RETURN ${RITORNO_COMPITO}

@@ -20,6 +20,7 @@ import { Input, Select } from '@/components/ui/FormControls'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useRoles } from '@/hooks/useRoles'
+import { humanizeValue } from '@opengraphity/web-core'
 
 interface Props {
   actionType: string
@@ -148,7 +149,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
           */}
           {(priorityValues.length > 0 ? priorityValues : severityValues).map(v =>
             <option key={v} value={v} title={v}>
-              {labelOf(priorityValues.length > 0 ? 'priority' : 'severity', v) ?? (v.charAt(0).toUpperCase() + v.slice(1))}
+              {labelOf(priorityValues.length > 0 ? 'priority' : 'severity', v) ?? humanizeValue(v)}
             </option>
           )}
         </Select>

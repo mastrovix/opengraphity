@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
-import { X, Users } from 'lucide-react'
+import { X } from 'lucide-react'
 import { toast } from 'sonner'
-import { CREATE_INCIDENT, ASSIGN_INCIDENT_TO_TEAM } from '@/graphql/mutations'
+import { CREATE_INCIDENT } from '@/graphql/mutations'
 import { derivePriority, priorityCode, impactUrgencyFromPriority } from '@/lib/priority'
 import { usePriorityMatrix } from '@/hooks/usePriorityMatrix'
 import { GET_ALL_CIS, GET_TEAMS } from '@/graphql/queries'
@@ -23,8 +23,12 @@ import { customFieldsInput, missingCustomFields, useCreationCustomFieldDefs } fr
 import { showError } from '@/lib/showError'
 import { useCILabels } from '@/hooks/useCILabels'
 import { CIExclusionHint } from '@/components/ticket/CIExclusionHint'
+import { TeamPicker } from '@/components/pickers/TeamPicker'
+import { humanizeValue } from '@opengraphity/web-core'
+import { TEAM_TYPE } from '@/lib/teamVocabularies'
+import { useIncidentTeam } from './incidentTeam'
 
-interface CIRef { id: string; name: string; type: string; environment?: string }
+interface CIRef { id: string; name: string; type: string; environment?: string; supportGroup?: { id: string; name: string } | null }
 interface Team  { id: string; name: string }
 
 // ── Style helpers ─────────────────────────────────────────────────────────────
@@ -39,7 +43,7 @@ const inputBase: React.CSSProperties = {
   border: `1.5px solid ${colors.border}`, borderRadius: 8,
   fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', outline: 'none',
   backgroundColor: colors.white, boxSizing: 'border-box',
-  fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", transition: 'border-color 150ms',
+  fontFamily: 'var(--font-family)', transition: 'border-color 150ms',
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -70,11 +74,10 @@ export function CreateIncidentPage() {
   }, [matrix])
   const priority = derivePriority(matrix, impact, urgency) ?? ''
   const [description, setDescription] = useState('')
-  const [selectedTeam,      setSelectedTeam]      = useState<{ id: string; name: string } | null>(null)
-  const [teamSearch,        setTeamSearch]        = useState('')
-  const [teamDropdownOpen,  setTeamDropdownOpen]  = useState(false)
   const [ciSearch,    setCiSearch]    = useState('')
   const [selectedCIs, setSelectedCIs] = useState<CIRef[]>([])
+  // The team: the CI's support group, unless chosen by hand (incidentTeam.ts).
+  const { team, fromCI, prefilled, choose: chooseTeam, suggest: suggestTeam } = useIncidentTeam(selectedCIs)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   // Campi personalizzati del cliente (verifica «Cosa resta cablato», ondata 4).
@@ -96,11 +99,6 @@ export function CreateIncidentPage() {
 
   const ciResults     = (ciData?.allCIs?.items ?? [])
     .filter(ci => !selectedCIs.find(s => s.id === ci.id))
-  const teams         = teamsData?.teams ?? []
-  const filteredTeams = teams.filter(t => t.name.toLowerCase().includes(teamSearch.toLowerCase()))
-  const [assignToTeam] = useMutation(ASSIGN_INCIDENT_TO_TEAM, {
-    onError: (err) => showError(err, t('toast.incident.teamAssignmentFailed', { error: err.message })),
-  })
 
   const checkSlaCoverage = useSlaCoverageCheck()
   const [checkingSla, setCheckingSla] = useState(false)
@@ -117,12 +115,11 @@ export function CreateIncidentPage() {
      * siano le sue variabili.
      */
     refetchQueries: ['GetIncidents'],
-    onCompleted: async (data) => {
-      if (selectedTeam) {
-        await assignToTeam({ variables: { id: data.createIncident.id, teamId: selectedTeam.id } })
-      }
+    // The team travels with the creation (input.teamId): one assignment, one note.
+    onCompleted: (data) => {
       toast.success(t('toast.incident.created'))
-      navigate('/incidents', { state: { refresh: true } })
+      // Straight to the new incident, as a new change does: it is where the work starts.
+      navigate(`/incidents/${data.createIncident.id}`)
     },
     onError: (err) => showError(err),
   })
@@ -194,7 +191,7 @@ export function CreateIncidentPage() {
               >
                 <option value="">{t('pages.createIncident.selectCategory')}</option>
                 {categoryValues.map(c => (
-                  <option key={c} value={c}>{labelOf('category', c) ?? (c.charAt(0).toUpperCase() + c.slice(1))}</option>
+                  <option key={c} value={c}>{labelOf('category', c) ?? humanizeValue(c)}</option>
                 ))}
               </select>
             )}
@@ -276,8 +273,9 @@ export function CreateIncidentPage() {
               if (iu) { setImpact(iu.impact); setUrgency(iu.urgency) }
               setCategory(cat)
               if (teamName) {
-                const team = teamsData?.teams.find(t => t.name === teamName)
-                if (team) { setSelectedTeam({ id: team.id, name: team.name }); setTeamSearch(team.name) }
+                // Only a suggestion: it never replaces the CI's support group or a team chosen by hand.
+                const suggested = teamsData?.teams.find(t => t.name === teamName)
+                if (suggested) suggestTeam({ id: suggested.id, name: suggested.name })
               }
               setFieldErrors(p => { const n = { ...p }; delete n['category']; return n })
             }}
@@ -347,67 +345,31 @@ export function CreateIncidentPage() {
             )}
           </div>
 
-          {/* TEAM */}
+          {/* TEAM — D10: the support teams, searchable, full names (it listed every team of the tenant). */}
           <div style={{ marginBottom: 20 }}>
             <label htmlFor={ids.teamSearch} style={fieldLabel}>
               {t('detail.team')}{' '}
               <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>{t('common.optional')}</span>
             </label>
-
-            {/* Tag team selezionato */}
-            {selectedTeam && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: 'var(--color-success-bg)', border: `1px solid ${palette.success.border}`, color: palette.success.text, fontSize: 'var(--font-size-body)' }}>
-                  {selectedTeam.name}
-                  <button
-                    type="button"
-                    onClick={() => { setSelectedTeam(null); setTeamSearch('') }}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: palette.success.text, padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center', opacity: 0.7 }}
-                  >
-                    <X size={12} />
-                  </button>
-                </span>
-              </div>
+            <TeamPicker
+              role={TEAM_TYPE.SUPPORT}
+              inputId={ids.teamSearch}
+              label={t('detail.team')}
+              value={team}
+              onChange={chooseTeam}
+              // With a CI that has a support group «no team» is not a choice: the incident goes to a team.
+              {...(fromCI ? {} : { clearLabel: t('pickers.teams.none') })}
+              style={inputBase}
+            />
+            {prefilled && fromCI && (
+              <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>
+                {t('pages.createIncident.teamFromCI', { ci: fromCI.name })}
+              </p>
             )}
-
-            {/* Search input */}
-            {!selectedTeam && (
-              <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 'var(--font-size-card-title)', pointerEvents: 'none', color: 'var(--color-slate-light)' }}>
-                  🔍
-                </span>
-                <input
-                  id={ids.teamSearch}
-                  type="text"
-                  value={teamSearch}
-                  onChange={e => { setTeamSearch(e.target.value); setTeamDropdownOpen(true) }}
-                  onFocus={() => setTeamDropdownOpen(true)}
-                  onBlur={() => setTimeout(() => setTeamDropdownOpen(false), 150)}
-                  placeholder={t('pages.createTicket.searchTeam')}
-                  style={{ ...inputBase, paddingLeft: 36 }}
-                  onFocusCapture={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
-                  onBlurCapture={e  => { (e.currentTarget as HTMLElement).style.borderColor = colors.border }}
-                />
-
-                {/* Dropdown */}
-                {teamDropdownOpen && filteredTeams.length > 0 && (
-                  <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, background: colors.white, border: `1px solid ${colors.border}`, borderRadius: 8, boxShadow: `0 4px 12px ${alpha.black10}`, maxHeight: 200, overflowY: 'auto', zIndex: 20 }}>
-                    {filteredTeams.map(tm => (
-                      <button
-                        type="button"
-                        key={tm.id}
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => { setSelectedTeam(tm); setTeamSearch(''); setTeamDropdownOpen(false) }}
-                        className="hover-bg"
-                        style={{ width: '100%', background: 'none', border: 'none', borderRadius: 0, font: 'inherit', color: 'inherit', textAlign: 'left', padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${palette.neutral.borderLight}` }}
-                      >
-                        <Users size={14} color="var(--color-slate-light)" />
-                        <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{tm.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+            {selectedCIs.length > 0 && !fromCI && team === null && (
+              <p role="note" style={{ margin: '4px 0 0', fontSize: 'var(--font-size-label)', color: palette.warning.text }}>
+                {t('pages.createIncident.noSupportGroup', { count: selectedCIs.length })}
+              </p>
             )}
           </div>
 
@@ -476,7 +438,7 @@ export function CreateIncidentPage() {
                   entityType: 'incident',
                   priority, priorityLabel: labelOf('priority', priority) ?? priority,
                   category: category || null, categoryLabel: category ? (labelOf('category', category) ?? category) : null,
-                  teamId: selectedTeam?.id ?? null, teamName: selectedTeam?.name ?? null,
+                  teamId: team?.id ?? null, teamName: team?.name ?? null,
                 }).then((decisione) => {
                   if (decisione === 'cancelled') return
                   void createIncident({
@@ -489,6 +451,8 @@ export function CreateIncidentPage() {
                         description: description.trim() || undefined,
                         affectedCIIds: selectedCIs.map(ci => ci.id),
                         customFields: customFieldsInput(customDefs, customValues),
+                        // The team that takes the incident: the CI's support group or the one chosen.
+                        ...(team ? { teamId: team.id } : {}),
                         ...(decisione === 'accepted' ? { acknowledgeNoSla: true } : {}),
                       },
                     },

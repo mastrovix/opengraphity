@@ -289,7 +289,7 @@ export function buildBaseSDL(): string {
     triageSuggestion(title: String!, description: String, ciIds: [ID!]): TriageSuggestion!
     # Post-incident AI (explicit, drafts only)
     resolutionDraft(incidentId: ID!): ResolutionDraft!
-    problemCandidates: [ProblemCandidate!]!
+    problemCandidates: ProblemCandidatesResult!
     whatIfCompare(scenarios: [WhatIfScenarioInput!]!): [WhatIfResult!]!
 
     # Discovery / Sync
@@ -506,6 +506,8 @@ export function buildBaseSDL(): string {
     """
     setServiceRequestFormAnswer(requestId: ID!, field: String!, value: String): ServiceRequest!
     assignServiceRequestToUser(id: ID!, userId: ID): ServiceRequest!
+    """Moves the request to another team (D56): its assignee is detached if not a member."""
+    assignServiceRequestToTeam(id: ID!, teamId: ID!): ServiceRequest!
 
     # CMDB
     updateCIFields(id: ID!, input: UpdateCIFieldsInput!): CIBase!
@@ -785,6 +787,8 @@ export function buildBaseSDL(): string {
     createTicket(title: String!, description: String, priority: String, category: String!, customFields: [CustomFieldInput!]): MyTicket!
     addTicketComment(ticketId: ID!, body: String!): EntityComment!
     reopenTicket(ticketId: ID!): MyTicket!
+    """The requester confirms the resolution: the ticket is closed now instead of at the end of its timer (D51)."""
+    confirmTicketResolution(ticketId: ID!): MyTicket!
     "Quali severità del vocabolario offrire nel portale e con che parole (admin)."
     setPortalSeverityOptions(options: [PortalSeverityOptionInput!]!): [PortalSeverityOption!]!
 

@@ -122,8 +122,8 @@ describe('createIncident', () => {
     // collegamenti e `createIncident` lo LEGGE — prima nessuno lo guardava e un
     // incident poteva nascere senza CI, in silenzio.
     primeIncidentRow({ id: 'inc-1', title: 'Test incident', severity: 'high', status: 'open' })
-    // incident-number progressive count
-    vi.mocked(runQueryOne).mockResolvedValue({ cnt: 0 })
+    // incident-number progressive count; no support group on the CI (the owner's rule is pinned in incidentService.more.test.ts)
+    vi.mocked(runQueryOne).mockImplementation((async (_s: unknown, cypher: string) => (cypher.includes('SUPPORTED_BY') ? null : { cnt: 0 })) as never)
     // Revisione totale · B-7: `incident.created` rilegge il payload dal grafo
     // (prima ciName e assignedTo erano «—» scritti a mano).
     const payloadRow = { get: (k: string) => (({ id: 'inc-1', title: 'Test incident', severity: 'high', status: 'open', ciName: 'srv-1', assignedTo: 'Mario' }) as Record<string, string>)[k] }

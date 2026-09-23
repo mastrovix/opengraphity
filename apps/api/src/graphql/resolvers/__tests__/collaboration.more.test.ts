@@ -31,6 +31,7 @@ vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undef
 vi.mock('../../../lib/roles.js', () => ({
   roleHasPermission: async (_t: string, role: string, permission: string) =>
     (perms(role as never) as ReadonlySet<string>).has(permission),
+  tenantRoles: vi.fn(),
 }))
 vi.mock('../../../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -51,6 +52,7 @@ vi.mock('../../../lib/emailTemplates.js', () => ({
 }))
 
 const { collaborationResolvers, notifyMentions, notifyWatchers, getEntityTitle } = await import('../collaboration.js')
+const { tenantRoles } = await import('../../../lib/roles.js')
 const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { sseManager, sendTenantEmail, loadNotificationLocale } = await import('@opengraphity/notifications')
 const { watcherNotification } = await import('../../../lib/emailTemplates.js')
@@ -74,7 +76,35 @@ describe('searchUsers', () => {
     await expect(Q.searchUsers(null, { search: 'bo' }, asRole('operator'))).resolves.toEqual([{ id: 'u-2', name: 'Bob', email: 'bob@x' }])
     const [, cypher, params] = vi.mocked(runQuery).mock.calls[0]!
     expect(cypher).toContain('coalesce(u.active, true) = true')
-    expect(params).toEqual({ tenantId: 'tenant-1', search: 'bo', limit: 5 })
+    expect(params).toEqual({ tenantId: 'tenant-1', search: 'bo', limit: 5, roles: null })
+  })
+
+  /*
+   * «Who can do this job» (tour of 23 Sep 2026): the change-owner picker
+   * downloaded the whole organization — 3,001 people on the demo — to keep the
+   * ones whose role has «Changes: work». The server now filters by the roles
+   * that grant the permission, as the user types.
+   */
+  it('with a permission, only the people whose role grants it', async () => {
+    vi.mocked(tenantRoles).mockResolvedValueOnce(new Map([
+      ['admin', { key: 'admin', permissions: new Set(['change.write', 'incident.write']) }],
+      ['operator', { key: 'operator', permissions: new Set(['change.write']) }],
+      ['end_user', { key: 'end_user', permissions: new Set(['portal.submit']) }],
+    ]) as never)
+    await Q.searchUsers(null, { search: 'an', permission: 'change.write' }, asRole('operator'))
+    const [, cypher, params] = vi.mocked(runQuery).mock.calls[0]!
+    expect(cypher).toContain('($roles IS NULL OR u.role IN $roles)')
+    expect((params as { roles: string[] }).roles).toEqual(['admin', 'operator'])
+  })
+
+  it('a permission no role grants answers nobody, without asking the graph', async () => {
+    vi.mocked(tenantRoles).mockResolvedValueOnce(new Map([['end_user', { key: 'end_user', permissions: new Set(['portal.submit']) }]]) as never)
+    await expect(Q.searchUsers(null, { search: 'an', permission: 'change.write' }, asRole('operator'))).resolves.toEqual([])
+    expect(vi.mocked(runQuery)).not.toHaveBeenCalled()
+  })
+
+  it('an unknown permission is an error, not «nobody»', async () => {
+    await expect(Q.searchUsers(null, { search: 'an', permission: 'change.fly' }, asRole('operator'))).rejects.toMatchObject({ extensions: { code: 'BAD_USER_INPUT' } })
   })
 
   it('caps the page at 20 whatever the client asks', async () => {
@@ -114,7 +144,7 @@ describe('watch / unwatch / add / remove', () => {
     const [, cypher, params] = vi.mocked(runQuery).mock.calls[0]!
     // Both ends are matched in the tenant: no watching another customer's ticket.
     expect(cypher).toContain('MATCH (u:User {id: $userId, tenant_id: $tenantId})')
-    expect(cypher).toContain('MATCH (e {id: $entityId, tenant_id: $tenantId})')
+    expect(cypher).toContain('MATCH (e:Incident {id: $entityId, tenant_id: $tenantId})')
     expect(params).toMatchObject({ userId: 'user-1', tenantId: 'tenant-1', entityId: 'inc-1' })
     expect(audit).toHaveBeenCalledWith(expect.anything(), 'entity.watched', 'incident', 'inc-1')
   })

@@ -31,6 +31,7 @@ const fake = vi.hoisted(() => ({
   lockHeld: new Set<string>(),
   schedulers: [] as unknown[][],
   workers: [] as Array<{ name: string; processor: unknown }>,
+  audits: [] as Array<{ ctx: Record<string, unknown>; action: string; entityId: string; details: Record<string, unknown> }>,
 }))
 
 vi.mock('@opengraphity/neo4j', () => ({
@@ -57,6 +58,11 @@ vi.mock('../../lib/bullmq.js', () => ({
   createWorker: (name: string, processor: unknown) => { fake.workers.push({ name, processor }); return { name } },
 }))
 vi.mock('../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
+vi.mock('../../lib/audit.js', () => ({
+  audit: async (ctx: Record<string, unknown>, action: string, _type: string, entityId: string, details: Record<string, unknown>) => {
+    fake.audits.push({ ctx, action, entityId, details })
+  },
+}))
 vi.mock('../../lib/proposalAnalysts.js', () => ({
   analizzaConfigurazione: (t: string) => (fake.analysts['config'] ?? (async () => []))(t),
 }))
@@ -86,7 +92,7 @@ const proposal = (tenantId: string, kind: string) => ({ tenantId, kind })
 beforeEach(() => {
   fake.tenants = ['t-a', 't-b']; fake.tenantQueries = []; fake.analysts = {}; fake.written = []
   fake.writeResult = () => ({ scritta: true }); fake.expired = 0; fake.woken = 0; fake.sweeps = []
-  fake.lockHeld = new Set(); fake.schedulers = []; fake.workers = []
+  fake.lockHeld = new Set(); fake.schedulers = []; fake.workers = []; fake.audits = []
   vi.clearAllMocks()
 })
 
@@ -159,6 +165,25 @@ describe('proposalScannerProcessor', () => {
     await proposalScannerProcessor(job({}))
     expect(seen).toEqual(['t-b'])
     expect(vi.mocked(logger.info)).toHaveBeenCalledWith({ module: 'proposals', tenantId: 't-a' }, 'proposal-scanner: already running, skipped')
+    // Only the tenant analysed here gets a run entry: the other run writes its own.
+    expect(fake.audits.map((a) => a.entityId)).toEqual(['t-b'])
+  })
+
+  it('every tenant analysed leaves the run entry the page reads, as the product (tour of 23 Sep 2026)', async () => {
+    fake.analysts = { config: async (t) => (t === 't-a' ? [proposal(t, 'x')] : []) }
+    await proposalScannerProcessor(job({}))
+    expect(fake.audits).toEqual([
+      { ctx: expect.objectContaining({ tenantId: 't-a', userId: 'system' }), action: 'proposal.analysis_run', entityId: 't-a',
+        details: { created: 1, skipped: {}, source: 'nightly' } },
+      // Nothing to propose is still a run: the page must not say «never ran».
+      { ctx: expect.objectContaining({ tenantId: 't-b', userId: 'system' }), action: 'proposal.analysis_run', entityId: 't-b',
+        details: { created: 0, skipped: {}, source: 'nightly' } },
+    ])
+  })
+
+  it('a run asked for one tenant through the queue says so', async () => {
+    await proposalScannerProcessor(job({ tenantId: 't-z' }))
+    expect(fake.audits.map((a) => [a.entityId, a.details['source']])).toEqual([['t-z', 'queued']])
   })
 
   it('a failing tenant does not stop the others, and the run fails naming it', async () => {
@@ -172,6 +197,8 @@ describe('proposalScannerProcessor', () => {
     await expect(proposalScannerProcessor(job({}))).rejects.toThrow('proposal-scanner: 2 tenant(s) failed: t-a, t-b')
     // t-c still got its proposal written.
     expect(fake.written.some((p) => p['tenantId'] === 't-c')).toBe(true)
+    // A tenant whose analysis failed has no run entry.
+    expect(fake.audits.map((a) => a.entityId)).toEqual(['t-c'])
   })
 })
 

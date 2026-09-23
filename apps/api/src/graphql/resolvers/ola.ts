@@ -8,6 +8,7 @@ import { audit } from '../../lib/audit.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import type { TeamSourcing } from '../../lib/teamSourcing.js'
 import { calendarFor, getTenantTimezone } from '@opengraphity/sla'
+import { optionalTimeZone } from '../../lib/tenantTimezone.js'
 import { evaluateOLATeamTickets, OLA_CONCLUDED_FIELD, olaConcludedTicketsCypher, olaEntityTypes, olaTeamMeasure, olaTicketFactsCypher, type OLATeamMeasure, type OLATicketFacts } from '../../lib/olaAttainment.js'
 import { loadChangeUnits, type OLAChangeUnit } from '../../lib/olaChangeUnits.js'
 
@@ -32,6 +33,7 @@ function mapOLA(p: Props, teamName: string | null) {
     resolveMinutes:  toNumber(p['resolve_minutes']),
     businessHours:   (p['business_hours']  ?? false) as boolean,
     calendarId:      (p['calendar_id']     ?? null) as string | null,
+    timezone:        (p['timezone']        ?? null) as string | null,
     complianceTarget:  p['compliance_target']  == null ? null : Number(p['compliance_target']),
     complianceWarning: p['compliance_warning'] == null ? null : Number(p['compliance_warning']),
     partyType:       (p['party_type']      ?? null) as string | null,
@@ -101,7 +103,7 @@ export async function ticketOLAs(_: unknown, args: { entityType: string; entityI
       const resolveMinutes = toNumber(o['resolve_minutes'])
       const businessHours = o['business_hours'] === true
       const calendar = await calendarFor(ctx.tenantId, { name: o['name'] as string, businessHours, calendarId: (o['calendar_id'] ?? null) as string | null })
-      const rule = { teamId: (o['team_id'] ?? null) as string | null, createdAt: (o['created_at'] ?? null) as string | null, resolveMinutes, businessHours, calendar }
+      const rule = { teamId: (o['team_id'] ?? null) as string | null, createdAt: (o['created_at'] ?? null) as string | null, resolveMinutes, businessHours, calendar, timezone: (o['timezone'] ?? null) as string | null }
       const row = (m: OLATeamMeasure, facts: OLATicketFacts, unit: OLAChangeUnit | null) => ({
         contractId: o['id'] as string, name: o['name'] as string, type: o['type'] as string,
         teamName, resolveMinutes, calendarId: (o['calendar_id'] ?? null) as string | null,
@@ -144,8 +146,8 @@ export async function slaReport(_: unknown, args: { windowDays?: number }, ctx: 
     // resolved after the breach counts as breached, not met (D-02). A closed
     // SLA (resolved_at set) is never "paused"/"open on track".
     const complianceRows = await runQuery<Props>(session, `
-      MATCH (e {tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
-      WHERE (e:Incident OR e:Problem OR e:ServiceRequest) AND s.started_at >= $cutoff
+      MATCH (e)-[:HAS_SLA]->(s:SLAStatus {tenant_id: $tenantId})
+      WHERE s.started_at >= $cutoff AND (e:Incident OR e:Problem OR e:ServiceRequest)
       WITH s,
         CASE WHEN s.resolve_met = true THEN 1 ELSE 0 END AS met,
         CASE WHEN s.breached = true AND coalesce(s.resolve_met, false) = false THEN 1 ELSE 0 END AS breached,
@@ -171,8 +173,8 @@ export async function slaReport(_: unknown, args: { windowDays?: number }, ctx: 
 
     // ── By priority (SLA tier severity) ───────────────────────────────────────
     const byPriorityRows = await runQuery<Props>(session, `
-      MATCH (e {tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
-      WHERE (e:Incident OR e:Problem OR e:ServiceRequest) AND s.started_at >= $cutoff
+      MATCH (e)-[:HAS_SLA]->(s:SLAStatus {tenant_id: $tenantId})
+      WHERE s.started_at >= $cutoff AND (e:Incident OR e:Problem OR e:ServiceRequest)
       WITH coalesce(s.tier_severity, 'unknown') AS priority,
         CASE WHEN s.resolve_met = true THEN 1 ELSE 0 END AS met,
         CASE WHEN s.breached = true AND coalesce(s.resolve_met, false) = false THEN 1 ELSE 0 END AS breached
@@ -194,8 +196,8 @@ export async function slaReport(_: unknown, args: { windowDays?: number }, ctx: 
     // registrato alla creazione. Gli SLA creati prima di questi campi non hanno
     // origine: finiscono in una riga loro, non vengono attribuiti a indovinare.
     const byPolicyRows = await runQuery<Props>(session, `
-      MATCH (e {tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
-      WHERE (e:Incident OR e:Problem OR e:ServiceRequest) AND s.started_at >= $cutoff
+      MATCH (e)-[:HAS_SLA]->(s:SLAStatus {tenant_id: $tenantId})
+      WHERE s.started_at >= $cutoff AND (e:Incident OR e:Problem OR e:ServiceRequest)
       OPTIONAL MATCH (p:SLAPolicyNode {id: s.policy_id, tenant_id: $tenantId})
       WITH s.policy_id AS policyId,
         coalesce(p.name, s.policy_name) AS policyName,
@@ -267,6 +269,7 @@ export async function slaReport(_: unknown, args: { windowDays?: number }, ctx: 
       }
       const { evaluated, met: cMet, breached: cBreached, inferred } = evaluateOLATeamTickets(tickets, {
         teamId: (o['team_id'] ?? null) as string | null, createdAt: (o['created_at'] ?? null) as string | null, resolveMinutes, businessHours, calendar,
+        timezone: (o['timezone'] ?? null) as string | null,
       }, timezone)
 
       ola.push({
@@ -301,6 +304,8 @@ export async function slaReport(_: unknown, args: { windowDays?: number }, ctx: 
 interface OLAInput {
   type?: string; name?: string; description?: string; entityType?: string
   responseMinutes?: number; resolveMinutes?: number; calendarId?: string | null
+  /** The contract's own zone; null or empty = the organization's (tour of 23 Sep 2026). */
+  timezone?: string | null
   complianceTarget?: number; complianceWarning?: number
   partyType?: string; teamId?: string; enabled?: boolean
 }
@@ -378,6 +383,7 @@ export async function createOLAContract(_: unknown, args: { input: OLAInput }, c
 
   const objective = assertComplianceObjective(input.complianceTarget, input.complianceWarning)
   const calendar = await calendarChoice(ctx.tenantId, input.calendarId)
+  const timezone = optionalTimeZone(input.timezone)
   const id = uuidv4(); const now = new Date().toISOString()
   return withSession(async (session) => {
     await assertResponsabile(session, ctx.tenantId, input.partyType ?? 'team', input.teamId)
@@ -385,7 +391,7 @@ export async function createOLAContract(_: unknown, args: { input: OLAInput }, c
       CREATE (o:OLAContract {
         id: $id, tenant_id: $tenantId, type: $type, name: $name, description: $description,
         entity_type: $entityType, response_minutes: $responseMinutes, resolve_minutes: $resolveMinutes,
-        business_hours: $businessHours, calendar_id: $calendarId, party_type: $partyType, party_name: $partyName,
+        business_hours: $businessHours, calendar_id: $calendarId, timezone: $timezone, party_type: $partyType, party_name: $partyName,
         compliance_target: $complianceTarget, compliance_warning: $complianceWarning,
         team_id: $teamId, enabled: true, created_at: $now
       })
@@ -396,7 +402,7 @@ export async function createOLAContract(_: unknown, args: { input: OLAInput }, c
       id, tenantId: ctx.tenantId, type: input.type, name,
       description: input.description ?? null, entityType: input.entityType,
       responseMinutes: input.responseMinutes, resolveMinutes: input.resolveMinutes,
-      businessHours: calendar.business_hours, calendarId: calendar.calendar_id, partyType: input.partyType ?? null,
+      businessHours: calendar.business_hours, calendarId: calendar.calendar_id, timezone, partyType: input.partyType ?? null,
       complianceTarget: objective.target, complianceWarning: objective.warning,
       // Il responsabile è sempre un team, citato per id: nessun nome copiato
       // sul contratto (lo risolve `teamName` alla lettura).
@@ -442,6 +448,7 @@ export async function updateOLAContract(_: unknown, args: { id: string; input: O
   if (input.responseMinutes !== undefined) sets['response_minutes'] = input.responseMinutes
   if (input.resolveMinutes !== undefined)  sets['resolve_minutes']  = input.resolveMinutes
   if (input.calendarId !== undefined) Object.assign(sets, await calendarChoice(ctx.tenantId, input.calendarId))
+  if (input.timezone !== undefined)        sets['timezone']         = optionalTimeZone(input.timezone)
   if (input.complianceTarget !== undefined || input.complianceWarning !== undefined) {
     const current = await withSession((session) => runQueryOne<{ target: unknown; warning: unknown }>(session,
       'MATCH (o:OLAContract {id: $id, tenant_id: $tenantId}) RETURN o.compliance_target AS target, o.compliance_warning AS warning',

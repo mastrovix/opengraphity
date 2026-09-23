@@ -16,6 +16,7 @@ import { showError } from '@/lib/showError'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { AlertTriangle, ArrowLeft, Plus, Save, ShieldAlert, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
@@ -50,6 +51,12 @@ export interface AnomalyRuleSettings {
 export interface AnomalyRuleSpec {
   ciTypes: boolean; relations: boolean; incidentSeverities: boolean; forbidden: boolean
   thresholdMin: number | null; thresholdMax: number | null
+  /**
+   * No relation chosen = every relation between CIs of the tenant (D49, tour
+   * of 23 Sep 2026: «isolated cluster» followed four relation types only).
+   * The server says which rules read an empty list that way.
+   */
+  allRelationsWhenEmpty: boolean
 }
 
 interface AnomalyRule extends AnomalyRuleSettings {
@@ -74,7 +81,7 @@ export function ruleDraftProblem(draft: AnomalyRuleSettings, spec: AnomalyRuleSp
     const n = draft.threshold
     if (n === null || !Number.isInteger(n) || n < spec.thresholdMin || n > spec.thresholdMax) return 'pages.anomalyRules.problemThreshold'
   }
-  if (spec.relations && draft.relations.length === 0) return 'pages.anomalyRules.problemRelations'
+  if (spec.relations && draft.relations.length === 0 && !spec.allRelationsWhenEmpty) return 'pages.anomalyRules.problemRelations'
   if (spec.incidentSeverities && draft.incidentSeverities.length === 0) return 'pages.anomalyRules.problemSeverities'
   if (spec.forbidden) {
     if (draft.forbidden.length === 0) return 'pages.anomalyRules.problemForbiddenEmpty'
@@ -130,6 +137,12 @@ function Chips({ values, selected, labelOf, onChange, label }: {
   )
 }
 
+/** Under the relations: what the choice means — «all relations» is said, never shown as a selection. */
+function relationsHint(spec: AnomalyRuleSpec, chosen: number, t: TFunction): string {
+  if (!spec.allRelationsWhenEmpty) return t('pages.anomalyRules.relationsHint')
+  return chosen === 0 ? t('pages.anomalyRules.allRelations') : t('pages.anomalyRules.someRelations', { count: chosen })
+}
+
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <LabelledField
@@ -149,7 +162,8 @@ function RuleCard({ rule, options }: { rule: AnomalyRule; options: Options }) {
   const [draft, setDraft] = useState<AnomalyRuleSettings | null>(null)
   const current = draft ?? settingsOf(rule)
   const set = (patch: Partial<AnomalyRuleSettings>) => setDraft({ ...current, ...patch })
-  const problem = ruleDraftProblem(current, rule.spec)
+  const spec = rule.spec
+  const problem = ruleDraftProblem(current, spec)
   /**
    * La bozza si azzera QUANDO i dati nuovi sono arrivati (revisione totale ·
    * G-ANO-9): `onCompleted` la buttava subito e il refetch non era atteso,
@@ -239,7 +253,7 @@ function RuleCard({ rule, options }: { rule: AnomalyRule; options: Options }) {
         )}
 
         {rule.spec.relations && (
-          <Field label={t('pages.anomalyRules.relations')} hint={t('pages.anomalyRules.relationsHint')}>
+          <Field label={t('pages.anomalyRules.relations')} hint={relationsHint(spec, current.relations.length, t)}>
             <Chips values={options.relations} selected={current.relations} labelOf={(v) => v} onChange={(v) => set({ relations: v })} label={t('pages.anomalyRules.relations')} />
           </Field>
         )}

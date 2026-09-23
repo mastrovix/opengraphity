@@ -22,7 +22,7 @@
 import { getSession } from '@opengraphity/neo4j'
 import {
   NOTIFICATION_TARGET_ALL, NOTIFICATION_TARGET_ASSIGNEE, NOTIFICATION_TARGET_TEAM,
-  NOTIFICATION_BASE_TARGETS, isNotificationTarget, notificationTargetRole,
+  NOTIFICATION_BASE_TARGETS, isNotificationTarget, notificationTargetRole, matchById,
 } from '@opengraphity/types'
 
 export interface NotificationRecipient {
@@ -36,7 +36,8 @@ export interface NotificationRecipient {
 
 /** L'assegnatario dell'entità dell'evento. */
 export const ASSIGNEE_RECIPIENTS_CYPHER = `
-  MATCH (e {id: $entityId, tenant_id: $tenantId})-[:ASSIGNED_TO]->(u:User {tenant_id: $tenantId})
+  ${matchById('e', { labels: ['Incident', 'Problem', 'Change', 'ServiceRequest', 'KBArticle', 'Task', 'AssessmentTask', 'DeployPlanTask', 'ValidationTest', 'ReviewTask', 'ConfigurationItem'], id: '$entityId' })}
+  MATCH (e)-[:ASSIGNED_TO]->(u:User {tenant_id: $tenantId})
   WHERE coalesce(u.active, true) = true
   RETURN DISTINCT u.id AS id, u.email AS email, coalesce(u.notifications_enabled, true) AS notificationsEnabled`
 
@@ -46,7 +47,8 @@ export const ASSIGNEE_RECIPIENTS_CYPHER = `
  * `:User` su alcune entità (le Change), perciò il vincolo `:Team` è esplicito.
  */
 export const TEAM_RECIPIENTS_CYPHER = `
-  MATCH (e {id: $entityId, tenant_id: $tenantId})-[:ASSIGNED_TO_TEAM|OWNED_BY]->(t:Team {tenant_id: $tenantId})
+  ${matchById('e', { labels: ['Incident', 'Problem', 'Change', 'ServiceRequest', 'KBArticle', 'Task', 'AssessmentTask', 'DeployPlanTask', 'ValidationTest', 'ReviewTask', 'ConfigurationItem'], id: '$entityId' })}
+  MATCH (e)-[:ASSIGNED_TO_TEAM|OWNED_BY]->(t:Team {tenant_id: $tenantId})
   OPTIONAL MATCH (t)<-[:MEMBER_OF]-(m:User {tenant_id: $tenantId})
   OPTIONAL MATCH (t)-[:MANAGED_BY]->(g:User {tenant_id: $tenantId})
   WITH collect(DISTINCT m) + collect(DISTINCT g) AS people

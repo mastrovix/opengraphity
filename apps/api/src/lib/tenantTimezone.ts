@@ -43,6 +43,39 @@ export function assertTimeZone(v: unknown): string {
   return v
 }
 
+/**
+ * The time zone a rule chooses for itself — an SLA policy, an OLA/UC
+ * contract: null when it chooses none, and then it counts in the
+ * organization's, read when the rule is applied (so changing the
+ * organization's zone moves it too). An empty string is «none»; anything else
+ * must be a real IANA zone.
+ */
+export function optionalTimeZone(value: unknown): string | null {
+  if (value == null) return null
+  if (typeof value === 'string' && value.trim() === '') return null
+  return assertTimeZone(typeof value === 'string' ? value.trim() : value)
+}
+
+/**
+ * An instant as wall-clock time in a zone, «2026-09-23 06:34».
+ *
+ * The form the AI drafts receive (tour of 23 Sep 2026, D14): given raw UTC
+ * instants next to a description written in local time, the model wrote
+ * «taken in progress at 04:20» before «opened at 04:34». A missing instant
+ * stays missing; one that is not a date is an error, not a guess.
+ */
+export function localDateTimeIn(iso: string | null | undefined, timeZone: string): string | null {
+  if (iso == null || iso === '') return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) throw new Error(`localDateTimeIn: "${iso}" is not an instant`)
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone,
+    }).formatToParts(d).map((p) => [p.type, p.value]),
+  )
+  return `${parts['year']}-${parts['month']}-${parts['day']} ${parts['hour']}:${parts['minute']}`
+}
+
 export async function tenantTimezone(tenantId: string): Promise<string | null> {
   const session = getSession()
   try {

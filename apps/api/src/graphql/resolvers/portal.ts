@@ -28,6 +28,14 @@ import {
 } from '../../lib/portalSeverityOptions.js'
 import { notifyWatchers } from './collaboration.js'
 import { logger } from '../../lib/logger.js'
+import { matchById } from '../../lib/cypherLookups.js'
+
+/**
+ * The tickets the person opened: incidents and requests, one index seek per
+ * label (`created_by` is filtered on the tenant's nodes of each label). A
+ * pattern without a label here scanned every node of the database (D25).
+ */
+const MY_TICKETS = `CALL () { MATCH (e:Incident {tenant_id: $tenantId, created_by: $userId}) RETURN e UNION MATCH (e:ServiceRequest {tenant_id: $tenantId, created_by: $userId}) RETURN e }`
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -221,9 +229,9 @@ async function myTickets(
 
     const result = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (e {tenant_id: $tenantId, created_by: $userId})
-        WHERE (e:Incident OR e:ServiceRequest)
-        ${whereClause.replace('WHERE', 'AND')}
+        ${MY_TICKETS}
+        WITH e
+        ${whereClause}
         OPTIONAL MATCH (e)-[:ASSIGNED_TO_TEAM]->(t:Team)
         WITH e, t
         ORDER BY e.updated_at DESC
@@ -234,9 +242,9 @@ async function myTickets(
 
     const countResult = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (e {tenant_id: $tenantId, created_by: $userId})
-        WHERE (e:Incident OR e:ServiceRequest)
-        ${whereClause.replace('WHERE', 'AND')}
+        ${MY_TICKETS}
+        WITH e
+        ${whereClause}
         RETURN count(e) AS total
       `, params),
     )
@@ -267,10 +275,10 @@ async function myTicket(
     // Incident o richiesta: il portale apre entrambi (H-2).
     const ticketResult = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (e {id: $id, tenant_id: $tenantId})
-        WHERE e:Incident OR e:ServiceRequest
+        ${matchById('e', { labels: ['Incident', 'ServiceRequest'], id: '$id' })}
         OPTIONAL MATCH (e)-[:ASSIGNED_TO_TEAM]->(t:Team)
-        RETURN properties(e) AS props, labels(e) AS labels, t.name AS assignedTeam
+        OPTIONAL MATCH (e)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+        RETURN properties(e) AS props, labels(e) AS labels, t.name AS assignedTeam, wi.id AS instanceId
       `, { id, tenantId: ctx.tenantId }),
     )
 
@@ -294,7 +302,8 @@ async function myTicket(
     // restano allo staff: passa solo `is_internal = false`, esplicito.
     const commentsResult = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (e {id: $id, tenant_id: $tenantId})-[:HAS_COMMENT]->(c:Comment)
+        ${matchById('e', { labels: ['Incident', 'ServiceRequest'], id: '$id' })}
+        MATCH (e)-[:HAS_COMMENT]->(c:Comment)
         WHERE c.is_internal = false
         OPTIONAL MATCH (u:User {id: c.author_id, tenant_id: $tenantId})
         RETURN c.id AS id, c.text AS body, c.author_id AS authorId,
@@ -349,7 +358,8 @@ async function myTicket(
     // Load workflow history
     const historyResult = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (e {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+        ${matchById('e', { labels: ['Incident', 'ServiceRequest'], id: '$id' })}
+        MATCH (e)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
               -[:STEP_HISTORY]->(exec:WorkflowStepExecution)
         RETURN exec.from_step AS fromStep, exec.step_name AS toStep,
                exec.entered_at AS triggeredAt, exec.triggered_by AS triggeredBy
@@ -393,7 +403,10 @@ async function myTicket(
         )
       : []
 
-    return { ...ticket, comments, attachments, history, customFields, formAnswers }
+    const instanceId = (ticketResult.records[0].get('instanceId') ?? null) as string | null
+    const canConfirmResolution = await confirmationTarget(session, ctx.tenantId, kind, mapped.status, instanceId) !== null
+
+    return { ...ticket, comments, attachments, history, customFields, formAnswers, canConfirmResolution }
   })
 }
 
@@ -433,8 +446,7 @@ async function myTicketStats(
 
     const result = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (e {tenant_id: $tenantId, created_by: $userId})
-        WHERE e:Incident OR e:ServiceRequest
+        ${MY_TICKETS}
         RETURN e.status AS status, head([l IN labels(e) WHERE l IN ['Incident', 'ServiceRequest']]) AS label, count(e) AS cnt
       `, { tenantId: ctx.tenantId, userId: ctx.userId }),
     )
@@ -583,8 +595,7 @@ async function addTicketComment(
   const comment = await withSession(async (session) => {
     const check = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (e {id: $ticketId, tenant_id: $tenantId})
-        WHERE e:Incident OR e:ServiceRequest
+        ${matchById('e', { labels: ['Incident', 'ServiceRequest'], id: '$ticketId' })}
         RETURN e.created_by AS createdBy, labels(e) AS labels
       `, { ticketId, tenantId: ctx.tenantId }),
     )
@@ -642,8 +653,7 @@ async function reopenTicket(
   return withSession(async (session) => {
     const check = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (e {id: $ticketId, tenant_id: $tenantId})
-        WHERE e:Incident OR e:ServiceRequest
+        ${matchById('e', { labels: ['Incident', 'ServiceRequest'], id: '$ticketId' })}
         OPTIONAL MATCH (e)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
         RETURN e.created_by AS createdBy, e.status AS status, wi.id AS instanceId, labels(e) AS labels
       `, { ticketId, tenantId: ctx.tenantId }),
@@ -699,13 +709,87 @@ async function reopenTicket(
 
     const updated = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (e {id: $ticketId, tenant_id: $tenantId})
-        WHERE e:Incident OR e:ServiceRequest
+        ${matchById('e', { labels: ['Incident', 'ServiceRequest'], id: '$ticketId' })}
         RETURN properties(e) AS props
       `, { ticketId, tenantId: ctx.tenantId }),
     )
     const props = updated.records[0]?.get('props') as Record<string, unknown> | undefined
     if (!props) throw new Error(`${PORTAL_TICKET_SHAPE[kind].label} ${ticketId} vanished after reopen transition`)
+    const mapped = mapTicket(props, kind)
+    return { ...mapped, ...(await severityMeta(ctx.tenantId, await languageFor(ctx.tenantId)))(mapped.priority) }
+  }, true)
+}
+
+// ── Mutation: confirmTicketResolution ────────────────────────────────────────
+
+/**
+ * THE STEP A CONFIRMATION CLOSES INTO (tour of 23 Sep 2026, D51): from the
+ * resolved step the ticket is in, a MANUAL move the workflow allows to a step
+ * of category `closed`. Null when the ticket is not resolved, or when its
+ * workflow closes it only by its timer (a customer's design, kept).
+ */
+export async function confirmationTarget(
+  session: Session, tenantId: string, kind: PortalTicketKind, status: string, instanceId: string | null,
+): Promise<string | null> {
+  if (!instanceId) return null
+  const steps = await getWorkflowSteps(session, tenantId, kind)
+  if (!steps.some((s) => s.category === 'resolved' && s.name === status)) return null
+  const byName = new Map(steps.map((s) => [s.name, s]))
+  const available = await workflowEngine.getAvailableTransitions(session, instanceId, tenantId)
+  return available.map((t) => byName.get(t.toStep)).find((s) => s?.category === 'closed')?.name ?? null
+}
+
+/**
+ * «Yes, it works»: the requester closes the resolved ticket now, instead of
+ * waiting for the timer of the step (72 hours for the factory incident). A
+ * workflow transition like the reopening — the engine moves the step,
+ * records the history and the requester's words, and the timer finds nothing
+ * left to close. Only the requester, only from a resolved step, only along a
+ * manual move the workflow has.
+ */
+async function confirmTicketResolution(
+  _: unknown,
+  { ticketId }: { ticketId: string },
+  ctx: GraphQLContext,
+) {
+  return withSession(async (session) => {
+    const check = await session.executeRead((tx) =>
+      tx.run(`
+        ${matchById('e', { labels: ['Incident', 'ServiceRequest'], id: '$ticketId' })}
+        OPTIONAL MATCH (e)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+        RETURN e.created_by AS createdBy, e.status AS status, wi.id AS instanceId, labels(e) AS labels
+      `, { ticketId, tenantId: ctx.tenantId }),
+    )
+    if (!check.records.length) throw new ForbiddenError('Ticket not found')
+    const r = check.records[0]
+    if (r.get('createdBy') !== ctx.userId) throw new ForbiddenError('Access denied')
+    const kind = kindOfLabels(r.get('labels') as string[], ticketId)
+    const status = r.get('status') as string
+    const instanceId = (r.get('instanceId') ?? null) as string | null
+    const closeTo = await confirmationTarget(session, ctx.tenantId, kind, status, instanceId)
+    if (!closeTo || !instanceId) {
+      throw new GraphQLError('Only a resolved ticket whose workflow allows it can be confirmed and closed', {
+        extensions: { code: 'CONFLICT', i18n: { key: 'errors.portal.cannotConfirmResolution' } },
+      })
+    }
+    const result = await workflowEngine.transition(
+      session,
+      { instanceId, toStepName: closeTo, triggeredBy: ctx.userId, triggerType: 'manual', notes: await systemText(ctx.tenantId, 'portal.confirmed'), tenantId: ctx.tenantId },
+      { userId: ctx.userId, entityData: {} },
+    )
+    if (!result.success) {
+      throw new ValidationError(`Confirmation failed: ${result.error ?? 'transition rejected by the workflow'}`, transitionErrorI18n(result))
+    }
+    void audit(ctx, 'portal.ticket.resolution_confirmed', PORTAL_TICKET_SHAPE[kind].label, ticketId, { fromStep: status, toStep: closeTo })
+
+    const updated = await session.executeRead((tx) =>
+      tx.run(`
+        ${matchById('e', { labels: ['Incident', 'ServiceRequest'], id: '$ticketId' })}
+        RETURN properties(e) AS props
+      `, { ticketId, tenantId: ctx.tenantId }),
+    )
+    const props = updated.records[0]?.get('props') as Record<string, unknown> | undefined
+    if (!props) throw new Error(`${PORTAL_TICKET_SHAPE[kind].label} ${ticketId} vanished after the confirmation`)
     const mapped = mapTicket(props, kind)
     return { ...mapped, ...(await severityMeta(ctx.tenantId, await languageFor(ctx.tenantId)))(mapped.priority) }
   }, true)
@@ -727,6 +811,7 @@ export const portalResolvers = {
     createTicket,
     addTicketComment,
     reopenTicket,
+    confirmTicketResolution,
     setPortalSeverityOptions: setPortalSeverityOptionsMutation,
   },
 }

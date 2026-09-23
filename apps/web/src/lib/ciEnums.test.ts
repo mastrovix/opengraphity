@@ -1,25 +1,40 @@
 import { describe, it, expect, vi } from 'vitest'
-import { enumLabel, toEnumOptions, ciStatusStyle } from './ciEnums'
+import { toEnumOptions, ciStatusStyle } from './ciEnums'
 import { palette } from './tokens'
 import { NEUTRAL_VALUE_STYLE } from './domainStyle'
 
-describe('enumLabel / toEnumOptions', () => {
+/**
+ * D29 (tour of 23 Sep 2026): one rule for a value without a label —
+ * `humanizeValue` of @opengraphity/web-core. A machine key becomes a sentence,
+ * a value written as a sentence stays as it is (it used to become «Pick Up
+ * At The IT Desk»), and a Dictionary label always wins.
+ */
+describe('toEnumOptions', () => {
   it.each([
     ['active', 'Active'],
-    ['database_instance', 'Database Instance'],
-    ['ssl_certificate', 'Ssl Certificate'],
-    ['in_progress', 'In Progress'],
+    ['database_instance', 'Database instance'],
+    ['ssl_certificate', 'Ssl certificate'],
+    ['in_progress', 'In progress'],
+    ['Pick up at the IT desk', 'Pick up at the IT desk'],
     ['', ''],
   ])('"%s" → "%s"', (v, label) => {
-    expect(enumLabel(v)).toBe(label)
+    expect(toEnumOptions([v])).toEqual([{ value: v, label }])
   })
 
-  it('toEnumOptions preserva l\'ordine e usa enumLabel', () => {
+  it('keeps the order', () => {
     expect(toEnumOptions(['production', 'dev_env'])).toEqual([
       { value: 'production', label: 'Production' },
-      { value: 'dev_env',    label: 'Dev Env' },
+      { value: 'dev_env',    label: 'Dev env' },
     ])
     expect(toEnumOptions([])).toEqual([])
+  })
+
+  it('the Dictionary label wins when there is one; without one the value is humanized', () => {
+    const labelOf = (v: string) => ({ in_progress: 'Lavorazione' } as Record<string, string>)[v] ?? null
+    expect(toEnumOptions(['in_progress', 'on_hold'], labelOf)).toEqual([
+      { value: 'in_progress', label: 'Lavorazione' },
+      { value: 'on_hold', label: 'On hold' },
+    ])
   })
 })
 

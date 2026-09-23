@@ -55,6 +55,14 @@ const EXCLUDED_FILES = new Set([
    * commento, perché aggiungere una parola senza dire perché resti impossibile.
    */
   'lib/glossarioModello.ts',
+  /*
+   * I cinquanta moduli del tenant di prova (22 set 2026). Ogni campo di un
+   * modulo porta la sua etichetta nelle due lingue — `label` inglese e
+   * `labelIt` italiana — perché un modulo del catalogo si vede nella lingua
+   * di chi lo compila, ed è proprio questo che il tenant di prova deve far
+   * vedere. L'italiano qui è DATO di un modulo, non testo che l'API compone.
+   */
+  'lib/testData/demoTenant/catalogContent.ts',
 ])
 
 function files(dir: string, out: string[] = []): string[] {

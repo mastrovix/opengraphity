@@ -33,6 +33,8 @@ export interface OLASweepSummary { contracts: number; candidates: number; alerte
 interface ContractRow {
   id: string; tenantId: string; name: string; type: string; entityType: string; teamId: string
   resolveMinutes: unknown; businessHours: boolean; calendarId: string | null; createdAt: string | null
+  /** The contract's own zone; null = the organization's. */
+  timezone: string | null
 }
 
 /** I ticket aperti del tipo, del team, non ancora avvisati per il contratto, con i tratti di quel team. */
@@ -71,7 +73,7 @@ export async function runOLASweep(now: Date = new Date()): Promise<OLASweepSumma
       WHERE coalesce(o.enabled, true) = true AND o.team_id IS NOT NULL
       RETURN o.id AS id, o.tenant_id AS tenantId, o.name AS name, o.type AS type, o.entity_type AS entityType, o.team_id AS teamId,
              o.resolve_minutes AS resolveMinutes, coalesce(o.business_hours, false) AS businessHours,
-             o.calendar_id AS calendarId, o.created_at AS createdAt
+             o.calendar_id AS calendarId, o.created_at AS createdAt, o.timezone AS timezone
       ORDER BY o.tenant_id, o.id
     `, {})
     summary.contracts = contracts.length
@@ -87,11 +89,12 @@ export async function runOLASweep(now: Date = new Date()): Promise<OLASweepSumma
          * «failed» e scriveva una riga di errore al minuto, senza che nessun
          * avviso OLA partisse.
          */
-        if (c.businessHours && !timezones.has(c.tenantId)) {
+        // A contract with its own zone does not need the organization's (tour of 23 Sep 2026).
+        if (c.businessHours && !c.timezone && !timezones.has(c.tenantId)) {
           timezones.set(c.tenantId, await getTenantTimezone(c.tenantId))
         }
         const timezone = timezones.get(c.tenantId) ?? 'UTC'
-        const rule = { teamId: c.teamId, createdAt: c.createdAt, resolveMinutes: toNumber(c.resolveMinutes), businessHours: c.businessHours, calendar }
+        const rule = { teamId: c.teamId, createdAt: c.createdAt, resolveMinutes: toNumber(c.resolveMinutes), businessHours: c.businessHours, calendar, timezone: c.timezone ?? null }
         for (const entityType of olaEntityTypes(c.entityType || 'incident')) {
           if (entityType === 'change') {
             const units = (await loadChangeUnits(session, c.tenantId, { by: 'open', teamId: c.teamId }))

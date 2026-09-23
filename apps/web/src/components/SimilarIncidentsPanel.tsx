@@ -13,11 +13,11 @@ import { AIDisabledNotice } from '@/components/ai/AIDisabledNotice'
 const GET_SIMILAR_INCIDENTS = gql`
   query SimilarIncidents($incidentId: ID!, $limit: Int) {
     similarIncidents(incidentId: $incidentId, limit: $limit) {
-      ready disabled
+      ready disabled failure
       items { id number title status severity createdAt resolvedAt score }
     }
     suggestedArticles(incidentId: $incidentId, limit: 3) {
-      ready disabled
+      ready disabled failure
       items { id title slug category score }
     }
   }
@@ -29,8 +29,9 @@ interface SimilarItem {
 }
 interface ArticleItem { id: string; title: string; slug: string | null; category: string | null; score: number }
 interface QueryData {
-  similarIncidents: { ready: boolean; disabled: boolean; items: SimilarItem[] }
-  suggestedArticles: { ready: boolean; disabled: boolean; items: ArticleItem[] }
+  /** `failure`: why computing the incident's embedding failed; null while it is queued or done (D15). */
+  similarIncidents: { ready: boolean; disabled: boolean; failure: string | null; items: SimilarItem[] }
+  suggestedArticles: { ready: boolean; disabled: boolean; failure: string | null; items: ArticleItem[] }
 }
 
 function scorePct(score: number): string {
@@ -54,7 +55,14 @@ export function SimilarIncidentsPanel({ incidentId }: { incidentId: string }) {
   // risultato" for an incident that simply hasn't been embedded yet.
   // Embedding spenti dall'organizzazione (ondata 6): niente attesa, lo si dice.
   const disabled = !!data && (data.similarIncidents.disabled || data.suggestedArticles.disabled)
-  const pending = !!data && !disabled && (!data.similarIncidents.ready || !data.suggestedArticles.ready)
+  /*
+   * D15 (tour of 23 Sep 2026): the API queues the computation itself when the
+   * embedding is missing, so «Analysis under way…» is true — until the
+   * computation FAILS. Then waiting is a lie: the polling stops and the
+   * reason is shown.
+   */
+  const failure = data ? (data.similarIncidents.failure ?? data.suggestedArticles.failure ?? null) : null
+  const pending = !!data && !disabled && failure === null && (!data.similarIncidents.ready || !data.suggestedArticles.ready)
   useEffect(() => {
     if (pending) startPolling(4000)
     else stopPolling()
@@ -81,6 +89,10 @@ export function SimilarIncidentsPanel({ incidentId }: { incidentId: string }) {
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>{t('common.loading')}</p>
       ) : disabled ? (
         <AIDisabledNotice feature="embeddings" />
+      ) : failure !== null ? (
+        <div role="alert" style={{ padding: '8px 10px', background: 'var(--color-danger-bg)', border: `1px solid ${palette.danger.border}`, borderRadius: 6, color: 'var(--color-danger)', fontSize: 'var(--font-size-body)' }}>
+          {t('components.similar.failed', { reason: failure })}
+        </div>
       ) : pending ? (
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>
           {t('components.similar.pending')}
@@ -115,7 +127,9 @@ export function SimilarIncidentsPanel({ incidentId }: { incidentId: string }) {
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <SeverityBadge value={it.severity} />
                     <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: closed ? palette.success.tint : colors.slateBg, color: closed ? palette.success.text : 'var(--color-slate)', textTransform: 'uppercase' }}>
-                      {labelFor(it.status).replace(/_/g, ' ')}
+                      {/* As the workflow names it: a label is shown as written (the underscores were
+                          stripped from real labels too), a step nobody labels is made readable by `labelFor`. */}
+                      {labelFor(it.status)}
                     </span>
                   </div>
                 </Link>

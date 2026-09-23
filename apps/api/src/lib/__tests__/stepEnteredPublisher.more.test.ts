@@ -73,8 +73,13 @@ describe('the note written on step entry', () => {
     expect(comment).toEqual({
       entityType: 'incident', entityId: 'inc-1', tenantId: 'tenant-1',
       text: 'workflow.transitionComment:{"step":"Waiting for vendor"}',
-      authorId: 'user-1', isInternal: true, createdAt: '2026-09-16T10:00:00.000Z',
+      authorId: 'user-1', authorLabel: null, isInternal: true, createdAt: '2026-09-16T10:00:00.000Z',
     })
+  })
+
+  it('a transition asked by a rule is signed with the rule\'s name (U-8, and the single note of D12)', async () => {
+    await publishStepEnteredForEntity(info({ actorId: 'automation', actorLabel: 'Hardware to the Service Desk', notes: 'Assigned to team Desk' }))
+    expect(writeTicketComment.mock.calls[0]![1]).toMatchObject({ authorId: 'automation', authorLabel: 'Hardware to the Service Desk' })
   })
 
   it('the step label lookup is scoped to the tenant and to the active workflow of that entity type', async () => {

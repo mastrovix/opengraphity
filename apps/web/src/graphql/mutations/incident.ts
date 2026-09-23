@@ -84,6 +84,15 @@ export const UPDATE_INCIDENT = gql`
   }
 `
 
+/** The team of a request (D56): the assignee stays only if a member of the new team, so it is read back too. */
+export const ASSIGN_SERVICE_REQUEST_TO_TEAM = gql`
+  mutation AssignServiceRequestToTeam($id: ID!, $teamId: ID!) {
+    assignServiceRequestToTeam(id: $id, teamId: $teamId) {
+      id team { id name } assignee { id name email }
+    }
+  }
+`
+
 export const ASSIGN_SERVICE_REQUEST_TO_USER = gql`
   mutation AssignServiceRequestToUser($id: ID!, $userId: ID) {
     assignServiceRequestToUser(id: $id, userId: $userId) {

@@ -59,6 +59,7 @@ export const GET_EVENT_POLICY = gql`
       stormThresholdPerMinute stormCooldownMinutes retentionDays matchShortHostname severityMap
       highImpactDependents
       ignoreLifecycleStatuses retiredStatuses maintenanceStatuses
+      productionEnvironments nonProductionSeverityMap
     }
   }
 `
@@ -133,7 +134,7 @@ export const GET_CI_HEALTH_OVERVIEW = gql`
       down degraded operational unmonitored downDependents degradedDependents total
       items {
         id name type environment health healthSource healthSince lastEventAt
-        firingEvents dependents servicesCount ownerTeam
+        firingEvents dependents servicesCount ownerTeam supportTeam
       }
     }
   }

@@ -150,6 +150,15 @@ describe('the current step of an entity', () => {
     expect(await isEntityOpen(S(fakeSession([])), 'e', 't1')).toBe(true)
   })
 
+  it('a failed step is over too: no more replies on a rejected request (D27), and it is concluded', async () => {
+    const closed = fakeSession([{ closed: true }])
+    await isEntityClosed(S(closed), 'e', 't1')
+    expect(String(closed.run.mock.calls[0]![0])).toContain("RETURN s.category IN ['closed', 'failed'] AS closed")
+    const concluded = fakeSession([{ concluded: true }])
+    await isEntityConcluded(S(concluded), 'e', 't1')
+    expect(String(concluded.run.mock.calls[0]![0])).toContain("RETURN s.category IN ['resolved', 'closed', 'failed'] OR coalesce(s.is_terminal, false) AS concluded")
+  })
+
   it('closed and concluded are true only on an explicit true (null is not closed)', async () => {
     expect(await isEntityClosed(S(fakeSession([{ closed: true }])), 'e', 't1')).toBe(true)
     expect(await isEntityClosed(S(fakeSession([{ closed: null }])), 'e', 't1')).toBe(false)
@@ -163,6 +172,6 @@ describe('the current step of an entity', () => {
     // The Cypher is what encodes this rule: pin it, since escalations rely on it.
     const s = fakeSession([{ concluded: true }])
     await isEntityConcluded(S(s), 'e', 't1')
-    expect(s.run.mock.calls[0]![0]).toMatch(/s\.category IN \['resolved', 'closed'\] OR coalesce\(s\.is_terminal, false\)/)
+    expect(s.run.mock.calls[0]![0]).toMatch(/s\.category IN \['resolved', 'closed', 'failed'\] OR coalesce\(s\.is_terminal, false\)/)
   })
 })

@@ -7,6 +7,7 @@ export const CREATE_SERVICE_CATALOG_ITEM = gql`
     createServiceCatalogItem(input: $input) {
       id name description category legacyCategory requiresApproval priority active createdAt
       workflowDefinitionId workflowDefinitionName
+      fulfillmentTeam { id name }
     }
   }
 `
@@ -16,6 +17,7 @@ export const UPDATE_SERVICE_CATALOG_ITEM = gql`
     updateServiceCatalogItem(id: $id, input: $input) {
       id name description category legacyCategory requiresApproval priority active createdAt
       workflowDefinitionId workflowDefinitionName
+      fulfillmentTeam { id name }
     }
   }
 `

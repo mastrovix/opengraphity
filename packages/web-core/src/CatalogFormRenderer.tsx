@@ -24,7 +24,8 @@
  * browser lo nasconderebbe, il server lo accetterebbe, o viceversa un
  * obbligatorio invisibile bloccherebbe l'invio senza che si capisca perché.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { optionLabel } from './valueLabel.js'
 import {
   FORM_FIELD_TYPES_WITHOUT_ANSWER, evaluateFormCondition, formItemsToFill, isFormAttachmentType, isFormReferenceType,
   isFormTableType, larghezzaEffettiva, localizedText,
@@ -163,6 +164,8 @@ export interface CatalogFormRendererProps {
   referenceNoResultsLabel?: string
   referenceClearLabel?: string
   referenceUnavailableLabel?: string
+  /** Said in the field when a search fails: the list is unknown, not empty. */
+  referenceSearchFailedLabel?: string
 }
 
 /** L'etichetta di un campo nella lingua chiesta, con ripiego su quella di base. */
@@ -536,7 +539,8 @@ function CampoDelModulo({ campo, item, valore, errore, erroreFormula, computedLa
         <select {...comune} value={testoDi(valore)} required={obbligatorio}
           onChange={(e) => onChange(campo.name, e.target.value === '' ? null : e.target.value)}>
           <option value="">{emptyChoiceLabel ?? '—'}</option>
-          {(campo.options ?? []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          {/* D29: a value written as a sentence keeps its own words (optionLabel). */}
+          {(campo.options ?? []).map((o) => <option key={o.value} value={o.value}>{optionLabel(o.value, o.label)}</option>)}
         </select>
       )}
 
@@ -551,7 +555,7 @@ function CampoDelModulo({ campo, item, valore, errore, erroreFormula, computedLa
                   type="checkbox" checked={dentro} disabled={disabled}
                   onChange={() => onChange(campo.name, dentro ? scelti.filter((v) => v !== o.value) : [...scelti, o.value])}
                 />
-                <span>{o.label}</span>
+                <span>{optionLabel(o.value, o.label)}</span>
               </label>
             )
           })}
@@ -663,6 +667,9 @@ function CampoRiferimento({ campo, disabled, extra, controlId, etichettaId }: {
   const [query, setQuery] = useState('')
   const [risultati, setRisultati] = useState<readonly CatalogFormReference[] | null>(null)
   const [cercando, setCercando] = useState(false)
+  const [searchFailed, setSearchFailed] = useState(false)
+  // Every keystroke searches: only the answer to the LAST search may fill the list.
+  const lastSearch = useRef(0)
 
   if (!extra.onSearchReference || !extra.onPickReference) {
     return <p className="og-form-help">{extra.referenceUnavailableLabel ?? ''}</p>
@@ -683,14 +690,25 @@ function CampoRiferimento({ campo, disabled, extra, controlId, etichettaId }: {
     )
   }
 
+  /*
+   * Tour of 23 Sep 2026: a failed search was an unhandled rejection and the
+   * field went on as if nothing had happened; and an older, slower answer
+   * could land after the newer one and show the wrong candidates.
+   */
   const cerca = async (testo: string) => {
+    const search = ++lastSearch.current
     setQuery(testo)
-    if (testo.trim().length < 2) { setRisultati(null); return }
+    setSearchFailed(false)
+    if (testo.trim().length < 2) { setRisultati(null); setCercando(false); return }
     setCercando(true)
     try {
-      setRisultati(await extra.onSearchReference!(campo, testo.trim()))
+      const found = await extra.onSearchReference!(campo, testo.trim())
+      if (search === lastSearch.current) setRisultati(found)
+    } catch {
+      // The caller's error link has already shown the reason; the field says the list is unknown.
+      if (search === lastSearch.current) { setRisultati(null); setSearchFailed(true) }
     } finally {
-      setCercando(false)
+      if (search === lastSearch.current) setCercando(false)
     }
   }
 
@@ -706,6 +724,7 @@ function CampoRiferimento({ campo, disabled, extra, controlId, etichettaId }: {
         placeholder={extra.referenceSearchLabel}
         onChange={(e) => void cerca(e.target.value)}
       />
+      {searchFailed && <p className="og-form-error" role="alert">{extra.referenceSearchFailedLabel}</p>}
       {risultati && (
         <ul className="og-form-ref-results">
           {risultati.length === 0 && !cercando && (
@@ -846,7 +865,7 @@ function CellaDellaTabella({ colonna, valore, onChange, disabled, emptyChoiceLab
       return (
         <select {...comune} value={valore} onChange={(e) => { onChange(e.target.value) }}>
           <option value="">{emptyChoiceLabel ?? '—'}</option>
-          {(colonna.options ?? []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          {(colonna.options ?? []).map((o) => <option key={o.value} value={o.value}>{optionLabel(o.value, o.label)}</option>)}
         </select>
       )
     default:

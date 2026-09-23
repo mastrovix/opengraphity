@@ -25,6 +25,7 @@ import { deriveChangePriority } from '../graphql/resolvers/change/scoring.js'
 import { assertDomainValue } from '../lib/domainMatrix.js'
 import { assertCIsLinkable } from '../lib/ticketCIExclusions.js'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
+import { getInitialStepName } from '../lib/workflowHelpers.js'
 import {
   writeAudit,
   nextChangeCode,
@@ -107,6 +108,11 @@ export async function createChangeRFC(
     // Priorità = tipo × fascia di rischio, con rischio non ancora valutato:
     // letta dalla matrice del cliente PRIMA della transazione di scrittura.
     const priority = await deriveChangePriority(ctx.tenantId, changeType, null)
+    // A change is born in its initial step, like incidents and problems (tour of
+    // 23 Sep 2026, D3): without `status` the 177 changes in assessment showed
+    // as «(none)» in the reports, the «Open Changes» KPI left them out and the
+    // assistant did not see them.
+    const initialStatus = await getInitialStepName(session, ctx.tenantId, 'change')
 
     // TRANSACTIONAL: all writes in single tx — Change + AFFECTS_CI + 2 AssessmentTask
     // e 1 DeployPlanTask per CI + ASSIGNED_TO_TEAM + WorkflowInstance + audit entry.
@@ -120,6 +126,7 @@ export async function createChangeRFC(
         id: $id, tenant_id: $tenantId, code: $code, number: $code,
         title: $title, why: $why, what: $what,
         change_type: $changeType,
+        status: $initialStatus,
         aggregate_risk_score: null,
         priority: $priority,
         approval_route: null, approval_status: null,
@@ -139,7 +146,7 @@ export async function createChangeRFC(
       )
       WITH c
       UNWIND $ciTasks AS ct
-      MATCH (ci {id: ct.ciId, tenant_id: $tenantId})
+      MATCH (ci:ConfigurationItem {id: ct.ciId, tenant_id: $tenantId})
       MATCH (ci)-[:OWNED_BY]->(ownerTeam:Team)
       MATCH (ci)-[:SUPPORTED_BY]->(supportTeam:Team)
       CREATE (c)-[:AFFECTS_CI {ci_phase: 'assessment'}]->(ci)
@@ -175,6 +182,7 @@ export async function createChangeRFC(
         id, code, title, why, what,
         changeType,
         priority,
+        initialStatus,
         requesterId: ctx.userId,
         ownerId: changeOwner ?? null,
         ciTasks,

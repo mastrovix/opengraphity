@@ -1,4 +1,4 @@
-import type { WorkflowDefinition } from './types.js'
+import type { WorkflowDefinition, WorkflowTransitionDef } from './types.js'
 import { seedWorkflowDefinition, type SeedOptions } from './seed-common.js'
 import type { StepDeadline } from '@opengraphity/types'
 
@@ -11,6 +11,18 @@ import type { StepDeadline } from '@opengraphity/types'
 export const INCIDENT_AUTO_CLOSE_DEADLINE = JSON.stringify({
   after: 72, unit: 'hours', calendar_id: null, to_step: 'closed', set_fields: [],
 } satisfies StepDeadline)
+
+/** The manual close of a resolved incident: the requester (or the desk) confirms it works. */
+export const INCIDENT_CONFIRM_RESOLUTION: WorkflowTransitionDef = {
+  id:            'tr-resolved-closed-confirmed',
+  fromStepName:  'resolved',
+  toStepName:    'closed',
+  trigger:       'manual',
+  label:         'Confirm resolution', labels: { it: 'Conferma la risoluzione' },
+  condition:     null,
+  requiresInput: false,
+  inputField:    null,
+}
 
 export const INCIDENT_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId'> = {
   name:       'Incident Management',
@@ -210,6 +222,15 @@ export const INCIDENT_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId'>
       requiresInput: true,
       inputField:    'notes',
     },
+    /*
+     * CONFIRM THE RESOLUTION (tour of 23 Sep 2026, D51). The only way out of
+     * «resolved» towards «closed» was the 72-hour timer: nobody could say
+     * «yes, it works» and close the incident sooner, so every resolved
+     * incident waited exactly three days. The requester confirms from the
+     * portal (`confirmTicketResolution`), or the desk on their word. The
+     * timer stays: it is what closes the incidents nobody confirms.
+     */
+    INCIDENT_CONFIRM_RESOLUTION,
   ],
 }
 
@@ -245,6 +266,7 @@ export const INCIDENT_SECURITY_WORKFLOW: Omit<WorkflowDefinition, 'id' | 'tenant
     { id: 'tr-escalated-resolved',     fromStepName: 'escalated',       toStepName: 'resolved',        trigger: 'manual',     label: 'Resolve', labels: { it: 'Risolvi' },                    condition: 'rootCause != null', requiresInput: true, inputField: 'rootCause' },
     { id: 'tr-resolved-closed',        fromStepName: 'resolved',        toStepName: 'closed',          trigger: 'timer',      label: 'Close automatically', labels: { it: 'Chiudi automaticamente' },     condition: null, requiresInput: false, inputField: null },
     { id: 'tr-resolved-inprogress',    fromStepName: 'resolved',        toStepName: 'in_progress',     trigger: 'manual',     label: 'Reopen', labels: { it: 'Riapri' },                     condition: null, requiresInput: true,  inputField: 'notes' },
+    INCIDENT_CONFIRM_RESOLUTION,
   ],
 }
 

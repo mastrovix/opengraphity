@@ -44,10 +44,18 @@ export function loginSDL(): string {
     tenant:            String
     hostedDomain:      String
     metadataUrl:       String
-    """L'indirizzo di ritorno da registrare presso il provider."""
+    """L'indirizzo di ritorno da registrare presso il provider: the first of redirectUris."""
     redirectUri:       String!
-    """SAML: i metadati di OpenGrafo da dare al provider."""
+    """
+    Every return address to register at the provider, one per origin through
+    which people reach the sign-in page (KEYCLOAK_PUBLIC_URL may list several:
+    local, Tailscale, the public domain).
+    """
+    redirectUris:      [String!]!
+    """SAML: i metadati di OpenGrafo da dare al provider (the first of samlSpMetadataUrls)."""
     samlSpMetadataUrl: String
+    """SAML: OpenGrafo's metadata, one per public origin; empty for the other kinds."""
+    samlSpMetadataUrls: [String!]!
   }
 
   """Il segreto non si legge mai: si scrive, e si riscrive per attivare (si prova in quel momento)."""
@@ -76,7 +84,10 @@ export function loginSDL(): string {
   type LoginProviderAddresses {
     kind:              String!
     redirectUri:       String!
+    """One per origin through which people reach the sign-in page."""
+    redirectUris:      [String!]!
     samlSpMetadataUrl: String
+    samlSpMetadataUrls: [String!]!
   }
 
   """

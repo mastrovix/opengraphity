@@ -46,6 +46,8 @@ export interface ButtonProps {
   'aria-label'?: string
   'aria-expanded'?: boolean
   'aria-pressed'?: boolean
+  /** The id of what describes the button (e.g. the value a «Copy» button copies, when several sit together). */
+  'aria-describedby'?: string
   className?: string
 }
 
@@ -157,6 +159,7 @@ export function Button({
       aria-label={ariaLabel}
       aria-expanded={aria['aria-expanded']}
       aria-pressed={aria['aria-pressed']}
+      aria-describedby={aria['aria-describedby']}
       style={merged}
       onMouseEnter={hoverable ? (e) => { e.currentTarget.style.backgroundColor = 'var(--color-brand-hover)' } : undefined}
       onMouseLeave={hoverable ? (e) => { e.currentTarget.style.backgroundColor = 'var(--color-brand)' } : undefined}

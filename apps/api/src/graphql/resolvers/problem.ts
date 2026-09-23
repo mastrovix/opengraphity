@@ -419,7 +419,7 @@ async function addCIToProblem(
     // risposta di successo.
     const res = await session.executeWrite((tx) => tx.run(`
       MATCH (p:Problem {id: $problemId, tenant_id: $tenantId})
-      MATCH (ci {id: $ciId, tenant_id: $tenantId})
+      MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
       WHERE ${ciWhereClause}
       MERGE (p)-[r:AFFECTS]->(ci)
       SET p.updated_at = $now

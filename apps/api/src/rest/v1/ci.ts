@@ -41,11 +41,11 @@ router.get('/', requirePermission('ci:read'), asyncHandler(async (req: Request, 
   const ciPredicate = await ciLabelPredicateForTenant('ci', tenantId)
   const { rows, total } = await withSession(async (session) => {
     const countRow = await runQueryOne<{ total: unknown }>(session, `
-      MATCH (ci {tenant_id: $tenantId}) WHERE ${ciPredicate} ${where}
+      MATCH (ci:ConfigurationItem {tenant_id: $tenantId}) WHERE ${ciPredicate} ${where}
       RETURN count(ci) AS total
     `, params)
     const rows = await runQuery<{ props: Props }>(session, `
-      MATCH (ci {tenant_id: $tenantId}) WHERE ${ciPredicate} ${where}
+      MATCH (ci:ConfigurationItem {tenant_id: $tenantId}) WHERE ${ciPredicate} ${where}
       RETURN properties(ci) AS props ORDER BY ci.name SKIP toInteger($offset) LIMIT toInteger($limit)
     `, params)
     return { rows, total: Number(countRow?.total ?? 0) }

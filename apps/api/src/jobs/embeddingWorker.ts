@@ -57,6 +57,25 @@ export async function enqueueEmbedding(data: EmbeddingJobData): Promise<void> {
   })
 }
 
+/** Where the embedding of an entity version stands, for a panel that waits for it (D15). */
+export type EmbeddingRequest = { state: 'queued' } | { state: 'failed'; reason: string }
+
+/**
+ * Makes sure the embedding of this version of the entity is on its way, and
+ * says so truthfully (tour of 23 Sep 2026, D15). The similarity panel said
+ * «Analysis under way…» for ever on incidents whose embedding nobody had
+ * queued (imported tickets, data written before the pipeline, an enqueue that
+ * failed at creation): asking now queues it. A job that used up its attempts
+ * is reported with its reason instead of being queued again behind the
+ * reader's back; a new version of the entity gets a new job.
+ */
+export async function requestEmbedding(data: EmbeddingJobData & { updatedAt: string }): Promise<EmbeddingRequest> {
+  const job = await getQueue<EmbeddingJobData>(EMBEDDINGS_QUEUE).getJob(embeddingJobId(data))
+  if (job && await job.isFailed()) return { state: 'failed', reason: job.failedReason }
+  if (!job) await enqueueEmbedding(data)
+  return { state: 'queued' }
+}
+
 // ── Vector indexes ───────────────────────────────────────────────────────────
 
 export async function ensureVectorIndexes(): Promise<void> {

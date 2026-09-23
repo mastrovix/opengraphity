@@ -466,3 +466,34 @@ describe('documenti gql inline del web ↔ schema API (F-41)', () => {
     expect(problems).toEqual([])
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Parte 3 (tour of 23 Sep 2026): the PORTAL's documents too.
+//
+// The checks above read only the web's folder: a portal document selecting a
+// field the API does not have — or a mutation the API renamed — passed every
+// test and failed only when an end user opened the page. The portal talks to
+// the same schema, so its documents are validated the same way.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const portalGraphql = join(here, '../../../../portal/src/graphql')
+
+describe('documenti GraphQL del portale ↔ schema API', () => {
+  const files = walk(portalGraphql).filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f))
+  it('the portal has documents to check', () => {
+    expect(files.length).toBeGreaterThan(0)
+  })
+  for (const file of files) {
+    const source = readFileSync(file, 'utf8')
+    const local = collectTemplates(source)
+    const re = /export const (\w+) = gql`([\s\S]*?)`/g
+    let m: RegExpExecArray | null
+    while ((m = re.exec(source)) !== null) {
+      const name = m[1]!
+      const doc = parse(resolveInterpolations(m[2]!, local, name))
+      it(`portal ${file.slice(portalGraphql.length + 1)} › ${name} valida contro lo schema`, () => {
+        expect(validate(schema, doc, rules).map((e) => e.message)).toEqual([])
+      })
+    }
+  }
+})

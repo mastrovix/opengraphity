@@ -311,7 +311,7 @@ const WorkflowStepNode = memo(function WorkflowStepNode({ data, selected }: Node
         {step.label}
       </div>
 
-      <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
+      <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', fontFamily: 'var(--font-family)' }}>
         {step.name}
       </div>
 
@@ -350,7 +350,7 @@ const WorkflowEdge = memo(function WorkflowEdge({
   data, selected, animated, markerEnd,
 }: EdgeProps) {
   const { t } = useTranslation()
-  const { transition, color } = (data ?? {}) as EdgeNodeData
+  const { transition, color, hideLabel } = (data ?? {}) as EdgeNodeData
   const [hovered, setHovered] = useState(false)
   const apriTransizione = useContext(ApriTransizione)
 
@@ -407,7 +407,8 @@ const WorkflowEdge = memo(function WorkflowEdge({
             ['--og-wf-edge-color' as string]: strokeColor,
           } as React.CSSProperties}
         >
-          {transition?.label ?? ''}
+          {/* A return arrow hides its label from the drawing only: the button keeps it as its name. */}
+          {hideLabel ? '' : (transition?.label ?? '')}
           {(hovered || selected) && <Settings2 size={10} />}
         </button>
       </EdgeLabelRenderer>
@@ -430,7 +431,6 @@ interface WorkflowCanvasProps {
   onNodeClick:    (e: React.MouseEvent, node: Node) => void
   onEdgeClick:    (e: React.MouseEvent, edge: Edge) => void
   onPaneClick:    () => void
-  onReconnect:    (oldEdge: Edge, newConnection: { source: string; target: string; sourceHandle?: string | null; targetHandle?: string | null }) => void
   onConnect?:     (connection: { source: string; target: string; sourceHandle?: string | null; targetHandle?: string | null }) => void
   loading:        boolean
   def:            WorkflowDefinition | null
@@ -445,7 +445,6 @@ export function WorkflowCanvas({
   onNodeClick,
   onEdgeClick,
   onPaneClick,
-  onReconnect,
   onConnect,
   loading,
   def,
@@ -501,11 +500,17 @@ export function WorkflowCanvas({
           minZoom={0.3}
           maxZoom={2}
           edgesFocusable={true}
-          edgesReconnectable={true}
+          /*
+           * An arrow's ends cannot be dragged to other steps (tour of 23 Sep
+           * 2026). They could, and the arrow was redrawn there, but the server
+           * has no way to move a transition: nothing was sent or queued for
+           * "Save changes", and the next reload put the arrow back. Moving an
+           * arrow is deleting it and drawing a new one, and its panel says so.
+           */
+          edgesReconnectable={false}
           connectionLineStyle={{ stroke: accentColor, strokeWidth: 2 }}
           isValidConnection={() => true}
           connectionMode={ConnectionMode.Loose}
-          onReconnect={onReconnect}
           onConnect={onConnect}
         >
           <Background color={colors.border} gap={20} size={1} />

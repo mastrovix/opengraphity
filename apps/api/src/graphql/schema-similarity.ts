@@ -28,6 +28,8 @@ export const similaritySDL = `
     ready: Boolean!
     """L'organizzazione ha spento gli embedding: niente somiglianze (ondata 6)."""
     disabled: Boolean!
+    """Why the computation of the embedding failed; null while it is queued or done (D15)."""
+    failure: String
     items: [SimilarIncident!]!
   }
 
@@ -35,6 +37,8 @@ export const similaritySDL = `
     ready: Boolean!
     """L'organizzazione ha spento gli embedding: niente suggerimenti (ondata 6)."""
     disabled: Boolean!
+    """Why the computation of the embedding failed; null while it is queued or done (D15)."""
+    failure: String
     items: [SuggestedArticle!]!
   }
 
@@ -76,5 +80,21 @@ export const similaritySDL = `
     title: String!
     motivation: String!
     incidents: [ProblemCandidateIncident!]!
+  }
+
+  """
+  The candidates, and what the clustering looked at to find them (D15): an
+  empty list means «no cluster» only when the open incidents were analysed.
+  """
+  type ProblemCandidatesResult {
+    candidates: [ProblemCandidate!]!
+    "Open incidents compared with each other: the most recent, up to the cap."
+    examined: Int!
+    "Open incidents left out because their embedding is not computed yet: it has been queued."
+    notAnalysed: Int!
+    "Of those left out, how many had their computation fail (see the job queue)."
+    analysisFailures: Int!
+    "True when there are more open incidents than the cap: the older ones were not examined."
+    capped: Boolean!
   }
 `

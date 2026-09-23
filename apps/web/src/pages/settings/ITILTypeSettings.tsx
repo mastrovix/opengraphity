@@ -1,13 +1,12 @@
 import type { LucideIcon } from 'lucide-react'
 import { Trans, useTranslation } from 'react-i18next'
 import { CIIcon } from '@/lib/ciIcon'
+import { CI_ICON_KEYS } from '@/lib/ciIconPaths'
 import { FormField } from './citype/CIFieldInlineEditor'
 import { inputS, selectS, textareaS, btnPrimary } from './shared/designerStyles'
 import { Input, Select } from '@/components/ui/FormControls'
 import type { SettingsFormState } from './useITILTypeDesigner'
 import { ColorField } from '@/components/ui/ColorField'
-
-const ICONS = ['box', 'database', 'server', 'shield', 'hard-drive', 'cloud', 'globe', 'cpu', 'network', 'monitor', 'lock', 'alert-circle', 'bug', 'git-pull-request', 'inbox']
 
 export interface ITILTypeSettingsProps {
   settingsForm:    SettingsFormState
@@ -37,7 +36,7 @@ export function ITILTypeSettings({ settingsForm, setSettingsForm, settingsSaving
             onChange={(e) => setSettingsForm((p) => p && ({ ...p, icon: e.target.value }))}
           >
             <option value="">{t('citypeDesigner.noIcon')}</option>
-            {ICONS.map((i) => <option key={i} value={i}>{i}</option>)}
+            {CI_ICON_KEYS.map((i) => <option key={i} value={i}>{i}</option>)}
           </Select>
         </FormField>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 20 }}>

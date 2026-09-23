@@ -159,7 +159,11 @@ export function useWorkflowDesigner(def: WorkflowDefinition | null) {
           animated:     true,
           style:        { stroke: edgeColor, strokeWidth: 1.5, strokeDasharray: '6,3' },
           markerEnd:    { type: MarkerType.ArrowClosed, width: 14, height: 14, color: edgeColor },
-          data:         { transition: { ...tr, label: '' }, color: edgeColor } satisfies EdgeNodeData,
+          // Drawn without its label: the drawing only. The label used to be
+          // blanked here, in the DATA — the panel opened with an empty Label,
+          // and saving any other change of the arrow wrote '' over «Reopen»,
+          // the text of the button on the ticket (tour of 23 Sep 2026).
+          data:         { transition: tr, color: edgeColor, hideLabel: true } satisfies EdgeNodeData,
         }
       }
 
@@ -262,25 +266,6 @@ export function useWorkflowDesigner(def: WorkflowDefinition | null) {
     )
   }
 
-  const handleReconnect = useCallback((
-    oldEdge: Edge,
-    newConnection: { source: string; target: string; sourceHandle?: string | null; targetHandle?: string | null },
-  ) => {
-    setEdges((eds) =>
-      eds.map((e) =>
-        e.id === oldEdge.id
-          ? {
-              ...e,
-              source:       newConnection.source,
-              target:       newConnection.target,
-              sourceHandle: newConnection.sourceHandle ?? e.sourceHandle,
-              targetHandle: newConnection.targetHandle ?? e.targetHandle,
-            }
-          : e,
-      ),
-    )
-  }, [setEdges])
-
   return {
     nodes,
     edges,
@@ -303,7 +288,6 @@ export function useWorkflowDesigner(def: WorkflowDefinition | null) {
     handlePaneClick,
     handleSaveLocally,
     handleSaveStepLocally,
-    handleReconnect,
     onStepSaved,
     onEdgeSaved,
     pendingStepChanges,

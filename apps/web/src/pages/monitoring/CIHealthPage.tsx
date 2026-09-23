@@ -62,6 +62,7 @@ import type { CIHealth, CIHealthOverview, CIHealthRow, CIHealthFilterVars } from
 import { colors, palette } from '@/lib/tokens'
 import { srOnlyStyle } from '@/lib/a11y'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
+import { TEAM_TYPE } from '@/lib/teamVocabularies'
 
 const PAGE_SIZE       = 50
 const POLL_MS         = 15_000
@@ -105,10 +106,12 @@ interface HealthFilter {
   type:        string
   environment: string
   team:        string
+  /** Id of the support group (SUPPORTED_BY): the team that acts on the CI. */
+  supportTeam: string
   search:      string
 }
 
-const hasFilter = (f: HealthFilter) => f.health !== null || !!f.type || !!f.environment || !!f.team || !!f.search.trim()
+const hasFilter = (f: HealthFilter) => f.health !== null || !!f.type || !!f.environment || !!f.team || !!f.supportTeam || !!f.search.trim()
 
 /** Variabili GraphQL: solo i campi valorizzati. */
 function toFilterVars(f: HealthFilter): CIHealthFilterVars | null {
@@ -117,6 +120,7 @@ function toFilterVars(f: HealthFilter): CIHealthFilterVars | null {
   if (f.type)          vars.type        = f.type
   if (f.environment)   vars.environment = f.environment
   if (f.team)          vars.team        = f.team
+  if (f.supportTeam)   vars.supportTeam = f.supportTeam
   if (f.search.trim()) vars.search      = f.search.trim()
   return Object.keys(vars).length ? vars : null
 }
@@ -124,7 +128,7 @@ function toFilterVars(f: HealthFilter): CIHealthFilterVars | null {
 // ── URL ──────────────────────────────────────────────────────────────────────
 
 /** Nomi dei parametri: corti perché finiscono nella barra degli indirizzi. */
-const URL_KEYS = { health: 'health', type: 'type', environment: 'env', team: 'team', search: 'q', page: 'page' } as const
+const URL_KEYS = { health: 'health', type: 'type', environment: 'env', team: 'team', supportTeam: 'support', search: 'q', page: 'page' } as const
 
 /**
  * Filtri dall'URL. Un valore di `health` fuori vocabolario viene ignorato
@@ -138,6 +142,7 @@ function filterFromParams(p: URLSearchParams): HealthFilter {
     type:        p.get(URL_KEYS.type) ?? '',
     environment: p.get(URL_KEYS.environment) ?? '',
     team:        p.get(URL_KEYS.team) ?? '',
+    supportTeam: p.get(URL_KEYS.supportTeam) ?? '',
     search:      p.get(URL_KEYS.search) ?? '',
   }
 }
@@ -288,6 +293,39 @@ const TD: React.CSSProperties = { padding: '10px 12px', fontSize: 'var(--font-si
  * da tastiera è il Link sul nome (D·3.2: niente `tabIndex` sulla riga, che
  * non saprebbe dichiararsi link). I link secondari fermano la propagazione.
  */
+/**
+ * The two team filters. Each offers the teams that do that job (D10): owner
+ * teams own CIs, support groups run them. A tenant whose teams have no type
+ * sees them all in both lists — the label of the list says which role it
+ * filters on. A failed read is said, not shown as an empty list.
+ */
+function TeamFilters({ owner, support, onOwner, onSupport }: { owner: string; support: string; onOwner: (id: string) => void; onSupport: (id: string) => void }) {
+  const { t } = useTranslation()
+  const { data, error } = useQuery<{ teams: { id: string; name: string; type: string | null }[] }>(GET_TEAMS, { fetchPolicy: METAMODEL_FETCH_POLICY })
+  const teams = data?.teams ?? []
+  const ofType = (type: string) => {
+    const fit = teams.filter((tm) => tm.type === type)
+    return fit.length ? fit : teams
+  }
+  return (
+    <>
+      <Select aria-label={t('monitoring.health.filters.team')} value={owner} onChange={(e) => onOwner(e.target.value)} style={{ width: 180 }}>
+        <option value="">{t('monitoring.health.filters.allTeams')}</option>
+        {ofType(TEAM_TYPE.OWNER).map((tm) => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
+      </Select>
+      <Select aria-label={t('monitoring.health.filters.supportTeam')} value={support} onChange={(e) => onSupport(e.target.value)} style={{ width: 180 }}>
+        <option value="">{t('monitoring.health.filters.allSupportTeams')}</option>
+        {ofType(TEAM_TYPE.SUPPORT).map((tm) => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
+      </Select>
+      {error && (
+        <span role="alert" style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-danger)' }}>
+          {t('monitoring.health.filters.teamsUnavailable', { error: error.message })}
+        </span>
+      )}
+    </>
+  )
+}
+
 function HealthRowView({ row, highImpact }: { row: CIHealthRow; highImpact: number | null }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -335,7 +373,8 @@ function HealthRowView({ row, highImpact }: { row: CIHealthRow; highImpact: numb
       </td>
       <td style={TD}><ImpactChip dependents={row.dependents} highImpact={highImpact} describedBy={ids.impact} /></td>
       <td style={{ ...TD, fontVariantNumeric: 'tabular-nums' }}><ServicesCell count={row.servicesCount} ciId={row.id} name={row.name} describedBy={ids.services} /></td>
-      <td style={TD}>{row.ownerTeam ?? <span style={{ color: 'var(--color-slate-light)' }}>—</span>}</td>
+      {/* Who acts on it: the SUPPORT team, not the owner (tour of 23 Sep 2026). */}
+      <td style={TD}>{row.supportTeam ?? <span style={{ color: 'var(--color-slate-light)' }}>—</span>}</td>
       <td style={TD}>
         {row.lastEventAt
           ? <span title={formatDateTime(row.lastEventAt)} style={{ color: 'var(--color-slate)' }}>{timeAgo(row.lastEventAt)}</span>
@@ -427,14 +466,11 @@ export function CIHealthPage() {
     if (page > lastPage) setPage(lastPage)
   }, [liveTotal, page, setPage])
 
-  const { data: teamsData, error: teamsError } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: METAMODEL_FETCH_POLICY })
   /**
    * G-MON-7: la soglia dell'evidenza «si propaga» e una scelta
    * dell'organizzazione (Policy eventi). null = non ancora letta.
    */
   const { data: policyData } = useQuery<{ eventPolicy: { highImpactDependents: number } }>(GET_EVENT_POLICY, { fetchPolicy: METAMODEL_FETCH_POLICY })
-  const highImpact = policyData?.eventPolicy.highImpactDependents ?? null
-  const teams = teamsData?.teams ?? []
   const typeOptions = useMemo(() => ciTypes.filter((ct) => ct.name !== '__base__'), [ciTypes])
 
   const overview = data?.ciHealthOverview
@@ -466,7 +502,7 @@ export function CIHealthPage() {
     { key: 'alarms',    label: t('monitoring.health.columns.alarms'),    width: '110px' },
     { key: 'impact',    label: t('monitoring.health.columns.impact'),    width: '130px' },
     { key: 'services',  label: t('monitoring.health.columns.services'),  width: '120px' },
-    { key: 'team',      label: t('monitoring.health.columns.team'),      width: '150px' },
+    { key: 'team',      label: t('monitoring.health.columns.supportTeam'), width: '170px' },
     { key: 'lastEvent', label: t('monitoring.health.columns.lastEvent'), width: '130px' },
     { key: 'source',    label: t('monitoring.health.columns.source'),    width: '130px' },
     { key: 'map',       label: t('monitoring.health.columns.map'),       width: '70px' },
@@ -513,7 +549,7 @@ export function CIHealthPage() {
             <tbody>
               {items.length === 0
                 ? <tr><td colSpan={headers.length} style={{ ...TD, textAlign: 'center', color: 'var(--color-slate-light)', padding: '28px 12px' }}>{t('monitoring.health.noMatch')}</td></tr>
-                : items.map((row) => <HealthRowView key={row.id} row={row} highImpact={highImpact} />)}
+                : items.map((row) => <HealthRowView key={row.id} row={row} highImpact={policyData?.eventPolicy.highImpactDependents ?? null} />)}
             </tbody>
           </table>
         </div>
@@ -598,15 +634,7 @@ export function CIHealthPage() {
             {t('monitoring.health.filters.enumsUnavailable', { error: baseEnums.error })}
           </span>
         )}
-        <Select aria-label={t('monitoring.health.filters.team')} value={filter.team} onChange={(e) => setParams({ team: e.target.value })} style={{ width: 180 }}>
-          <option value="">{t('monitoring.health.filters.allTeams')}</option>
-          {teams.map((tm) => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
-        </Select>
-        {teamsError && (
-          <span role="alert" style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-danger)' }}>
-            {t('monitoring.health.filters.teamsUnavailable', { error: teamsError.message })}
-          </span>
-        )}
+        <TeamFilters owner={filter.team} support={filter.supportTeam} onOwner={(team) => setParams({ team })} onSupport={(supportTeam) => setParams({ supportTeam })} />
         <Input
           aria-label={t('monitoring.health.filters.search')}
           placeholder={t('monitoring.health.filters.searchPlaceholder')}

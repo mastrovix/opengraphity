@@ -19,7 +19,7 @@ import { ValidationError } from './errors.js'
 import { registerMetamodelCacheClearer } from './schemaInvalidator.js'
 import {
   CI_LIFECYCLE_DECOMMISSIONED, CI_LIFECYCLE_EXPIRED, CI_LIFECYCLE_INACTIVE, CI_LIFECYCLE_MAINTENANCE,
-  CI_LIFECYCLE_REVOKED, CI_STATUS_VOCABULARY,
+  CI_LIFECYCLE_REVOKED, CI_STATUS_VOCABULARY, ENVIRONMENT_VOCABULARY,
   EVENT_GROUP_BY, EVENT_SEVERITIES, OPEN_INCIDENT_FROM,
   type EventGroupBy, type EventSeverity, type OpenIncidentFrom,
 } from './eventVocabularies.js'
@@ -51,6 +51,14 @@ export const EVENT_POLICY_V6_MIGRATION = '20260917_1810_ci_lifecycle_semantics'
  */
 export const EVENT_POLICY_V7_KEYS = ['high_impact_dependents'] as const
 export const EVENT_POLICY_V7_MIGRATION = '20261002_1050_event_policy_high_impact'
+/**
+ * Keys added after the browser tour of 23 Sep 2026: how severe an alarm is
+ * outside production (the owner's choice: «High in production, Medium
+ * elsewhere»).
+ */
+export const EVENT_POLICY_V8_KEYS = ['production_environments', 'non_production_severity_map'] as const
+export const EVENT_POLICY_V8_MIGRATION = '20261007_1040_event_policy_non_production'
+
 
 /** Vocabolari: la definizione è in eventVocabularies.ts (fonte unica anche per gli enum SDL); ri-esportati per i chiamanti storici. */
 export { OPEN_INCIDENT_FROM, EVENT_SEVERITIES }
@@ -153,6 +161,14 @@ export interface EventPolicy {
    */
   high_impact_dependents: number
   severity_map:           SeverityMap
+  /** Values of the `environment` vocabulary that count as production. */
+  production_environments: string[]
+  /**
+   * Impact and urgency for alarms on CIs OUTSIDE production; null = the same
+   * `severity_map` everywhere. A CI without an environment counts as
+   * production: missing data never downgrades an outage.
+   */
+  non_production_severity_map: SeverityMap | null
 }
 
 export const DEFAULT_EVENT_POLICY: EventPolicy = {
@@ -184,6 +200,8 @@ export const DEFAULT_EVENT_POLICY: EventPolicy = {
     warning:  { impact: 'medium', urgency: 'medium' },
     info:     { impact: 'low',    urgency: 'low' },
   },
+  production_environments: ['production'],
+  non_production_severity_map: null,
 }
 
 export const DEFAULT_EVENT_POLICY_JSON = JSON.stringify(DEFAULT_EVENT_POLICY)
@@ -241,6 +259,19 @@ function assertIsoOrNull(value: unknown, field: string): string | null {
   }
   return value
 }
+
+/** A list, even empty, of non-empty strings without duplicates (the values are checked against the tenant's vocabulary on write). */
+function assertValueList(value: unknown, field: string, what: string): string[] {
+  if (!Array.isArray(value)) throw new ValidationError(`${field} must be a list of ${what}. Got: ${JSON.stringify(value)}`)
+  const out: string[] = []
+  for (const v of value) {
+    if (typeof v !== 'string' || v === '') throw new ValidationError(`${field}: ${JSON.stringify(v)} is not a non-empty string`)
+    if (out.includes(v)) throw new ValidationError(`${field}: ${v} appears twice`)
+    out.push(v)
+  }
+  return out
+}
+
 
 function assertBoolean(value: unknown, field: string): boolean {
   if (typeof value !== 'boolean') {
@@ -353,6 +384,13 @@ export function assertEventPolicy(value: unknown, what = 'event_policy'): EventP
     maintenance_statuses:   assertLifecycleStatuses(value['maintenance_statuses'], `${what}.maintenance_statuses`),
     high_impact_dependents: assertIntUpTo(value['high_impact_dependents'], EVENT_POLICY_MAX.high_impact_dependents, `${what}.high_impact_dependents`),
     severity_map:           assertSeverityMap(value['severity_map'], `${what}.severity_map`),
+    production_environments: assertValueList(value['production_environments'], `${what}.production_environments`, 'values of the environment vocabulary'),
+    non_production_severity_map: value['non_production_severity_map'] === null
+      ? null
+      : assertSeverityMap(value['non_production_severity_map'], `${what}.non_production_severity_map`),
+  }
+  if (policy.non_production_severity_map !== null && policy.production_environments.length === 0) {
+    throw new ValidationError(`${what}.production_environments cannot be empty while non_production_severity_map is set: every CI with an environment would count as non-production`)
   }
   if (policy.flap_threshold > 0 && policy.flap_window_minutes === 0) {
     throw new ValidationError(`${what}.flap_window_minutes must be > 0 when flap_threshold is > 0 (flapping detection is on but its window is empty; set flap_threshold = 0 to turn it off)`)
@@ -394,12 +432,14 @@ export function parseEventPolicy(raw: unknown, tenantId: string): EventPolicy {
       const missingV5 = EVENT_POLICY_V5_KEYS.filter((k) => parsed[k] === undefined)
       const missingV6 = EVENT_POLICY_V6_KEYS.filter((k) => parsed[k] === undefined)
       const missingV7 = EVENT_POLICY_V7_KEYS.filter((k) => parsed[k] === undefined)
+      const missingV8 = EVENT_POLICY_V8_KEYS.filter((k) => parsed[k] === undefined)
       if (missingV2.length) hints.push(` — missing ${missingV2.join(', ')}: run the ${EVENT_POLICY_V2_MIGRATION} migration`)
       else if (missingV3.length) hints.push(` — missing ${missingV3.join(', ')}: run the ${EVENT_POLICY_V3_MIGRATION} migration`)
       else if (missingV4.length) hints.push(` — missing ${missingV4.join(', ')}: run the ${EVENT_POLICY_V4_MIGRATION} migration`)
       else if (missingV5.length) hints.push(` — missing ${missingV5.join(', ')}: run the ${EVENT_POLICY_V5_MIGRATION} migration`)
       else if (missingV6.length) hints.push(` — missing ${missingV6.join(', ')}: run the ${EVENT_POLICY_V6_MIGRATION} migration`)
       else if (missingV7.length) hints.push(` — missing ${missingV7.join(', ')}: run the ${EVENT_POLICY_V7_MIGRATION} migration`)
+      else if (missingV8.length) hints.push(` — missing ${missingV8.join(', ')}: run the ${EVENT_POLICY_V8_MIGRATION} migration`)
     }
     throw new Error(`Tenant ${tenantId} event_policy is invalid: ${e instanceof Error ? e.message : String(e)}${hints.join('')}`, { cause: e })
   }
@@ -503,6 +543,8 @@ export interface EventPolicyGQL {
   maintenanceStatuses:  string[]
   highImpactDependents: number
   severityMap:          string
+  productionEnvironments: string[]
+  nonProductionSeverityMap: string | null
 }
 
 export function toEventPolicyGQL(p: EventPolicy): EventPolicyGQL {
@@ -526,6 +568,8 @@ export function toEventPolicyGQL(p: EventPolicy): EventPolicyGQL {
     maintenanceStatuses:  [...p.maintenance_statuses],
     highImpactDependents: p.high_impact_dependents,
     severityMap:          JSON.stringify(p.severity_map),
+    productionEnvironments: [...p.production_environments],
+    nonProductionSeverityMap: p.non_production_severity_map === null ? null : JSON.stringify(p.non_production_severity_map),
   }
 }
 
@@ -554,6 +598,10 @@ export interface EventPolicyInputGQL {
   /** G-MON-7: da quanti dipendenti un guasto si propaga (0 = nessuna evidenza). */
   highImpactDependents?: number | null
   severityMap?:          string | null
+  /** Complete list: the values of the environment vocabulary that count as production. */
+  productionEnvironments?: string[] | null
+  /** JSON like severityMap, or null = the same severityMap everywhere. */
+  nonProductionSeverityMap?: string | null
 }
 
 /**
@@ -577,55 +625,82 @@ export async function applyEventPolicyInput(
     throw new ValidationError(`eventPolicy was modified by someone else (expected version ${input.expectedVersion}, current is ${current.version}${current.updated_at ? `, updated at ${current.updated_at}` : ''}): reload it and apply your changes again`)
   }
   const next: Record<string, unknown> = { ...current, version: current.version + 1, updated_at: now }
-  const map: Record<Exclude<keyof EventPolicyInputGQL, 'expectedVersion'>, keyof EventPolicy> = {
-    openIncidentFrom:     'open_incident_from',
-    groupBy:              'group_by',
-    openDelaySeconds:     'open_delay_seconds',
-    autoResolve:          'auto_resolve',
-    suppressUpstreamHops: 'suppress_upstream_hops',
-    flapThreshold:        'flap_threshold',
-    flapWindowMinutes:    'flap_window_minutes',
-    flapStableMinutes:    'flap_stable_minutes',
-    stormThresholdPerMinute: 'storm_threshold_per_minute',
-    stormCooldownMinutes: 'storm_cooldown_minutes',
-    retentionDays:        'retention_days',
-    matchShortHostname:   'match_short_hostname',
-    ignoreLifecycleStatuses: 'ignore_lifecycle_statuses',
-    retiredStatuses:      'retired_statuses',
-    maintenanceStatuses:  'maintenance_statuses',
-    highImpactDependents: 'high_impact_dependents',
-    severityMap:          'severity_map',
-  }
-  const LIFECYCLE_INPUTS: readonly string[] = ['ignoreLifecycleStatuses', 'retiredStatuses', 'maintenanceStatuses']
-  for (const [gql, key] of Object.entries(map) as [Exclude<keyof EventPolicyInputGQL, 'expectedVersion'>, keyof EventPolicy][]) {
+  for (const [gql, key] of Object.entries(INPUT_FIELDS) as [PolicyInputField, keyof EventPolicy][]) {
     const v = input[gql]
     if (v === undefined) continue
-    if (v === null) throw new ValidationError(`${gql} cannot be null`)
-    if (LIFECYCLE_INPUTS.includes(gql)) {
-      const values = assertLifecycleStatuses(v, gql)
-      // Il punto unico di validazione: il vocabolario è quello del cliente,
-      // non una lista scritta qui (era il difetto C-4/A-14).
-      for (const value of values) await assertDomainValue(tenantId, CI_STATUS_VOCABULARY, value)
-      next[key] = values
-    } else if (gql === 'severityMap') {
-      let parsed: unknown
-      try { parsed = JSON.parse(v as string) }
-      catch (e) { throw new ValidationError(`severityMap is not valid JSON: ${e instanceof Error ? e.message : String(e)}`) }
-      const map = assertSeverityMap(parsed, 'severityMap')
-      // Il punto unico di validazione, come per le liste del ciclo di vita: i
-      // vocabolari sono quelli del CLIENTE, non una lista scritta in questo
-      // file (era il vicolo cieco C·N-4: la pagina rifiutava il valore nuovo
-      // dopo una rinomina, cioè l'unica correzione possibile).
-      for (const [sev, entry] of Object.entries(map)) {
-        await assertDomainValue(tenantId, 'impact',  entry.impact)
-          .catch((e: unknown) => { throw new ValidationError(`severityMap.${sev}.impact: ${e instanceof Error ? e.message : String(e)}`) })
-        await assertDomainValue(tenantId, 'urgency', entry.urgency)
-          .catch((e: unknown) => { throw new ValidationError(`severityMap.${sev}.urgency: ${e instanceof Error ? e.message : String(e)}`) })
-      }
-      next[key] = map
-    } else {
-      next[key] = v
-    }
+    if (v === null && !NULLABLE_INPUTS.includes(gql)) throw new ValidationError(`${gql} cannot be null`)
+    next[key] = await policyInputValue(tenantId, gql, v)
   }
   return assertEventPolicy(next, 'eventPolicy')
+}
+
+type PolicyInputField = Exclude<keyof EventPolicyInputGQL, 'expectedVersion'>
+
+const INPUT_FIELDS: Record<PolicyInputField, keyof EventPolicy> = {
+  openIncidentFrom:     'open_incident_from',
+  groupBy:              'group_by',
+  openDelaySeconds:     'open_delay_seconds',
+  autoResolve:          'auto_resolve',
+  suppressUpstreamHops: 'suppress_upstream_hops',
+  flapThreshold:        'flap_threshold',
+  flapWindowMinutes:    'flap_window_minutes',
+  flapStableMinutes:    'flap_stable_minutes',
+  stormThresholdPerMinute: 'storm_threshold_per_minute',
+  stormCooldownMinutes: 'storm_cooldown_minutes',
+  retentionDays:        'retention_days',
+  matchShortHostname:   'match_short_hostname',
+  ignoreLifecycleStatuses: 'ignore_lifecycle_statuses',
+  retiredStatuses:      'retired_statuses',
+  maintenanceStatuses:  'maintenance_statuses',
+  highImpactDependents: 'high_impact_dependents',
+  severityMap:          'severity_map',
+  productionEnvironments: 'production_environments',
+  nonProductionSeverityMap: 'non_production_severity_map',
+}
+
+const LIFECYCLE_INPUTS: readonly string[] = ['ignoreLifecycleStatuses', 'retiredStatuses', 'maintenanceStatuses']
+/** The field where null is a value: the same severity map everywhere. */
+const NULLABLE_INPUTS: readonly string[] = ['nonProductionSeverityMap']
+
+/** One input field, validated against the tenant's vocabularies where it names their values. */
+async function policyInputValue(tenantId: string, gql: PolicyInputField, v: unknown): Promise<unknown> {
+  if (LIFECYCLE_INPUTS.includes(gql)) {
+    const values = assertLifecycleStatuses(v, gql)
+    // Il punto unico di validazione: il vocabolario è quello del cliente,
+    // non una lista scritta qui (era il difetto C-4/A-14).
+    for (const value of values) await assertDomainValue(tenantId, CI_STATUS_VOCABULARY, value)
+    return values
+  }
+  if (gql === 'severityMap') return severityMapInput(tenantId, v, gql)
+  if (gql === 'nonProductionSeverityMap') return v === null ? null : severityMapInput(tenantId, v, gql)
+  if (gql === 'productionEnvironments') {
+    const values = assertValueList(v, gql, 'values of the environment vocabulary')
+    for (const value of values) {
+      await assertDomainValue(tenantId, ENVIRONMENT_VOCABULARY, value)
+        .catch((e: unknown) => { throw new ValidationError(`productionEnvironments: ${e instanceof Error ? e.message : String(e)}`) })
+    }
+    return values
+  }
+  return v
+}
+
+/**
+ * Una mappa severità → impatto/urgenza in ingresso (JSON). Il punto unico di
+ * validazione, come per le liste del ciclo di vita: i vocabolari sono quelli
+ * del CLIENTE, non una lista scritta in questo file (era il vicolo cieco
+ * C·N-4: la pagina rifiutava il valore nuovo dopo una rinomina, cioè l'unica
+ * correzione possibile).
+ */
+async function severityMapInput(tenantId: string, raw: unknown, field: string): Promise<SeverityMap> {
+  let parsed: unknown
+  try { parsed = JSON.parse(raw as string) }
+  catch (e) { throw new ValidationError(`${field} is not valid JSON: ${e instanceof Error ? e.message : String(e)}`) }
+  const map = assertSeverityMap(parsed, field)
+  for (const [sev, entry] of Object.entries(map)) {
+    await assertDomainValue(tenantId, 'impact',  entry.impact)
+      .catch((e: unknown) => { throw new ValidationError(`${field}.${sev}.impact: ${e instanceof Error ? e.message : String(e)}`) })
+    await assertDomainValue(tenantId, 'urgency', entry.urgency)
+      .catch((e: unknown) => { throw new ValidationError(`${field}.${sev}.urgency: ${e instanceof Error ? e.message : String(e)}`) })
+  }
+  return map
 }

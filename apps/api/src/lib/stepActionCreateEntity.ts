@@ -10,6 +10,7 @@
  */
 import type { Session } from 'neo4j-driver'
 import { ValidationError } from './errors.js'
+import { matchById } from './cypherLookups.js'
 import { TICKET_CI_RELATIONSHIPS_PATTERN } from '@opengraphity/types'
 
 const LABELS: Readonly<Record<string, string>> = { incident: 'Incident', problem: 'Problem', change: 'Change', service_request: 'ServiceRequest' }
@@ -26,7 +27,8 @@ export async function createEntityFromStepAction(
   const sourceType = (parent_type as string | undefined) ?? current.type
   const cis = sourceId
     ? await session.executeRead((tx) => tx.run(`
-        MATCH (e {id: $id, tenant_id: $tenantId})-[:${TICKET_CI_RELATIONSHIPS_PATTERN}]->(ci)
+        ${matchById('e', { id: '$id' })}
+        MATCH (e)-[:${TICKET_CI_RELATIONSHIPS_PATTERN}]->(ci)
         RETURN collect(DISTINCT ci.id) AS ids
       `, { id: sourceId, tenantId: ctx.tenantId })).then((r) => (r.records[0]?.get('ids') ?? []) as string[])
     : []

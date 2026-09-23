@@ -84,6 +84,8 @@ const COLUMN_RANKS: Readonly<Record<string, readonly string[]>> = {
 }
 
 const PAGE_SIZE       = 50
+/** Below this the alarm title wraps word by word: it wraps here instead, and the table scrolls (D36). */
+const ALARM_TITLE_MIN_WIDTH = 240
 const POLL_MS         = 15_000
 const SEARCH_DEBOUNCE = 300
 const DAY_MS          = 24 * 3_600_000
@@ -455,45 +457,54 @@ export function EventsPage() {
     if (page > last) setPage(last)
   }, [liveData, totalPages, page, setPage])
 
+  /*
+   * READABLE AT 1280-1440px (D36, tour of 23 Sep 2026): the table was 1284px
+   * wide in a 1057px container, and Incident and Actions were out of view.
+   * Now the widths are what the content needs, the alarm title never shrinks
+   * below a readable width (it wraps there), the incident sits next to the CI
+   * it is about, and the actions stay pinned at the right edge while the rest
+   * scrolls inside the table's own container.
+   */
   const columns: ColumnDef<EventRow>[] = [
-    { key: 'status',   label: t('events.columns.status'),   width: '120px', sortable: true, rank: EVENT_STATUS_RANK, render: (_v, row) => (
+    { key: 'status',   label: t('events.columns.status'),   width: '110px', sortable: true, rank: EVENT_STATUS_RANK, render: (_v, row) => (
       // Giro del 14 set 2026 (#50): la presa in carico si registrava ma la riga non lo diceva.
       <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 3, alignItems: 'flex-start' }}>
         <EventStatusBadge status={row.status} severity={row.severity} />
         {row.acknowledgedAt && <span title={formatDateTime(row.acknowledgedAt)} style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>{t('events.acknowledged')}</span>}
       </span>
     ) },
-    { key: 'severity', label: t('events.columns.severity'), width: '110px', sortable: true, rank: EVENT_SEVERITIES, render: (_v, row) => <EventSeverityBadge severity={row.severity} /> },
+    { key: 'severity', label: t('events.columns.severity'), width: '100px', sortable: true, rank: EVENT_SEVERITIES, render: (_v, row) => <EventSeverityBadge severity={row.severity} /> },
     {
       // Il titolo è un link al dettaglio: è lui il bersaglio da tastiera (la
       // riga resta cliccabile con il mouse ma non è focalizzabile, vedi
       // SortableFilterTable `focusableRows`).
       key: 'title', label: t('events.columns.title'), sortable: true,
       render: (_v, row) => (
-        <div>
+        <div style={{ minWidth: ALARM_TITLE_MIN_WIDTH }}>
           <Link to={`/events/${row.id}`} state={listReturnState(location.search)} onClick={(e) => e.stopPropagation()} style={{ fontWeight: 600, color: colors.slateDark, textDecoration: 'none' }}>{row.title}</Link>
           <div style={{ fontSize: 'var(--font-size-table)', color: colors.slateLight, marginTop: 2 }}>{resourceKindLabel(t, row.resourceKind)} · {row.resource}</div>
         </div>
       ),
     },
     {
-      key: 'ci', label: t('events.columns.ci'), width: '180px',
+      key: 'ci', label: t('events.columns.ci'), width: '160px',
       render: (_v, row) => row.ci
         ? <Link to={ciPath(row.ci)} onClick={(e) => e.stopPropagation()} style={{ color: colors.brand, textDecoration: 'none', fontWeight: 500 }}>{row.ci.name}</Link>
         : <EventNoCIBadge matchReason={row.matchReason} />,
     },
-    { key: 'source',     label: t('events.columns.source'), width: '140px', render: (_v, row) => <span style={{ color: colors.slate }}>{row.source?.name ?? '—'}</span> },
-    { key: 'count',      label: t('events.columns.count'),  width: '90px',  sortable: true, render: (v) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{String(v)}</span> },
-    { key: 'lastSeenAt', label: t('events.columns.lastSeen'), width: '130px', sortable: true, render: (v) => <span style={{ color: colors.slateLight }} title={formatDateTime(String(v))}>{timeAgo(String(v))}</span> },
     {
       // Link all'incident (con icona se l'ha aperto/agganciato il monitoraggio)
       // oppure il chip che spiega perché non c'è: silenziato, in attesa, CI da collegare.
-      key: 'incident', label: t('events.columns.incident'), width: '150px',
+      key: 'incident', label: t('events.columns.incident'), width: '140px',
       render: (_v, row) => <EventIncidentCell event={row} policy={policy} stopRowClick />,
     },
+    { key: 'source',     label: t('events.columns.source'), width: '120px', render: (_v, row) => <span style={{ color: colors.slate }}>{row.source?.name ?? '—'}</span> },
+    { key: 'count',      label: t('events.columns.count'),  width: '110px', sortable: true, render: (v) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{String(v)}</span> },
+    { key: 'lastSeenAt', label: t('events.columns.lastSeen'), width: '110px', sortable: true, render: (v) => <span style={{ color: colors.slateLight, whiteSpace: 'nowrap' }} title={formatDateTime(String(v))}>{timeAgo(String(v))}</span> },
   ]
   if (canAct) {
-    columns.push({ key: 'id', label: t('events.columns.actions'), width: '190px', render: (_v, row) => <EventActions event={row} onChanged={onChanged} compact /> })
+    // Pinned at the right edge: the actions stay in view while the table scrolls (D36).
+    columns.push({ key: 'id', label: t('events.columns.actions'), width: '170px', sticky: 'end', render: (_v, row) => <EventActions event={row} onChanged={onChanged} compact /> })
   }
 
   return (

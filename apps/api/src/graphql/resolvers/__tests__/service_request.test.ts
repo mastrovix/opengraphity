@@ -34,7 +34,8 @@ vi.mock('../../../services/requestService.js', () => ({
   createRequest: vi.fn(),
   mapRequest:    vi.fn((p: Record<string, unknown>) => p),
 }))
-vi.mock('../../../services/ticketAssignment.js', () => ({ setTicketUser: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('../../../services/ticketAssignment.js', () => ({ setTicketUser: vi.fn().mockResolvedValue(undefined), assertUserInAssignedTeam: vi.fn() }))
+vi.mock('../../../services/requestAssignment.js', () => ({ assignRequestToTeam: vi.fn() }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/domainMatrix.js', () => import('../../../lib/__tests__/domainMatrixFake.js'))
 vi.mock('../../../lib/validateRequiredFields.js', () => ({ validateRequiredFields: vi.fn().mockResolvedValue(undefined) }))
@@ -478,6 +479,50 @@ describe('updateServiceCatalogItem', () => {
     const err = await failure(Mutation.updateServiceCatalogItem(null, { id: 'c-x', input: { name: 'x' } }, admin))
     expect(err.extensions['code']).toBe('NOT_FOUND')
     expect(audit).not.toHaveBeenCalled()
+  })
+})
+
+/*
+ * D56 (the owner's choice of 23 Sep 2026): a catalog item has a FULFILMENT
+ * GROUP, and its requests are born assigned to it.
+ */
+describe('the fulfilment group of a catalog item', () => {
+  const row = { props: { id: 'c1', name: 'VPN', created_at: 'x' } }
+  const groupWrite = () => vi.mocked(runQuery).mock.calls.find((c) => String(c[1]).includes('MERGE (i)-[:FULFILLED_BY]->(t)'))
+
+  it('is written on create after checking the team exists in the tenant', async () => {
+    vi.mocked(runQuery).mockResolvedValueOnce([row])
+    vi.mocked(runQueryOne).mockResolvedValueOnce({ id: 'team-1' })
+    await Mutation.createServiceCatalogItem(null, { input: { name: 'VPN', priority: 'high', fulfillmentTeamId: 'team-1' } }, admin)
+    expect(vi.mocked(runQueryOne).mock.calls[0]![2]).toEqual({ teamId: 'team-1', tenantId: 't1' })
+    expect(groupWrite()![2]).toMatchObject({ teamId: 'team-1', tenantId: 't1' })
+  })
+
+  it('a team of another tenant, or none, is refused', async () => {
+    vi.mocked(runQuery).mockResolvedValueOnce([row])
+    const err = await failure(Mutation.updateServiceCatalogItem(null, { id: 'c1', input: { fulfillmentTeamId: 'team-x' } }, admin))
+    expect(err.extensions['i18n']).toMatchObject({ key: 'errors.serviceCatalog.fulfillmentTeamNotFound', params: { teamId: 'team-x' } })
+    expect(groupWrite()).toBeUndefined()
+  })
+
+  it('on update alone it is enough (not "nothing to update"), and null removes it', async () => {
+    vi.mocked(runQuery).mockResolvedValue([row])
+    await Mutation.updateServiceCatalogItem(null, { id: 'c1', input: { fulfillmentTeamId: null } }, admin)
+    expect(groupWrite()![2]).toMatchObject({ teamId: null })
+    expect(runQueryOne).not.toHaveBeenCalled()
+  })
+
+  it('the field resolver reads the FULFILLED_BY team of the item in the tenant', async () => {
+    vi.mocked(runQueryOne).mockResolvedValueOnce({ props: { id: 'team-1', name: 'Desk' } })
+    const out = await serviceRequestResolvers.ServiceCatalogItem.fulfillmentTeam({ id: 'c1' }, null, operator) as { id: string }
+    expect(out.id).toBe('team-1')
+    expect(String(vi.mocked(runQueryOne).mock.calls[0]![1])).toContain('-[:FULFILLED_BY]->(t:Team {tenant_id: $tenantId})')
+  })
+
+  it('the team of a request is read through ASSIGNED_TO_TEAM', async () => {
+    vi.mocked(runQueryOne).mockResolvedValueOnce(null)
+    expect(await serviceRequestResolvers.ServiceRequest.team({ id: 'sr-1' }, null, operator)).toBeNull()
+    expect(String(vi.mocked(runQueryOne).mock.calls[0]![1])).toContain('(r:ServiceRequest {id: $id, tenant_id: $tenantId})-[:ASSIGNED_TO_TEAM]->(t:Team {tenant_id: $tenantId})')
   })
 })
 

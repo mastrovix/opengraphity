@@ -55,7 +55,7 @@ const ANOMALY_RULE_FIELDS = gql`
   fragment AnomalyRuleFields on AnomalyRuleConfig {
     ruleKey enabled severity ciTypes relations threshold incidentSeverities
     forbidden { fromType relation toType }
-    spec { ciTypes relations thresholdMin thresholdMax incidentSeverities forbidden }
+    spec { ciTypes relations allRelationsWhenEmpty thresholdMin thresholdMax incidentSeverities forbidden }
     isDefault updatedAt openCount
     problem { key message params { key value } }
   }

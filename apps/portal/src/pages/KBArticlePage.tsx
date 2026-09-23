@@ -4,6 +4,7 @@ import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { remarkUnderline } from '@opengraphity/web-core'
 import { ThumbsUp, ThumbsDown } from 'lucide-react'
 import { GET_KB_ARTICLE_BY_SLUG, GET_KB_ARTICLES, GET_KB_CATEGORIES } from '@/graphql/queries'
 import { RATE_KB_ARTICLE } from '@/graphql/mutations'
@@ -78,7 +79,7 @@ export function KBArticlePage() {
 
       {/* Article body */}
       <div className="md-body" style={{ fontSize: 12, lineHeight: 1.8, color: colors.slateDark, marginBottom: 40 }}>
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+        <ReactMarkdown remarkPlugins={[remarkGfm, remarkUnderline]}>
           {article.body}
         </ReactMarkdown>
       </div>

@@ -7,6 +7,12 @@
  * scorre l'API e rifiuta un letterale con parole italiane passato a uno di
  * quei punti (giro del 14 set 2026: «Evento di monitoraggio…», «Riassegnato
  * al team…», «Allarme correlato…» con il prodotto in inglese).
+ *
+ * Fuori dal controllo: i cinquanta moduli del tenant di prova
+ * (`lib/testData/demoTenant/catalogContent.ts`). Lì l'italiano è il DATO di
+ * un modulo — ogni campo porta la sua etichetta in inglese e in italiano,
+ * perché chi compila il modulo lo vede nella propria lingua — e non un testo
+ * che il prodotto scrive dentro un ticket.
  */
 import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
@@ -19,6 +25,7 @@ function files(dir: string, out: string[] = []): string[] {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, e.name)
     if (e.isDirectory()) { if (!['__tests__', 'scripts', 'migrations'].includes(e.name)) files(p, out); continue }
+    if (e.name === 'catalogContent.ts') continue
     if (e.name.endsWith('.ts') && !e.name.endsWith('.test.ts')) out.push(p)
   }
   return out

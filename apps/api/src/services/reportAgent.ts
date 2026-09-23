@@ -80,9 +80,9 @@ async function buildSchemaContext(session: ReturnType<typeof getSession>, tenant
     ORDER BY count DESC
   `, { tenantId }))
 
-  let schema = '## Schema del grafo Neo4j\n\n'
+  let schema = '## Neo4j graph schema\n\n'
 
-  schema += '### Nodi disponibili:\n'
+  schema += '### Available nodes:\n'
   for (const r of nodesResult.records) {
     const label = r.get('label') as string
     const props = r.get('props') as string[]
@@ -90,10 +90,10 @@ async function buildSchemaContext(session: ReturnType<typeof getSession>, tenant
     // `toNumber` del pacchetto: il driver dà un `number` JS per i conteggi, e
     // `.toNumber()` alla cieca rompeva l'analisi AI (giro nel browser del 14 set 2026).
     const count = countRec ? toNumber(countRec.get('count')) : 0
-    schema += `- **${label}** (${count} nodi): ${props.join(', ')}\n`
+    schema += `- **${label}** (${count} nodes): ${props.join(', ')}\n`
   }
 
-  schema += '\n### Relazioni:\n'
+  schema += '\n### Relationships:\n'
   for (const r of relsResult.records) {
     schema += `- (${r.get('from') as string})-[:${r.get('rel') as string}]->(${r.get('to') as string})\n`
   }
@@ -101,71 +101,120 @@ async function buildSchemaContext(session: ReturnType<typeof getSession>, tenant
   return schema
 }
 
-async function getCachedSchema(tenantId: string): Promise<string> {
-  const cached = schemaCache.get(tenantId)
-  if (cached && cached.expiresAt > Date.now()) return cached.schema
+/**
+ * How long the shape of the graph is considered fresh. The exact per-label
+ * counts read every node of the tenant — 2.7 s on the demo tenant, and no
+ * index helps (tour of 23 Sep 2026, D67) — while the shape changes slowly.
+ */
+export const SCHEMA_TTL_MS = 30 * 60 * 1000
+
+const schemaRefreshes = new Map<string, Promise<string>>()
+
+async function rebuildSchema(tenantId: string): Promise<string> {
   const schemaSession = getSession(undefined, 'READ')
   try {
     const schema = await buildSchemaContext(schemaSession, tenantId)
-    schemaCache.set(tenantId, { schema, expiresAt: Date.now() + 5 * 60 * 1000 })
+    schemaCache.set(tenantId, { schema, expiresAt: Date.now() + SCHEMA_TTL_MS })
     return schema
   } finally {
     await schemaSession.close()
   }
 }
 
+/** One rebuild per tenant at a time: concurrent questions share it. */
+function refreshSchema(tenantId: string): Promise<string> {
+  const running = schemaRefreshes.get(tenantId)
+  if (running) return running
+  const next = rebuildSchema(tenantId).finally(() => { schemaRefreshes.delete(tenantId) })
+  schemaRefreshes.set(tenantId, next)
+  return next
+}
+
+/**
+ * The schema for the prompt. Only the very first question of a tenant waits
+ * for the scan; after that an expired schema is used as it is while a new
+ * one is built in the background (D67) — a failed rebuild is logged and the
+ * next question tries again.
+ */
+export async function getCachedSchema(tenantId: string): Promise<string> {
+  const cached = schemaCache.get(tenantId)
+  if (cached && cached.expiresAt > Date.now()) return cached.schema
+  if (!cached) return refreshSchema(tenantId)
+  refreshSchema(tenantId).catch((err: unknown) => {
+    logger.error({ err, tenantId }, `${LOG_LABEL} schema rebuild failed: the previous one stays in use until the next attempt`)
+  })
+  return cached.schema
+}
+
+/** For tests: forget every cached schema. */
+export function clearSchemaCache(): void {
+  schemaCache.clear()
+  schemaRefreshes.clear()
+}
+
 // ── Tool definition + system prompt ───────────────────────────────────────
 
+/*
+ * In English like the system prompt (tour of 23 Sep 2026, D62): an Italian
+ * tool description pulled the answers towards Italian on an English interface.
+ */
 export const CYPHER_TOOL: Anthropic.Tool = {
   name: 'run_cypher_query',
   description:
-    'Esegue una query Cypher di SOLA LETTURA su Neo4j per recuperare dati su incident, change, CI, team, SLA. ' +
-    'Il tenant NON è filtrato automaticamente: ogni pattern di nodo da cui parte un MATCH DEVE includere ' +
-    '{tenant_id: $tenantId} (i nodi raggiunti tramite relazione da un nodo così vincolato sono ammessi). ' +
-    'Sono rifiutate: clausole di scrittura (CREATE/MERGE/SET/DELETE/REMOVE), CALL di procedure (eccetto apoc.text/coll/map/date), ' +
-    'parametri diversi da $tenantId, backtick e più istruzioni. Una query rifiutata restituisce il motivo: correggila e riprova.',
+    'Runs a READ-ONLY Cypher query on Neo4j to fetch data about incidents, changes, CIs, teams and SLAs. ' +
+    'The tenant is NOT filtered automatically: every node pattern a MATCH starts from MUST include ' +
+    '{tenant_id: $tenantId} (nodes reached through a relationship from such a node are allowed). ' +
+    'Refused: write clauses (CREATE/MERGE/SET/DELETE/REMOVE), procedure CALLs (except apoc.text/coll/map/date), ' +
+    'parameters other than $tenantId, backticks and multiple statements. A refused query returns the reason: fix it and try again.',
   input_schema: {
     type: 'object',
     properties: {
       query: {
         type: 'string',
-        description: 'Query Cypher valida di sola lettura. Usa $tenantId come unico parametro e scrivi l\'etichetta di ogni nodo, es. MATCH (i:Incident {tenant_id: $tenantId})-[:AFFECTS]->(c:ConfigurationItem) … Non usare LIMIT > 100.',
+        description: 'A valid read-only Cypher query. Use $tenantId as the only parameter and name the label of every node, e.g. MATCH (i:Incident {tenant_id: $tenantId})-[:AFFECTS]->(c:ConfigurationItem) … Do not use LIMIT > 100.',
       },
       description: {
         type: 'string',
-        description: 'Descrizione breve di cosa stai cercando',
+        description: 'A short description of what you are looking for',
       },
     },
     required: ['query', 'description'],
   },
 }
 
-export function buildSystemPrompt(schemaContext: string): string {
-  return `Sei un assistente di analisi ITSM per OpenGraphity.
-Hai accesso a un grafo Neo4j tramite il tool run_cypher_query.
+/*
+ * THE LANGUAGE IS SAID, NOT GUESSED (tour of 23 Sep 2026, D62).
+ * The prompt was written in Italian and asked to «answer in the language of
+ * the question»: asked in English on an English interface, the analysis
+ * answered in Italian. The prompt is now in English and names the language of
+ * the person's interface.
+ */
+export function buildSystemPrompt(schemaContext: string, language: string): string {
+  return `You are an ITSM analysis assistant for OpenGrafo.
+You can read a Neo4j graph through the run_cypher_query tool.
+Write every sentence in ${language}, the language of the person's interface, including the sentences you write before running a query.
 
 ${schemaContext}
 
-REGOLE:
-- DEVI SEMPRE usare run_cypher_query per rispondere a qualsiasi domanda sui dati. NON inventare mai dati, conteggi o nomi che non hai recuperato dal database.
-- Se non riesci a trovare i dati con una query, dillo esplicitamente e proponi una query alternativa.
-- Non rispondere MAI con dati numerici o elenchi senza averli prima recuperati con run_cypher_query.
-- Vincolo tenant OBBLIGATORIO: ogni pattern MATCH deve partire da un nodo con {tenant_id: $tenantId}, es. MATCH (i:Incident {tenant_id: $tenantId})-[:AFFECTS]->(c:ConfigurationItem). Le query senza questo vincolo vengono rifiutate.
-- OGNI nodo del pattern deve avere l'etichetta scritta: (c:ConfigurationItem), mai (c) al primo uso. Non sono leggibili le etichette delle integrazioni (OutboundWebhook, InboundWebhook, ApiKey, NotificationChannel, SlackInstallation, SyncSource) né le proprietà che contengono segreti (secret, headers, token, credentials, webhook_url, key_hash, transform_script).
-- Solo letture: niente CREATE/MERGE/SET/DELETE, niente CALL di procedure, nessun parametro oltre $tenantId.
-- Non includere mai UUID nelle tabelle — usa titoli e nomi leggibili
-- Nelle tabelle usa solo colonne significative: Titolo, Tipo, Stato, Severity, CI, Team, Data
-- Tronca testi lunghi a 40 caratteri nelle celle
-- Per calcolare MTTR usa WorkflowStepExecution. Trova dinamicamente lo step iniziale (entered_at) e lo step finale via:
+RULES:
+- You MUST ALWAYS use run_cypher_query to answer any question about the data. NEVER invent data, counts or names you have not read from the database.
+- If you cannot find the data with a query, say so explicitly and propose another query.
+- NEVER answer with numbers or lists without reading them first with run_cypher_query.
+- MANDATORY tenant constraint: every MATCH pattern must start from a node with {tenant_id: $tenantId}, e.g. MATCH (i:Incident {tenant_id: $tenantId})-[:AFFECTED_BY]->(c:ConfigurationItem). Queries without it are rejected.
+- EVERY node of the pattern must have its label written: (c:ConfigurationItem), never (c) at first use. The labels of the integrations (OutboundWebhook, InboundWebhook, ApiKey, NotificationChannel, SlackInstallation, SyncSource) and the properties holding secrets (secret, headers, token, credentials, webhook_url, key_hash, transform_script) cannot be read.
+- Reads only: no CREATE/MERGE/SET/DELETE, no CALL of procedures, no parameter other than $tenantId.
+- Never put UUIDs in tables: use readable titles and names.
+- In tables use only meaningful columns: Title, Type, Status, Severity, CI, Team, Date.
+- Truncate long texts to 40 characters in table cells.
+- To compute MTTR use WorkflowStepExecution. Find the initial step (entered_at) and the final step dynamically with:
   MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: 'incident'})-[:HAS_STEP]->(s:WorkflowStep)
   WHERE coalesce(s.is_initial, s.type = 'start') OR s.category = 'resolved' OR coalesce(s.is_terminal, s.type = 'end')
-  RETURN s.name. Poi usa questi nomi per cercare StepExecution entered_at.
-- Le date sono in formato ISO string
-- Puoi eseguire più query per rispondere
-- Rispondi nella lingua della domanda, anche nelle frasi che scrivi prima di eseguire una query
-- Usa tabelle markdown quando i dati sono tabulari
-- Sii conciso e diretto, senza introduzioni verbose
-- Mostra sempre i dati concreti, non generalizzare`
+  RETURN s.name. Then use these names to look up the StepExecution entered_at.
+- Dates are ISO strings.
+- You can run several queries to answer.
+- Use markdown tables when the data is tabular.
+- Be concise and direct, no verbose introductions.
+- Always show the concrete data, do not generalise.`
 }
 
 // ── Agentic loop budget (C-08) ────────────────────────────────────────────
@@ -273,6 +322,8 @@ export type ReportAgentEvent =
 
 export interface RunReportAgentOptions {
   tenantId: string
+  /** The language the answer is written in, as named for the model ("English", "Italian"). */
+  language: string
   /** Conversation so far, ending with the user's question. */
   messages: Anthropic.MessageParam[]
   /** When given, text deltas and tool calls are emitted as they happen. */
@@ -293,7 +344,7 @@ export async function runReportAgent(opts: RunReportAgentOptions): Promise<strin
   if (!opts.messages.length) throw new Error(`${LOG_LABEL} no messages to send`)
 
   const client = opts.client ?? getAnthropic()
-  const system = buildSystemPrompt(await getCachedSchema(opts.tenantId))
+  const system = buildSystemPrompt(await getCachedSchema(opts.tenantId), opts.language)
   const budget = new ToolLoopBudget()
   const messages: Anthropic.MessageParam[] = [...opts.messages]
   const model = resolveReportAIModel()

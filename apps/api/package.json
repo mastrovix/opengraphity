@@ -53,7 +53,8 @@
     "seed:sr-workflow": "tsx src/scripts/seed-service-request-workflow.ts",
     "verify:backup": "tsx src/scripts/verify-backup.ts",
     "migrate": "tsx src/scripts/migrate.ts",
-    "migrate:ci-labels": "tsx src/scripts/migrate-ci-labels.ts"
+    "migrate:ci-labels": "tsx src/scripts/migrate-ci-labels.ts",
+    "seed:demo-tenant": "tsx src/scripts/seed-demo-tenant.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.126.0",

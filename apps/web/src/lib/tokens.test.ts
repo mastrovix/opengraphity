@@ -15,6 +15,15 @@ describe('lookupOrError', () => {
     expect(err.mock.calls[0]![0]).toBe('[MY_MAP] unknown value: "zzz"')
   })
 
+  // 23 Sep 2026: `map[key]` also read what every object inherits, so a key
+  // that arrives from the data («constructor», «toString») came back as a
+  // function, and whoever drew it crashed.
+  it.each(['constructor', 'toString', '__proto__', 'hasOwnProperty'])('a key an object inherits (%s) is unknown, not a function', (key) => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(lookupOrError({ a: 1 }, key, 'MAP', -1)).toBe(-1)
+    expect(err).toHaveBeenCalledWith(`[MAP] unknown value: "${key}"`)
+  })
+
   it('un valore mappato "falsy" (0, "", false) è un hit, non un fallback', () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
     expect(lookupOrError({ zero: 0 }, 'zero', 'M', 9)).toBe(0)

@@ -60,6 +60,16 @@ describe('the article', () => {
     expect(screen.getByText(/Open the client/)).toBeInTheDocument()
   })
 
+  // Tour of 23 Sep 2026: the editor saves an underline as <u>…</u>, and the
+  // reader printed the tag as text. Exactly that pair is rendered; any other
+  // HTML in an article stays text on the reader's page.
+  it('an underline written in the editor reads as underlined, and no other HTML is rendered', async () => {
+    mostra([me, categorie, uno(articolo({ body: 'Press <u>Reset</u>, not <b>Delete</b>.' })), correlati([])])
+    const underlined = await screen.findByText('Reset')
+    expect(underlined.tagName).toBe('U')
+    expect(document.querySelector('b')).toBeNull()
+  })
+
   it('an article that does not exist says so instead of an empty page', async () => {
     mostra([me, categorie, uno(null), correlati([])])
     expect(await screen.findByText(/not found|Not found/i)).toBeInTheDocument()

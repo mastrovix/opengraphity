@@ -83,7 +83,22 @@ const TASK_KIND: Record<string, string> = {
 function toLucene(raw: string): string {
   const terms = raw.split(/[^a-zA-Z0-9]+/).filter(Boolean)
   if (!terms.length) return ''
-  return terms.map((t) => `${t}*`).join(' AND ')
+  return terms.map(termQuery).join(' AND ')
+}
+
+/**
+ * ONE TERM: the start of a token, or the part after an underscore INSIDE a
+ * token (tour of 23 Sep 2026, D74).
+ *
+ * The standard analyzer does not split on `_`: «APP_Lavender Web Frontend» is
+ * indexed as `app_lavender`, `web`, `frontend`, and «DB_lavender_web_frontend_core»
+ * as one single token. With the CMDB name prefixes (`APP_`, `SRV_`, `DB_`…)
+ * searching «Lavender» found nothing at all, not even the incidents that name
+ * the application. `*_lavender*` is a leading wildcard: Neo4j's fulltext
+ * parser accepts it and it costs 20-60 ms on the demo tenant's index.
+ */
+function termQuery(term: string): string {
+  return `(${term}* OR *_${term}*)`
 }
 
 /**
@@ -192,7 +207,7 @@ async function globalSearch(
             -[:HAS_ASSESSMENT|HAS_DEPLOY_PLAN|HAS_VALIDATION|HAS_DEPLOYMENT|HAS_REVIEW]->(t)
       WHERE coalesce(c.deleted, false) = false
         AND t.code IS NOT NULL AND toLower(t.code) CONTAINS toLower($q)
-      OPTIONAL MATCH (ci {id: t.ci_id, tenant_id: $tenantId})
+      OPTIONAL MATCH (ci:ConfigurationItem {id: t.ci_id, tenant_id: $tenantId})
       RETURN t.id AS id, t.code AS code, head([l IN labels(t) WHERE l <> 'ConfigurationItem']) AS label,
              coalesce(t.status, '') AS status,
              c.code AS changeCode, c.id AS changeId,

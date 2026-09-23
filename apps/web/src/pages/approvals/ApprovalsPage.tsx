@@ -18,6 +18,7 @@ import { Textarea } from '@/components/ui/FormControls'
 import { useConfirm } from '@/hooks/useConfirm'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { remarkUnderline } from '@opengraphity/web-core'
 import { formatDate, formatDateTime } from '@/lib/datetime'
 import { showError } from '@/lib/showError'
 
@@ -281,7 +282,7 @@ function KBArticlePreviewPanel({ entityId }: { entityId: string }) {
               {/* Body */}
               <div style={{ padding: '16px', maxHeight: 400, overflowY: 'auto' }}>
                 <div className="kb-preview-body" style={{ fontSize: 'var(--font-size-body)', lineHeight: 1.7, color: palette.neutral.textMuted }}>
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkUnderline]}>
                     {article.body}
                   </ReactMarkdown>
                 </div>
@@ -313,9 +314,15 @@ function ApprovalCard({
   const [noteOpen, setNoteOpen] = useState<'approve' | 'reject' | null>(null)
   const [note, setNote]         = useState('')
 
+  // The buttons name the action (tour of 23 Sep 2026): the confirmation read
+  // «Delete», the default of a destructive one, and nothing is deleted; and
+  // «Cancel» next to «Cancel the request» would not say which one keeps it.
   const handleCancel = async () => {
     if (!onCancel) return
-    if (await confirm({ title: t('admin.approvals.cancelRequestTitle'), body: req.title, danger: true })) onCancel(req.id)
+    if (await confirm({
+      title: t('admin.approvals.cancelRequestTitle'), body: req.title, danger: true,
+      confirmLabel: t('pages.approvals.cancelRequest'), cancelLabel: t('pages.approvals.keepRequest'),
+    })) onCancel(req.id)
   }
 
   return (

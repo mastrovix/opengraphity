@@ -2,7 +2,7 @@
  * Mock GraphQL riusabili (MockedProvider). I risultati includono `__typename`
  * perché la cache Apollo 4 aggiunge sempre il campo alla query.
  */
-import { GET_ME, GET_ROLES, GET_ANOMALY_STATS, GET_TEAMS, GET_USERS, GET_WORKFLOW_LIST, GET_WORKFLOW_DEFINITION, GET_ITIL_TYPES, GET_BASE_CI_TYPE, GET_DOMAIN_MATRICES } from '@/graphql/queries'
+import { GET_ME, GET_ROLES, GET_ANOMALY_STATS, GET_TEAMS, GET_TEAM_CHOICES, GET_USERS, SEARCH_USERS, GET_WORKFLOW_LIST, GET_WORKFLOW_DEFINITION, GET_ITIL_TYPES, GET_BASE_CI_TYPE, GET_DOMAIN_MATRICES } from '@/graphql/queries'
 import type { GqlMock } from '@/test/utils'
 import { FACTORY_ROLE_PERMISSIONS, isUserRole } from '@opengraphity/types'
 
@@ -57,6 +57,28 @@ export function teamsMock(teams: { id: string; name: string }[] = []): GqlMock {
   return {
     request: { query: GET_TEAMS, variables: {} },
     result: { data: { teams: teams.map((t) => ({ __typename: 'Team', description: null, type: null, createdAt: null, ...t })) } },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+  }
+}
+
+/** The teams a picker offers (TeamPicker): type and Change Manager flag included. */
+export function teamChoicesMock(teams: Array<{ id: string; name: string; type?: string | null; isChangeManager?: boolean | null }> = []): GqlMock {
+  return {
+    request: { query: GET_TEAM_CHOICES },
+    result: { data: { teams: teams.map((t) => ({ __typename: 'Team', type: null, isChangeManager: false, ...t })) } },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+  }
+}
+
+/**
+ * The people a picker finds (UserPicker, WatcherBar, MentionInput): the
+ * server's answer to `searchUsers`, whatever the search — the server already
+ * kept only the people whose role grants the permission asked.
+ */
+export function userSearchMock(users: Array<{ id: string; name: string; email?: string }> = []): GqlMock {
+  return {
+    request: { query: SEARCH_USERS, variables: () => true },
+    result: { data: { searchUsers: users.map((u) => ({ __typename: 'UserSuggestion', email: `${u.id}@acme.com`, ...u })) } },
     maxUsageCount: Number.POSITIVE_INFINITY,
   }
 }

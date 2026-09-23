@@ -59,7 +59,7 @@ export function DetailField({ label, value, mono, editable, onSave }: DetailFiel
             aria-labelledby={labelId}
             // eslint-disable-next-line jsx-a11y/no-autofocus -- editor inline montato dopo il click su "Modifica": il focus deve seguire l'azione dell'utente
             autoFocus
-            style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: `1px solid ${colors.brand}`, borderRadius: 6, fontSize: 'var(--font-size-body)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", resize: 'vertical', outline: 'none', lineHeight: 1.6 }}
+            style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: `1px solid ${colors.brand}`, borderRadius: 6, fontSize: 'var(--font-size-body)', fontFamily: 'var(--font-family)', resize: 'vertical', outline: 'none', lineHeight: 1.6 }}
           />
           <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
             <button type="button" onClick={handleSave} style={{ padding: '5px 14px', borderRadius: 6, border: 'none', backgroundColor: 'var(--color-brand)', color: colors.white, fontSize: 'var(--font-size-body)', fontWeight: 600, cursor: 'pointer' }}>

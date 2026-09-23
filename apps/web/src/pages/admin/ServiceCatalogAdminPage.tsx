@@ -19,6 +19,9 @@ import { palette } from '@/lib/tokens'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { SeverityBadge } from '@/components/ui/badges'
 import { showError } from '@/lib/showError'
+import { TeamPicker } from '@/components/pickers/TeamPicker'
+import { TEAM_TYPE } from '@/lib/teamVocabularies'
+import { reloadQueries } from '@/lib/reloadQueries'
 
 interface CatalogItem {
   id: string
@@ -33,13 +36,16 @@ interface CatalogItem {
   priority: string | null
   active: boolean
   createdAt: string
+  /** The fulfilment group (D56): the requests of this item are born assigned to it; null = born without a team. */
+  fulfillmentTeam: { id: string; name: string } | null
 }
 
-type FormState = { name: string; description: string; category: string; requiresApproval: boolean; priority: string }
+type FormState = { name: string; description: string; category: string; requiresApproval: boolean; priority: string; fulfillmentTeam: { id: string; name: string } | null }
 // Nessuna priorità preselezionata: la sceglie l'amministratore per ogni voce (verifica «Cosa resta cablato», ondata 1).
-const EMPTY_FORM: FormState = { name: '', description: '', category: '', requiresApproval: false, priority: '' }
+const EMPTY_FORM: FormState = { name: '', description: '', category: '', requiresApproval: false, priority: '', fulfillmentTeam: null }
 const itemToForm = (item: CatalogItem): FormState => ({
   name: item.name, description: item.description ?? '', category: item.category ?? '', requiresApproval: item.requiresApproval, priority: item.priority ?? '',
+  fulfillmentTeam: item.fulfillmentTeam,
 })
 
 export function ServiceCatalogAdminPage() {
@@ -51,18 +57,18 @@ export function ServiceCatalogAdminPage() {
   const modal = useCrudModal<CatalogItem, FormState>(EMPTY_FORM, itemToForm)
   const { draft: form, patch } = modal
   const uid = useId()
-  const ids = { name: `${uid}-name`, description: `${uid}-description`, category: `${uid}-category`, approval: `${uid}-approval`, priority: `${uid}-priority` }
+  const ids = { name: `${uid}-name`, description: `${uid}-description`, category: `${uid}-category`, approval: `${uid}-approval`, priority: `${uid}-priority`, team: `${uid}-team` }
   const { entriesOf } = useDomainVocabularies()
   const priorities = entriesOf('priority') ?? []
   const categories = entriesOf('category') ?? []
   const { labelOf } = useDomainVocabularies()
 
   const [createItem, { loading: creating }] = useMutation(CREATE_SERVICE_CATALOG_ITEM, {
-    onCompleted: async () => { modal.close(); await refetch(); toast.success(t('toast.catalog.created')) },
+    onCompleted: () => { modal.close(); toast.success(t('toast.catalog.created')); reloadQueries(refetch) },
     onError: (e) => showError(e),
   })
   const [updateItem, { loading: updating }] = useMutation(UPDATE_SERVICE_CATALOG_ITEM, {
-    onCompleted: async () => { modal.close(); await refetch() },
+    onCompleted: () => { modal.close(); reloadQueries(refetch) },
     onError: (e) => showError(e),
   })
 
@@ -74,6 +80,8 @@ export function ServiceCatalogAdminPage() {
       category: form.category || null,
       requiresApproval: form.requiresApproval,
       priority: form.priority,
+      // D56: null on an edit removes the group the item had.
+      fulfillmentTeamId: form.fulfillmentTeam?.id ?? null,
     }
     if (!modal.open) return
     if (modal.editing) void updateItem({ variables: { id: modal.editing.id, input } })
@@ -109,6 +117,7 @@ export function ServiceCatalogAdminPage() {
                 <th style={{ padding: '10px 14px' }}>{t('common.name')}</th>
                 <th style={{ padding: '10px 14px' }}>{t('pages.serviceCatalogAdmin.category')}</th>
                 <th style={{ padding: '10px 14px' }}>{t('pages.serviceCatalogAdmin.priority')}</th>
+                <th style={{ padding: '10px 14px' }}>{t('pages.serviceCatalogAdmin.fulfillmentTeam')}</th>
                 <th style={{ padding: '10px 14px' }}>{t('pages.changeDetail.approval')}</th>
                 <th style={{ padding: '10px 14px' }}>{t('common.status')}</th>
                 <th style={{ padding: '10px 14px', textAlign: 'right' }}>{t('common.actions')}</th>
@@ -133,6 +142,7 @@ export function ServiceCatalogAdminPage() {
                       ? <SeverityBadge value={it.priority} vocabulary="priority" />
                       : <span style={{ color: 'var(--color-danger)', fontSize: 'var(--font-size-label)' }}>{t('pages.serviceCatalogAdmin.priorityMissing')}</span>}
                   </td>
+                  <td style={{ padding: '10px 14px', color: 'var(--color-slate)' }}>{it.fulfillmentTeam?.name ?? '—'}</td>
                   <td style={{ padding: '10px 14px' }}>
                     {it.requiresApproval
                       ? <Pill bg={palette.warning.tint} color={palette.warning.strong}>{t('pages.serviceCatalogAdmin.required')}</Pill>
@@ -208,6 +218,21 @@ export function ServiceCatalogAdminPage() {
           </Select>
           <p style={{ margin: '6px 0 0', fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', lineHeight: 1.5 }}>
             {t('pages.serviceCatalogAdmin.priorityHint')}
+          </p>
+        </div>
+        <div style={{ marginBottom: 14 }}>
+          <FieldLabel htmlFor={ids.team}>{t('pages.serviceCatalogAdmin.fulfillmentTeam')}</FieldLabel>
+          {/* D56: the support team that fulfils the requests of this item (searchable; emptied with the first choice). */}
+          <TeamPicker
+            role={TEAM_TYPE.SUPPORT}
+            inputId={ids.team}
+            label={t('pages.serviceCatalogAdmin.fulfillmentTeam')}
+            clearLabel={t('pages.serviceCatalogAdmin.noFulfillmentTeam')}
+            value={form.fulfillmentTeam}
+            onChange={(team) => patch({ fulfillmentTeam: team })}
+          />
+          <p style={{ margin: '6px 0 0', fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', lineHeight: 1.5 }}>
+            {t('pages.serviceCatalogAdmin.fulfillmentTeamHint')}
           </p>
         </div>
         <div>

@@ -92,6 +92,9 @@ const TEAM_ONLY_EVENTS: ReadonlySet<string> = new Set([
  * Nascita di un ticket: l'input di creazione non accetta assegnatario né team
  * (`CreateIncidentInput`, `CreateProblemInput`), quindi al momento dell'evento
  * non esistono. L'assegnazione arriva con gli eventi successivi.
+ * Since 23 Sep 2026 a new incident does get a team (`teamId`, or the support
+ * group of its CI), but after `incident.created`: the team is told by the
+ * `incident.assigned` that follows it.
  */
 const TICKET_CREATED_EVENTS: ReadonlySet<string> = new Set(['incident.created', 'problem.created'])
 

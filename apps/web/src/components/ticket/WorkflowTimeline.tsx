@@ -58,7 +58,8 @@ export function WorkflowTimeline({ historyDesc, timelineOpen, onToggle, entityTy
                 {!isLast && <div style={{ position: 'absolute', left: 7, top: 18, bottom: 0, width: 2, backgroundColor: 'var(--color-slate)', opacity: 0.3 }} />}
                 <div style={{ width: 16, height: 16, borderRadius: '50%', backgroundColor: isCurrent ? 'var(--color-brand)' : 'var(--color-slate)', flexShrink: 0, marginTop: 2, border: `2px solid ${colors.white}`, boxShadow: isCurrent ? `0 0 0 3px ${alpha.brand20}` : `0 0 0 1px ${alpha.black20}` }} />
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{labelFor(exec.stepName) || exec.stepName.replace(/_/g, ' ')}</div>
+                  {/* A step nobody labels: `labelFor` itself makes the name readable (tour of 23 Sep 2026). */}
+                  <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{labelFor(exec.stepName)}</div>
                   <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', display: 'flex', gap: 6 }}>
                     <span>{timeAgo(exec.enteredAt)}</span>
                     {exec.durationMs != null && <span>({formatDuration(exec.durationMs)})</span>}

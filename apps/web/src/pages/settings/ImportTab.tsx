@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -94,6 +94,7 @@ function toIssueRows(issues: ImportIssue[]): IssueRow[] {
 export function ImportTab() {
   const { t } = useTranslation()
   const confirm = useConfirm()
+  const fid = useId()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // The API key lives only in component state (session-only, never persisted).
@@ -179,10 +180,13 @@ export function ImportTab() {
           {t('pages.import.intro')}
         </p>
 
-        {/* API key (v1 routes use X-API-Key, not the Keycloak session) */}
+        {/* API key (v1 routes use X-API-Key, not the Keycloak session). The
+            labels are bound to their controls: a screen reader announced a
+            nameless password field (tour of 23 Sep 2026). */}
         <div>
-          <FieldLabel>{t('pages.import.apiKey')}</FieldLabel>
+          <FieldLabel htmlFor={`${fid}-api-key`}>{t('pages.import.apiKey')}</FieldLabel>
           <Input
+            id={`${fid}-api-key`}
             type="password"
             autoComplete="off"
             value={apiKey}
@@ -200,8 +204,9 @@ export function ImportTab() {
 
         {/* Entity type */}
         <div>
-          <FieldLabel>{t('pages.import.entityType')}</FieldLabel>
+          <FieldLabel htmlFor={`${fid}-entity`}>{t('pages.import.entityType')}</FieldLabel>
           <Select
+            id={`${fid}-entity`}
             value={entityType}
             onChange={e => { setEntityType(e.target.value as EntityType); resetReport() }}
             style={{ maxWidth: 420 }}

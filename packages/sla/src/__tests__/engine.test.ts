@@ -86,6 +86,13 @@ describe('SLAEngine — response met cancels the response timer (D-01)', () => {
     await expect(engine.process(event('incident.assigned', {}))).rejects.toThrow('missing entity id')
     expect(markResponseMet).not.toHaveBeenCalled()
   })
+
+  it('the team set while the incident was created is routing, not a response: the timer stays armed', async () => {
+    const engine = new SLAEngine()
+    await engine.process(event('incident.assigned', { id: 'inc-1', assignedTo: 'DBA', routed_at_creation: true }))
+    expect(markResponseMet).not.toHaveBeenCalled()
+    expect(cancelSLAJobs).not.toHaveBeenCalled()
+  })
 })
 
 describe('SLAEngine — SLA clock starts at the entity created_at (D-29)', () => {

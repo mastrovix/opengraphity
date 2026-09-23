@@ -8,7 +8,7 @@ import { withSession, mapCI, ciTypeFromLabels } from './ci-utils.js'
 import { FORM_FIELD_TYPES_MULTI, TICKET_CI_RELATIONSHIP } from '@opengraphity/types'
 import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
 import { assertCIsLinkable } from '../../lib/ticketCIExclusions.js'
-import { mapUser } from '../../lib/mappers.js'
+import { mapTeam, mapUser } from '../../lib/mappers.js'
 import type { Session } from 'neo4j-driver'
 import { buildAdvancedWhere, type RelationFieldDef } from '../../lib/filterBuilder.js'
 import {
@@ -34,7 +34,8 @@ import { ticketSlaStatusResolver } from './ticketSlaStatus.js'
 import { publishTicketUpdated } from '../../lib/ticketUpdated.js'
 import { assertDomainValue } from '../../lib/domainMatrix.js'
 import { listPage } from '../../lib/listLimit.js'
-import { setTicketUser } from '../../services/ticketAssignment.js'
+import { assertUserInAssignedTeam, setTicketUser } from '../../services/ticketAssignment.js'
+import { assignRequestToTeam } from '../../services/requestAssignment.js'
 import { roleHasPermission } from '../../lib/roles.js'
 import { orderByOrThrow } from '../../lib/sortField.js'
 
@@ -441,6 +442,8 @@ async function assignServiceRequestToUser(
       if (!(await roleHasPermission(ctx.tenantId, check.assigneeRole ?? '', 'ticket.assignable'))) {
         throw new ValidationError('The selected user cannot receive tickets: their role lacks the "receive tickets" permission', { key: 'errors.request.assigneeCannotWork' })
       }
+      // D56: the ITSM rule of incidents and problems — first the team, then a member of it.
+      await assertUserInAssignedTeam(session, 'ServiceRequest', args.id, args.userId, ctx.tenantId)
     }
     await setTicketUser(session, 'ServiceRequest', args.id, args.userId, ctx.tenantId)
     void audit(ctx, 'request.assigned', 'ServiceRequest', args.id)
@@ -452,7 +455,67 @@ async function assignServiceRequestToUser(
   }, true)
 }
 
+/**
+ * Moves the request to another team (D56). The creation gives it the
+ * fulfilment group of its catalog item; this is the person changing it.
+ */
+async function assignServiceRequestToTeam(
+  _: unknown,
+  args: { id: string; teamId: string },
+  ctx: GraphQLContext,
+) {
+  const { request, teamName, previousTeamName, unassignedUserName } = await assignRequestToTeam(args.id, args.teamId, ctx)
+  void audit(ctx, 'request.assigned_team', 'ServiceRequest', args.id, { teamId: args.teamId, to: teamName, from: previousTeamName })
+  if (unassignedUserName) {
+    void audit(ctx, 'request.unassigned_user', 'ServiceRequest', args.id, { userId: null, to: null, from: unassignedUserName, reason: 'team_changed' })
+  }
+  return request
+}
+
 // ── Field resolvers ──────────────────────────────────────────────────────────
+
+/** The team the request is assigned to (D56). */
+async function requestTeam(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+  return withSession(async (session) => {
+    const row = await runQueryOne<{ props: Props }>(session, `
+      MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})-[:ASSIGNED_TO_TEAM]->(t:Team {tenant_id: $tenantId})
+      RETURN properties(t) AS props
+    `, { id: parent.id, tenantId: ctx.tenantId })
+    return row ? mapTeam(row.props) : null
+  })
+}
+
+/** The fulfilment group of a catalog item: its requests are born assigned to it (D56). */
+async function catalogItemFulfillmentTeam(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+  return withSession(async (session) => {
+    const row = await runQueryOne<{ props: Props }>(session, `
+      MATCH (i:ServiceCatalogItem {id: $id, tenant_id: $tenantId})-[:FULFILLED_BY]->(t:Team {tenant_id: $tenantId})
+      RETURN properties(t) AS props
+    `, { id: parent.id, tenantId: ctx.tenantId })
+    return row ? mapTeam(row.props) : null
+  })
+}
+
+/**
+ * Writes the fulfilment group of a catalog item: `null` removes it, an id
+ * must be a team of the tenant. Inside the caller's session, after the item
+ * node exists.
+ */
+async function setFulfillmentTeam(session: Session, tenantId: string, itemId: string, teamId: string | null): Promise<void> {
+  if (teamId) {
+    const team = await runQueryOne<{ id: string }>(session,
+      'MATCH (t:Team {id: $teamId, tenant_id: $tenantId}) RETURN t.id AS id', { teamId, tenantId })
+    if (!team) throw new ValidationError(`Team ${teamId} does not exist in this organization`, { key: 'errors.serviceCatalog.fulfillmentTeamNotFound', params: { teamId } })
+  }
+  await runQuery(session, `
+    MATCH (i:ServiceCatalogItem {id: $itemId, tenant_id: $tenantId})
+    OPTIONAL MATCH (i)-[old:FULFILLED_BY]->(:Team)
+    DELETE old
+    WITH DISTINCT i
+    OPTIONAL MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
+    FOREACH (_ IN CASE WHEN t IS NULL THEN [] ELSE [1] END | MERGE (i)-[:FULFILLED_BY]->(t))
+  `, { itemId, tenantId, teamId })
+}
 
 async function requestRequestedBy(
   parent: { id: string },
@@ -557,7 +620,7 @@ async function serviceCatalogItems(_: unknown, args: { activeOnly?: boolean }, c
   })
 }
 
-async function createServiceCatalogItem(_: unknown, args: { input: { name: string; description?: string; category?: string; requiresApproval?: boolean; priority: string; workflowDefinitionId?: string | null } }, ctx: GraphQLContext) {
+async function createServiceCatalogItem(_: unknown, args: { input: { name: string; description?: string; category?: string; requiresApproval?: boolean; priority: string; workflowDefinitionId?: string | null; fulfillmentTeamId?: string | null } }, ctx: GraphQLContext) {
   requirePermission(ctx, 'config.catalog')
   const priority = await assertDomainValue(ctx.tenantId, 'priority', args.input.priority)
   // La categoria è un valore del Dizionario (ondata 2), non più testo libero: la eredita la richiesta.
@@ -575,6 +638,7 @@ async function createServiceCatalogItem(_: unknown, args: { input: { name: strin
     `, { id, tenantId: ctx.tenantId, name: args.input.name, description: args.input.description ?? null,
          category, requiresApproval: args.input.requiresApproval ?? false, priority, now,
          workflowDefinitionId: args.input.workflowDefinitionId ?? null })
+    if (args.input.fulfillmentTeamId) await setFulfillmentTeam(session, ctx.tenantId, id, args.input.fulfillmentTeamId)
     void audit(ctx, 'service_catalog_item.created', 'ServiceCatalogItem', id)
     return mapCatalogItem(rows[0]!.props)
   }, true)
@@ -582,7 +646,7 @@ async function createServiceCatalogItem(_: unknown, args: { input: { name: strin
 
 async function updateServiceCatalogItem(
   _: unknown,
-  args: { id: string; input: { name?: string; description?: string; category?: string; requiresApproval?: boolean; priority?: string | null; active?: boolean; workflowDefinitionId?: string | null } },
+  args: { id: string; input: { name?: string; description?: string; category?: string; requiresApproval?: boolean; priority?: string | null; active?: boolean; workflowDefinitionId?: string | null; fulfillmentTeamId?: string | null } },
   ctx: GraphQLContext,
 ) {
   requirePermission(ctx, 'config.catalog')
@@ -624,7 +688,9 @@ async function updateServiceCatalogItem(
     }
     sets['priority'] = await assertDomainValue(ctx.tenantId, 'priority', input.priority)
   }
-  if (Object.keys(sets).length === 0) {
+  // D56: the fulfilment group; `null` removes it (its requests are then born without a team).
+  const fulfillmentTeamId = input.fulfillmentTeamId === undefined ? undefined : (input.fulfillmentTeamId || null)
+  if (Object.keys(sets).length === 0 && fulfillmentTeamId === undefined) {
     throw new ValidationError('updateServiceCatalogItem: no field to update', { key: 'errors.nothingToUpdate' })
   }
   return withSession(async (session) => {
@@ -635,6 +701,7 @@ async function updateServiceCatalogItem(
       RETURN properties(ci) AS props
     `, { id: args.id, tenantId: ctx.tenantId, sets })
     if (!rows[0]) throw new NotFoundError('ServiceCatalogItem', args.id)
+    if (fulfillmentTeamId !== undefined) await setFulfillmentTeam(session, ctx.tenantId, args.id, fulfillmentTeamId)
     void audit(ctx, 'service_catalog_item.updated', 'ServiceCatalogItem', args.id)
     return mapCatalogItem(rows[0].props)
   }, true)
@@ -673,7 +740,7 @@ async function addCIToServiceRequest(_: unknown, args: { requestId: string; ciId
   return withSession(async (session) => {
     const row = await runQueryOne<{ props: Props; linked: unknown }>(session, `
       MATCH (r:ServiceRequest {id: $requestId, tenant_id: $tenantId})
-      MATCH (ci {id: $ciId, tenant_id: $tenantId})
+      MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
       WHERE ${ciPredicate}
       MERGE (r)-[l:${REQUEST_CI}]->(ci)
       SET r.updated_at = $now
@@ -710,8 +777,9 @@ async function removeCIFromServiceRequest(_: unknown, args: { requestId: string;
 
 export const serviceRequestResolvers = {
   Query:    { serviceRequests, serviceRequest, serviceCatalogItems },
-  Mutation: { createServiceRequest, updateServiceRequest, setServiceRequestFormAnswer, assignServiceRequestToUser, createServiceCatalogItem, updateServiceCatalogItem, addCIToServiceRequest, removeCIFromServiceRequest },
+  Mutation: { createServiceRequest, updateServiceRequest, setServiceRequestFormAnswer, assignServiceRequestToUser, assignServiceRequestToTeam, createServiceCatalogItem, updateServiceCatalogItem, addCIToServiceRequest, removeCIFromServiceRequest },
   ServiceCatalogItem: {
+    fulfillmentTeam: catalogItemFulfillmentTeam,
     /**
      * Il nome dell'iter scelto, risolto qui e non nella lettura della voce:
      * serve solo a chi mostra la voce, e una join su ogni elenco di catalogo la
@@ -736,6 +804,7 @@ export const serviceRequestResolvers = {
     formFieldValues: serviceRequestFormFieldValues,
     requestedBy: requestRequestedBy,
     assignee:    requestAssignee,
+    team:        requestTeam,
     slaStatus:   ticketSlaStatusResolver('ServiceRequest'),
   },
 }

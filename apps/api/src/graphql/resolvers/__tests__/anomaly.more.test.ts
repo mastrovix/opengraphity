@@ -121,6 +121,13 @@ describe('Query.anomalyRules', () => {
     expect(out[1]!.problem!.message).toContain('"database" is not a CI type')
   })
 
+  it('D49: the spec says when no relation chosen means every relation — the page reads it, it does not mirror it', async () => {
+    vi.mocked(ruleConfig.loadAnomalyRuleConfigs).mockResolvedValueOnce([config({ ruleKey: 'isolated_cluster' }), config({ ruleKey: 'spof' })])
+    vi.mocked(runQuery).mockResolvedValueOnce([] as never)
+    const out = await anomalyResolvers.Query.anomalyRules(null, null, ctx)
+    expect(out.map((r) => [r.ruleKey, r.spec.allRelationsWhenEmpty])).toEqual([['isolated_cluster', true], ['spof', false]])
+  })
+
   it('a problem without an i18n key falls back to the generic one', async () => {
     vi.mocked(ruleConfig.loadAnomalyRuleConfigs).mockResolvedValueOnce([config()])
     vi.mocked(runQuery).mockResolvedValueOnce([] as never)

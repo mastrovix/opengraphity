@@ -39,14 +39,13 @@ import { Input, Select, FieldLabel } from '@/components/ui/FormControls'
 import { Toggle } from '@/components/ui/Toggle'
 import { errorMessage } from '@/hooks/useMutationWithToast'
 import { useCIBaseEnums } from '@/lib/ciEnums'
-import { GET_EVENT_POLICY, GET_DOMAIN_MATRICES } from '@/graphql/queries'
+import { GET_EVENT_POLICY } from '@/graphql/queries'
 import { UPDATE_EVENT_POLICY } from '@/graphql/mutations'
 import { colors, palette } from '@/lib/tokens'
-import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import { EVENT_SEVERITIES, type EventPolicy, type EventSeverity } from '@/types/events'
 import { showError } from '@/lib/showError'
-import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useCILabels } from '@/hooks/useCILabels'
+import { SeverityMapEditor, ProductionFields, EMPTY_SEVERITY_MAP, severityMapComplete, usePriorityMatrix, type SeverityMap } from './EventPolicySeverityFields'
 
 const OPEN_FROM  = ['info', 'warning', 'critical', 'never'] as const
 const GROUP_BY   = ['ci', 'fingerprint'] as const
@@ -68,7 +67,6 @@ const GROUP_BY   = ['ci', 'fingerprint'] as const
  * «sconosciuto», come per gli stati del ciclo di vita: si vede, e si può
  * correggere.
  */
-type SeverityMap = Record<EventSeverity, { impact: string; urgency: string }>
 
 /**
  * Nessun valore di ripiego scritto in questo file (revisione totale · G-24):
@@ -82,9 +80,7 @@ type SeverityMap = Record<EventSeverity, { impact: string; urgency: string }>
  * rifatta, le tendine mostrano i valori del cliente e il Salva resta chiuso
  * finché ogni severità non ha impatto e urgenza.
  */
-const EMPTY_MAP: SeverityMap = Object.fromEntries(
-  EVENT_SEVERITIES.map((sev) => [sev, { impact: '', urgency: '' }]),
-) as SeverityMap
+const EMPTY_MAP: SeverityMap = EMPTY_SEVERITY_MAP
 
 /** Un valore di vocabolario: una stringa non vuota. Chi decide se è AMMESSO è il server. */
 const isLevel = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0
@@ -140,6 +136,10 @@ interface FormState {
   /** Ondata 7 · C-4: gli stati che contano come «in manutenzione» (il monitoraggio non ne aggiorna la salute). */
   maintenanceStatuses:  string[]
   severityMap:          SeverityMap
+  /** Values of the `environment` vocabulary that count as production. */
+  productionEnvironments: string[]
+  /** null = the main table everywhere. */
+  nonProductionSeverityMap: SeverityMap | null
 }
 
 /**
@@ -176,8 +176,9 @@ export function validatePolicyForm(form: Pick<FormState, NumberField>): FieldErr
   return errors
 }
 
-function toForm(p: EventPolicy): { form: FormState; mapError: string | null } {
+function toForm(p: EventPolicy): { form: FormState; mapError: string | null; nonProductionMapError: string | null } {
   const { map, error } = parseSeverityMap(p.severityMap)
+  const nonProduction = p.nonProductionSeverityMap === null ? null : parseSeverityMap(p.nonProductionSeverityMap)
   return {
     form: {
       openIncidentFrom: p.openIncidentFrom, groupBy: p.groupBy,
@@ -192,8 +193,11 @@ function toForm(p: EventPolicy): { form: FormState; mapError: string | null } {
       retiredStatuses:     [...p.retiredStatuses],
       maintenanceStatuses: [...p.maintenanceStatuses],
       severityMap: map,
+      productionEnvironments: [...p.productionEnvironments],
+      nonProductionSeverityMap: nonProduction?.map ?? null,
     },
     mapError: error,
+    nonProductionMapError: nonProduction?.error ?? null,
   }
 }
 
@@ -218,25 +222,17 @@ function Group({ name, children }: { name: GroupName; children: React.ReactNode 
 
 export function EventPolicyPage() {
   const { t } = useTranslation()
-  // Etichette del Dizionario per stati del CI e livelli (secondo giro UI del 15 set 2026 · V-21)
-  const { labelOf } = useDomainVocabularies()
+  // Etichette del Dizionario per stati del CI (secondo giro UI del 15 set 2026 · V-21); quelle dei
+  // livelli le legge la tabella della mappa (EventPolicySeverityFields).
   const { statusLabel } = useCILabels()
   const uid = useId()
   const fid = (name: string) => `${uid}-${name}`
 
   const { data, loading, error, refetch } = useQuery<{ eventPolicy: EventPolicy }>(GET_EVENT_POLICY, { fetchPolicy: 'cache-and-network' })
+  // The values of the severity tables, read together with the policy (not when the tables are drawn).
+  const priority = usePriorityMatrix()
   // Il vocabolario del ciclo di vita è quello del metamodello: se manca lo si dice (baseEnums.error), non si inventa una lista.
   const baseEnums = useCIBaseEnums()
-  /**
-   * I vocabolari di `impact` e `urgency` del cliente, presi dalla matrice
-   * `priority` (i suoi due ingressi SONO quei vocabolari). Serve perché la
-   * mappa severità → impatto/urgenza scrive valori che il server valida
-   * contro il vocabolario del cliente: offrirne altri rende la pagina non
-   * salvabile.
-   */
-  const matrices = useQuery<{ domainMatrices: { kind: string; inputs: string[]; inputValues: string[][] }[] }>(
-    GET_DOMAIN_MATRICES, { fetchPolicy: METAMODEL_FETCH_POLICY },
-  )
   // EventPolicy non ha un id: senza `update` il risultato della mutation non
   // toccherebbe ROOT_QUERY.eventPolicy e le pagine cache-first resterebbero
   // sulla policy vecchia fino al ricaricamento (D·1.5).
@@ -266,37 +262,21 @@ export function EventPolicyPage() {
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((f) => (f ? { ...f, [key]: value } : f))
   // Campo vuoto → NaN (non 0): la validazione lo segnala invece di salvare uno zero mai scritto.
   const setNum = (key: NumberField) => (e: React.ChangeEvent<HTMLInputElement>) => set(key, e.target.value.trim() === '' ? Number.NaN : Number(e.target.value))
-  const setMap = (sev: EventSeverity, field: 'impact' | 'urgency', value: string) =>
-    setForm((f) => (f ? { ...f, severityMap: { ...f.severityMap, [sev]: { ...f.severityMap[sev], [field]: value } } } : f))
-
-  const prioritaMatrice = matrices.data?.domainMatrices.find((m) => m.kind === 'priority')
-  /**
-   * Le voci della tendina per `impact` o `urgency`: il vocabolario del cliente
-   * più — se serve — il valore SALVATO che non vi appartiene (più), marcato
-   * sconosciuto. Senza quest'ultimo un valore rinominato sparirebbe dalla
-   * tendina e il primo salvataggio lo sostituirebbe in silenzio.
-   * Finché la matrice non è arrivata si usano i tre valori di fabbrica: sono
-   * quelli con cui nasce ogni tenant, e la tendina non resta vuota.
-   */
-  const levelOptions = (field: 'impact' | 'urgency', current: string): { value: string; label: string }[] => {
-    const i = prioritaMatrice?.inputs.indexOf(field) ?? -1
-    const valori = i >= 0 ? (prioritaMatrice?.inputValues[i] ?? []) : []
-    const voci = valori.map((v) => ({ value: v, label: labelOf(field, v) ?? v }))
-    // G-24: niente valori di fabbrica. Se la matrice non è ancora arrivata la
-    // tendina offre solo quello salvato, e se non c'è nemmeno quello una voce
-    // vuota — non tre valori che il cliente potrebbe non avere.
-    if (current && !valori.includes(current)) voci.push({ value: current, label: t('events.policy.lifecycleUnknown', { value: current }) })
-    if (voci.length === 0) voci.push({ value: '', label: t('events.policy.map.chooseValue') })
-    else if (current === '') voci.unshift({ value: '', label: t('events.policy.map.chooseValue') })
-    return voci
-  }
+  /** One cell of a severity table: the main one, or the one outside production. */
+  const setMap = (which: 'severityMap' | 'nonProductionSeverityMap') => (sev: EventSeverity, field: 'impact' | 'urgency', value: string) =>
+    setForm((f) => {
+      const table = f?.[which]
+      return f && table ? { ...f, [which]: { ...table, [sev]: { ...table[sev], [field]: value } } } : f
+    })
 
   const errors = validatePolicyForm(form)
   // G-24: una mappa incompleta non si salva. Con «Mai» la mappa non ha effetto
   // e non blocca (D·2.5).
   const mapIncomplete = form.openIncidentFrom !== 'never'
-    && EVENT_SEVERITIES.some((sev) => form.severityMap[sev].impact === '' || form.severityMap[sev].urgency === '')
+    && (!severityMapComplete(form.severityMap) || (form.nonProductionSeverityMap !== null && !severityMapComplete(form.nonProductionSeverityMap)))
+  // The API refuses a table outside production with no production environment: said before the save.
   const invalid = Object.keys(errors).length > 0 || mapIncomplete
+    || (form.nonProductionSeverityMap !== null && form.productionEnvironments.length === 0)
   const dirty = JSON.stringify(form) !== JSON.stringify(baseline.form)
   // Una mappa non valida si salva anche senza altre modifiche: è il modo di correggerla.
   const canSave = !saving && !invalid && (dirty || mapError !== null)
@@ -325,6 +305,8 @@ export function EventPolicyPage() {
         retiredStatuses:     form.retiredStatuses,
         maintenanceStatuses: form.maintenanceStatuses,
         severityMap: JSON.stringify(form.severityMap),
+        productionEnvironments: form.productionEnvironments,
+        nonProductionSeverityMap: form.nonProductionSeverityMap === null ? null : JSON.stringify(form.nonProductionSeverityMap),
       } } })
       toast.success(t('toast.events.policySaved'))
       setMapError(null)
@@ -468,34 +450,21 @@ export function EventPolicyPage() {
           <div style={{ marginTop: 16, opacity: never ? 0.6 : 1 }}>
             <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: colors.slateDark, marginBottom: 2 }}>{t('events.policy.severityMap')}</div>
             <p style={{ margin: '0 0 8px', fontSize: 'var(--font-size-label)', color: colors.slateLight, lineHeight: 1.5 }}>{t('events.policy.help.severityMap')}</p>
-            <div className="og-scroll-x">
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
-              <thead>
-                <tr>
-                  {['severity', 'impact', 'urgency'].map((h) => (
-                    <th key={h} scope="col" style={{ textAlign: 'left', padding: '4px 8px' }}>
-                      {t(`events.policy.map.${h}`)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {EVENT_SEVERITIES.map((sev) => (
-                  <tr key={sev}>
-                    <td style={{ padding: '6px 8px', fontWeight: 500, color: colors.slateDark }}>{t(`events.severity.${sev}`)}</td>
-                    {(['impact', 'urgency'] as const).map((field) => (
-                      <td key={field} style={{ padding: '6px 8px' }}>
-                        <Select aria-label={`${t(`events.severity.${sev}`)} – ${t(`events.policy.map.${field}`)}`} value={form.severityMap[sev][field]} onChange={(e) => setMap(sev, field, e.target.value)} disabled={saving || never} aria-describedby={never ? neverNoteId : undefined}>
-                          {levelOptions(field, form.severityMap[sev][field]).map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
-                        </Select>
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <SeverityMapEditor map={form.severityMap} priority={priority} onChange={setMap('severityMap')} disabled={saving || never} describedBy={never ? neverNoteId : undefined} />
           </div>
-          </div>
+
+          {/* Production environments, and a different impact and urgency outside production. */}
+          <ProductionFields
+            environments={form.productionEnvironments}
+            nonProductionMap={form.nonProductionSeverityMap}
+            priority={priority}
+            onEnvironments={(v) => set('productionEnvironments', v)}
+            onNonProductionMap={(m) => set('nonProductionSeverityMap', m)}
+            onNonProductionValue={setMap('nonProductionSeverityMap')}
+            disabled={saving || never}
+            idPrefix={fid('production')}
+            mapError={baseline.nonProductionMapError}
+          />
         </Group>
 
         {/* 2. Silenzio in finestra di change */}
@@ -551,13 +520,11 @@ export function EventPolicyPage() {
             </div>
           ))}
           {/* Vocabolario assente: lo si dice, non si mostra un riquadro vuoto senza spiegazione. */}
+          {/* An empty status vocabulary is this same error (useCIBaseEnums reports it): no separate «empty» message. */}
           {baseEnums.error && (
             <p role="alert" style={{ margin: '6px 0 0', fontSize: 'var(--font-size-label)', color: colors.danger, fontWeight: 500 }}>
               {t('events.policy.lifecycleVocabularyUnavailable', { error: baseEnums.error })}
             </p>
-          )}
-          {!baseEnums.loading && !baseEnums.error && lifecycleOptions.length === 0 && (
-            <p style={{ margin: '6px 0 0', fontSize: 'var(--font-size-label)', color: colors.slateLight }}>{t('events.policy.lifecycleEmptyVocabulary')}</p>
           )}
         </Group>
 

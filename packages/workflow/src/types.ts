@@ -333,6 +333,12 @@ export interface TransitionInput {
   triggerType: WorkflowTrigger
   notes?:      string
   /**
+   * Who signs the note on the ticket when it is not a person: the name of the
+   * rule that asked for the transition (U-8). It travels with the step-entered
+   * event, so the single note of an automatic assignment keeps it (D12).
+   */
+  actorLabel?: string | null
+  /**
    * L'istanza DEVE appartenere a questo tenant. Era facoltativo («difesa in
    * profondità») e 8 chiamanti su 14 non lo passavano, quindi la query non
    * filtrava per tenant nella maggioranza dei cammini: la difesa dichiarata
@@ -414,6 +420,8 @@ export interface StepEnteredInfo {
    * traccia nella storia (revisione totale · B-4).
    */
   notes?:      string | null
+  /** Who signs the note when it is not a person (TransitionInput.actorLabel). */
+  actorLabel?: string | null
 }
 
 export type StepEnteredListener = (info: StepEnteredInfo) => Promise<void>

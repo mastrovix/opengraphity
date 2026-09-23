@@ -18,6 +18,8 @@ export function olaSDL(): string {
     # Il calendario di servizio con cui conta (null = 24×7), e il suo nome.
     calendarId:      ID
     calendarName:    String
+    """The contract's own time zone (IANA); null = it counts in the organization's, like an SLA policy."""
+    timezone:        String
     # L'obiettivo di conformità e la soglia d'attenzione, in percentuale.
     complianceTarget:  Float
     complianceWarning: Float
@@ -39,6 +41,8 @@ export function olaSDL(): string {
     resolveMinutes:  Int!
     # Il calendario di servizio; null o assente = 24×7.
     calendarId:      ID
+    """The contract's own time zone (IANA); null, empty or absent = the organization's."""
+    timezone:        String
     complianceTarget:  Float!
     complianceWarning: Float!
     # team → un team con sourcing internal; supplier → un team con sourcing external
@@ -54,6 +58,8 @@ export function olaSDL(): string {
     resolveMinutes:  Int
     # Il calendario di servizio; null = 24×7, assente = invariato.
     calendarId:      ID
+    """The contract's own time zone; null or empty = the organization's, absent = unchanged."""
+    timezone:        String
     complianceTarget:  Float
     complianceWarning: Float
     partyType:       String

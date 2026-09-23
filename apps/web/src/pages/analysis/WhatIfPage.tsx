@@ -6,7 +6,7 @@ import { FlaskConical, Zap, Trash2, Users, ShieldCheck, GitBranch } from 'lucide
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
 import { EmptyState } from '@/components/EmptyState'
-import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
+import { SortableFilterTable, sortRowsBy, type ColumnDef } from '@/components/SortableFilterTable'
 import { MiniPathGraph } from '@/components/MiniPathGraph'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -18,6 +18,9 @@ import { GET_ALL_CIS, GET_CI_TYPES, WHAT_IF_ANALYSIS } from '@/graphql/queries'
 import { lookupStyle, colors, palette } from '@/lib/tokens'
 import { NEUTRAL_VALUE_STYLE } from '@/lib/domainStyle'
 import { buildTypeIconMap } from '@/lib/ciIconPaths'
+import { applyFilterGroup } from '@/lib/filterGroup'
+import { errorMessage } from '@/lib/showError'
+import { useCILabels } from '@/hooks/useCILabels'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -58,6 +61,16 @@ const IMPACT_DISTANCE_STYLE: Record<string, { bg: string; color: string }> = {
   low:      { bg: palette.success.tint, color: palette.success.text },
 }
 
+/**
+ * The same levels as a scale, from the hit CI itself to the farthest one: the
+ * Impact columns sort by it (tour of 23 Sep 2026 — they sorted alphabetically,
+ * «critical, high, low, medium», which says nothing about severity).
+ */
+const IMPACT_DISTANCE_RANK: readonly string[] = ['target', 'critical', 'high', 'medium', 'low']
+
+/** The columns that are a scale, for the sort this page runs itself. */
+const COLUMN_RANKS: Readonly<Record<string, readonly string[]>> = { impactLevel: IMPACT_DISTANCE_RANK }
+
 function impactBadge(level: string, label: string) {
   const s = lookupStyle(IMPACT_DISTANCE_STYLE, level, 'IMPACT_DISTANCE_STYLE')
   return badge(s.bg, s.color, label)
@@ -72,10 +85,38 @@ function labelToRoute(label: string): string {
   return label.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase()
 }
 
+/**
+ * The CIs the search found. D53 (tour of 23 Sep 2026): each one said its type
+ * with the internal key («database_instance»); it is the type's label now, the
+ * same one the CMDB shows.
+ */
+function CIOptionsList({ options, onPick }: { options: CIOption[]; onPick: (ci: CIOption) => void }) {
+  const { typeLabel } = useCILabels()
+  return (
+    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: colors.white, border: '1px solid var(--color-border)', borderRadius: 6, marginTop: 2, maxHeight: 200, overflowY: 'auto', boxShadow: '0 4px 12px var(--color-black-a10)' }}>
+      {options.map(ci => (
+        // onMouseDown: la selezione deve avvenire prima del blur dell'input che chiude il menu; onClick copre la tastiera
+        <button
+          key={ci.id}
+          type="button"
+          onMouseDown={() => onPick(ci)}
+          onClick={() => onPick(ci)}
+          className="hover-bg"
+          style={{ width: '100%', background: 'none', border: 'none', font: 'inherit', color: 'inherit', textAlign: 'left', padding: '8px 12px', cursor: 'pointer', fontSize: 'var(--font-size-body)', display: 'flex', justifyContent: 'space-between', gap: 8, ['--hover-bg' as string]: palette.info.light }}
+        >
+          <span style={{ fontWeight: 500 }}>{ci.name}</span>
+          <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{typeLabel(ci.type)}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function WhatIfPage() {
   const { t } = useTranslation()
+  const { typeLabel } = useCILabels()
   const navigate = useNavigate()
 
   // Input state
@@ -130,7 +171,7 @@ export function WhatIfPage() {
 
   const filterFields: FieldConfig[] = useMemo(() => {
     if (!result) return []
-    const types = [...new Set(result.impactedCIs.map(c => c.type))].map(v => ({ value: v, label: v }))
+    const types = [...new Set(result.impactedCIs.map(c => c.type))].map(v => ({ value: v, label: typeLabel(v) }))
     const levels = (['critical', 'high', 'medium', 'low']).map(k => ({ value: k, label: impactLabel(k) }))
     const envs = [...new Set(result.impactedCIs.map(c => c.environment).filter(Boolean))].map(e => ({ value: e!, label: e! }))
     return [
@@ -140,47 +181,37 @@ export function WhatIfPage() {
       { key: 'environment', label: t('pages.whatIf.filterEnv'), type: 'enum' as const, options: envs },
     ]
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [result, t])
+  }, [result, t, typeLabel])
 
-  // Client-side filter/sort for results (data already loaded)
-  const filteredCIs = useMemo(() => {
-    let cis = result?.impactedCIs ?? []
-    if (filterGroup?.rules?.length) {
-      cis = cis.filter(ci => filterGroup.rules.every(r => {
-        const raw = (ci as unknown as Record<string, unknown>)[r.field]
-        const val = String(Array.isArray(raw) ? raw.join(', ') : raw ?? '').toLowerCase()
-        const op = r.operator as string
-        if (op === 'in' || op === 'equals') {
-          const vals = Array.isArray(r.value) ? r.value.map(v => v.toLowerCase()) : [String(r.value ?? '').toLowerCase()]
-          return vals.some(v => val === v)
-        }
-        if (op === 'not_in' || op === 'not_equals') {
-          const vals = Array.isArray(r.value) ? r.value.map(v => v.toLowerCase()) : [String(r.value ?? '').toLowerCase()]
-          return !vals.some(v => val === v)
-        }
-        if (op === 'contains') return val.includes(String(r.value ?? '').toLowerCase())
-        if (op === 'starts_with') return val.startsWith(String(r.value ?? '').toLowerCase())
-        if (op === 'is_empty') return val === ''
-        if (op === 'is_not_empty') return val !== ''
-        return true
-      }))
+  /**
+   * The impacted CIs as the table shows them, filtered and sorted HERE (the
+   * analysis is already in the browser) with the rules of every other list
+   * (tour of 23 Sep 2026): `applyFilterGroup` and the table's `sortRowsBy`.
+   * The page had its own copies: the filter kept every row for an operator it
+   * did not know («ends with») and ignored OR, the sort put «web-10» before
+   * «web-9», a CI with no environment first and Impact in alphabetical order.
+   * An operator the filter cannot evaluate is said, with no row shown as if
+   * it matched.
+   */
+  const { rows: filteredCIs, filterError } = useMemo((): { rows: WhatIfCI[]; filterError: string | null } => {
+    let rows: WhatIfCI[]
+    try {
+      rows = applyFilterGroup(result?.impactedCIs ?? [], filterGroup)
+    } catch (e) {
+      return { rows: [], filterError: errorMessage(e) }
     }
-    if (sortField) {
-      const dir = sortDir === 'asc' ? 1 : -1
-      cis = [...cis].sort((a, b) => {
-        const va = String((a as unknown as Record<string, unknown>)[sortField] ?? '')
-        const vb = String((b as unknown as Record<string, unknown>)[sortField] ?? '')
-        return va < vb ? -dir : va > vb ? dir : 0
-      })
+    return {
+      rows: sortField ? sortRowsBy(rows, sortField, sortDir, COLUMN_RANKS[sortField]) : rows,
+      filterError: null,
     }
-    return cis
   }, [result, filterGroup, sortField, sortDir])
 
   const columns: ColumnDef<WhatIfCI>[] = [
     { key: 'name', label: t('pages.whatIf.colName'), sortable: true },
-    { key: 'type', label: t('pages.whatIf.colType'), sortable: true, width: '120px', render: (v) => badge(palette.info.tint, palette.info.text, String(v)) },
+    // D53: the type's label, not its internal key.
+    { key: 'type', label: t('pages.whatIf.colType'), sortable: true, width: '120px', render: (v) => badge(palette.info.tint, palette.info.text, typeLabel(String(v))) },
     { key: 'environment', label: t('pages.whatIf.colEnv'), sortable: true, width: '110px', render: (v) => v ? badge('var(--color-success-bg)', palette.success.strong, String(v)) : <span style={{ color: colors.slateLight }}>—</span> },
-    { key: 'impactLevel', label: t('pages.whatIf.colImpact'), sortable: true, width: '100px', render: (v) => impactBadge(String(v), impactLabel(String(v))) },
+    { key: 'impactLevel', label: t('pages.whatIf.colImpact'), sortable: true, rank: IMPACT_DISTANCE_RANK, width: '100px', render: (v) => impactBadge(String(v), impactLabel(String(v))) },
     { key: 'impactPath', label: t('pages.whatIf.colPath'), sortable: true, render: (v) => {
       const path = v as unknown as string[]
       return <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{path?.join(' → ') || '—'}</span>
@@ -226,25 +257,7 @@ export function WhatIfPage() {
             onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
           />
           {dropdownOpen && ciOptions.length > 0 && (
-            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: colors.white, border: '1px solid var(--color-border)', borderRadius: 6, marginTop: 2, maxHeight: 200, overflowY: 'auto', boxShadow: '0 4px 12px var(--color-black-a10)' }}>
-              {ciOptions.map(ci => {
-                const pick = () => { setSelectedCI(ci); setCiSearch(''); setDropdownOpen(false) }
-                return (
-                  // onMouseDown: la selezione deve avvenire prima del blur dell'input che chiude il menu; onClick copre la tastiera
-                  <button
-                    key={ci.id}
-                    type="button"
-                    onMouseDown={pick}
-                    onClick={pick}
-                    className="hover-bg"
-                    style={{ width: '100%', background: 'none', border: 'none', font: 'inherit', color: 'inherit', textAlign: 'left', padding: '8px 12px', cursor: 'pointer', fontSize: 'var(--font-size-body)', display: 'flex', justifyContent: 'space-between', ['--hover-bg' as string]: palette.info.light }}
-                  >
-                    <span style={{ fontWeight: 500 }}>{ci.name}</span>
-                    <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{ci.type}</span>
-                  </button>
-                )
-              })}
-            </div>
+            <CIOptionsList options={ciOptions} onPick={(ci) => { setSelectedCI(ci); setCiSearch(''); setDropdownOpen(false) }} />
           )}
         </div>
 
@@ -396,26 +409,34 @@ export function WhatIfPage() {
             return (
               <>
                 <FilterBuilder fields={filterFields} onApply={g => { setFilterGroup(g); setCisPage(0) }} />
-                <SortableFilterTable<WhatIfCI>
-                  columns={columns}
-                  data={paged}
-                  loading={false}
-                  onSort={(f, d) => { setSortField(f); setSortDir(d); setCisPage(0) }}
-                  sortField={sortField}
-                  sortDir={sortDir}
-                  emptyComponent={<EmptyState icon={<ShieldCheck size={32} color={palette.success.text} />} title={t('pages.whatIf.noImpacted')} />}
-                  onRowClick={row => navigate(`/ci/${labelToRoute(row.type)}/${row.id}`)}
-                  expandedRowId={expandedGraphId}
-                  renderExpandedRow={row => {
-                    if (!Array.isArray(row.impactPath) || row.impactPath.length < 2) return null
-                    return (
-                      <div style={{ padding: '8px 12px' }}>
-                        <MiniPathGraph pathNames={row.impactPath} targetName={result.targetCI.name} impactedName={row.name} nameTypeMap={nameTypeMap} typeIconMap={typeIconMap} />
-                      </div>
-                    )
-                  }}
-                />
-                <Pagination currentPage={cisPage + 1} totalPages={totalPages} onPrev={() => setCisPage(p => Math.max(0, p - 1))} onNext={() => setCisPage(p => Math.min(totalPages - 1, p + 1))} />
+                {filterError !== null ? (
+                  <p role="alert" style={{ margin: '0 0 16px', fontSize: 'var(--font-size-table)', color: 'var(--color-danger-text)' }}>
+                    {t('pages.whatIf.filterNotApplied', { reason: filterError })}
+                  </p>
+                ) : (
+                  <>
+                    <SortableFilterTable<WhatIfCI>
+                      columns={columns}
+                      data={paged}
+                      loading={false}
+                      onSort={(f, d) => { setSortField(f); setSortDir(d); setCisPage(0) }}
+                      sortField={sortField}
+                      sortDir={sortDir}
+                      emptyComponent={<EmptyState icon={<ShieldCheck size={32} color={palette.success.text} />} title={t('pages.whatIf.noImpacted')} />}
+                      onRowClick={row => navigate(`/ci/${labelToRoute(row.type)}/${row.id}`)}
+                      expandedRowId={expandedGraphId}
+                      renderExpandedRow={row => {
+                        if (!Array.isArray(row.impactPath) || row.impactPath.length < 2) return null
+                        return (
+                          <div style={{ padding: '8px 12px' }}>
+                            <MiniPathGraph pathNames={row.impactPath} targetName={result.targetCI.name} impactedName={row.name} nameTypeMap={nameTypeMap} typeIconMap={typeIconMap} />
+                          </div>
+                        )
+                      }}
+                    />
+                    <Pagination currentPage={cisPage + 1} totalPages={totalPages} onPrev={() => setCisPage(p => Math.max(0, p - 1))} onNext={() => setCisPage(p => Math.min(totalPages - 1, p + 1))} />
+                  </>
+                )}
               </>
             )
           })()}
@@ -433,7 +454,7 @@ export function WhatIfPage() {
                     columns={[
                       { key: 'name', label: t('pages.whatIf.colName'), sortable: true },
                       { key: 'environment', label: t('pages.whatIf.colEnv'), sortable: true, width: '110px', render: (v) => v ? badge('var(--color-success-bg)', palette.success.strong, String(v)) : <span style={{ color: colors.slateLight }}>—</span> },
-                      { key: 'impactLevel', label: t('pages.whatIf.colImpact'), sortable: true, width: '100px', render: (v) => impactBadge(String(v), impactLabel(String(v))) },
+                      { key: 'impactLevel', label: t('pages.whatIf.colImpact'), sortable: true, rank: IMPACT_DISTANCE_RANK, width: '100px', render: (v) => impactBadge(String(v), impactLabel(String(v))) },
                       { key: 'impactPath', label: t('pages.whatIf.colPath'), sortable: true, render: (v) => <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{(v as unknown as string[])?.join(' → ') || '—'}</span> },
                     ]}
                     data={paged}

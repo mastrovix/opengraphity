@@ -30,7 +30,7 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
   // 1. Blast radius
   const blastResult = await session.executeRead((tx) => tx.run(`
     UNWIND $ciIds AS ciId
-    MATCH (ci {id: ciId, tenant_id: $tenantId})
+    MATCH (ci:ConfigurationItem {id: ciId, tenant_id: $tenantId})
     WHERE ${ciPredicate}
     MATCH path = (ci)<-[:${impactRelPattern}*1..5]-(impacted)
     WHERE ${impactedPredicate}
@@ -130,7 +130,7 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
   // 4. Environments of affected CIs
   const ciResult = await session.executeRead((tx) => tx.run(`
     UNWIND $ciIds AS ciId
-    MATCH (ci {id: ciId, tenant_id: $tenantId})
+    MATCH (ci:ConfigurationItem {id: ciId, tenant_id: $tenantId})
     WHERE ${ciPredicate}
     RETURN ci.environment AS env
   `, { ciIds, tenantId }))

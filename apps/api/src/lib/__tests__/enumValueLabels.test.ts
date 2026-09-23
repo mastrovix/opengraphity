@@ -7,16 +7,24 @@
  */
 import { describe, it, expect } from 'vitest'
 import {
-  titleCase, parseValueLabels, valueLabelEntries, pruneValueLabels,
+  humanizeValue, parseValueLabels, valueLabelEntries, pruneValueLabels,
   renameValueLabel, serializeValueLabels, labelFor,
   valueLabelsReasonKey, VOCABULARIES_WITHOUT_LABELS,
 } from '../enumValueLabels.js'
 
-describe('titleCase — il ripiego quando l\'etichetta manca', () => {
-  it('sottolineature via, iniziali maiuscole', () => {
-    expect(titleCase('mission_critical')).toBe('Mission Critical')
-    expect(titleCase('high')).toBe('High')
-    expect(titleCase('dr')).toBe('Dr')
+describe('humanizeValue — the fallback when the label is missing (D29)', () => {
+  it('a machine key becomes a sentence', () => {
+    expect(humanizeValue('mission_critical')).toBe('Mission critical')
+    expect(humanizeValue('high')).toBe('High')
+    expect(humanizeValue('dr')).toBe('Dr')
+    expect(humanizeValue('HOSTED_ON')).toBe('Hosted on')
+  })
+
+  it('a value written as a sentence, or that is not a key, is shown as it is', () => {
+    expect(humanizeValue('Pick up at the IT desk')).toBe('Pick up at the IT desk')
+    expect(humanizeValue('DatabaseInstance')).toBe('DatabaseInstance')
+    expect(humanizeValue('IT')).toBe('IT')
+    expect(humanizeValue('e-mail')).toBe('e-mail')
   })
 })
 
@@ -151,8 +159,9 @@ describe('labelFor', () => {
     expect(labelFor('medium', labels, 'en', 'en')).toBe('Medium')
   })
 
-  it('manca del tutto → il valore con le iniziali maiuscole', () => {
-    expect(labelFor('mission_critical', labels, 'en', 'it')).toBe('Mission Critical')
+  it('missing altogether → the value made readable, never a Title Case nobody wrote (D29)', () => {
+    expect(labelFor('mission_critical', labels, 'en', 'it')).toBe('Mission critical')
+    expect(labelFor('Pick up at the IT desk', labels, 'en', 'it')).toBe('Pick up at the IT desk')
   })
 })
 

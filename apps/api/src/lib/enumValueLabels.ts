@@ -71,15 +71,28 @@ export interface EnumValueLabelEntry {
   labels: { language: Lingua; label: string }[]
 }
 
+const LOWER_KEY = /^[a-z0-9]+(?:_[a-z0-9]+)*$/
+const UPPER_KEY = /^[A-Z0-9]+(?:_[A-Z0-9]+)+$/
+
 /**
- * `alta` → `Alta`, `mission_critical` → `Mission Critical`.
+ * A VALUE WITHOUT A LABEL, SHOWN THE WAY A PERSON WROTE IT (D29, tour of 23
+ * Sep 2026). The fallback when the label is missing.
  *
- * Il ripiego quando l'etichetta manca: e la stessa regola che il web applicava
- * da sempre (`enumLabel` in lib/ciEnums.ts), portata qui perche ora la
- * decisione e una sola e sta dal lato del server.
+ * It was Title Case — `mission_critical` → «Mission Critical», fine, but also
+ * «Pick up at the IT desk» → «Pick Up At The IT Desk», which nobody wrote,
+ * sent in `label` as if the customer had. The rule is now the one of the web
+ * (`humanizeValue`, packages/web-core/src/valueLabel.ts), so the same value
+ * reads the same in a list, in a report and in a form:
+ *  - a value with spaces is shown AS IT IS;
+ *  - a machine key — lowercase snake_case, or UPPER_SNAKE with at least one
+ *    underscore — becomes a sentence: `in_progress` → «In progress»;
+ *  - anything else (`DatabaseInstance`, `IT`, `e-mail`) is shown as it is.
  */
-export function titleCase(value: string): string {
-  return value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+export function humanizeValue(value: string): string {
+  if (/\s/.test(value)) return value
+  if (!LOWER_KEY.test(value) && !UPPER_KEY.test(value)) return value
+  const words = value.toLowerCase().replace(/_/g, ' ')
+  return words.charAt(0).toUpperCase() + words.slice(1)
 }
 
 /**
@@ -127,7 +140,7 @@ export function parseValueLabels(raw: unknown): { labels: EnumValueLabels; error
 
 /**
  * L'etichetta nella lingua chiesta, col ripiego DICHIARATO DA CHI CHIAMA: la
- * lingua chiesta → il `ripiego` → il valore con le iniziali maiuscole.
+ * lingua chiesta → il `ripiego` → il valore reso leggibile (`humanizeValue`).
  *
  * Il ripiego e un parametro e non una costante perche e la lingua predefinita
  * DEL CLIENTE, che e configurazione (`lib/tenantLanguage.ts`). Prima era
@@ -140,7 +153,7 @@ export function parseValueLabels(raw: unknown): { labels: EnumValueLabels; error
  */
 export function labelFor(valore: string, labels: EnumValueLabels, lingua: Lingua, ripiego: Lingua): string {
   const per = labels[valore]
-  return per?.[lingua] ?? per?.[ripiego] ?? titleCase(valore)
+  return per?.[lingua] ?? per?.[ripiego] ?? humanizeValue(valore)
 }
 
 /**

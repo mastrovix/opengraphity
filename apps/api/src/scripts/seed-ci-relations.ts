@@ -24,7 +24,7 @@ async function seed(TENANT_ID: string) {
 
   const load = async (label: string): Promise<string[]> => {
     const r = await session.run(
-      `MATCH (c {tenant_id: $tenantId}) WHERE $label IN labels(c) RETURN c.id AS id ORDER BY c.name`,
+      `MATCH (c:ConfigurationItem {tenant_id: $tenantId}) WHERE $label IN labels(c) RETURN c.id AS id ORDER BY c.name`,
       { tenantId: TENANT_ID, label }
     )
     return r.records.map((rec) => rec.get('id') as string)

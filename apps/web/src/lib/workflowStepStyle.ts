@@ -38,24 +38,70 @@ export function styleForCategory(category: string | null | undefined): CategoryS
   return style
 }
 
+export interface ButtonColors { backgroundColor: string; color: string; borderColor: string }
+
+/** The danger style of an action that ends a ticket badly (D27). */
+export const DANGER_BUTTON: ButtonColors = {
+  backgroundColor: 'var(--color-danger)',
+  color:           colors.white,
+  borderColor:     'var(--color-danger)',
+}
+
+/** The primary style: brand background. */
+export const BRAND_BUTTON: ButtonColors = {
+  backgroundColor: 'var(--color-brand)',
+  color:           colors.white,
+  borderColor:     'var(--color-brand)',
+}
+
 /** Solid-background style for primary action buttons (e.g. "Resolve"). */
 const BUTTON_SOLID: Record<string, { bg: string; fg: string; border: string }> = {
   resolved:  { bg: 'var(--color-trigger-automatic)',  fg: colors.white, border: 'var(--color-trigger-automatic)'  },
   published: { bg: 'var(--color-trigger-automatic)',  fg: colors.white, border: 'var(--color-trigger-automatic)'  },
   escalated: { bg: 'var(--color-trigger-sla-breach)', fg: colors.white, border: 'var(--color-trigger-sla-breach)' },
-  failed:    { bg: 'var(--color-trigger-sla-breach)', fg: colors.white, border: 'var(--color-trigger-sla-breach)' },
+  failed:    { bg: DANGER_BUTTON.backgroundColor, fg: DANGER_BUTTON.color, border: DANGER_BUTTON.borderColor },
   closed:    { bg: 'transparent', fg: 'var(--text-primary)', border: 'var(--border)' },
 }
 
 /** Button style for a transition that leads to a step with the given category. */
-export function buttonStyleForCategory(category: string | null | undefined): {
-  backgroundColor: string; color: string; borderColor: string
-} {
+export function buttonStyleForCategory(category: string | null | undefined): ButtonColors {
   const solid = category ? BUTTON_SOLID[category] : undefined
   if (solid) return { backgroundColor: solid.bg, color: solid.fg, borderColor: solid.border }
-  return {
-    backgroundColor: 'var(--color-brand)',
-    color:           colors.white,
-    borderColor:     'var(--color-brand)',
-  }
+  return BRAND_BUTTON
+}
+
+/**
+ * THE INPUT A REJECTION ASKS FOR. The shipped workflows (problem, knowledge
+ * base, service request) ask for `rejection_reason` on every transition that
+ * rejects, and the service request page already reads it to name the field.
+ */
+export const REJECTION_INPUT_FIELD = 'rejection_reason'
+
+/**
+ * IS THIS TRANSITION DESTRUCTIVE? Decided here, once, for every page that
+ * draws transition buttons (D27, tour of 23 Sep 2026: the only action on a
+ * request in approval was «Reject», drawn as the blue primary button).
+ *
+ * From the workflow's own metadata, never from a step name:
+ *  - the target step's CATEGORY is `failed` — the category the designer
+ *    describes as «Ended badly (cancelled, rejected)»;
+ *  - or the transition asks for a rejection reason (`REJECTION_INPUT_FIELD`):
+ *    the shipped service request workflow files its `rejected` step under
+ *    `closed`, so the category alone does not see that «Reject» rejects.
+ */
+export function isDestructiveTransition(targetCategory: string | null | undefined, inputField?: string | null): boolean {
+  return targetCategory === 'failed' || inputField === REJECTION_INPUT_FIELD
+}
+
+/**
+ * The colours of a transition button. A destructive transition is always
+ * DANGER. Otherwise `byCategory` colours by the target category (incident
+ * and problem headers), `brand` keeps the primary style (request sidebar,
+ * change card).
+ */
+export function transitionButtonColors(
+  targetCategory: string | null | undefined, inputField: string | null | undefined, palette: 'byCategory' | 'brand',
+): ButtonColors {
+  if (isDestructiveTransition(targetCategory, inputField)) return DANGER_BUTTON
+  return palette === 'byCategory' ? buttonStyleForCategory(targetCategory) : BRAND_BUTTON
 }

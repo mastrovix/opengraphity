@@ -119,7 +119,14 @@ export class SLAEngine extends BaseConsumer<unknown> {
         break
 
       // First assignment = first response → satisfies the SLA response target.
+      // Not the team set while the incident was being created (the owner's
+      // rule of 23 Sep 2026: a new incident goes to the support group of its
+      // CI): that is routing, and the response is a person taking it.
       case 'incident.assigned':
+        if ((event.payload as { routed_at_creation?: unknown }).routed_at_creation === true) {
+          console.log(`[sla:engine] incident.assigned at creation for ${String((event.payload as { id?: unknown }).id)}: routing, not a response`)
+          break
+        }
         await this.handleEntityResponded(event, 'incident')
         break
 

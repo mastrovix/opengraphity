@@ -60,7 +60,11 @@ const ALBERI = ['apps/api/src', 'apps/web/src', 'apps/portal/src', 'apps/console
  *
  * I test per primi: contengono nomi di persone e di aziende inventati, che
  * somigliano in tutto e per tutto a quelli veri — e un vocabolario che li
- * contenesse lascerebbe passare la parola «Rossi» in un template. Le locale
+ * contenesse lascerebbe passare la parola «Rossi» in un template. Per la
+ * stessa ragione i dati di prova (`lib/testData/**`): il generatore del
+ * tenant di dimostrazione tiene elenchi di nomi e cognomi italiani veri —
+ * rigenerando senza escluderli, «Costa», «Conti», «Greco» e «Monti» sono
+ * entrati nel vocabolario e la pulizia dei log ha smesso di nasconderli. Le locale
  * i18n perché sono la lingua dell'interfaccia, non quella dei log, e
  * gonfierebbero il vocabolario di decine di migliaia di parole senza che una
  * sola di esse arrivi mai in un messaggio d'errore.
@@ -69,7 +73,15 @@ const ESCLUSI = [
   /__tests__/, /\.test\.[jt]sx?$/, /\.spec\.[jt]sx?$/,
   /node_modules/, /\/dist\//, /\/build\//, /\/coverage\//,
   /\/i18n\/locales\//, /\/seed[^/]*\.[jt]s$/, /\/fixtures?\//,
-  /\/test\//, /\/mocks?\//,
+  /\/test\//, /\/mocks?\//, /\/testData\//,
+  /*
+   * E il vocabolario stesso (22 set 2026). Si rileggeva: una parola entrata
+   * una volta per sbaglio — «Costa» e «Conti», cognomi arrivati da un elenco
+   * di nomi finti — ci restava per sempre, perché la rigenerazione successiva
+   * la ritrovava nel proprio file anche dopo che la sorgente era sparita.
+   * Un guardiano che si alimenta da sé non torna mai indietro.
+   */
+  /\/vocabolarioDeiLog\.ts$/,
 ]
 
 /**

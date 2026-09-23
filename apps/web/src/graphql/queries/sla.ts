@@ -16,7 +16,7 @@ export const GET_OLA_CONTRACTS = gql`
   query GetOLAContracts($type: String) {
     olaContracts(type: $type) {
       id type name description entityType responseMinutes resolveMinutes
-      businessHours calendarId calendarName complianceTarget complianceWarning
+      businessHours calendarId calendarName timezone complianceTarget complianceWarning
       partyType partyName teamId teamName enabled createdAt
     }
   }

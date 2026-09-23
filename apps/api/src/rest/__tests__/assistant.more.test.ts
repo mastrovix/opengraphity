@@ -49,7 +49,7 @@ beforeAll(async () => {
 afterAll(async () => { await new Promise<void>((resolve) => server.close(() => resolve())) })
 beforeEach(() => {
   vi.clearAllMocks()
-  vi.mocked(streamAssistantChat).mockImplementation(async (_t, _p, _m, emit) => { emit.done('ok') })
+  vi.mocked(streamAssistantChat).mockImplementation(async (_t, _u, _p, _m, emit) => { emit.done('ok') })
 })
 
 const post = (body: unknown) => fetch(base, {
@@ -96,7 +96,7 @@ describe('request validation (400, model never called)', () => {
 
 describe('streaming', () => {
   it('frames text, tool and done as SSE events, in order', async () => {
-    vi.mocked(streamAssistantChat).mockImplementation(async (_t, _p, _m, emit) => {
+    vi.mocked(streamAssistantChat).mockImplementation(async (_t, _u, _p, _m, emit) => {
       emit.text('Hel'); emit.text('lo'); emit.tool('search_incidents'); emit.done('Hello')
     })
     const res = await post({ messages: [user('hi')] })
@@ -109,7 +109,7 @@ describe('streaming', () => {
   })
 
   it('a model error is sent as an `error` event and closes the stream', async () => {
-    vi.mocked(streamAssistantChat).mockImplementation(async (_t, _p, _m, emit) => { emit.error('model overloaded') })
+    vi.mocked(streamAssistantChat).mockImplementation(async (_t, _u, _p, _m, emit) => { emit.error('model overloaded') })
     const res = await post({ messages: [user('hi')] })
     expect(res.status).toBe(200)
     expect(await res.text()).toBe('event: error\ndata: {"message":"model overloaded"}\n\n')
@@ -130,7 +130,7 @@ describe('failures inside the handler never take the process down', () => {
   })
 
   it('model throwing after the stream started → the stream is just closed (headers already sent)', async () => {
-    vi.mocked(streamAssistantChat).mockImplementation(async (_t, _p, _m, emit) => {
+    vi.mocked(streamAssistantChat).mockImplementation(async (_t, _u, _p, _m, emit) => {
       emit.text('partial')
       throw new Error('socket hang up')
     })

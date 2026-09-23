@@ -46,10 +46,17 @@ async function admin(): Promise<{ kc: KeycloakAdmin; token: string }> {
 const realmPath = (tenantId: string) => `/admin/realms/${encodeURIComponent(tenantId)}`
 
 /** L'indirizzo pubblico di Keycloak, quello che i provider esterni vedono. */
-function keycloakPublicUrl(): string {
-  const url = config.keycloakPublicUrls[0]
-  if (!url) throw new Error('KEYCLOAK_PUBLIC_URL has no URL')
-  return url.replace(/\/+$/, '')
+/**
+ * Every origin through which people reach the sign-in page (KEYCLOAK_PUBLIC_URL
+ * is a list: local, Tailscale, the public domain). Keycloak builds its broker
+ * addresses from the origin the browser used, so a corporate provider needs
+ * each of them registered (tour of 23 Sep 2026, D71: the page showed only the
+ * first, `http://localhost:8080/...`, useless to register at Microsoft).
+ */
+function keycloakPublicUrls(): string[] {
+  const urls = config.keycloakPublicUrls.map((u) => u.replace(/\/+$/, ''))
+  if (urls.length === 0) throw new Error('KEYCLOAK_PUBLIC_URL has no URL')
+  return urls
 }
 
 // ── Regole delle password ─────────────────────────────────────────────────────
@@ -184,6 +191,32 @@ export function policyString(rules: PasswordRules, current: string | null | unde
 
 type RealmRep = { passwordPolicy?: string | null; bruteForceProtected?: boolean; failureFactor?: number; waitIncrementSeconds?: number; maxFailureWaitSeconds?: number; permanentLockout?: boolean }
 
+/**
+ * The rules a new organization starts with (tour of 23 Sep 2026, D70). The
+ * realm was created with none: Keycloak then accepts a one-character password
+ * and never locks an account, and the «Login & passwords» page said so on the
+ * demo tenant. A reasonable start, inside the ranges that page governs; the
+ * organization changes them there.
+ */
+export const INITIAL_PASSWORD_RULES: PasswordRules = {
+  minLength: 12, uppercase: 1, lowercase: 1, digits: 1, special: 0,
+  notUsername: true, notEmail: true, history: 3, expireDays: 0,
+  lockoutEnabled: true, lockoutFailures: 10, lockoutMinutes: 15,
+}
+
+/** The realm fields that carry the password and lockout rules: the page and the realm creation write the same ones. */
+export function realmPasswordSettings(rules: PasswordRules, currentPolicy: string | null | undefined): Record<string, unknown> {
+  return {
+    passwordPolicy: policyString(rules, currentPolicy),
+    bruteForceProtected: rules.lockoutEnabled,
+    failureFactor: rules.lockoutFailures,
+    maxFailureWaitSeconds: rules.lockoutMinutes * 60,
+    waitIncrementSeconds: Math.min(60, rules.lockoutMinutes * 60),
+    // Mai un blocco permanente: nessuno, admin compreso, resta chiuso fuori per sempre.
+    permanentLockout: false,
+  }
+}
+
 export async function passwordRules(tenantId: string): Promise<PasswordRules> {
   const { kc, token } = await admin()
   return rulesFromRealm(await kc.get<RealmRep>(token, realmPath(tenantId)))
@@ -196,15 +229,7 @@ export async function setPasswordRules(tenantId: string, raw: unknown): Promise<
   // A-19: si legge PRIMA com'è il realm, così un valore fuori intervallo che
   // l'admin non ha toccato non blocca il salvataggio del resto.
   const rules = assertPasswordRules(raw, before)
-  await kc.put(token, realmPath(tenantId), {
-    passwordPolicy: policyString(rules, realm.passwordPolicy),
-    bruteForceProtected: rules.lockoutEnabled,
-    failureFactor: rules.lockoutFailures,
-    maxFailureWaitSeconds: rules.lockoutMinutes * 60,
-    waitIncrementSeconds: Math.min(60, rules.lockoutMinutes * 60),
-    // Mai un blocco permanente: nessuno, admin compreso, resta chiuso fuori per sempre.
-    permanentLockout: false,
-  })
+  await kc.put(token, realmPath(tenantId), realmPasswordSettings(rules, realm.passwordPolicy))
   return { before, after: rules }
 }
 
@@ -231,8 +256,12 @@ export interface LoginProviderView {
   tenant:            string | null
   hostedDomain:      string | null
   metadataUrl:       string | null
+  /** The first of `redirectUris` (kept for older clients). */
   redirectUri:       string
+  /** One per origin through which people reach the sign-in page: all of them go to the provider (D71). */
+  redirectUris:      string[]
   samlSpMetadataUrl: string | null
+  samlSpMetadataUrls: string[]
 }
 
 export interface LoginProviderCheck { key: string; ok: boolean; detail: string | null }
@@ -248,8 +277,21 @@ function assertKind(kind: unknown): LoginProviderKind {
 
 const clean = (v: string | null | undefined) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null)
 
-export function redirectUriOf(tenantId: string, kind: LoginProviderKind): string {
-  return `${keycloakPublicUrl()}/realms/${encodeURIComponent(tenantId)}/broker/${kind}/endpoint`
+export function redirectUrisOf(tenantId: string, kind: LoginProviderKind): string[] {
+  return keycloakPublicUrls().map((base) => `${base}/realms/${encodeURIComponent(tenantId)}/broker/${kind}/endpoint`)
+}
+
+/** SAML: OpenGrafo's metadata, one address per public origin (none for the other kinds). */
+function spMetadataUrlsOf(tenantId: string, kind: LoginProviderKind): string[] {
+  if (kind !== 'saml') return []
+  return keycloakPublicUrls().map((base) => `${base}/realms/${encodeURIComponent(tenantId)}/broker/saml/endpoint/descriptor`)
+}
+
+/** The addresses of a provider, the lists and — for older clients — their first entry. */
+function addressesOf(tenantId: string, kind: LoginProviderKind): Pick<LoginProviderView, 'redirectUri' | 'redirectUris' | 'samlSpMetadataUrl' | 'samlSpMetadataUrls'> {
+  const redirectUris = redirectUrisOf(tenantId, kind)
+  const samlSpMetadataUrls = spMetadataUrlsOf(tenantId, kind)
+  return { redirectUri: redirectUris[0]!, redirectUris, samlSpMetadataUrl: samlSpMetadataUrls[0] ?? null, samlSpMetadataUrls }
 }
 
 type IdpRep = { alias: string; providerId: string; displayName?: string; enabled: boolean; config?: Record<string, string> }
@@ -265,18 +307,13 @@ function view(tenantId: string, idp: IdpRep): LoginProviderView {
     tenant: kind === 'microsoft' ? (c['tenantId'] ?? null) : null,
     hostedDomain: kind === 'google' ? (c['hostedDomain'] ?? null) : null,
     metadataUrl: kind === 'saml' ? (c['opengrafoMetadataUrl'] ?? null) : null,
-    redirectUri: redirectUriOf(tenantId, kind),
-    samlSpMetadataUrl: kind === 'saml' ? `${keycloakPublicUrl()}/realms/${encodeURIComponent(tenantId)}/broker/saml/endpoint/descriptor` : null,
+    ...addressesOf(tenantId, kind),
   }
 }
 
 /** Gli indirizzi di ogni provider, anche prima di configurarlo: l'admin li registra presso Microsoft/Google/SAML. */
-export function loginProviderAddresses(tenantId: string): Array<{ kind: LoginProviderKind; redirectUri: string; samlSpMetadataUrl: string | null }> {
-  return LOGIN_PROVIDER_KINDS.map((kind) => ({
-    kind,
-    redirectUri: redirectUriOf(tenantId, kind),
-    samlSpMetadataUrl: kind === 'saml' ? `${keycloakPublicUrl()}/realms/${encodeURIComponent(tenantId)}/broker/saml/endpoint/descriptor` : null,
-  }))
+export function loginProviderAddresses(tenantId: string): Array<{ kind: LoginProviderKind } & ReturnType<typeof addressesOf>> {
+  return LOGIN_PROVIDER_KINDS.map((kind) => ({ kind, ...addressesOf(tenantId, kind) }))
 }
 
 export async function loginProviders(tenantId: string): Promise<LoginProviderView[]> {

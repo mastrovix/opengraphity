@@ -4,6 +4,8 @@
  * Reads the source incident's stored embedding and queries the Neo4j vector
  * index. Truth-telling contract: `ready: false` when the embedding has not
  * been computed yet (async pipeline) — never conflated with "no results".
+ * An incident without an embedding gets it queued by the question itself, and
+ * a computation that failed comes back as `failure` (D15).
  */
 import { kbArticlePublishedCypher } from '../../lib/kbPublished.js'
 import { NotFoundError } from '../../lib/errors.js'
@@ -11,30 +13,42 @@ import { getSession, runQueryOne, toNumber } from '@opengraphity/neo4j'
 import { vectorSearchForTenant } from '../../lib/vectorSearch.js'
 import type { GraphQLContext } from '../../context.js'
 import { vectorIndexName } from '../../services/embeddings.js'
+import { requestEmbedding } from '../../jobs/embeddingWorker.js'
 import { aiFeatureEnabled } from '../../lib/aiSettings.js'
 import { suggestTriage } from '../../services/triageService.js'
 import { draftResolutionNotes, problemCandidates as findProblemCandidates, draftKbContent } from '../../services/postIncidentService.js'
 import { createKBArticle } from './knowledgeBase.js'
 import { collegaArticoloAIncident } from '../../lib/kbCoverage.js'
 import { logger } from '../../lib/logger.js'
+import { audit } from '../../lib/audit.js'
 
 const num = toNumber
 
 async function loadEmbedding(
   incidentId: string,
   tenantId: string,
-): Promise<number[] | null> {
+): Promise<{ embedding: number[] | null; version: string | null }> {
   const session = getSession(undefined, 'READ')
   try {
-    const row = await runQueryOne<{ embedding: number[] | null }>(session, `
+    const row = await runQueryOne<{ embedding: number[] | null; version: string | null }>(session, `
       MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
-      RETURN i.embedding AS embedding
+      RETURN i.embedding AS embedding, coalesce(i.updated_at, i.created_at) AS version
     `, { incidentId, tenantId })
     if (!row) throw new NotFoundError('Incident')
-    return row.embedding
+    return row
   } finally {
     await session.close()
   }
+}
+
+/**
+ * The answer while the embedding is missing (D15): the panel waits only for a
+ * computation that is really queued, and a failed one is said with its reason.
+ */
+async function notReady(tenantId: string, incidentId: string, version: string | null) {
+  if (!version) throw new Error(`Incident ${incidentId} has neither updated_at nor created_at: its embedding cannot be versioned`)
+  const request = await requestEmbedding({ entityType: 'incident', entityId: incidentId, tenantId, updatedAt: version })
+  return { ready: false, disabled: false, failure: request.state === 'failed' ? request.reason : null, items: [] }
 }
 
 async function similarIncidents(
@@ -44,9 +58,9 @@ async function similarIncidents(
 ) {
   const limit = Math.min(Math.max(args.limit ?? 5, 1), 20)
   // Embedding spenti dall'organizzazione (ondata 6): lo si dice, non «non ancora pronto».
-  if (!(await aiFeatureEnabled(ctx.tenantId, 'embeddings'))) return { ready: false, disabled: true, items: [] }
-  const embedding = await loadEmbedding(args.incidentId, ctx.tenantId)
-  if (!embedding) return { ready: false, disabled: false, items: [] }
+  if (!(await aiFeatureEnabled(ctx.tenantId, 'embeddings'))) return { ready: false, disabled: true, failure: null, items: [] }
+  const { embedding, version } = await loadEmbedding(args.incidentId, ctx.tenantId)
+  if (!embedding) return notReady(ctx.tenantId, args.incidentId, version)
 
   const session = getSession(undefined, 'READ')
   try {
@@ -68,7 +82,7 @@ async function similarIncidents(
       params: { incidentId: args.incidentId },
       what: 'similarIncidents',
     })
-    return { ready: true, disabled: false, items: rows.map(r => ({ ...r, score: num(r.score) })) }
+    return { ready: true, disabled: false, failure: null, items: rows.map(r => ({ ...r, score: num(r.score) })) }
   } finally {
     await session.close()
   }
@@ -80,9 +94,9 @@ async function suggestedArticles(
   ctx: GraphQLContext,
 ) {
   const limit = Math.min(Math.max(args.limit ?? 3, 1), 10)
-  if (!(await aiFeatureEnabled(ctx.tenantId, 'embeddings'))) return { ready: false, disabled: true, items: [] }
-  const embedding = await loadEmbedding(args.incidentId, ctx.tenantId)
-  if (!embedding) return { ready: false, disabled: false, items: [] }
+  if (!(await aiFeatureEnabled(ctx.tenantId, 'embeddings'))) return { ready: false, disabled: true, failure: null, items: [] }
+  const { embedding, version } = await loadEmbedding(args.incidentId, ctx.tenantId)
+  if (!embedding) return notReady(ctx.tenantId, args.incidentId, version)
 
   const session = getSession(undefined, 'READ')
   try {
@@ -98,7 +112,7 @@ async function suggestedArticles(
              node.category AS category, score`,
       what: 'suggestedArticles',
     })
-    return { ready: true, disabled: false, items: rows.map(r => ({ ...r, score: num(r.score) })) }
+    return { ready: true, disabled: false, failure: null, items: rows.map(r => ({ ...r, score: num(r.score) })) }
   } finally {
     await session.close()
   }
@@ -155,6 +169,9 @@ async function createKbDraftFromIncident(
    */
   const id = typeof article.id === 'string' ? article.id : null
   if (id) {
+    // The creation entry is the same as an article written by hand: this one
+    // says the text came from the model, and is what counts it as AI at work.
+    void audit(ctx, 'kb_article.drafted_by_ai', 'KBArticle', id, { incidentId: args.incidentId })
     const collegato = await collegaArticoloAIncident(ctx.tenantId, id, args.incidentId)
     if (!collegato) {
       logger.warn({ module: 'kb', tenantId: ctx.tenantId, articleId: id, incidentId: args.incidentId },

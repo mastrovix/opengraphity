@@ -20,9 +20,40 @@ export interface ColumnDef<T> {
    * hanno lo stesso ordine.
    */
   rank?:    readonly string[]
+  /**
+   * `end`: the column stays in view at the right edge while the table scrolls
+   * sideways inside its container (D36, tour of 23 Sep 2026: on the alarms
+   * console the table was 1284px wide in a 1057px container and the actions
+   * were out of view). Only the LAST column can be sticky: a single column
+   * pinned at `right: 0` needs no offset to guess.
+   */
+  sticky?:  'end'
 }
 
 const getRawValue = (row: object, key: string): unknown => (row as Record<string, unknown>)[key]
+
+/**
+ * The key of the column pinned at the right edge, or null. A sticky column
+ * that is not the last one is a mistake of the caller: it is said, and the
+ * table stays a plain table instead of pinning the wrong column.
+ */
+function stickyEndKey<T>(columns: ColumnDef<T>[]): string | null {
+  const last = columns.at(-1)
+  const misplaced = columns.slice(0, -1).filter((c) => c.sticky === 'end')
+  if (misplaced.length > 0) {
+    console.error(`[SortableFilterTable] only the last column can be sticky: ${misplaced.map((c) => String(c.key)).join(', ')}`)
+  }
+  return last?.sticky === 'end' ? String(last.key) : null
+}
+
+/** Pinned at the right edge, opaque so that what scrolls underneath does not show through. */
+const STICKY_END_CELL: React.CSSProperties = {
+  position:        'sticky',
+  right:           0,
+  zIndex:          1,
+  backgroundColor: colors.white,
+  boxShadow:       'inset 1px 0 0 var(--color-border)',
+}
 
 /** Valore su cui si ordina: per un oggetto con `name` (CI, sorgente, squadra) è il nome, non `[object Object]`. */
 function getSortValue(row: object, key: string): unknown {
@@ -188,6 +219,8 @@ export function SortableFilterTable<T extends object>({
   }
 
   const totalCols = columns.length + (selectable ? 1 : 0)
+  const stickyKey = stickyEndKey(columns)
+  const stickyCell = (key: keyof T): React.CSSProperties => (String(key) === stickyKey ? STICKY_END_CELL : {})
 
   return (
     <div className="og-table-card og-scroll-x">
@@ -224,7 +257,9 @@ export function SortableFilterTable<T extends object>({
                         ? activeSortDir === 'asc' ? 'ascending' : 'descending'
                         : 'none')
                     : undefined}
-                  style={thStyle}
+                  // The tint of the header comes from index.css; the sticky one needs an opaque variant there too.
+                  className={String(col.key) === stickyKey ? 'sft-sticky-end' : undefined}
+                  style={{ ...thStyle, ...stickyCell(col.key) }}
                 >
                   {/* Sortable headers are real buttons (keyboard + screen reader); static ones stay plain text (E-14). */}
                   {col.sortable ? (
@@ -286,7 +321,7 @@ export function SortableFilterTable<T extends object>({
               <tr key={i}>
                 {selectable && <td style={{ padding: '12px 0 12px 12px', borderBottom: `1px solid ${palette.neutral.borderLight}` }} />}
                 {columns.map((col, ci) => (
-                  <td key={String(col.key)} style={{ padding: '12px', borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
+                  <td key={String(col.key)} style={{ padding: '12px', borderBottom: `1px solid ${palette.neutral.borderLight}`, ...stickyCell(col.key) }}>
                     <SkeletonLine width={ci === 0 ? '80%' : ci % 2 === 0 ? '60%' : '70%'} />
                   </td>
                 ))}
@@ -363,7 +398,7 @@ export function SortableFilterTable<T extends object>({
                       <td
                         key={String(col.key)}
                         className="sft-td"
-                        style={{ padding: '11px 12px', verticalAlign: 'middle' }}
+                        style={{ padding: '11px 12px', verticalAlign: 'middle', ...stickyCell(col.key) }}
                       >
                         {col.render
                           ? col.render(getRawVal(row, col.key), row)

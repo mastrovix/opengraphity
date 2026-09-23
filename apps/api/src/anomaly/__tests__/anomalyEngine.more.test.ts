@@ -70,6 +70,11 @@ vi.mock('../rules.js', () => ({
 const base = { severity: 'high', ciTypes: [] as string[], relations: [], threshold: null, incidentSeverities: [], forbidden: [] as Array<{ fromType: string; relation: string; toType: string }>, isDefault: false, updatedAt: null }
 const configs = vi.hoisted(() => ({ list: [] as unknown[] }))
 vi.mock('../ruleConfig.js', () => ({
+  // Only what resolveRule reads: which rule takes «no relation» as «all of them» (D49).
+  ANOMALY_RULE_SPECS: Object.fromEntries(
+    ['orphan_ci', 'spof', 'dependency_cycle', 'missing_owner', 'unauthorized_relation', 'isolated_cluster', 'risk_concentration']
+      .map((k) => [k, { allRelationsWhenEmpty: k === 'isolated_cluster' }]),
+  ),
   loadAnomalyRuleConfigs: vi.fn(async () => configs.list),
   anomalyRuleOptions: vi.fn(async () => ({
     ciTypes: [{ name: 'server', label: 'Server', neo4jLabel: 'Server' }, { name: 'database', label: 'Database', neo4jLabel: 'DatabaseInstance' }],
@@ -221,11 +226,19 @@ describe('resolveRule — the admin configures names, the engine uses the tenant
   }
 
   it('translates CI types and forbidden relations to Neo4j labels', () => {
-    resolveRule({ ...base, ruleKey: 'forbidden_relation', enabled: true, ciTypes: ['database'], forbidden: [{ fromType: 'server', relation: 'DEPENDS_ON', toType: 'database' }] } as never, options)
+    resolveRule({ ...base, ruleKey: 'unauthorized_relation', enabled: true, ciTypes: ['database'], forbidden: [{ fromType: 'server', relation: 'DEPENDS_ON', toType: 'database' }] } as never, options)
     expect(vi.mocked(buildAnomalyRule).mock.calls[0]![1]).toMatchObject({
       ciLabels: ['DatabaseInstance'],
       forbiddenLabels: [{ fromLabel: 'Server', relation: 'DEPENDS_ON', toLabel: 'DatabaseInstance' }],
     })
+  })
+
+  // D49 (tour of 23 Sep 2026): the isolated cluster with no relation chosen follows every relation between CIs of the tenant.
+  it('isolated_cluster without relations follows every relation of the tenant; with a choice, only that', () => {
+    resolveRule({ ...base, ruleKey: 'isolated_cluster', enabled: true, ciTypes: ['server'], relations: [], threshold: 5 } as never, options)
+    expect(vi.mocked(buildAnomalyRule).mock.calls[0]![1]).toMatchObject({ relations: options.relations })
+    resolveRule({ ...base, ruleKey: 'isolated_cluster', enabled: true, ciTypes: ['server'], relations: ['DEPENDS_ON'], threshold: 5 } as never, options)
+    expect(vi.mocked(buildAnomalyRule).mock.calls[1]![1]).toMatchObject({ relations: ['DEPENDS_ON'] })
   })
 
   it('a configuration the metamodel no longer supports throws the problem, without building the rule', () => {

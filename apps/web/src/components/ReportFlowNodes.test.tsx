@@ -191,6 +191,28 @@ describe('ReportEntityNode', () => {
     expect(canvasMouseDown).not.toHaveBeenCalled()
   })
 
+  it('every control is inside a «nodrag» element, which is what React Flow checks before dragging', () => {
+    // React Flow's drag listener sits on the node's own element and runs before
+    // React's stopPropagation: only the `nodrag` class keeps it off a control.
+    // The star in the header (the drag handle) lacked it (tour of 23 Sep 2026).
+    for (const extra of [{}, { isRoot: true, isResult: true }]) {
+      const { unmount } = renderNode(nodeData([
+        { field: 'created_at', operator: 'last_n_days', value: 3 },
+        { field: 'status', operator: 'in', value: [] },
+        { field: 'status', operator: 'eq', value: '' },
+        { field: 'title', operator: 'eq', value: '' },
+      ], extra))
+      const controls = [
+        ...screen.getAllByRole('button'),
+        ...screen.getAllByRole('combobox'),
+        ...screen.getAllByRole('textbox'),
+        ...screen.getAllByRole('spinbutton'),
+      ]
+      for (const c of controls) expect(c.closest('.nodrag'), c.outerHTML).not.toBeNull()
+      unmount()
+    }
+  })
+
   it('removing a filter reports its index', async () => {
     const user = userEvent.setup()
     const data = nodeData([

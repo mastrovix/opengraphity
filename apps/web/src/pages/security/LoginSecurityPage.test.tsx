@@ -13,7 +13,7 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 const RULES: PasswordRules = { minLength: 8, uppercase: 1, lowercase: 0, digits: 1, special: 0, notUsername: true, notEmail: false, history: 0, expireDays: 0, lockoutEnabled: false, lockoutFailures: 30, lockoutMinutes: 15 }
 const settings = (providers: unknown[] = []): GqlMock => ({
   request: { query: GET_LOGIN_SETTINGS },
-  result: { data: { loginSettings: { __typename: 'LoginSettings', passwordRules: { __typename: 'PasswordRules', ...RULES }, providers, addresses: ['microsoft', 'google', 'saml'].map((kind) => ({ __typename: 'LoginProviderAddresses', kind, redirectUri: `https://sso/realms/c-test/broker/${kind}/endpoint`, samlSpMetadataUrl: kind === 'saml' ? 'https://sso/realms/c-test/broker/saml/endpoint/descriptor' : null })) } } },
+  result: { data: { loginSettings: { __typename: 'LoginSettings', passwordRules: { __typename: 'PasswordRules', ...RULES }, providers, addresses: ['microsoft', 'google', 'saml'].map((kind) => ({ __typename: 'LoginProviderAddresses', kind, redirectUris: [`https://sso/realms/c-test/broker/${kind}/endpoint`], samlSpMetadataUrls: kind === 'saml' ? ['https://sso/realms/c-test/broker/saml/endpoint/descriptor'] : [] })) } } },
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 

@@ -42,6 +42,7 @@ import { toNumber } from '@opengraphity/neo4j'
 import { assertFieldName, assertLabel } from './cypherIdentifiers.js'
 import { toSnakeCase } from './mappers.js'
 import { lifecyclePolicyReferences, CI_STATUS_VOCABULARY } from './ciLifecycle.js'
+import { ENVIRONMENT_VOCABULARY } from './eventVocabularies.js'
 import { DOMAIN_MATRIX_KINDS, type DomainMatrixKind } from './domainMatrix.js'
 
 /**
@@ -409,6 +410,11 @@ export async function countEnumValueUsage(
       usage.policyLists = await lifecyclePolicyReferences(session, tenantId, usage.value)
       usage.total += usage.policyLists.length
     }
+  } else if (POLICY_VALUE_VOCABULARIES.includes(vocabularyName)) {
+    for (const usage of byValue.values()) {
+      usage.policyLists = await eventPolicyValueReferences(session, tenantId, vocabularyName, usage.value)
+      usage.total += usage.policyLists.length
+    }
   }
   // E le matrici di dominio, che si rompono esattamente così (D·N-2).
   const inMatrices = await matrixReferences(session, tenantId, vocabularyName, values)
@@ -425,6 +431,43 @@ export async function countEnumValueUsage(
   }
   return [...byValue.values()].filter((u) => u.total > 0)
 }
+
+/** The vocabularies whose values the alarm policy names outside the lifecycle lists. */
+const POLICY_VALUE_VOCABULARIES: readonly string[] = ['impact', 'urgency', ENVIRONMENT_VOCABULARY]
+
+/**
+ * Where the alarm policy names a value of `impact`, `urgency` or
+ * `environment` (tour of 23 Sep 2026): the two severity maps and the
+ * production environments. Losing one of those values would stop the
+ * incidents at the next alarm (a stale impact), or quietly turn production
+ * into non-production (a stale environment).
+ */
+async function eventPolicyValueReferences(session: Session, tenantId: string, vocabularyName: string, value: string): Promise<string[]> {
+  const r = await run(session, 'MATCH (t:Tenant {id: $tenantId}) RETURN t.event_policy AS raw', { tenantId })
+  const raw = r.length ? r[0]!.raw : null
+  if (typeof raw !== 'string' || raw === '') return []
+  let parsed: unknown
+  try { parsed = JSON.parse(raw) } catch { return [] }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return []
+  const p = parsed as Record<string, unknown>
+  const hits: string[] = []
+  if (vocabularyName === ENVIRONMENT_VOCABULARY) {
+    const list = p['production_environments']
+    if (Array.isArray(list) && list.includes(value)) hits.push('production_environments')
+    return hits
+  }
+  for (const mapKey of SEVERITY_MAP_KEYS) {
+    const map = p[mapKey]
+    if (map === null || typeof map !== 'object' || Array.isArray(map)) continue
+    for (const [severity, entry] of Object.entries(map as Record<string, unknown>)) {
+      if (entry !== null && typeof entry === 'object' && (entry as Record<string, unknown>)[vocabularyName] === value) hits.push(`${mapKey}.${severity}`)
+    }
+  }
+  return hits
+}
+
+/** The two maps from alarm severity to impact and urgency: everywhere, and outside production. */
+const SEVERITY_MAP_KEYS = ['severity_map', 'non_production_severity_map'] as const
 
 /** Il messaggio del rifiuto: dice cosa usa il valore e come procedere. */
 export function enumValueUsageMessage(vocabularyName: string, usages: readonly EnumValueUsage[]): string {
@@ -491,7 +534,8 @@ async function replaceInPolicy(
 ): Promise<number> {
   const isLifecycle = vocabularyName === CI_STATUS_VOCABULARY
   const isSeverityMapValue = vocabularyName === 'impact' || vocabularyName === 'urgency'
-  if (!isLifecycle && !isSeverityMapValue) return 0
+  const isEnvironment = vocabularyName === ENVIRONMENT_VOCABULARY
+  if (!isLifecycle && !isSeverityMapValue && !isEnvironment) return 0
 
   const r = await run(tx, 'MATCH (t:Tenant {id: $tenantId}) RETURN t.event_policy AS raw', { tenantId })
   const raw = r.length ? r[0]!.raw : null
@@ -511,13 +555,22 @@ async function replaceInPolicy(
     }
   }
   if (isSeverityMapValue) {
-    const map = p['severity_map']
-    if (map !== null && typeof map === 'object' && !Array.isArray(map)) {
+    // Both maps: the one outside production names the same vocabularies (tour of 23 Sep 2026).
+    for (const mapKey of SEVERITY_MAP_KEYS) {
+      const map = p[mapKey]
+      if (map === null || typeof map !== 'object' || Array.isArray(map)) continue
       for (const entry of Object.values(map as Record<string, unknown>)) {
         if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) continue
         const e = entry as Record<string, unknown>
         if (e[vocabularyName] === from) { e[vocabularyName] = to; changed += 1 }
       }
+    }
+  }
+  if (isEnvironment) {
+    const list = p['production_environments']
+    if (Array.isArray(list) && list.includes(from)) {
+      p['production_environments'] = [...new Set(list.map((v) => (v === from ? to : v)))]
+      changed += 1
     }
   }
   if (changed > 0) {

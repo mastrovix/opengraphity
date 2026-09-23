@@ -28,6 +28,8 @@ describe('blockedStepDeadlines', () => {
     expect(s).toBe(session)
     expect(params).toEqual({ tenantId: 'tenant-a' })
     expect(cypher).toContain('WorkflowInstance {tenant_id: $tenantId}')
+    // D67: it starts from the executions of the tenant (index on tenant and outcome), not from every instance.
+    expect(cypher.trimStart()).toMatch(/^MATCH \(ex:WorkflowStepExecution \{tenant_id: \$tenantId\}\)/)
     // A step already left is history, not a blocked ticket.
     expect(cypher).toContain('ex.exited_at IS NULL')
     expect(cypher).toContain("ex.deadline_outcome IN ['refused', 'failed']")

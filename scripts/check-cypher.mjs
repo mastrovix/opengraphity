@@ -568,9 +568,19 @@ const ETICHETTA_FINTA = 'Incident'
 function inPosizioneDiEtichetta(query, pos) {
   let prima = query.slice(0, pos).replace(/\s+$/, '')
   if (!prima.endsWith(':')) return false
-  prima = prima.slice(0, -1).replace(/\s+$/, '')          // via i due punti
-  prima = prima.replace(/[A-Za-z_][A-Za-z0-9_]*$/, '')    // via il nome della variabile, se c'è
-  prima = prima.replace(/\s+$/, '')
+  /*
+   * Le etichette si impilano — `(c:ConfigurationItem:${label} {…})` è un
+   * pattern normale, e la prima versione lo leggeva come «due punti non
+   * riconosciuti» perché toglieva UN nome solo. Si tolgono tutti i `:Nome`
+   * che precedono, poi l'eventuale nome della variabile.
+   */
+  for (;;) {
+    prima = prima.slice(0, -1).replace(/\s+$/, '')        // via i due punti
+    const senzaNome = prima.replace(/[A-Za-z_][A-Za-z0-9_]*$/, '').replace(/\s+$/, '')
+    if (senzaNome.endsWith(':')) { prima = senzaNome; continue }   // un'altra etichetta impilata
+    prima = senzaNome
+    break
+  }
   const ultimo = prima[prima.length - 1]
   return ultimo === '(' || ultimo === '[' || ultimo === '|'
 }
@@ -644,7 +654,11 @@ function risolviFrammenti(richieste) {
      */
     timeout: 180_000,
   })
-  return JSON.parse(out)
+  // The answer is between two markers: the modules the fragment step imports log on stdout too.
+  const begin = out.lastIndexOf('<<<cypher-fragments>>>')
+  const end = out.lastIndexOf('<<</cypher-fragments>>>')
+  if (begin < 0 || end < begin) throw new Error(`cypher-fragment.mts: no answer between the markers in its output:\n${out.slice(0, 2000)}`)
+  return JSON.parse(out.slice(begin + '<<<cypher-fragments>>>'.length, end))
 }
 
 const composteRisolte = []
@@ -774,7 +788,7 @@ if (totaleFuori > 0) {
  * Il tetto si abbassa quando si guadagna terreno. Non si alza per far passare
  * la giornata.
  */
-const TETTO_FUORI_PERIMETRO = 201
+const TETTO_FUORI_PERIMETRO = 196   // 23 Sep 2026: the indexed lookups (matchById) enter the perimeter, three queries fewer
 if (totaleFuori > TETTO_FUORI_PERIMETRO) {
   console.error(`\ncheck-cypher: le query fuori perimetro sono ${totaleFuori}, il tetto è ${TETTO_FUORI_PERIMETRO}.`)
   console.error('Una query che questo controllo non vede non riceve nemmeno la verifica del tenant_id.')

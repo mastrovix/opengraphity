@@ -11,12 +11,14 @@ import { colors, palette } from '@/lib/tokens'
 
 interface CatalogEntry { weight: number; sortOrder: number; question: QuestionData }
 
-export function AssessmentTaskForm({ task, catalog, canEdit, onSubmitAnswer, onComplete }: {
+export function AssessmentTaskForm({ task, catalog, canEdit, onSubmitAnswer, onComplete, busyLabel = null }: {
   task: AssessmentTaskData
   catalog: CatalogEntry[]
   canEdit: boolean
   onSubmitAnswer: (questionId: string, optionId: string) => void
   onComplete: () => void
+  /** An answer or the completion is in flight: «Complete» waits (D24). */
+  busyLabel?: string | null
 }) {
   const { t } = useTranslation()
   return (
@@ -49,6 +51,7 @@ export function AssessmentTaskForm({ task, catalog, canEdit, onSubmitAnswer, onC
           disabled={!canEdit || task.responses.length < catalog.length}
           blockReason={!canEdit ? t('changeTasks.wrongTeam') : undefined}
           onClick={onComplete}
+          busyLabel={busyLabel}
         />
       )}
     </div>

@@ -1,13 +1,14 @@
 import { useEffect, useId, useState } from 'react'
 import { derivePriority, priorityCode } from '@/lib/priority'
 import { usePriorityMatrix } from '@/hooks/usePriorityMatrix'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, type NavigateFunction } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
-import { X, Users } from 'lucide-react'
+import type { TFunction } from 'i18next'
+import { X } from 'lucide-react'
 import { toast } from 'sonner'
-import { GET_ALL_CIS, GET_TEAMS } from '@/graphql/queries'
+import { GET_ALL_CIS } from '@/graphql/queries'
 import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
 import { CREATE_PROBLEM, ASSIGN_PROBLEM_TO_TEAM } from '@/graphql/mutations'
 import { colors, palette, alpha } from '@/lib/tokens'
@@ -20,6 +21,8 @@ import { showError } from '@/lib/showError'
 import { useEnumValues } from '@/hooks/useEnumValues'
 import { useCILabels } from '@/hooks/useCILabels'
 import { CIExclusionHint } from '@/components/ticket/CIExclusionHint'
+import { TeamPicker } from '@/components/pickers/TeamPicker'
+import { TEAM_TYPE } from '@/lib/teamVocabularies'
 
 interface CIRef { id: string; name: string; type: string; environment?: string }
 interface Team  { id: string; name: string }
@@ -34,7 +37,28 @@ const inputBase: React.CSSProperties = {
   border: `1.5px solid ${colors.border}`, borderRadius: 8,
   fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', outline: 'none',
   backgroundColor: colors.white, boxSizing: 'border-box',
-  fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", transition: 'border-color 150ms',
+  fontFamily: 'var(--font-family)', transition: 'border-color 150ms',
+}
+
+/*
+ * The problem exists: whatever happens to the team assignment, the page goes
+ * to it. A refused assignment stranded the author on this form with the
+ * problem already created — a second click made a duplicate — and left an
+ * unhandled rejection (tour of 23 Sep 2026). The assignment's own onError
+ * says why it failed; the team can be set on the problem.
+ */
+async function openCreated(problemId: string, { team, assignToTeam, t, navigate }: {
+  team: Team | null
+  assignToTeam: (options: { variables: { problemId: string; teamId: string } }) => Promise<unknown>
+  t: TFunction
+  navigate: NavigateFunction
+}) {
+  if (team) {
+    try { await assignToTeam({ variables: { problemId, teamId: team.id } }) } catch { /* said by its onError */ }
+  }
+  toast.success(t('toast.problem.created'))
+  // Straight to the new problem, as a new change does: it is where the work starts.
+  navigate(`/problems/${problemId}`)
 }
 
 export function CreateProblemPage() {
@@ -67,8 +91,6 @@ export function CreateProblemPage() {
   const [category, setCategory] = useState('')
   const { values: categoryValues, loading: categoryLoading } = useEnumValues('problem', 'category')
   const [selectedTeam,     setSelectedTeam]     = useState<Team | null>(null)
-  const [teamSearch,       setTeamSearch]       = useState('')
-  const [teamDropdownOpen, setTeamDropdownOpen] = useState(false)
   const [ciSearch,    setCiSearch]    = useState('')
   const [selectedCIs, setSelectedCIs] = useState<CIRef[]>([])
   // Campi personalizzati del cliente (verifica «Cosa resta cablato», ondata 4).
@@ -84,12 +106,9 @@ export function CreateProblemPage() {
     skip: ciSearch.length < 2 || excludedCITypes === undefined,
     fetchPolicy: 'network-only',
   })
-  const { data: teamsData } = useQuery<{ teams: Team[] }>(GET_TEAMS)
 
   const ciResults     = (ciData?.allCIs?.items ?? [])
     .filter(ci => !selectedCIs.find(s => s.id === ci.id))
-  const teams         = teamsData?.teams ?? []
-  const filteredTeams = teams.filter(t => t.name.toLowerCase().includes(teamSearch.toLowerCase()))
   const canSubmit     = title.trim().length > 0 && description.trim().length > 0
 
   const [assignToTeam] = useMutation(ASSIGN_PROBLEM_TO_TEAM, {
@@ -106,13 +125,7 @@ export function CreateProblemPage() {
      * siano le sue variabili.
      */
     refetchQueries: ['GetProblems'],
-    onCompleted: async (data) => {
-      if (selectedTeam) {
-        await assignToTeam({ variables: { problemId: data.createProblem.id, teamId: selectedTeam.id } })
-      }
-      toast.success(t('toast.problem.created'))
-      navigate('/problems', { state: { refresh: true } })
-    },
+    onCompleted: (data) => { void openCreated(data.createProblem.id, { team: selectedTeam, assignToTeam, t, navigate }) },
     onError: (err) => showError(err),
   })
 
@@ -333,65 +346,21 @@ export function CreateProblemPage() {
             )}
           </div>
 
-          {/* TEAM */}
+          {/* TEAM — D10: the support teams, searchable, full names (it listed every team of the tenant). */}
           <div style={{ marginBottom: 20 }}>
             <label htmlFor={ids.teamSearch} style={fieldLabel}>
               {t('detail.team')}{' '}
               <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>{t('common.optional')}</span>
             </label>
-
-            {selectedTeam && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: 'var(--color-success-bg)', border: `1px solid ${palette.success.border}`, color: palette.success.text, fontSize: 'var(--font-size-body)' }}>
-                  {selectedTeam.name}
-                  <button
-                    type="button"
-                    onClick={() => { setSelectedTeam(null); setTeamSearch('') }}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: palette.success.text, padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center', opacity: 0.7 }}
-                  >
-                    <X size={12} />
-                  </button>
-                </span>
-              </div>
-            )}
-
-            {!selectedTeam && (
-              <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 'var(--font-size-card-title)', pointerEvents: 'none', color: 'var(--color-slate-light)' }}>
-                  🔍
-                </span>
-                <input
-                  id={ids.teamSearch}
-                  type="text"
-                  value={teamSearch}
-                  onChange={e => { setTeamSearch(e.target.value); setTeamDropdownOpen(true) }}
-                  onFocus={() => setTeamDropdownOpen(true)}
-                  onBlur={() => setTimeout(() => setTeamDropdownOpen(false), 150)}
-                  placeholder={t('pages.createTicket.searchTeam')}
-                  style={{ ...inputBase, paddingLeft: 36 }}
-                  onFocusCapture={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
-                  onBlurCapture={e  => { (e.currentTarget as HTMLElement).style.borderColor = colors.border }}
-                />
-
-                {teamDropdownOpen && filteredTeams.length > 0 && (
-                  <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, background: colors.white, border: `1px solid ${colors.border}`, borderRadius: 8, boxShadow: `0 4px 12px ${alpha.black10}`, maxHeight: 200, overflowY: 'auto', zIndex: 20 }}>
-                    {filteredTeams.map(tm => (
-                      <button
-                        type="button"
-                        key={tm.id}
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => { setSelectedTeam(tm); setTeamSearch(''); setTeamDropdownOpen(false) }}
-                        className="hover-bg"
-                        style={{ width: '100%', background: 'none', border: 'none', borderRadius: 0, font: 'inherit', color: 'inherit', textAlign: 'left', padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${palette.neutral.borderLight}` }}
-                      >
-                        <Users size={14} color="var(--color-slate-light)" />
-                        <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{tm.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+            <TeamPicker
+              role={TEAM_TYPE.SUPPORT}
+              inputId={ids.teamSearch}
+              label={t('detail.team')}
+              value={selectedTeam}
+              onChange={setSelectedTeam}
+              clearLabel={t('pickers.teams.none')}
+              style={inputBase}
+            />
           </div>
 
           {/* CAMPI DEL CLIENTE */}

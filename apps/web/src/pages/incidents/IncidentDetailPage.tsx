@@ -16,9 +16,12 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { QueryError } from '@/components/QueryError'
 import { Modal } from '@/components/Modal'
 import { SectionCard } from '@/components/ui/SectionCard'
+import { DetailLayout } from '@/components/ui/DetailLayout'
+import { TeamPicker } from '@/components/pickers/TeamPicker'
+import { TEAM_TYPE } from '@/lib/teamVocabularies'
 import { SeverityBadge } from '@/components/SeverityBadge'
 
-import { GET_INCIDENT, GET_USERS, GET_TEAMS, GET_ALL_CIS } from '@/graphql/queries'
+import { GET_INCIDENT, GET_USERS, GET_ALL_CIS } from '@/graphql/queries'
 import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
 import { EXECUTE_WORKFLOW_TRANSITION, ASSIGN_INCIDENT_TO_TEAM, ASSIGN_INCIDENT_TO_USER, ADD_INCIDENT_COMMENT, ADD_AFFECTED_CI, REMOVE_AFFECTED_CI, SET_INCIDENT_MAJOR, UPDATE_INCIDENT, LINK_RELATED_TICKET, UNLINK_RELATED_TICKET, LINK_INCIDENT_TO_PROBLEM, UNLINK_INCIDENT_FROM_PROBLEM, LINK_RESOLVED_TICKET, UNLINK_RESOLVED_TICKET } from '@/graphql/mutations'
 import { UnifiedLinkedTickets, type LinkedTicketItem } from '@/components/UnifiedLinkedTickets'
@@ -47,6 +50,7 @@ import { formatDate, timeAgo } from './IncidentCard'
 import { SimilarIncidentsPanel } from '@/components/SimilarIncidentsPanel'
 import { MonitoringAlarmsSection } from '@/pages/events/CorrelatedEventsSection'
 import { ImpactedServicesSection } from './ImpactedServicesSection'
+import { FiringAlarmsWarning } from './FiringAlarmsWarning'
 import type { EventRow } from '@/types/events'
 import type { ImpactedServiceRef } from '@/types/services'
 import { colors } from '@/lib/tokens'
@@ -55,7 +59,7 @@ import { transitionErrorText, type TransitionFailure } from '@/lib/transitionErr
 import { withLocalizedLabel } from '@/lib/localizedLabel'
 import { useAIFeature } from '@/hooks/useAIFeature'
 import { useAIDisabledText } from '@/components/ai/AIDisabledNotice'
-import { showError } from '@/lib/showError'
+import { errorMessage, showError } from '@/lib/showError'
 import { useCILabels } from '@/hooks/useCILabels'
 import { ciPath } from '@/lib/ciPath'
 
@@ -161,12 +165,11 @@ interface User { id: string; name: string; email: string; teams: { id: string; n
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function IncidentDetailPage() {
-  const { matrix } = usePriorityMatrix()
+  const { matrix, loading: matrixLoading, error: matrixError } = usePriorityMatrix()
   const { t }    = useTranslation()
   const confirm  = useConfirm()
   const { labelOf: typeLabel } = useItilTypeLabels()
-  const ciLabels = useCILabels()
-  const editIds  = { title: useId(), description: useId(), impact: useId(), urgency: useId(), team: useId(), user: useId() }
+  const editIds  = { title: useId(), description: useId(), impact: useId(), urgency: useId() }
   const { id }   = useParams<{ id: string }>()
   const navigate = useNavigate()
 
@@ -174,11 +177,6 @@ export function IncidentDetailPage() {
   const [transitionNotes,        setTransitionNotes]        = useState('')
   const [notesError,             setNotesError]             = useState('')
   const [isTransitionDialogOpen, setIsTransitionDialogOpen] = useState(false)
-
-  const [selectedTeamId,     setSelectedTeamId]     = useState('')
-  const [selectedUserId,     setSelectedUserId]      = useState('')
-  const [showReassign,       setShowReassign]        = useState(false)
-  const [awaitingUserAssign, setAwaitingUserAssign]  = useState(false)
 
   const [exportingPdf, setExportingPdf] = useState(false)
   // Funzioni AI spente dall'organizzazione (ondata 6): i bottoni restano, spenti e con il perché.
@@ -222,8 +220,7 @@ export function IncidentDetailPage() {
   const [linkResolved]   = useMutation(LINK_RESOLVED_TICKET, linkOpts)
   const [unlinkResolved] = useMutation(UNLINK_RESOLVED_TICKET, linkOpts)
 
-  const { data: usersData } = useQuery<{ users: User[] }>(GET_USERS)
-  const { data: teamsData } = useQuery<{ teams: Team[] }>(GET_TEAMS)
+  const { data: usersData, error: usersError } = useQuery<{ users: User[] }>(GET_USERS)
   // CM-8: i tipi di CI esclusi per questo tipo di ticket non si propongono (l'API li rifiuta comunque).
   const { excluded: excludedCITypes } = useTicketCIExclusions('incident')
 
@@ -257,7 +254,6 @@ export function IncidentDetailPage() {
   })
 
   const [editOpen, setEditOpen] = useState(false)
-  const [pathModal, setPathModal] = useState<ImpactedApp | null>(null)
   /**
    * Nessun valore cablato per impatto e urgenza (revisione totale · F-30):
    * `medium` era scritto qui, e su un'organizzazione con impatti `1..4` il
@@ -270,48 +266,6 @@ export function IncidentDetailPage() {
     onCompleted: () => { setEditOpen(false); toast.success(t('toast.incident.updated')) },
     onError: (e) => showError(e),
     refetchQueries: ['GetIncident'],
-  })
-
-  /*
-   * CHI STACCA L'ASSEGNATARIO È IL SERVER, NON QUESTA PAGINA (20 set 2026).
-   *
-   * Qui, dopo ogni cambio di team, partiva un secondo giro `assignToUser(null)`
-   * che toglieva SEMPRE la persona. Due cose non andavano. La prima è una
-   * regola contraddetta: `setTicketTeam` stacca l'assegnatario solo se non è
-   * membro del team nuovo, e lascia stare chi lo è ancora (un team allargato
-   * non perde il suo lavoro) — questa riga lo staccava comunque. La seconda è
-   * il registro: scriveva un `incident.unassigned_user` con `from: null` e
-   * `to: null` a ogni assegnazione di squadra, cioè il racconto di un distacco
-   * che non è avvenuto. Il server fa la cosa giusta da solo; qui si rilegge e
-   * basta.
-   */
-  const [assignToTeam, { loading: assigningTeam }] = useMutation(ASSIGN_INCIDENT_TO_TEAM, {
-    onCompleted: () => {
-      toast.success(t('toast.incident.teamAssigned'))
-      setSelectedTeamId('')
-      setShowReassign(false)
-      setSelectedUserId('')
-      // Nessuna previsione su chi resta assegnato: lo decide `setTicketTeam` e
-      // lo dice la rilettura. Mettere qui «ora non c'è nessuno» mostrerebbe un
-      // riquadro vuoto anche quando la persona è rimasta.
-      void refetch()
-    },
-    onError: (err) => showError(err),
-  })
-
-  const [assignToUser, { loading: assigningUser }] = useMutation(ASSIGN_INCIDENT_TO_USER, {
-    onCompleted: (_data, opts) => {
-      const userId = (opts?.variables as { userId?: string | null } | undefined)?.userId
-      if (userId) {
-        // «Preso in carico» era vero solo per chi assegnava a sé stesso.
-        const name = users.find((u) => u.id === userId)?.name ?? ''
-        toast.success(t('toast.incident.assignedToUser', { name }))
-        setAwaitingUserAssign(false)
-        setSelectedUserId('')
-        void refetch()
-      }
-    },
-    onError: (err) => showError(err),
   })
 
   const [addComment, { loading: addingComment }] = useMutation(ADD_INCIDENT_COMMENT, {
@@ -334,8 +288,6 @@ export function IncidentDetailPage() {
 
   const incident  = data?.incident
   useSlaSettling(incident?.slaStatus, !!incident?.resolvedAt, { startPolling, stopPolling })
-  const users     = usersData?.users ?? []
-  const teams     = teamsData?.teams ?? []
   const ciResults = ciSearchData?.allCIs?.items ?? []
   const { byName: incidentStepByName, error: workflowStepsError, isTerminal: incidentStepIsTerminal, categoryOf: incidentStepCategory, labelFor: incidentStepLabel } = useWorkflowSteps('incident')
   const { labelOf } = useDomainVocabularies()
@@ -398,7 +350,7 @@ export function IncidentDetailPage() {
         <Skeleton style={{ height: 32, width: 200 }} />
         <Skeleton style={{ height: 60 }} />
         <Skeleton style={{ height: 40, width: 320 }} />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 24 }}>
+        <DetailLayout sideWidth={340}>
           <div className="space-y-4">
             <Skeleton style={{ height: 120 }} />
             <Skeleton style={{ height: 160 }} />
@@ -407,7 +359,7 @@ export function IncidentDetailPage() {
             <Skeleton style={{ height: 200 }} />
             <Skeleton style={{ height: 240 }} />
           </div>
-        </div>
+        </DetailLayout>
       </div>
     )
   }
@@ -484,7 +436,8 @@ export function IncidentDetailPage() {
             const ok = await confirm(incident.major
               ? { title: t('pages.incidentDetail.revokeMajorConfirmTitle'), body: t('pages.incidentDetail.revokeMajorConfirmBody', { number: incident.number }), confirmLabel: t('pages.incidentDetail.revokeMajor') }
               : { title: t('pages.incidentDetail.declareMajorConfirmTitle'), body: t('pages.incidentDetail.declareMajorConfirmBody', { number: incident.number }), confirmLabel: t('pages.incidentDetail.declareMajor'), danger: true })
-            if (ok) await setMajor({ variables: { id: incident.id, major: !incident.major } })
+            // Not awaited: nothing follows, and a refusal is said by `onError` (Apollo 4 also rejects the promise).
+            if (ok) void setMajor({ variables: { id: incident.id, major: !incident.major } })
           })()}
           style={incident.major ? { color: 'var(--color-danger)', borderColor: 'var(--color-danger)' } : undefined}
         >
@@ -569,6 +522,10 @@ export function IncidentDetailPage() {
               mostrare una priorità che il server poi rifiuta. */}
           {t('pages.incidentDetail.derivedPriority')} <strong>{
             (() => {
+              // A matrix that cannot be read, or is not read yet, is said as such: «not
+              // covered» sent the administrator to fix a matrix that may be fine.
+              if (!matrix && matrixError) return t('pages.incidentDetail.matrixUnreadable', { error: matrixError.message })
+              if (!matrix && matrixLoading) return t('common.loading')
               const p = derivePriority(matrix, editForm.impact, editForm.urgency)
               return p === null
                 ? t('pages.domainMatrices.notCovered')
@@ -578,8 +535,8 @@ export function IncidentDetailPage() {
         </p>
       </Modal>
 
-      {/* Body grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 24 }}>
+      {/* Body grid: the main column shrinks, the side one keeps its width (D9) */}
+      <DetailLayout sideWidth={340}>
 
         {/* Left column */}
         <div>
@@ -620,7 +577,7 @@ export function IncidentDetailPage() {
                         («New») mentre la timeline, venti pixel a destra,
                         diceva già «Nuovo» — sullo stesso incident.
                       */}
-                      {incident.workflowInstance ? (incidentStepLabel(incident.workflowInstance.currentStep) || incident.workflowInstance.currentStep.replace(/_/g, ' ')) : 'N/D'}
+                      {incident.workflowInstance ? incidentStepLabel(incident.workflowInstance.currentStep) : t('detail.noWorkflowStep')}
                     </Pill>
                   } />
                   <DetailField label={t('detail.assignedTo')} value={
@@ -647,102 +604,9 @@ export function IncidentDetailPage() {
 
                 {/* Assegnazione a due step — nascosta quando l'incident è in
                     uno step terminale (es. closed / resolved). */}
-                {!incidentStepByName.get(incident.status)?.isTerminal && (() => {
-                  const hasTeam = !!incident.assignedTeam
-                  const hasUser = !!incident.assignee && !awaitingUserAssign
-
-                  if (hasTeam && hasUser && !showReassign) {
-                    return (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>
-                          {t('detail.team')}: <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{incident.assignedTeam!.name}</span>
-                        </div>
-                        <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>
-                          {t('detail.assignedTo')}: <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{incident.assignee!.name}</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => { setShowReassign(true); setAwaitingUserAssign(false) }}
-                          style={{ marginTop: 4, background: 'none', border: 'none', padding: 0, fontSize: 'var(--font-size-body)', color: 'var(--accent)', cursor: 'pointer', textAlign: 'left' }}
-                        >
-                          {t('detail.reassign')}
-                        </button>
-                      </div>
-                    )
-                  }
-
-                  if (!hasTeam || showReassign) {
-                    return (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        <label htmlFor={editIds.team} style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--text-muted)' }}>{t('detail.team')}</label>
-                        <Select
-                          id={editIds.team}
-                          value={selectedTeamId}
-                          onChange={(e) => setSelectedTeamId(e.target.value)}
-                          style={{ padding: '8px 10px', border: '1px solid var(--border)', color: 'var(--text-primary)', background: 'var(--surface)' }}
-                        >
-                          <option value="">{t('detail.selectTeam')}</option>
-                          {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                        </Select>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          {showReassign && (
-                            <button type="button" onClick={() => setShowReassign(false)} style={{ flex: 1, padding: '7px 0', background: 'none', border: '1px solid var(--border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', cursor: 'pointer' }}>
-                              {t('common.cancel')}
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            disabled={!selectedTeamId || !selectedTeamId.trim() || assigningTeam}
-                            onClick={() => {
-                              if (!selectedTeamId) return
-                              void assignToTeam({ variables: { id: incident.id, teamId: selectedTeamId } })
-                              setShowReassign(false)
-                            }}
-                            style={{ flex: 1, padding: '7px 0', backgroundColor: (!selectedTeamId || assigningTeam) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedTeamId || assigningTeam) ? 'var(--text-muted)' : colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: (!selectedTeamId || assigningTeam) ? 'not-allowed' : 'pointer' }}
-                          >
-                            {assigningTeam ? t('detail.assigning') : t('detail.assignTeam')}
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  }
-
-                  const teamUsers = users.filter((u) => u.teams?.some((t) => t.id === incident.assignedTeam?.id))
-                  return (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>
-                        {t('detail.team')}: <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{incident.assignedTeam!.name}</span>
-                      </div>
-                      <label htmlFor={editIds.user} style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--text-muted)' }}>{t('detail.assignedTo')}</label>
-                      <Select
-                        id={editIds.user}
-                        value={selectedUserId}
-                        onChange={(e) => setSelectedUserId(e.target.value)}
-                        style={{ padding: '8px 10px', border: '1px solid var(--border)', color: 'var(--text-primary)', background: 'var(--surface)' }}
-                      >
-                        <option value="">{t('detail.selectUser')}</option>
-                        {teamUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                      </Select>
-                      {/* Il pulsante assegna la persona scelta: si accende solo dopo la scelta, e lo dice. */}
-                      {!selectedUserId && (
-                        <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--text-muted)' }}>
-                          {teamUsers.length === 0 ? t('detail.noTeamMembers') : t('detail.chooseUserToAssign')}
-                        </span>
-                      )}
-                      <button
-                        type="button"
-                        disabled={!selectedUserId || !selectedUserId.trim() || assigningUser}
-                        onClick={() => {
-                          if (!selectedUserId) return
-                          void assignToUser({ variables: { id: incident.id, userId: selectedUserId } })
-                        }}
-                        style={{ padding: '7px 0', backgroundColor: (!selectedUserId || assigningUser) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedUserId || assigningUser) ? 'var(--text-muted)' : colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: (!selectedUserId || assigningUser) ? 'not-allowed' : 'pointer' }}
-                      >
-                        {assigningUser ? t('detail.assigning') : t('detail.assignUser')}
-                      </button>
-                    </div>
-                  )
-                })()}
+                {!incidentStepByName.get(incident.status)?.isTerminal && (
+                  <IncidentAssignment incident={incident} usersData={usersData} usersError={usersError} onAssigned={() => void refetch()} />
+                )}
             </div>
           </SectionCard>
 
@@ -793,45 +657,7 @@ export function IncidentDetailPage() {
           <ImpactedServicesSection services={incident.impactedServices} />
 
           {/* Applicazioni impattate (dal grafo delle dipendenze) — D·6.4: testi in i18n, non cablati in italiano */}
-          <SectionCard title={t('pages.incidents.impactedApplications.title')} count={incident.impactedApplications.length} collapsible>
-            {incident.impactedApplications.length === 0 ? (
-              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>
-                {t('pages.incidents.impactedApplications.empty')}
-              </p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {incident.impactedApplications.map((a) => (
-                  <div key={a.ci.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8 }}>
-                    <div style={{ minWidth: 0 }}>
-                      <Link to={ciPath(a.ci)} style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--accent)', textDecoration: 'none' }}>
-                        {a.ci.name}
-                      </Link>
-                      <div style={{ fontSize: 'var(--font-size-caption)', color: 'var(--text-muted)', marginTop: 2 }}>
-                        {a.distance === 0
-                          ? t('pages.incidents.impactedApplications.directly')
-                          : t('pages.incidents.impactedApplications.via', { via: a.via ?? '—', count: a.distance })}
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-                      {a.ci.environment && <Pill bg="var(--surface-2)" color="var(--text-muted)" radius={100} style={{ fontSize: 'var(--font-size-caption)' }}>{ciLabels.environmentLabel(a.ci.environment)}</Pill>}
-                      {/* L'etichetta del Dizionario, non il valore grezzo (revisione
-                          totale · F-33): con un `ci_status` in italiano la card dei CI
-                          colpiti mostrava ancora «in_service». */}
-                      {a.ci.status && <Pill bg="var(--color-brand-light)" color="var(--color-brand)" radius={100} style={{ fontSize: 'var(--font-size-caption)' }}>{ciLabels.statusLabel(a.ci.status)}</Pill>}
-                      <button
-                        type="button"
-                        onClick={() => setPathModal(a)}
-                        title={t('pages.incidents.impactedApplications.pathButtonHint')}
-                        style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface-1)', color: 'var(--accent)', fontSize: 'var(--font-size-caption)', fontWeight: 500, cursor: 'pointer' }}
-                      >
-                        <Network size={13} /> {t('pages.incidents.impactedApplications.pathButton')}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </SectionCard>
+          <ImpactedApplicationsSection applications={incident.impactedApplications} />
 
           {/* Allegati */}
           <TicketTasksSection entityId={incident.id} />
@@ -865,7 +691,7 @@ export function IncidentDetailPage() {
             <SimilarIncidentsPanel incidentId={incident.id} />
           </div>
         </div>
-      </div>
+      </DetailLayout>
 
       {/* Transition Dialog */}
       <Modal
@@ -922,6 +748,8 @@ export function IncidentDetailPage() {
       >
         {pendingTransition && (
           <>
+            {/* Resolving while a correlated alarm still fires: said, not forbidden. */}
+            {incidentStepCategory(pendingTransition.toStep) === 'resolved' && <FiringAlarmsWarning events={incident.correlatedEvents} />}
             <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', marginBottom: 16, marginTop: 0 }}>
               {pendingTransition.inputField === 'rootCause'
                 ? t('pages.incidentDetail.rootCauseHint')
@@ -932,11 +760,14 @@ export function IncidentDetailPage() {
               disabled={draftLoading || postIncidentOn !== true}
               title={postIncidentOn === false ? postIncidentOffText : undefined}
               onClick={() => {
-                void genResolutionDraft({ variables: { incidentId: incident.id } }).then((res) => {
-                  if (res.error) showError(res.error, t('toast.incident.aiDraftFailed', { error: res.error.message }))
-                  else if (res.data) setTransitionNotes(res.data.resolutionDraft.draft)
-                  else toast.error(t('toast.incident.aiDraftNoResponse'))
-                })
+                void genResolutionDraft({ variables: { incidentId: incident.id } }).then(
+                  (res) => {
+                    if (res.data) setTransitionNotes(res.data.resolutionDraft.draft)
+                    else toast.error(t('toast.incident.aiDraftNoResponse'))
+                  },
+                  // Apollo 4 REJECTS a lazy query that fails (no `error` in the result): the reason is said here.
+                  (err: unknown) => showError(err, t('toast.incident.aiDraftFailed', { error: errorMessage(err) })),
+                )
               }}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginBottom: 8, padding: '5px 12px', borderRadius: 7, border: '1px solid var(--color-brand)', background: 'transparent', color: 'var(--color-brand)', fontSize: 'var(--font-size-label)', fontWeight: 500, cursor: draftLoading ? 'wait' : 'pointer' }}
             >
@@ -957,6 +788,232 @@ export function IncidentDetailPage() {
           </>
         )}
       </Modal>
+    </PageContainer>
+  )
+}
+
+// ── Team, then a person of the team ───────────────────────────────────────────
+
+/**
+ * The assignment in two steps: a support team first, then a person of that
+ * team; with both, a summary and «Reassign» to change the team. The choices
+ * being made and the two assignments live here; the people are read by the
+ * page, together with the incident.
+ */
+function IncidentAssignment({ incident, usersData, usersError, onAssigned }: {
+  incident:   Pick<Incident, 'id' | 'assignedTeam' | 'assignee'>
+  usersData:  { users: User[] } | undefined
+  usersError: { message: string } | undefined
+  /** An assignment went through: the incident is read again. */
+  onAssigned: () => void
+}) {
+  const { t }    = useTranslation()
+  const fieldIds = { team: useId(), user: useId() }
+
+  const [selectedTeam,       setSelectedTeam]       = useState<{ id: string; name: string } | null>(null)
+  const [selectedUserId,     setSelectedUserId]      = useState('')
+  const [showReassign,       setShowReassign]        = useState(false)
+  const [awaitingUserAssign, setAwaitingUserAssign]  = useState(false)
+
+  const users = usersData?.users ?? []
+
+  /*
+   * CHI STACCA L'ASSEGNATARIO È IL SERVER, NON QUESTA PAGINA (20 set 2026).
+   *
+   * Qui, dopo ogni cambio di team, partiva un secondo giro `assignToUser(null)`
+   * che toglieva SEMPRE la persona. Due cose non andavano. La prima è una
+   * regola contraddetta: `setTicketTeam` stacca l'assegnatario solo se non è
+   * membro del team nuovo, e lascia stare chi lo è ancora (un team allargato
+   * non perde il suo lavoro) — questa riga lo staccava comunque. La seconda è
+   * il registro: scriveva un `incident.unassigned_user` con `from: null` e
+   * `to: null` a ogni assegnazione di squadra, cioè il racconto di un distacco
+   * che non è avvenuto. Il server fa la cosa giusta da solo; qui si rilegge e
+   * basta.
+   */
+  const [assignToTeam, { loading: assigningTeam }] = useMutation(ASSIGN_INCIDENT_TO_TEAM, {
+    onCompleted: () => {
+      toast.success(t('toast.incident.teamAssigned'))
+      setSelectedTeam(null)
+      setShowReassign(false)
+      setSelectedUserId('')
+      // Nessuna previsione su chi resta assegnato: lo decide `setTicketTeam` e
+      // lo dice la rilettura. Mettere qui «ora non c'è nessuno» mostrerebbe un
+      // riquadro vuoto anche quando la persona è rimasta.
+      onAssigned()
+    },
+    onError: (err) => showError(err),
+  })
+
+  const [assignToUser, { loading: assigningUser }] = useMutation(ASSIGN_INCIDENT_TO_USER, {
+    onCompleted: (_data, opts) => {
+      const userId = (opts?.variables as { userId?: string | null } | undefined)?.userId
+      if (userId) {
+        // «Preso in carico» era vero solo per chi assegnava a sé stesso.
+        const name = users.find((u) => u.id === userId)?.name ?? ''
+        toast.success(t('toast.incident.assignedToUser', { name }))
+        setAwaitingUserAssign(false)
+        setSelectedUserId('')
+        onAssigned()
+      }
+    },
+    onError: (err) => showError(err),
+  })
+
+  const hasTeam = !!incident.assignedTeam
+  const hasUser = !!incident.assignee && !awaitingUserAssign
+
+  if (hasTeam && hasUser && !showReassign) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>
+          {t('detail.team')}: <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{incident.assignedTeam!.name}</span>
+        </div>
+        <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>
+          {t('detail.assignedTo')}: <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{incident.assignee!.name}</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => { setShowReassign(true); setAwaitingUserAssign(false) }}
+          style={{ marginTop: 4, background: 'none', border: 'none', padding: 0, fontSize: 'var(--font-size-body)', color: 'var(--accent)', cursor: 'pointer', textAlign: 'left' }}
+        >
+          {t('detail.reassign')}
+        </button>
+      </div>
+    )
+  }
+
+  if (!hasTeam || showReassign) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <label htmlFor={fieldIds.team} style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--text-muted)' }}>{t('detail.team')}</label>
+        {/* D10: support teams, searchable, full names — not a select of all 501 teams. */}
+        <TeamPicker
+          role={TEAM_TYPE.SUPPORT}
+          inputId={fieldIds.team}
+          label={t('detail.team')}
+          value={selectedTeam}
+          onChange={setSelectedTeam}
+          style={{ padding: '8px 10px', border: '1px solid var(--border)', color: 'var(--text-primary)', background: 'var(--surface)' }}
+        />
+        <div style={{ display: 'flex', gap: 8 }}>
+          {showReassign && (
+            <button type="button" onClick={() => setShowReassign(false)} style={{ flex: 1, padding: '7px 0', background: 'none', border: '1px solid var(--border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', cursor: 'pointer' }}>
+              {t('common.cancel')}
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={!selectedTeam || assigningTeam}
+            onClick={() => {
+              if (!selectedTeam) return
+              void assignToTeam({ variables: { id: incident.id, teamId: selectedTeam.id } })
+              setShowReassign(false)
+            }}
+            style={{ flex: 1, padding: '7px 0', backgroundColor: (!selectedTeam || assigningTeam) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedTeam || assigningTeam) ? 'var(--text-muted)' : colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: (!selectedTeam || assigningTeam) ? 'not-allowed' : 'pointer' }}
+          >
+            {assigningTeam ? t('detail.assigning') : t('detail.assignTeam')}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  const teamUsers = users.filter((u) => u.teams?.some((t) => t.id === incident.assignedTeam?.id))
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>
+        {t('detail.team')}: <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{incident.assignedTeam!.name}</span>
+      </div>
+      <label htmlFor={fieldIds.user} style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--text-muted)' }}>{t('detail.assignedTo')}</label>
+      <Select
+        id={fieldIds.user}
+        value={selectedUserId}
+        onChange={(e) => setSelectedUserId(e.target.value)}
+        style={{ padding: '8px 10px', border: '1px solid var(--border)', color: 'var(--text-primary)', background: 'var(--surface)' }}
+      >
+        <option value="">{t('detail.selectUser')}</option>
+        {teamUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+      </Select>
+      {/* Il pulsante assegna la persona scelta: si accende solo dopo la scelta, e lo dice. */}
+      {/* «No members» only once the people are read: unreadable or still loading is said as such. */}
+      {usersError ? (
+        <span role="alert" style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-danger)' }}>
+          {t('detail.assigneesUnavailable', { error: usersError.message })}
+        </span>
+      ) : !usersData ? (
+        <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--text-muted)' }}>{t('common.loading')}</span>
+      ) : !selectedUserId && (
+        <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--text-muted)' }}>
+          {teamUsers.length === 0 ? t('detail.noTeamMembers') : t('detail.chooseUserToAssign')}
+        </span>
+      )}
+      <button
+        type="button"
+        disabled={!selectedUserId || !selectedUserId.trim() || assigningUser}
+        onClick={() => {
+          if (!selectedUserId) return
+          void assignToUser({ variables: { id: incident.id, userId: selectedUserId } })
+        }}
+        style={{ padding: '7px 0', backgroundColor: (!selectedUserId || assigningUser) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedUserId || assigningUser) ? 'var(--text-muted)' : colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: (!selectedUserId || assigningUser) ? 'not-allowed' : 'pointer' }}
+      >
+        {assigningUser ? t('detail.assigning') : t('detail.assignUser')}
+      </button>
+    </div>
+  )
+}
+
+// ── Impacted applications ─────────────────────────────────────────────────────
+
+/**
+ * The applications that depend on the CIs hit by the incident, each with how
+ * it is hit, and the path the impact travels to reach it (the dialog).
+ */
+function ImpactedApplicationsSection({ applications }: { applications: ImpactedApp[] }) {
+  const { t } = useTranslation()
+  const ciLabels = useCILabels()
+  const [pathModal, setPathModal] = useState<ImpactedApp | null>(null)
+
+  return (
+    <>
+      <SectionCard title={t('pages.incidents.impactedApplications.title')} count={applications.length} collapsible>
+        {applications.length === 0 ? (
+          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>
+            {t('pages.incidents.impactedApplications.empty')}
+          </p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {applications.map((a) => (
+              <div key={a.ci.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8 }}>
+                <div style={{ minWidth: 0 }}>
+                  <Link to={ciPath(a.ci)} style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--accent)', textDecoration: 'none' }}>
+                    {a.ci.name}
+                  </Link>
+                  <div style={{ fontSize: 'var(--font-size-caption)', color: 'var(--text-muted)', marginTop: 2 }}>
+                    {a.distance === 0
+                      ? t('pages.incidents.impactedApplications.directly')
+                      : t('pages.incidents.impactedApplications.via', { via: a.via ?? '—', count: a.distance })}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                  {a.ci.environment && <Pill bg="var(--surface-2)" color="var(--text-muted)" radius={100} style={{ fontSize: 'var(--font-size-caption)' }}>{ciLabels.environmentLabel(a.ci.environment)}</Pill>}
+                  {/* L'etichetta del Dizionario, non il valore grezzo (revisione
+                      totale · F-33): con un `ci_status` in italiano la card dei CI
+                      colpiti mostrava ancora «in_service». */}
+                  {a.ci.status && <Pill bg="var(--color-brand-light)" color="var(--color-brand)" radius={100} style={{ fontSize: 'var(--font-size-caption)' }}>{ciLabels.statusLabel(a.ci.status)}</Pill>}
+                  <button
+                    type="button"
+                    onClick={() => setPathModal(a)}
+                    title={t('pages.incidents.impactedApplications.pathButtonHint')}
+                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface-1)', color: 'var(--accent)', fontSize: 'var(--font-size-caption)', fontWeight: 500, cursor: 'pointer' }}
+                  >
+                    <Network size={13} /> {t('pages.incidents.impactedApplications.pathButton')}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </SectionCard>
 
       {/* Percorso d'impatto: dal CI colpito → … → applicazione */}
       <Modal
@@ -1008,6 +1065,6 @@ export function IncidentDetailPage() {
           </div>
         )}
       </Modal>
-    </PageContainer>
+    </>
   )
 }

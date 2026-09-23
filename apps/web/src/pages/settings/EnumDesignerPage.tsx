@@ -28,6 +28,7 @@ import { VALUE_COLORS, type ValueColor } from '@opengraphity/types'
 import { valueColorStyle } from '@/lib/domainStyle'
 import { clientLogger } from '@/lib/clientLogger'
 import { errorMessage, showError } from '@/lib/showError'
+import { DetailLayout } from '@/components/ui/DetailLayout'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -954,7 +955,7 @@ export function EnumDesignerPage() {
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 20, alignItems: 'start' }}>
+      <DetailLayout sideWidth={220} sideFirst gap={20}>
         {/* Left: enum list */}
         <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
@@ -1050,7 +1051,7 @@ export function EnumDesignerPage() {
             </div>
           )}
         </div>
-      </div>
+      </DetailLayout>
 
       {/* Create dialog */}
       {showCreate && (

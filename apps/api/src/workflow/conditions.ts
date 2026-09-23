@@ -13,6 +13,7 @@ import { runQueryOne } from '../graphql/resolvers/ci-utils.js'
 import { TASK_STATUS, VALIDATION_RESULT, REVIEW_RESULT } from '../lib/taskStatus.js'
 import { toNumber } from '@opengraphity/neo4j'
 import { areAllAssessmentsComplete } from '../lib/changeAssessments.js'
+import { matchById } from '../lib/cypherLookups.js'
 // Ogni processo che registra le condizioni esegue transizioni: deve anche
 // pubblicare l'ingresso nei passi (workflow.step_entered).
 import './stepEnteredEvents.js'
@@ -30,7 +31,8 @@ export const CHANGE_CONDITIONS: Record<string, { evaluate: ConditionEvaluator; f
     failureMessage: 'Link a change first, then request the change',
     evaluate: async (session, c) => {
       const row = await runQueryOne<{ n: unknown }>(session, `
-        MATCH (e {id: $entityId, tenant_id: $tenantId})-[:RESOLVED_BY]->(ch:Change {tenant_id: $tenantId})
+        ${matchById('e', { labels: 'tickets', id: '$entityId' })}
+        MATCH (e)-[:RESOLVED_BY]->(ch:Change {tenant_id: $tenantId})
         WHERE coalesce(ch.deleted, false) = false
         RETURN count(ch) AS n
       `, { entityId: c.entityId, tenantId: c.tenantId })

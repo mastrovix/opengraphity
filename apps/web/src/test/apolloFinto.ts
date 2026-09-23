@@ -14,12 +14,22 @@
  *
  * A mutation calls its own `onCompleted`/`onError` as Apollo would, so the
  * page's reactions (toast, refetch, closing a panel) run too.
+ *
+ * AND IT FAILS AS APOLLO CLIENT 4 FAILS (tour of 23 Sep 2026). Apollo 4.3
+ * (`react/hooks/useMutation.js`) calls `onError` and THEN rejects the promise
+ * of `mutate`; a failed lazy query rejects too; a promise nobody awaits is
+ * not an unhandled rejection (`preventUnhandledRejection`), one that is
+ * awaited throws into the caller. This fake used to RESOLVE a failed mutation
+ * with `{ errors }`: tests ran code after the await that the app never runs,
+ * and a caller that awaited a refused mutation without a catch — an
+ * unhandled rejection in the browser — passed. Now it does what Apollo does,
+ * so such a caller fails its test run.
  */
 import { vi } from 'vitest'
 
 type Doc = { definitions: Array<{ kind: string; name?: { value: string } }> }
 type Esito = { data?: unknown; error?: Error }
-type Opts = { variables?: Record<string, unknown>; skip?: boolean; onCompleted?: (d: unknown) => void; onError?: (e: Error) => void }
+type Opts = { variables?: Record<string, unknown>; skip?: boolean; onCompleted?: (d: unknown, options?: unknown) => void; onError?: (e: Error, options?: unknown) => void }
 
 export const nomeOperazione = (doc: Doc): string =>
   doc.definitions.find((d) => d.kind === 'OperationDefinition')?.name?.value ?? ''
@@ -49,6 +59,15 @@ function registra(nome: string, variables?: Record<string, unknown>) {
   ;(apolloFinto.chiamate[nome] ??= []).push(variables)
 }
 
+/** Like Apollo's `preventUnhandledRejection`: the promise still rejects for whoever awaits it. */
+function comeApollo<T>(promise: T): T {
+  if (promise instanceof Promise) promise.catch(() => {})
+  return promise
+}
+
+/** The refetch the pages get: the shared mock, protected as Apollo protects its own. */
+const refetchComeApollo = (...args: unknown[]) => comeApollo((apolloFinto.refetch as (...a: unknown[]) => unknown)(...args))
+
 function dati(nome: string, variables?: Record<string, unknown>): unknown {
   const r = apolloFinto.risposte[nome]
   return typeof r === 'function' ? (r as (v?: Record<string, unknown>) => unknown)(variables) : r
@@ -64,13 +83,19 @@ export function moduloApollo() {
       const error = apolloFinto.erroriQuery[nome]
       return {
         data: opts.skip || error ? undefined : dati(nome, opts.variables),
-        loading: false, error, refetch: apolloFinto.refetch, previousData: undefined,
+        loading: false, error, refetch: refetchComeApollo, previousData: undefined,
         fetchMore: vi.fn(), networkStatus: 7,
       }
     },
     useLazyQuery: (doc: Doc) => {
       const nome = nomeOperazione(doc)
-      const run = vi.fn(async (o: Opts = {}) => { registra(nome, o.variables); return { data: dati(nome, o.variables) } })
+      const run = vi.fn((o: Opts = {}) => comeApollo((async () => {
+        registra(nome, o.variables)
+        // A failed lazy query rejects in Apollo 4 (its result carries no `error` by default).
+        const error = apolloFinto.erroriQuery[nome]
+        if (error) throw error
+        return { data: dati(nome, o.variables) }
+      })()))
       return [run, { data: dati(nome), loading: false, called: true }]
     },
     useMutation: (doc: Doc, opts: Opts = {}) => {
@@ -78,17 +103,18 @@ export function moduloApollo() {
       // One stable function per mutation: a re-render must not lose the calls.
       const fn = mutazioni.get(nome) ?? vi.fn()
       mutazioni.set(nome, fn)
-      fn.mockImplementation(async (o: Opts = {}) => {
+      fn.mockImplementation((o: Opts = {}) => comeApollo((async () => {
         registra(nome, o.variables)
         const esito = apolloFinto.esiti[nome] ?? { data: {} }
+        const options = { ...opts, ...o }
         if (esito.error) {
-          const onError = o.onError ?? opts.onError
-          if (onError) { onError(esito.error); return { errors: [esito.error] } }
+          // Apollo Client 4: onError first, then the promise rejects.
+          ;(o.onError ?? opts.onError)?.(esito.error, options)
           throw esito.error
         }
-        ;(o.onCompleted ?? opts.onCompleted)?.(esito.data)
+        ;(o.onCompleted ?? opts.onCompleted)?.(esito.data, options)
         return { data: esito.data }
-      })
+      })()))
       return [fn, { loading: false, data: undefined, error: undefined }]
     },
     useApolloClient: () => ({ query: apolloFinto.query, mutate: apolloFinto.mutate, refetchQueries: vi.fn(), cache: { evict: vi.fn(), gc: vi.fn() } }),

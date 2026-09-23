@@ -17,7 +17,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { useState } from 'react'
-import { screen, within } from '@testing-library/react'
+import { act, screen, within } from '@testing-library/react'
 import { emptyFormTable } from '@opengraphity/types'
 import { renderWithProviders } from '@/test/utils'
 import { apolloFinto } from '@/test/apolloFinto'
@@ -317,6 +317,24 @@ describe('save and cancel', () => {
     expect(onSalva).toHaveBeenCalledTimes(1)
     expect(onAnnulla).toHaveBeenCalledTimes(1)
     rerender(<Harness onSalva={onSalva} onAnnulla={onAnnulla} etichettaSalva="Add to form" salvando />)
-    expect(screen.getByRole('button', { name: 'Saving...' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Saving...' })).toBeDisabled()
+  })
+
+  /*
+   * Found in the tour of 23 Sep 2026, fixed: the button stayed enabled while
+   * the save was in flight, so a double click saved — and created — twice.
+   */
+  it('while a save is in flight the button is off, and a second press saves nothing', async () => {
+    let finish: () => void = () => {}
+    const onSalva = vi.fn(() => new Promise<void>((resolve) => { finish = resolve }))
+    renderWithProviders(<Harness onSalva={onSalva} etichettaSalva="Add to form" />)
+    const button = screen.getByRole('button', { name: 'Add to form' })
+    // Two presses before the button is redrawn, as a fast double click can be.
+    act(() => { button.click(); button.click() })
+    expect(onSalva).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('button', { name: 'Saving...' })).toBeDisabled()
+    // Once the save is over the button is back, for the next one.
+    await act(async () => { finish() })
+    expect(screen.getByRole('button', { name: 'Add to form' })).toBeEnabled()
   })
 })

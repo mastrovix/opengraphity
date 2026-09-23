@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useEditor, EditorContent } from '@tiptap/react'
+import type { TFunction } from 'i18next'
+import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
 import Image from '@tiptap/extension-image'
@@ -10,10 +11,11 @@ import TableCell from '@tiptap/extension-table-cell'
 import TableHeader from '@tiptap/extension-table-header'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import Placeholder from '@tiptap/extension-placeholder'
-import Underline from '@tiptap/extension-underline'
 import { createLowlight, common } from 'lowlight'
 import TurndownService from 'turndown'
-import { marked } from 'marked'
+import { Marked } from 'marked'
+import { toast } from 'sonner'
+import { UNDERLINE_OPEN, UNDERLINE_CLOSE } from '@opengraphity/web-core'
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   Heading1, Heading2, Heading3,
@@ -76,6 +78,54 @@ td.addRule('blockquote', {
   },
 })
 
+// Strikethrough — tiptap writes it as <s>, the Markdown as GFM `~~text~~`,
+// which `marked` reads back as a strike. Without this rule Turndown kept only
+// the text, and the strike the toolbar offers was gone at the next save
+// (found by the tests, tour of 23 Sep 2026).
+td.addRule('strikethrough', {
+  filter: ['s'],
+  replacement: (content) => '~~' + content + '~~',
+})
+
+// Underline — Markdown has no syntax for it, so it is kept as `<u>text</u>`,
+// the one piece of HTML the editor writes: `marked` passes it through when the
+// article is loaded again, and the readers (web and portal) render exactly
+// that pair through `remarkUnderline` from web-core, while any other HTML stays
+// text. Without this rule the underline the toolbar offers was dropped at the
+// next save (found by the tests, tour of 23 Sep 2026).
+td.addRule('underline', {
+  filter: ['u'],
+  replacement: (content) => UNDERLINE_OPEN + content + UNDERLINE_CLOSE,
+})
+
+// ── Markdown → HTML ───────────────────────────────────────────────────────────
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+}
+
+/*
+ * The code of a block goes into the editor exactly as it is written between
+ * the fences. `marked`'s own renderer ends it with a newline; the editor kept
+ * it (showing an empty last line) and the Turndown rule above writes its own
+ * before the closing fence, so every save added an empty line at the end of
+ * each code block (found by the tests, tour of 23 Sep 2026). The rest is
+ * `marked`'s renderer: the first word of the info string is the language.
+ */
+const markdown = new Marked({
+  gfm:    true,
+  breaks: false,
+  renderer: {
+    code({ text, lang, escaped }) {
+      const language = (lang ?? '').match(/^\S*/)?.[0]
+      const code     = escaped ? text : escapeHtml(text)
+      return language
+        ? `<pre><code class="language-${escapeHtml(language)}">${code}</code></pre>\n`
+        : `<pre><code>${code}</code></pre>\n`
+    },
+  },
+})
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function htmlToMarkdown(html: string): string {
@@ -85,7 +135,35 @@ function htmlToMarkdown(html: string): string {
 
 async function markdownToHtml(md: string): Promise<string> {
   if (!md) return ''
-  return await marked(md, { gfm: true, breaks: false }) as string
+  return await markdown.parse(md)
+}
+
+// ── Toolbar actions ───────────────────────────────────────────────────────────
+
+function insertLink(editor: Editor, t: TFunction) {
+  const prev = editor.getAttributes('link')['href'] as string | undefined
+  const url  = window.prompt(t('richText.linkPrompt'), prev ?? 'https://')
+  // null is «Cancel». An empty address removes the link: `if (!url) return`
+  // took it for a cancel too, so the link could not be removed from the
+  // toolbar (found by the tests, tour of 23 Sep 2026). Either acts on the
+  // whole link the caret is in, the one whose address the prompt proposed.
+  if (url === null) return
+  const href = url.trim()
+  if (href === '') {
+    editor.chain().focus().extendMarkRange('link').unsetLink().run()
+  } else if (!editor.chain().focus().extendMarkRange('link').setLink({ href }).run()) {
+    // tiptap refuses some addresses (javascript:, file:, …): say so, the text stays as it was.
+    toast.error(t('richText.linkRefused', { href }))
+  }
+}
+
+function insertImage(editor: Editor, t: TFunction) {
+  const url = window.prompt(t('richText.imagePrompt'))
+  if (url) editor.chain().focus().setImage({ src: url }).run()
+}
+
+function insertTable(editor: Editor) {
+  editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
 }
 
 // ── Toolbar button ────────────────────────────────────────────────────────────
@@ -151,24 +229,46 @@ export function RichTextEditor({
   const { t } = useTranslation()
   const effectivePlaceholder = placeholder ?? t('common.writeHere')
   const debounceRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Tracks the last markdown value we pushed into the editor.
-  // null = never set (component just mounted). Compared against `value` to
-  // detect external changes while skipping updates when the user is typing.
-  const lastSetValue   = useRef<string | null>(null)
+  // The Markdown the editor's content stands for: the value last loaded into
+  // it, or the Markdown it last sent out. null = nothing yet (just mounted).
+  // A `value` equal to it is the editor's own text coming back: nothing to
+  // load. It used to track only what was LOADED, so a parent putting back the
+  // loaded text after the author's edits (KBAdminPage «New article» while a
+  // new article is being written) looked like «nothing changed» and was
+  // ignored (found by the tests, tour of 23 Sep 2026).
+  const shownMarkdown  = useRef<string | null>(null)
   const latestOnChange = useRef(onChange)
   latestOnChange.current = onChange
+
+  const emit = useCallback((html: string) => {
+    const md = htmlToMarkdown(html)
+    shownMarkdown.current = md
+    latestOnChange.current(md)
+  }, [])
 
   const handleUpdate = useCallback((html: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
-      latestOnChange.current(htmlToMarkdown(html))
+      debounceRef.current = null
+      emit(html)
     }, 300)
+  }, [emit])
+
+  // An editor that goes away without losing the focus first (keyboard
+  // navigation) drops the edit still waiting for the pause: sent later, it
+  // would land in whatever form the parent shows by then — another article.
+  useEffect(() => () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
   }, [])
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ codeBlock: false }),
-      Underline,
+      // tiptap 3's StarterKit already carries Link and Underline. Link is
+      // added below with its own options, so StarterKit's copy is off: with
+      // both registered, StarterKit's kept its click handler and opened a
+      // link in a new window at every click while writing (found by the
+      // tests, tour of 23 Sep 2026). Underline is StarterKit's own.
+      StarterKit.configure({ codeBlock: false, link: false }),
       Link.configure({ openOnClick: false, HTMLAttributes: { rel: 'noopener noreferrer' } }),
       Image,
       Table.configure({ resizable: false }),
@@ -180,49 +280,39 @@ export function RichTextEditor({
     ],
     editable: !readOnly,
     onUpdate: ({ editor: e }) => handleUpdate(e.getHTML()),
+    // Leaving the editor sends an edit still waiting for the pause at once:
+    // the button clicked next (Save, «New article», another article) must
+    // find the form in step with what is on screen.
+    onBlur: ({ editor: e }) => {
+      if (!debounceRef.current) return
+      clearTimeout(debounceRef.current)
+      debounceRef.current = null
+      emit(e.getHTML())
+    },
   })
 
   // Sync external `value` (Markdown) into the editor.
   // Rules:
   //  - Always run when `value` changes and editor is ready.
-  //  - Skip if we already set this exact value (avoids echo from onChange).
+  //  - Skip if the editor already stands for this value (its own edit coming back).
   //  - Skip if the editor has focus (user is typing — don't clobber their work).
   useEffect(() => {
     if (!editor || editor.isDestroyed) return
-    if (value === lastSetValue.current) return   // nothing changed
-    if (lastSetValue.current !== null && editor.isFocused) return  // user is typing
+    if (value === shownMarkdown.current) return   // nothing changed
+    if (shownMarkdown.current !== null && editor.isFocused) return  // user is typing
 
+    // The new value replaces the text: an edit still waiting for the pause
+    // belongs to the text going away, and must not carry it back into the form.
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current)
+      debounceRef.current = null
+    }
     void markdownToHtml(value).then((html) => {
       if (editor.isDestroyed) return
-      lastSetValue.current = value
+      shownMarkdown.current = value
       editor.commands.setContent(html, { emitUpdate: false })
     })
   }, [editor, value])
-
-  // ── Toolbar actions ───────────────────────────────────────────────────────
-
-  function insertLink() {
-    if (!editor) return
-    const prev = editor.getAttributes('link')['href'] as string | undefined
-    const url  = window.prompt(t('richText.linkPrompt'), prev ?? 'https://')
-    if (!url) return
-    if (url === '') {
-      editor.chain().focus().unsetLink().run()
-    } else {
-      editor.chain().focus().setLink({ href: url }).run()
-    }
-  }
-
-  function insertImage() {
-    if (!editor) return
-    const url = window.prompt(t('richText.imagePrompt'))
-    if (url) editor.chain().focus().setImage({ src: url }).run()
-  }
-
-  function insertTable() {
-    if (!editor) return
-    editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
-  }
 
   if (!editor) return null
 
@@ -231,7 +321,7 @@ export function RichTextEditor({
       {/* ── Toolbar ── */}
       {!readOnly && (
         <div style={{ background: 'var(--color-slate-bg)', borderBottom: `1px solid ${colors.border}`, padding: '6px 8px', display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
-          {/* Text formatting */}
+          {/* Text formatting: each one is kept by the Markdown (underline as <u>…</u>, see the Turndown rules). */}
           <Btn onClick={() => editor.chain().focus().toggleBold().run()}          active={editor.isActive('bold')}          title={t('richText.bold')}><Bold size={14} /></Btn>
           <Btn onClick={() => editor.chain().focus().toggleItalic().run()}        active={editor.isActive('italic')}        title={t('richText.italic')}><Italic size={14} /></Btn>
           <Btn onClick={() => editor.chain().focus().toggleUnderline().run()}     active={editor.isActive('underline')}     title={t('richText.underline')}><UnderlineIcon size={14} /></Btn>
@@ -260,9 +350,9 @@ export function RichTextEditor({
           <Sep />
 
           {/* Insert */}
-          <Btn onClick={insertLink}   active={editor.isActive('link')}   title={t('richText.insertLink')}><LinkIcon size={14} /></Btn>
-          <Btn onClick={insertImage}  active={false}                     title={t('richText.insertImage')}><ImageIcon size={14} /></Btn>
-          <Btn onClick={insertTable}  active={editor.isActive('table')}  title={t('richText.insertTable')}><TableIcon size={14} /></Btn>
+          <Btn onClick={() => insertLink(editor, t)}   active={editor.isActive('link')}   title={t('richText.insertLink')}><LinkIcon size={14} /></Btn>
+          <Btn onClick={() => insertImage(editor, t)}  active={false}                     title={t('richText.insertImage')}><ImageIcon size={14} /></Btn>
+          <Btn onClick={() => insertTable(editor)}  active={editor.isActive('table')}  title={t('richText.insertTable')}><TableIcon size={14} /></Btn>
           <Btn onClick={() => editor.chain().focus().setHorizontalRule().run()} active={false} title={t('richText.horizontalRule')}><Minus size={14} /></Btn>
 
           <Sep />

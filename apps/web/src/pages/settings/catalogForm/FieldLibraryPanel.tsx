@@ -82,15 +82,14 @@ export function FieldLibraryPanel() {
     if (!bozza) return
     const comune = inputDaBozza(bozza, inModifica?.fieldType ?? bozza.fieldType)
     if (comune.label === '') { toast.error(t('pages.catalogForms.library.labelNeeded')); return }
-    if (inModifica) {
-      const r = await aggiorna({ variables: { id: inModifica.id, input: comune } })
-      if (!r.data) return
-      toast.success(t('pages.catalogForms.library.saved'))
-    } else {
-      const r = await crea({ variables: { input: { ...comune, name: bozza.name.trim(), fieldType: bozza.fieldType } } })
-      if (!r.data) return
-      toast.success(t('pages.catalogForms.library.created'))
+    try {
+      if (inModifica) await aggiorna({ variables: { id: inModifica.id, input: comune } })
+      else await crea({ variables: { input: { ...comune, name: bozza.name.trim(), fieldType: bozza.fieldType } } })
+    } catch {
+      // The mutation's onError has already told the user; the editor stays open with what was typed.
+      return
     }
+    toast.success(inModifica ? t('pages.catalogForms.library.saved') : t('pages.catalogForms.library.created'))
     chiudi()
     void refetch()
   }
@@ -204,9 +203,16 @@ export function FieldLibraryPanel() {
           body={t('pages.catalogForms.library.deleteMessage', { name: daCancellare.label })}
           confirmLabel={t('common.delete')}
           onConfirm={async () => {
-            const r = await cancella({ variables: { id: daCancellare.id } })
+            try {
+              await cancella({ variables: { id: daCancellare.id } })
+            } catch {
+              // The mutation's onError has already told the user; the question closes all the same.
+              setDaCancellare(null)
+              return
+            }
             setDaCancellare(null)
-            if (r.data) { toast.success(t('pages.catalogForms.library.deleted')); void refetch() }
+            toast.success(t('pages.catalogForms.library.deleted'))
+            void refetch()
           }}
           onCancel={() => setDaCancellare(null)}
         />

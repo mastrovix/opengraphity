@@ -28,11 +28,20 @@ const th = { textAlign: 'left', padding: '4px 8px', color: colors.slateLight, fo
 const td = { padding: '6px 8px', borderBottom: '1px solid var(--color-border-light)', verticalAlign: 'middle' } as const
 const linkStyle = { color: colors.brand, textDecoration: 'none', fontWeight: 500 } as const
 
+/**
+ * The alarm title never gets narrower than this (D8, tour of 23 Sep 2026): in
+ * the incident detail the other columns do not wrap, so the title column was
+ * squeezed to ~50px and the title wrapped word by word. Now it wraps at a
+ * readable width, and when the section is narrower than the table, the table
+ * scrolls inside its own container, key columns first.
+ */
+const ALARM_TITLE_MIN_WIDTH = 220
+
 /** Tabella compatta degli eventi (condivisa da incident e change). */
 function EventRows({ events }: { events: EventRow[] }) {
   const { t } = useTranslation()
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <div className="og-scroll-x" style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
         <thead>
           <tr>
@@ -51,8 +60,10 @@ function EventRows({ events }: { events: EventRow[] }) {
               <td style={td}><EventStatusBadge status={ev.status} severity={ev.severity} /></td>
               <td style={td}><EventSeverityBadge severity={ev.severity} /></td>
               <td style={td}>
-                <Link to={`/events/${ev.id}`} style={linkStyle}>{ev.title}</Link>
-                <div style={{ fontSize: 'var(--font-size-table)', color: colors.slateLight, marginTop: 2 }}>{resourceKindLabel(t, ev.resourceKind)} · {ev.resource}</div>
+                <div style={{ minWidth: ALARM_TITLE_MIN_WIDTH }}>
+                  <Link to={`/events/${ev.id}`} style={linkStyle}>{ev.title}</Link>
+                  <div style={{ fontSize: 'var(--font-size-table)', color: colors.slateLight, marginTop: 2 }}>{resourceKindLabel(t, ev.resourceKind)} · {ev.resource}</div>
+                </div>
               </td>
               <td style={td}>
                 {ev.ci

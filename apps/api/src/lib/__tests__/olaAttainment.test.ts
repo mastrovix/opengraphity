@@ -8,7 +8,7 @@ import { evaluateOLATeamTickets, olaConcludedTicketsCypher, olaEntityTypes, olaT
 
 const RETE = 'team-rete'
 const SD = 'team-sd'
-const contract = { teamId: RETE, createdAt: '2026-09-01T00:00:00Z', resolveMinutes: 240, businessHours: false, calendar: null }
+const contract = { teamId: RETE, createdAt: '2026-09-01T00:00:00Z', resolveMinutes: 240, businessHours: false, calendar: null, timezone: null }
 const seg = (teamId: string, startedAt: string, endedAt: string | null, inferred = false) => ({ teamId, startedAt, endedAt, inferred })
 const ticket = (over: Partial<OLATicketFacts>): OLATicketFacts => ({ createdAt: '2026-09-15T08:00:00Z', concludedAt: null, currentTeamId: RETE, segments: [], ...over })
 
@@ -56,6 +56,19 @@ describe('olaTeamMeasure — il tempo del team', () => {
     const cal = { days: [1, 2, 3, 4, 5], start: '09:00', end: '17:00', holidays: [] }
     const m = olaTeamMeasure(ticket({ concludedAt: '2026-09-21T10:00:00Z', segments: [seg(RETE, '2026-09-18T16:00:00Z', null)] }), { ...contract, businessHours: true, calendar: cal }, 'UTC')
     expect(m).toMatchObject({ usedMinutes: 120, state: 'met' })
+  })
+
+  /*
+   * The contract's own zone (tour of 23 Sep 2026). A team in Singapore works
+   * 9-18 in Singapore: the same eight hours on Friday, 02:00-10:00 UTC, are a
+   * full working day there (10:00-18:00) and three hours in Rome (04:00-12:00).
+   */
+  it('a contract with its own zone counts its calendar there, not in the organization\'s', () => {
+    const cal = { days: [1, 2, 3, 4, 5], start: '09:00', end: '18:00', holidays: [] }
+    const facts = ticket({ concludedAt: '2026-09-18T10:00:00Z', segments: [seg(RETE, '2026-09-18T02:00:00Z', null)] })
+    const hours = { ...contract, resolveMinutes: 600, businessHours: true, calendar: cal }
+    expect(olaTeamMeasure(facts, { ...hours, timezone: 'Asia/Singapore' }, 'Europe/Rome').usedMinutes).toBe(480)
+    expect(olaTeamMeasure(facts, { ...hours, timezone: null }, 'Europe/Rome').usedMinutes).toBe(180)
   })
 
   it('un tratto ricostruito si dice (inferred)', () => {

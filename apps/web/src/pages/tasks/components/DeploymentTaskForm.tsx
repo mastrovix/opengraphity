@@ -1,12 +1,15 @@
 /**
- * Single "Conferma Deploy" button for the deployment task.
+ * Single "Conferma Deploy" button for the deployment task. While the
+ * completion is in flight it waits and says so (D24).
  */
 import { useTranslation } from 'react-i18next'
-import { colors } from '@/lib/tokens'
+import { ResultButton } from './shared'
 
-export function DeploymentTaskForm({ canEdit, onComplete }: {
+export function DeploymentTaskForm({ canEdit, onComplete, busyLabel = null }: {
   canEdit: boolean
   onComplete: () => void
+  /** A completion is in flight: the button waits (D24). */
+  busyLabel?: string | null
 }) {
   const { t } = useTranslation()
   return (
@@ -14,12 +17,7 @@ export function DeploymentTaskForm({ canEdit, onComplete }: {
       <p style={{ marginBottom: 16, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
         {t('changeTasks.deployConfirmHint')}
       </p>
-      <button
-        type="button" disabled={!canEdit} onClick={onComplete}
-        style={{ padding: '12px 32px', borderRadius: 8, border: 'none', background: 'var(--color-success)', color: colors.white, fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: canEdit ? 'pointer' : 'not-allowed', opacity: canEdit ? 1 : 0.5 }}
-      >
-        {t('changeTasks.deployConfirm')}
-      </button>
+      <ResultButton label={t('changeTasks.deployConfirm')} tone="success" disabled={!canEdit} busyLabel={busyLabel} pressed onClick={onComplete} />
     </div>
   )
 }

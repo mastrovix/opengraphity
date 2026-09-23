@@ -44,7 +44,7 @@ export const selectS: CSSProperties = {
 }
 
 export const textareaS: CSSProperties = {
-  ...inputS, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", fontSize: 'var(--font-size-body)', resize: 'vertical', minHeight: 80,
+  ...inputS, fontFamily: 'var(--font-family)', fontSize: 'var(--font-size-body)', resize: 'vertical', minHeight: 80,
 }
 
 export const labelS: CSSProperties = {
@@ -70,11 +70,6 @@ export const btnDanger: CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
   padding: '4px 10px', border: `1px solid ${palette.danger.border}`, borderRadius: 6, background: colors.white,
   color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', cursor: 'pointer',
-}
-
-/** Chip preview for enum values */
-export function enumChipStyle(): CSSProperties {
-  return { padding: '2px 8px', background: palette.info.bg, borderRadius: 12, fontSize: 'var(--font-size-table)', color: 'var(--color-brand)' }
 }
 
 /** Active card style (selected state in designer type lists) */

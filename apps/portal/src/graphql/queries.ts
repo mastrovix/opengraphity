@@ -26,7 +26,7 @@ export const GET_MY_TICKET = gql`
   query MyTicket($id: ID!, $language: String) {
     myTicket(id: $id, language: $language) {
       id number type title description status statusCategory statusLabel priority priorityLabel priorityColor category
-      createdAt updatedAt assignedTeam
+      createdAt updatedAt assignedTeam canConfirmResolution
       comments {
         id body isInternal authorId authorName authorEmail createdAt
         editedAt editedByName deletedAt deletedByName

@@ -442,7 +442,7 @@ export const APPLY_PROPOSAL_CYPHER = `${VERSION_GUARD}
   CALL {
     WITH m
     UNWIND $addNodes AS n
-    MATCH (ci {id: n.ciId, tenant_id: $tenantId})
+    MATCH (ci:ConfigurationItem {id: n.ciId, tenant_id: $tenantId})
     CREATE (m)-[:INCLUDES {level: toInteger(n.level), role: n.role, propagate: n.propagate, weight: toInteger(n.weight),
                            critical: n.critical, via: n.via, added_by: 'manual', added_at: $now}]->(ci)
     RETURN count(ci) AS added
@@ -450,7 +450,7 @@ export const APPLY_PROPOSAL_CYPHER = `${VERSION_GUARD}
   CALL {
     WITH m
     UNWIND $excludeIds AS xid
-    MATCH (ci {id: xid, tenant_id: $tenantId})
+    MATCH (ci:ConfigurationItem {id: xid, tenant_id: $tenantId})
     MERGE (m)-[e:EXCLUDES]->(ci)
       ON CREATE SET e.reason = $excludeReason, e.excluded_by = $actorId, e.at = $now
     RETURN count(ci) AS excluded

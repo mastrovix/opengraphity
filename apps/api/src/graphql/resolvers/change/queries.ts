@@ -25,6 +25,7 @@ import { getScalarFields } from '../../../lib/schemaFields.js'
 import type { GraphQLResolveInfo } from 'graphql'
 import { serviceRelPatternForTenant } from '../../../lib/ciMetamodelForTenant.js'
 import { ValidationError } from '../../../lib/errors.js'
+import { matchById } from '../../../lib/cypherLookups.js'
 
 type Session = ReturnType<typeof getSession>
 
@@ -109,14 +110,14 @@ async function loadAssignmentsForTasks(session: Session, taskIds: string[]): Pro
   // so the planning task showed no team and could not be assigned.
   const teamRows = await runQuery<{ taskId: string; teamProps: Props }>(session, `
     UNWIND $taskIds AS tid
-    MATCH (t {id: tid})-[:ASSIGNED_TO_TEAM]->(tm:Team)
-    WHERE t:AssessmentTask OR t:DeployPlanTask
+    ${matchById('t', { labels: ['AssessmentTask', 'DeployPlanTask'], id: 'tid', tenant: null, imports: ['tid'] })}
+    MATCH (t)-[:ASSIGNED_TO_TEAM]->(tm:Team)
     RETURN tid AS taskId, properties(tm) AS teamProps
   `, { taskIds })
   const userRows = await runQuery<{ taskId: string; userProps: Props }>(session, `
     UNWIND $taskIds AS tid
-    MATCH (t {id: tid})-[:ASSIGNED_TO]->(u:User)
-    WHERE t:AssessmentTask OR t:DeployPlanTask
+    ${matchById('t', { labels: ['AssessmentTask', 'DeployPlanTask'], id: 'tid', tenant: null, imports: ['tid'] })}
+    MATCH (t)-[:ASSIGNED_TO]->(u:User)
     RETURN tid AS taskId, properties(u) AS userProps
   `, { taskIds })
   const teams: Record<string, ReturnType<typeof mapTeam>> = {}
@@ -413,7 +414,7 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_ASSESSMENT]->(t)
       WHERE coalesce(c.deleted, false) = false
       MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-      MATCH (ci {id: t.ci_id, tenant_id: $tenantId})
+      MATCH (ci:ConfigurationItem {id: t.ci_id, tenant_id: $tenantId})
       RETURN DISTINCT
         t.id             AS id,
         coalesce(t.code, '') AS code,
@@ -437,7 +438,7 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_ASSESSMENT]->(t)
       WHERE coalesce(c.deleted, false) = false
       MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-      MATCH (ci {id: t.ci_id, tenant_id: $tenantId})
+      MATCH (ci:ConfigurationItem {id: t.ci_id, tenant_id: $tenantId})
       RETURN DISTINCT
         t.id             AS id,
         coalesce(t.code, '') AS code,
@@ -455,7 +456,7 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
     // ── Unassigned: ValidationTest — OWNED_BY team, step deployment ───────────
     const valRows = await runQuery<Omit<MyTaskRow, 'kind' | 'role' | 'action'>>(session, `
       MATCH (u:User {id: $userId, tenant_id: $tenantId})-[:MEMBER_OF]->(team:Team)
-      MATCH (ci)-[:OWNED_BY]->(team)
+      MATCH (ci:ConfigurationItem)-[:OWNED_BY]->(team)
       WHERE ci.tenant_id = $tenantId
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_VALIDATION]->(vt:ValidationTest)
       MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
@@ -481,7 +482,7 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_DEPLOY_PLAN]->(dp)
       WHERE coalesce(c.deleted, false) = false
       MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-      MATCH (ci {id: dp.ci_id, tenant_id: $tenantId})
+      MATCH (ci:ConfigurationItem {id: dp.ci_id, tenant_id: $tenantId})
       RETURN DISTINCT
         dp.id          AS id,
         coalesce(dp.code, '') AS code,
@@ -504,7 +505,7 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_DEPLOY_PLAN]->(dp)
       WHERE coalesce(c.deleted, false) = false
       MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-      MATCH (ci {id: dp.ci_id, tenant_id: $tenantId})
+      MATCH (ci:ConfigurationItem {id: dp.ci_id, tenant_id: $tenantId})
       RETURN DISTINCT
         dp.id          AS id,
         coalesce(dp.code, '') AS code,
@@ -543,7 +544,7 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
     // ── Unassigned: ReviewTask — OWNED_BY team, step review ──────────────────
     const revRows = await runQuery<Omit<MyTaskRow, 'kind' | 'role' | 'action'>>(session, `
       MATCH (u:User {id: $userId, tenant_id: $tenantId})-[:MEMBER_OF]->(team:Team)
-      MATCH (ci)-[:OWNED_BY]->(team)
+      MATCH (ci:ConfigurationItem)-[:OWNED_BY]->(team)
       WHERE ci.tenant_id = $tenantId
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_REVIEW]->(rv:ReviewTask)
       MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
@@ -742,7 +743,7 @@ export async function taskById(_: unknown, args: { id: string }, ctx: GraphQLCon
         MATCH (c:Change {tenant_id: $tenantId})-[:${rel}]->(t:${label} {id: $id})
         WHERE coalesce(c.deleted, false) = false
         MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-        MATCH (ci {id: t.ci_id, tenant_id: $tenantId})
+        MATCH (ci:ConfigurationItem {id: t.ci_id, tenant_id: $tenantId})
         RETURN coalesce(t.code, '') AS taskCode,
                c.id AS changeId, c.code AS changeCode, c.title AS changeTitle,
                wi.current_step AS changePhase,
@@ -893,7 +894,7 @@ export async function changeCalendar(
         AND dp.window_start IS NOT NULL AND dp.window_end IS NOT NULL
         AND dp.window_start < $to AND dp.window_end > $from
       OPTIONAL MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId})
-      OPTIONAL MATCH (ci {id: dp.ci_id, tenant_id: $tenantId})
+      OPTIONAL MATCH (ci:ConfigurationItem {id: dp.ci_id, tenant_id: $tenantId})
       RETURN c.id AS changeId, c.code AS code, c.title AS title, c.change_type AS changeType,
              c.priority AS priority, wi.current_step AS currentStep,
              dp.steps AS steps, dp.code AS taskCode, dp.ci_id AS ciId, ci.name AS ciName

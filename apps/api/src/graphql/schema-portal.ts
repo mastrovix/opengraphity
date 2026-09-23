@@ -102,6 +102,13 @@ export function portalSDL(): string {
     controllare, ne' per citarli al telefono.
     """
     formAnswers: [FormAnswer!]!
+    """
+    True when the ticket is resolved and its workflow lets the requester
+    confirm it and close it now: a MANUAL move from the resolved step to a
+    step of category closed (tour of 23 Sep 2026, D51). False when the
+    workflow closes it only by its timer — then the portal offers no button.
+    """
+    canConfirmResolution: Boolean!
   }
 
   type MyTicketsResult {

@@ -271,7 +271,7 @@ describe('la versione della definizione si muove a ogni modifica (ondata 8)', ()
      *    dello stesso tenant.
      */
     for (const run of [
-      () => M.addWorkflowTransition(null, { definitionId: 'def-1', fromStepName: 'a', toStepName: 'b', trigger: 'manual' }, ctx),
+      () => M.addWorkflowTransition(null, { definitionId: 'def-1', fromStepName: 'a', toStepName: 'b', trigger: 'manual', label: 'Go on' }, ctx),
       () => M.updateWorkflowTransition(null, { definitionId: 'def-1', transitionId: 't-1', input: { requiresInput: false, label: 'x' } }, ctx),
       () => M.removeWorkflowTransition(null, { definitionId: 'def-1', transitionId: 't-1' }, ctx),
     ]) {
@@ -369,7 +369,7 @@ describe('marchio di personalizzazione (contratto con i seed)', () => {
       { records: [] },
       { records: [makeRecord({ tr: { properties: { trigger: 'manual', label: 'x' } }, fromStep: 'a', toStep: 'b', entityType: 'incident' })] },
     ]
-    await M.addWorkflowTransition(null, { definitionId: 'def-1', fromStepName: 'a', toStepName: 'b' }, ctx)
+    await M.addWorkflowTransition(null, { definitionId: 'def-1', fromStepName: 'a', toStepName: 'b', label: 'Go on' }, ctx)
     expect(writtenCypher()).toContain('wd.customized_at = $customizedAt')
 
     calls.length = 0
@@ -526,6 +526,73 @@ describe('innesco e condizione delle transizioni sono vocabolari chiusi (B·M-4)
     await expect(M.addWorkflowTransition(null, {
       definitionId: 'def-1', fromStepName: 'a', toStepName: 'b', trigger: 'timer_scaduto',
     }, ctx)).rejects.toThrow(/trigger "timer_scaduto" out of vocabulary/)
+  })
+})
+
+/**
+ * Tour of 23 Sep 2026 — a manual transition is a button on the ticket, and its
+ * label is the button's text. The designer blanked the label of a return arrow
+ * in its data, so saving any other change of that arrow sent `label: ''`, and
+ * both writes stored it: «Reopen» became an empty button on every ticket.
+ *
+ * The write reads each arrow back as it LEFT it and, when a manual one has no
+ * label, refuses from INSIDE the write transaction — which the driver then
+ * rolls back, so nothing of the save stays.
+ */
+describe('a manual transition cannot be left without a label (tour of 23 Sep 2026)', () => {
+  const base = { definitionId: 'def-1', steps: null, positions: [], expectedVersion: null }
+  const reopen = { transitionId: 't-reopen', label: '', trigger: 'manual', requiresInput: false, inputField: null, condition: 'all_tasks_complete', timerHours: null }
+  const leftBlank = makeRecord({ id: 't-reopen', fromStep: 'resolved', toStep: 'in_progress', blankManualLabel: true })
+  const refusal = (p: Promise<unknown>) => p.then(() => null, (e: unknown) => e as GraphQLError)
+
+  it('saveWorkflowChanges refuses it, naming the arrow, from inside the write, and saves nothing', async () => {
+    results = [{ records: [makeRecord({ version: 3 })] }, { records: [leftBlank] }]
+    const e = await refusal(M.saveWorkflowChanges(null, { ...base, transitions: [reopen] }, ctx))
+    expect(e).toBeInstanceOf(GraphQLError)
+    expect(e!.message).toMatch(/manual transition «resolved» → «in_progress» would be left without a label/)
+    expect(e!.extensions).toMatchObject({
+      code: 'BAD_USER_INPUT',
+      i18n: { key: 'errors.workflow.manualTransitionNeedsLabel', params: { from: 'resolved', to: 'in_progress' } },
+    })
+    // Thrown by the transaction function itself: the driver rolls the write back.
+    await expect(mockSession.executeWrite.mock.results[0]!.value).rejects.toBe(e)
+    expect(calls.some((c) => c.cypher.includes('wd.version + 1'))).toBe(false)
+    expect(invalidateWorkflowCache).not.toHaveBeenCalled()
+    expect(audit).not.toHaveBeenCalled()
+  })
+
+  it('the check reads each arrow AFTER the write, so a new trigger or a new label counts', async () => {
+    results = [{ records: [makeRecord({ version: 3 })] }]
+    await M.saveWorkflowChanges(null, { ...base, transitions: [reopen] }, ctx).catch(() => null)
+    const cypher = calls.find((c) => c.cypher.includes('UNWIND $transitions'))!.cypher
+    expect(cypher).toContain("(t.trigger = 'manual' AND trim(coalesce(t.label, '')) = '') AS blankManualLabel")
+    expect(cypher.indexOf('SET t.label')).toBeLessThan(cypher.indexOf('AS blankManualLabel'))
+  })
+
+  it('an arrow the write leaves labelled, or not manual, lets the save through', async () => {
+    results = [
+      { records: [makeRecord({ version: 3 })] },
+      { records: [makeRecord({ fromStep: 'resolved', toStep: 'closed', blankManualLabel: false })] },
+      { records: [makeRecord({ wd: { properties: { id: 'def-1', entity_type: 'incident', version: 4 } } })] },
+      { records: [] },
+    ]
+    await M.saveWorkflowChanges(null, { ...base, transitions: [{ ...reopen, transitionId: 't-close', trigger: 'timer', timerHours: 72 }] }, ctx)
+    expect(calls.some((c) => c.cypher.includes('wd.version + 1'))).toBe(true)
+    expect(invalidateWorkflowCache).toHaveBeenCalledWith('c-two', 'incident')
+  })
+
+  it('updateWorkflowTransition refuses it the same way, inside the write, and re-reads nothing', async () => {
+    results = [{ records: [leftBlank] }]
+    const e = await refusal(M.updateWorkflowTransition(null, {
+      definitionId: 'def-1', transitionId: 't-reopen', input: { requiresInput: false, label: '', condition: 'all_tasks_complete' },
+    }, ctx))
+    expect(e!.extensions).toMatchObject({ code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.manualTransitionNeedsLabel' } })
+    await expect(mockSession.executeWrite.mock.results[0]!.value).rejects.toBe(e)
+    const written = calls.find((c) => /SET t\.label/.test(c.cypher))!
+    expect(written.cypher.indexOf('SET t.label')).toBeLessThan(written.cypher.indexOf('AS blankManualLabel'))
+    expect(written.params).toMatchObject({ labelGiven: true, label: '' })
+    expect(calls.filter((c) => c.mode === 'read')).toHaveLength(0)
+    expect(invalidateWorkflowCache).not.toHaveBeenCalled()
   })
 })
 

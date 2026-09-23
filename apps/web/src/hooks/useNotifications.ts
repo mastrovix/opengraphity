@@ -121,7 +121,8 @@ export function useNotifications() {
   const [connected, setConnected] = useState(false)
   const abortRef       = useRef<AbortController | null>(null)
   const mountedRef     = useRef(true)
-  const connectedRef   = useRef(false)
+  /** The reconnection waiting after a drop: the cleanup cancels it with the stream. */
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   /** Cadute consecutive senza riuscire a riconnettersi. Zero = il canale sta su. */
   const caduteDiFilaRef = useRef(0)
 
@@ -208,20 +209,27 @@ export function useNotifications() {
           // stato fino a stasera: 1.074 righe di rumore su un tenant solo.
           clientLogger.warn('SSE notification channel dropped — reconnecting', dettagli)
         }
-        setTimeout(connect, RECONNECT_DELAY_MS)
+        reconnectTimerRef.current = setTimeout(connect, RECONNECT_DELAY_MS)
       }
     })
   }, [loadSaved])
 
+  /*
+   * One channel per run of the effect: the cleanup aborts the stream AND
+   * cancels a reconnection still waiting, so a second run (StrictMode at
+   * mount, Fast Refresh, an `Activity` shown again) opens the only live one.
+   * A `connectedRef` guard for StrictMode stood here and could never fire,
+   * because the cleanup reset it before the second run (tour of 23 Sep 2026);
+   * the waiting reconnection, instead, opened a second channel.
+   */
   useEffect(() => {
     mountedRef.current = true
     void loadSaved()
-    if (connectedRef.current) return   // StrictMode: already connected from first mount
-    connectedRef.current = true
     connect()
     return () => {
-      mountedRef.current   = false
-      connectedRef.current = false
+      mountedRef.current = false
+      if (reconnectTimerRef.current !== null) clearTimeout(reconnectTimerRef.current)
+      reconnectTimerRef.current = null
       abortRef.current?.abort()
     }
   }, [connect, loadSaved])

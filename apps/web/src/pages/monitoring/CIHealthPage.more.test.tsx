@@ -22,7 +22,7 @@ function row(over: Partial<CIHealthRow> & { id: string; name: string }): CIHealt
   return {
     type: 'server', environment: 'production', health: 'down', healthSource: 'monitoring',
     healthSince: new Date(Date.now() - 42 * 60_000).toISOString(), lastEventAt: new Date(Date.now() - 5 * 60_000).toISOString(),
-    firingEvents: 2, dependents: 7, servicesCount: 2, ownerTeam: 'DBA', ...over,
+    firingEvents: 2, dependents: 7, servicesCount: 2, ownerTeam: 'DBA', supportTeam: null, ...over,
   }
 }
 

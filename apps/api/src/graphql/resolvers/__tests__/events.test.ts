@@ -1098,18 +1098,18 @@ describe('ciHealthOverview', () => {
   const COUNTS = { down: 2, degraded: 1, operational: 5, unmonitored: 12, downDependents: 9, degradedDependents: 3 }
   const row = (over: Record<string, unknown> = {}) => ({
     id: 'ci-1', name: 'db-01', label: 'Server', environment: 'production', health: 'down', healthSource: 'monitoring',
-    healthSince: '2026-09-09T10:00:00Z', lastEventAt: '2026-09-09T10:05:00Z', firingEvents: 2, dependents: 7, servicesCount: 3, ownerTeam: 'DBA', ...over,
+    healthSince: '2026-09-09T10:00:00Z', lastEventAt: '2026-09-09T10:05:00Z', firingEvents: 2, dependents: 7, servicesCount: 3, ownerTeam: 'DBA', supportTeam: 'Unix Ops', ...over,
   })
 
   const OVERVIEW_RE = /RETURN down, degraded, operational, unmonitored, downDependents, degradedDependents, total, items/
 
   it('P-2 — UNA query: contatori su tutto il tenant + total + righe ordinate per gravità, dipendenti DESC, nome; type dalla label; nessun OPTIONAL MATCH moltiplicativo', async () => {
-    onCypher([[OVERVIEW_RE, { ...COUNTS, total: 8, items: [row(), row({ id: 'ci-2', name: 'app', label: 'Application', health: 'operational', healthSource: 'manual', dependents: 0, servicesCount: 0, ownerTeam: null, healthSince: null, lastEventAt: null, firingEvents: 0 })] }]])
+    onCypher([[OVERVIEW_RE, { ...COUNTS, total: 8, items: [row(), row({ id: 'ci-2', name: 'app', label: 'Application', health: 'operational', healthSource: 'manual', dependents: 0, servicesCount: 0, ownerTeam: null, supportTeam: null, healthSince: null, lastEventAt: null, firingEvents: 0 })] }]])
     const out = await eventResolvers.Query.ciHealthOverview(null, {}, viewer)
     expect(out).toMatchObject({ down: 2, degraded: 1, operational: 5, unmonitored: 12, downDependents: 9, degradedDependents: 3, total: 8 })
     expect(out.items).toEqual([
-      { id: 'ci-1', name: 'db-01', type: 'server', environment: 'production', health: 'down', healthSource: 'monitoring', healthSince: '2026-09-09T10:00:00Z', lastEventAt: '2026-09-09T10:05:00Z', firingEvents: 2, dependents: 7, servicesCount: 3, ownerTeam: 'DBA' },
-      { id: 'ci-2', name: 'app', type: 'application', environment: 'production', health: 'operational', healthSource: 'manual', healthSince: null, lastEventAt: null, firingEvents: 0, dependents: 0, servicesCount: 0, ownerTeam: null },
+      { id: 'ci-1', name: 'db-01', type: 'server', environment: 'production', health: 'down', healthSource: 'monitoring', healthSince: '2026-09-09T10:00:00Z', lastEventAt: '2026-09-09T10:05:00Z', firingEvents: 2, dependents: 7, servicesCount: 3, ownerTeam: 'DBA', supportTeam: 'Unix Ops' },
+      { id: 'ci-2', name: 'app', type: 'application', environment: 'production', health: 'operational', healthSource: 'manual', healthSince: null, lastEventAt: null, firingEvents: 0, dependents: 0, servicesCount: 0, ownerTeam: null, supportTeam: null },
     ])
     expect(calls()).toHaveLength(1)   // erano tre (contatori, pagina, total)
     const q = callMatching(OVERVIEW_RE)!
@@ -1129,6 +1129,8 @@ describe('ciHealthOverview', () => {
     // firing e team solo sulle righe della pagina (dopo SKIP/LIMIT), non moltiplicativi
     expect(q.cypher).toMatch(/LIMIT toInteger\(\$limit\)\s+RETURN collect\(\{[\s\S]*firingEvents: COUNT \{ \(:Event \{tenant_id: \$tenantId, status: 'firing'\}\)-\[:RAISED_ON\]->\(ci\) \}/)
     expect(q.cypher).toContain('ownerTeam: head([(ci)-[:OWNED_BY]->(t:Team {tenant_id: $tenantId}) | t.name])')
+    // tour of 23 Sep 2026: the team that acts on an unhealthy CI is its support group
+    expect(q.cypher).toContain('supportTeam: head([(ci)-[:SUPPORTED_BY]->(t:Team {tenant_id: $tenantId}) | t.name])')
     // Servizi monitorati (ondata 3): quante mappe ATTIVE includono il CI, nello stesso collect (nessuna query in più, nessuna riga moltiplicata)
     expect(q.cypher).toContain("servicesCount: COUNT { (:ServiceMap {tenant_id: $tenantId, status: 'active'})-[:INCLUDES]->(ci) }")
     expect(q.cypher).toContain("label: head([l IN labels(ci) WHERE l <> 'ConfigurationItem'])")
@@ -1151,6 +1153,14 @@ describe('ciHealthOverview', () => {
     onCypher([[OVERVIEW_RE, { ...COUNTS, total: 0, items: [] }]])
     await eventResolvers.Query.ciHealthOverview(null, { filter: { type: 'erp_system' } }, operator)
     expect(callMatching(OVERVIEW_RE)!.params['typeLabel']).toBe('ErpSystem')
+
+    // the support group, the team that acts on the CI (SUPPORTED_BY, scoped to the tenant)
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    onCypher([[OVERVIEW_RE, { ...COUNTS, total: 0, items: [] }]])
+    await eventResolvers.Query.ciHealthOverview(null, { filter: { supportTeam: ' team-4 ' } }, operator)
+    const bySupport = callMatching(OVERVIEW_RE)!
+    expect(bySupport.cypher).toContain('WHERE ci.health IS NOT NULL AND EXISTS { (ci)-[:SUPPORTED_BY]->(:Team {id: $supportTeam, tenant_id: $tenantId}) }')
+    expect(bySupport.params['supportTeam']).toBe('team-4')
 
     // Ondata 6: un tipo che quel cliente NON ha non produce più un'etichetta
     // inventata e una lista vuota («nessun CI in quello stato»), ma un errore

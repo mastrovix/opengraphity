@@ -27,6 +27,11 @@ export interface WorkflowStepMeta {
   order:      number
 }
 
+/** The internal name of a step, readable: `waiting_vendor` → «waiting vendor». */
+function readableStepName(stepName: string): string {
+  return stepName.replace(/_/g, ' ')
+}
+
 /**
  * Fetch workflow step metadata for an entity type. Cached by Apollo so the
  * same tenant+entityType is shared across components.
@@ -89,12 +94,21 @@ export function useWorkflowSteps(entityType: string) {
       !!stepName && openSet.has(stepName)
     /** Le etichette di tutte le definizioni attive: vedi sopra. */
     const etichetteDiTutti = new Map((etichette?.workflowStepLabels ?? []).map((s) => [s.name, s]))
+    /*
+     * A step with no label to show — no active definition declares it, or its
+     * label is empty — is named by its internal name made readable (tour of
+     * 23 Sep 2026). `labelFor` used to give back the raw name, so the readable
+     * fallback every caller wrote after it (`labelFor(s) || s.replace(…)`)
+     * never ran and the pages showed «waiting_vendor». An orphan step is still
+     * told apart by `isKnownStep` (TicketStatusBadge marks it), and the raw
+     * name is the caller's own argument.
+     */
     const labelFor = (stepName: string | null | undefined) => {
       if (!stepName) return ''
       const dalProcesso = byName.get(stepName)
-      if (dalProcesso) return localizedLabel(dalProcesso) || stepName
+      if (dalProcesso) return localizedLabel(dalProcesso) || readableStepName(stepName)
       const altrove = etichetteDiTutti.get(stepName)
-      return (altrove && localizedLabel(altrove)) || stepName
+      return (altrove && localizedLabel(altrove)) || readableStepName(stepName)
     }
     /** Il passo è dichiarato da QUALCHE definizione attiva? Falso = orfano davvero. */
     const isKnownStep = (stepName: string | null | undefined) =>

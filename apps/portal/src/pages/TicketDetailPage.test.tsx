@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import { TicketDetailPage } from './TicketDetailPage'
 import { GET_MY_TICKET, GET_ME, GET_TICKET_CATEGORIES } from '@/graphql/queries'
-import { ADD_TICKET_COMMENT, UPDATE_COMMENT, DELETE_COMMENT, REOPEN_TICKET } from '@/graphql/mutations'
+import { ADD_TICKET_COMMENT, UPDATE_COMMENT, DELETE_COMMENT, REOPEN_TICKET, CONFIRM_TICKET_RESOLUTION } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 
 const meMock: GqlMock = {
@@ -17,6 +17,7 @@ const TICKET = {
   // ticket è chiuso o risolto: il nome del passo è del cliente (ondata 8 · B-22).
   statusCategory: 'active', statusLabel: null,
   priority: 'high', category: 'hardware', createdAt: '2026-09-08T08:00:00Z', updatedAt: '2026-09-08T09:00:00Z', assignedTeam: 'Service Desk',
+  canConfirmResolution: false,
   comments: [
     { __typename: 'EntityComment', id: 'c1', body: 'Ciao, ho un problema', isInternal: false, authorId: 'me-1', authorName: 'Mario Rossi', authorEmail: 'mario@acme.com', createdAt: '2026-09-08T08:10:00Z' },
     { __typename: 'EntityComment', id: 'c2', body: 'Ci stiamo lavorando', isInternal: false, authorId: 'agent-1', authorName: 'Anna', authorEmail: 'anna@acme.com', createdAt: '2026-09-08T08:30:00Z' },
@@ -293,6 +294,30 @@ describe('TicketDetailPage — le azioni', () => {
     await user.click(await screen.findByRole('button', { name: 'Reopen ticket' }))
     // La mutation e' partita: il ticket si rilegge dal server, non si indovina.
     await waitFor(() => { expect(screen.getByRole('button', { name: 'Reopen ticket' })).toBeInTheDocument() })
+  })
+
+  /*
+   * «It works» (tour of 23 Sep 2026, D51): the requester closes a resolved
+   * ticket now instead of waiting three days for the timer — only where the
+   * workflow has that move.
+   */
+  it('a resolved ticket whose workflow allows it offers «It works — close the ticket», which closes it on the server', async () => {
+    const conferma: GqlMock = {
+      request: { query: CONFIRM_TICKET_RESOLUTION, variables: { ticketId: 'tk-1' } },
+      result: { data: { confirmTicketResolution: { __typename: 'Ticket', id: 'tk-1', status: 'closed', updatedAt: '2026-09-08T10:00:00Z' } } },
+    }
+    const { user } = renderWithProviders(<TicketDetailPage />, { ...ROUTE, mocks: [meMock, categoriesMock, ticketMock({ ...risolto, canConfirmResolution: true } as never), conferma] })
+    const button = await screen.findByRole('button', { name: 'It works — close the ticket' })
+    expect(screen.getByRole('button', { name: 'Reopen ticket' })).toBeInTheDocument()
+    await user.click(button)
+    // Sent: the ticket is read again from the server, not guessed.
+    await waitFor(() => { expect(screen.getByRole('button', { name: 'It works — close the ticket' })).toBeInTheDocument() })
+  })
+
+  it('a resolved ticket closed only by its timer offers «Reopen» and no confirmation', async () => {
+    renderWithProviders(<TicketDetailPage />, { ...ROUTE, mocks: [meMock, categoriesMock, ticketMock(risolto as never)] })
+    await screen.findByRole('button', { name: 'Reopen ticket' })
+    expect(screen.queryByRole('button', { name: 'It works — close the ticket' })).toBeNull()
   })
 
   it('un allegato si scarica col suo nome, passando dal bearer', async () => {

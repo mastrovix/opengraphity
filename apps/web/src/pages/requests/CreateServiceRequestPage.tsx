@@ -27,7 +27,7 @@ import { GET_CATALOG_FORM_TO_FILL } from '@/graphql/queries'
 import type { CatalogFormDefinition, FormAnswerValue, FormAnswers } from '@opengraphity/types'
 import { customFieldsInput, missingCustomFields, useCreationCustomFieldDefs } from '@/components/ticket/customFields/customFields'
 import { showError } from '@/lib/showError'
-import { errorFieldName, errorHasKey } from '@opengraphity/web-core'
+import { errorFieldName, errorHasKey, humanizeValue } from '@opengraphity/web-core'
 import { errorMessage } from '@/hooks/useMutationWithToast'
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
@@ -268,8 +268,10 @@ export function CreateServiceRequestPage() {
   }
 
   const togliFile = async (campo: string, id: string) => {
-    const r = await cancellaAllegato({ variables: { id } })
-    if (!r.data) return
+    // Refused: `onError` has already said why, and Apollo 4 rejects as well — uncaught, that was an «Uncaught (in promise)».
+    const r = await cancellaAllegato({ variables: { id } }).catch(() => null)
+    // Not removed on the server, not removed here: the file is still on the draft.
+    if (!r?.data) return
     setFileDelModulo((p) => ({ ...p, [campo]: (p[campo] ?? []).filter((f) => f.id !== id) }))
   }
 
@@ -418,7 +420,8 @@ export function CreateServiceRequestPage() {
       setCheckingSla(false)
     }
     if (decisione === 'cancelled') return
-    await createRequest({
+    // Not awaited: nothing follows, and a refusal is said by `onError` (Apollo 4 also rejects the promise).
+    void createRequest({
       variables: {
         input: {
           title:       title.trim(),
@@ -560,7 +563,7 @@ export function CreateServiceRequestPage() {
                     : <>
                         <option value="" disabled>{t('pages.createRequest.priorityPlaceholder')}</option>
                         {priorityValues.map(v => (
-                          <option key={v} value={v}>{labelOf('priority', v) ?? v.charAt(0).toUpperCase() + v.slice(1)}</option>
+                          <option key={v} value={v}>{labelOf('priority', v) ?? humanizeValue(v)}</option>
                         ))}
                       </>
                   }
@@ -650,6 +653,7 @@ export function CreateServiceRequestPage() {
                 referenceSearchLabel={t('pages.catalogForms.fill.searchReference')}
                 referenceNoResultsLabel={t('pages.catalogForms.fill.noResults')}
                 referenceClearLabel={t('pages.catalogForms.fill.clearReference')}
+                referenceSearchFailedLabel={t('pages.catalogForms.fill.searchFailed')}
               />
             </div>
           )}

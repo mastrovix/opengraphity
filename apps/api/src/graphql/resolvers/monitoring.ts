@@ -46,8 +46,14 @@ async function checkRedis(): Promise<{ status: string; latencyMs: number | null;
   }
 }
 
+/**
+ * Since Keycloak 25 health and metrics live on the MANAGEMENT interface (port
+ * 9000), not on the HTTP port: `KEYCLOAK_URL/health/ready` answers 404 while
+ * sign-in works (tour of 23 Sep 2026, D66 — the page said «Error — HTTP 404»).
+ * The container healthcheck in infra/docker-compose.yml already probes 9000.
+ */
 async function checkKeycloak(): Promise<{ status: string; latencyMs: number | null; error: string | null }> {
-  const kcUrl = envOrThrowInProd('KEYCLOAK_URL', 'http://localhost:8080')
+  const kcUrl = envOrThrowInProd('KEYCLOAK_MANAGEMENT_URL', 'http://localhost:9000')
   const start  = Date.now()
   try {
     const res = await fetch(`${kcUrl}/health/ready`, { signal: AbortSignal.timeout(3000) })

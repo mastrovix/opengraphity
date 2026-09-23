@@ -71,7 +71,7 @@ async function relatedCIs(
     const pattern = direction === 'outgoing' ? '(n)-[rel]->(d)' : '(n)<-[rel]-(d)'
     const r = await session.executeRead(tx =>
       tx.run(
-        `MATCH (n {id: $id, tenant_id: $tenantId})
+        `MATCH (n:ConfigurationItem {id: $id, tenant_id: $tenantId})
          MATCH ${pattern}
          WHERE d.tenant_id = $tenantId AND ANY(l IN labels(d) WHERE l IN $labels)
          RETURN properties(d) AS props, head([l IN labels(d) WHERE l <> 'ConfigurationItem']) AS label, type(rel) AS relation
@@ -100,7 +100,7 @@ export function buildFieldResolvers(ciType: CITypeWithDefinitions, allTypes: CIT
       if (parent._prefetched) return parent._ownerGroup ?? null
       return withSession(async session => {
         const r = await session.executeRead(tx =>
-          tx.run('MATCH (n {id: $id, tenant_id: $tenantId})-[:OWNED_BY]->(t:Team {tenant_id: $tenantId}) RETURN properties(t) AS p',
+          tx.run('MATCH (n:ConfigurationItem {id: $id, tenant_id: $tenantId})-[:OWNED_BY]->(t:Team {tenant_id: $tenantId}) RETURN properties(t) AS p',
             { id: parent.id, tenantId: ctx.tenantId }),
         )
         if (!r.records.length) return null
@@ -112,7 +112,7 @@ export function buildFieldResolvers(ciType: CITypeWithDefinitions, allTypes: CIT
       if (parent._prefetched) return parent._supportGroup ?? null
       return withSession(async session => {
         const r = await session.executeRead(tx =>
-          tx.run('MATCH (n {id: $id, tenant_id: $tenantId})-[:SUPPORTED_BY]->(t:Team {tenant_id: $tenantId}) RETURN properties(t) AS p',
+          tx.run('MATCH (n:ConfigurationItem {id: $id, tenant_id: $tenantId})-[:SUPPORTED_BY]->(t:Team {tenant_id: $tenantId}) RETURN properties(t) AS p',
             { id: parent.id, tenantId: ctx.tenantId }),
         )
         if (!r.records.length) return null

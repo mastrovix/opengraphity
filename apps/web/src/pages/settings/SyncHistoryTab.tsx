@@ -33,7 +33,9 @@ export function SyncHistoryTab({
   return (
     <div>
       <div style={{ marginBottom: 16 }}>
-        <Select style={{ ...inputStyle, width: 240 }} value={selected} onChange={e => handleChange(e.target.value)}>
+        {/* No visible label here: the list carries its own name, or a screen
+            reader announced a nameless list (tour of 23 Sep 2026). */}
+        <Select aria-label={t('pages.sync.historySource')} style={{ ...inputStyle, width: 240 }} value={selected} onChange={e => handleChange(e.target.value)}>
           <option value="">{t('pages.sync.selectSource')}</option>
           {sources.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </Select>

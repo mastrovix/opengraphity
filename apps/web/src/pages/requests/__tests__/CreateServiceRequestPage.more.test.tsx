@@ -26,7 +26,30 @@ import { renderWithProviders, attendiURL } from '@/test/utils'
 import { apolloFinto, nomeOperazione } from '@/test/apolloFinto'
 import { CreateServiceRequestPage } from '../CreateServiceRequestPage'
 
-vi.mock('@apollo/client/react', async () => (await import('@/test/apolloFinto')).moduloApollo())
+/*
+ * Mutations as Apollo Client 4 runs them (useMutation.js, 4.3.1): a failed one
+ * calls its `onError`, THEN rejects — the shared fake resolves instead. As in
+ * Apollo, a promise nobody awaits stays quiet.
+ */
+vi.mock('@apollo/client/react', async () => {
+  const base = (await import('@/test/apolloFinto')).moduloApollo()
+  type Mutate = (options?: unknown) => Promise<{ data?: unknown; errors?: unknown[] } | undefined>
+  return {
+    ...base,
+    useMutation: (...args: Parameters<typeof base.useMutation>) => {
+      const [mutate, result] = base.useMutation(...args) as unknown as [Mutate, Record<string, unknown>]
+      const likeApollo4: Mutate = (options) => {
+        const promise = mutate(options).then((r) => {
+          if (r?.errors?.length) throw r.errors[0]
+          return r
+        })
+        promise.catch(() => {})
+        return promise
+      }
+      return [likeApollo4, result] as const
+    },
+  }
+})
 
 const toastSuccess = vi.fn()
 const toastError = vi.fn()
@@ -180,6 +203,18 @@ function sentInput(): Record<string, unknown> {
 
 function answers(): Record<string, unknown> {
   return JSON.parse(screen.getByTestId('answers').textContent ?? '{}') as Record<string, unknown>
+}
+
+/** Runs `body` while collecting the promise rejections nobody handled. */
+async function collectingUnhandledRejections(body: (seen: unknown[]) => Promise<void>): Promise<void> {
+  const seen: unknown[] = []
+  const listener = (reason: unknown) => { seen.push(reason) }
+  process.on('unhandledRejection', listener)
+  try {
+    await body(seen)
+  } finally {
+    process.off('unhandledRejection', listener)
+  }
 }
 
 beforeEach(() => {
@@ -541,6 +576,25 @@ describe('CreateServiceRequestPage — the catalog form', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: 'remove spec.pdf' })).not.toBeInTheDocument())
     expect(apolloFinto.chiamata('DeleteFormAttachment')).toEqual({ id: 'att-1' })
   })
+
+  // Found in the tour of 23 Sep 2026, fixed: the removal awaited the mutation
+  // with nothing to catch it, and Apollo 4 rejects a refusal after `onError`
+  // has said why — every refused removal was also an «Uncaught (in promise)».
+  it('a refused removal is said, keeps the file, and leaves no unhandled rejection behind', async () => {
+    upload.mockResolvedValue({ id: 'att-1', filename: 'spec.pdf', sizeBytes: 1 })
+    await collectingUnhandledRejections(async (seen) => {
+      const { user } = setup()
+      await chooseItem(user, 'cat-1')
+      await user.click(screen.getByRole('button', { name: 'upload doc' }))
+      apolloFinto.esiti['DeleteFormAttachment'] = { error: new Error('The file is locked by another upload') }
+      await user.click(await screen.findByRole('button', { name: 'remove spec.pdf' }))
+      await waitFor(() => expect(toastError).toHaveBeenCalledWith('The file is locked by another upload'))
+      expect(screen.getByRole('button', { name: 'remove spec.pdf' })).toBeInTheDocument()
+      // Node reports an unhandled rejection at the end of the turn it happened in: one more turn is enough.
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(seen).toEqual([])
+    })
+  })
 })
 
 describe('CreateServiceRequestPage — server rejections', () => {
@@ -573,6 +627,23 @@ describe('CreateServiceRequestPage — server rejections', () => {
     await submit(user)
     await waitFor(() => expect(toastError).toHaveBeenCalledWith('generic failure'))
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  // Found in the tour of 23 Sep 2026, fixed: the submit awaited the creation
+  // with nothing to catch it, and Apollo 4 rejects a refusal after `onError`
+  // has said why — every refused request was also an «Uncaught (in promise)».
+  it('a refused request leaves no unhandled rejection behind', async () => {
+    await collectingUnhandledRejections(async (seen) => {
+      const { user } = setup()
+      await chooseItem(user, 'cat-1')
+      apolloFinto.esiti['CreateServiceRequest'] = { error: new Error('generic failure') }
+      await submit(user)
+      await waitFor(() => expect(toastError).toHaveBeenCalledWith('generic failure'))
+      // Node reports an unhandled rejection at the end of the turn it happened in: one more turn is enough.
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(seen).toEqual([])
+      expect(toastSuccess).not.toHaveBeenCalled()
+    })
   })
 
   it('a form republished while filling drops the old answers and reloads the form', async () => {

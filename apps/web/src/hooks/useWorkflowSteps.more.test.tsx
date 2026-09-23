@@ -3,7 +3,8 @@
  * hard-coding step names. The helpers below are what the pages build on:
  * - `isTerminal` / `isOpen` split lists into live and finished tickets;
  * - `labelFor` must name a step even when it belongs to ANOTHER active
- *   definition (a ticket parked on it used to show the internal name);
+ *   definition (a ticket parked on it used to show the internal name), and
+ *   a step nobody labels reads as its name made readable, never raw;
  * - `isKnownStep` tells a truly orphan step from one of another definition;
  * - purpose helpers let a page recognise a renamed approval step;
  * - `reachableFrom` follows the transitions, not the step position (G-9).
@@ -40,6 +41,7 @@ beforeEach(() => {
   apolloFinto.risposte['GetWorkflowStepLabels'] = { workflowStepLabels: [
     { name: 'submitted', label: 'Submitted', labels: [] },
     { name: 'blank', label: '', labels: [] },
+    { name: 'on_hold', label: '', labels: [] },
   ] }
 })
 
@@ -60,7 +62,7 @@ describe('useWorkflowSteps — derived helpers', () => {
     expect(result.current.isOpen(undefined)).toBe(false)
   })
 
-  it('labelFor reads the process first, then any other active definition, then the raw name', () => {
+  it('labelFor reads the process first, then any other active definition, then the name made readable', () => {
     const { result } = renderHook(() => useWorkflowSteps('change'))
     expect(result.current.labelFor('review')).toBe('REVIEW')
     // A step of the process with an empty label falls back to its name, never to ''.
@@ -69,6 +71,10 @@ describe('useWorkflowSteps — derived helpers', () => {
     expect(result.current.labelFor('submitted')).toBe('Submitted')
     expect(result.current.labelFor('blank')).toBe('blank')
     expect(result.current.labelFor('ghost')).toBe('ghost')
+    // Tour of 23 Sep 2026: the name used to come back raw, so every caller's
+    // readable fallback was dead and the pages showed «waiting_vendor».
+    expect(result.current.labelFor('waiting_vendor')).toBe('waiting vendor')
+    expect(result.current.labelFor('on_hold')).toBe('on hold')
     expect(result.current.labelFor(null)).toBe('')
   })
 

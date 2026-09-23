@@ -1,8 +1,9 @@
 /**
  * assignServiceRequestToUser — giro nel browser del 14 set 2026 (#41): una
  * richiesta non si poteva assegnare a nessuno, e ASSIGNEE restava «—» per
- * sempre. Le richieste non hanno un gruppo assegnatario, quindi la regola
- * «prima il gruppo» degli incident non vale; valgono queste:
+ * sempre. D56 (23 Sep 2026): a request now has its team (the fulfilment
+ * group of its catalog item), so the rule of incidents holds — first the
+ * team, then a member of it (`assertUserInAssignedTeam`); and these:
  *  - si assegna a chi ha il permesso «Ricevere ticket» (ruoli di fabbrica admin,
  *    operator), non a un viewer o a un utente del portale;
  *  - una richiesta conclusa non si riassegna;
@@ -23,7 +24,11 @@ vi.mock('../../../services/requestService.js', () => ({
   createRequest: vi.fn(),
   mapRequest:    vi.fn((p: Record<string, unknown>) => p),
 }))
-vi.mock('../../../services/ticketAssignment.js', () => ({ setTicketUser: vi.fn().mockResolvedValue({ userName: 'Ada' }) }))
+vi.mock('../../../services/ticketAssignment.js', () => ({
+  setTicketUser: vi.fn().mockResolvedValue({ userName: 'Ada' }),
+  assertUserInAssignedTeam: vi.fn().mockResolvedValue({ teamId: 'team-1', teamName: 'Desk' }),
+}))
+vi.mock('../../../services/requestAssignment.js', () => ({ assignRequestToTeam: vi.fn() }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 // Chi riceve i ticket lo dice il ruolo dell'assegnatario (ondata 7): qui i ruoli di fabbrica.
 vi.mock('../../../lib/roles.js', async () => {
@@ -35,7 +40,8 @@ vi.mock('../../../lib/roles.js', async () => {
 
 const { serviceRequestResolvers } = await import('../service_request.js')
 const { runQueryOne } = await import('@opengraphity/neo4j')
-const { setTicketUser } = await import('../../../services/ticketAssignment.js')
+const { setTicketUser, assertUserInAssignedTeam } = await import('../../../services/ticketAssignment.js')
+const { assignRequestToTeam } = await import('../../../services/requestAssignment.js')
 const { audit } = await import('../../../lib/audit.js')
 
 const assign = serviceRequestResolvers.Mutation.assignServiceRequestToUser
@@ -58,6 +64,15 @@ describe('assignServiceRequestToUser', () => {
     expect(setTicketUser).toHaveBeenCalledWith(h.session, 'ServiceRequest', 'sr-1', 'user-9', 'tenant-1')
     expect(audit).toHaveBeenCalledWith(ctx, 'request.assigned', 'ServiceRequest', 'sr-1')
     expect(r).toEqual({ id: 'sr-1', title: 'T' })
+    // D56: first the team, then a member of it
+    expect(assertUserInAssignedTeam).toHaveBeenCalledWith(h.session, 'ServiceRequest', 'sr-1', 'user-9', 'tenant-1')
+  })
+
+  it('D56: a person outside the team of the request is refused, and nothing is written', async () => {
+    vi.mocked(runQueryOne).mockResolvedValueOnce({ completedAt: null, assigneeRole: 'operator', assigneeFound: true })
+    vi.mocked(assertUserInAssignedTeam).mockRejectedValueOnce(new GraphQLError('assign a group first', { extensions: { code: 'BAD_USER_INPUT' } }))
+    await failure(assign(undefined, { id: 'sr-1', userId: 'user-9' }, ctx))
+    expect(setTicketUser).not.toHaveBeenCalled()
   })
 
   it('NOT_FOUND se la richiesta non esiste nel tenant', async () => {
@@ -92,5 +107,17 @@ describe('assignServiceRequestToUser', () => {
       .mockResolvedValueOnce({ props: { id: 'sr-1' } })
     await assign(undefined, { id: 'sr-1', userId: null }, ctx)
     expect(setTicketUser).toHaveBeenCalledWith(h.session, 'ServiceRequest', 'sr-1', null, 'tenant-1')
+  })
+})
+
+/** D56 (23 Sep 2026): a request moves to another team, and the Audit Log says from which to which. */
+describe('assignServiceRequestToTeam', () => {
+  it('assigns through the service, and audits the change of team and the assignee it detached', async () => {
+    vi.mocked(assignRequestToTeam).mockResolvedValueOnce({ request: { id: 'sr-1' } as never, teamName: 'Network', previousTeamName: 'Desk', unassignedUserName: 'Ada' })
+    const r = await serviceRequestResolvers.Mutation.assignServiceRequestToTeam(undefined, { id: 'sr-1', teamId: 'team-2' }, ctx)
+    expect(assignRequestToTeam).toHaveBeenCalledWith('sr-1', 'team-2', ctx)
+    expect(audit).toHaveBeenCalledWith(ctx, 'request.assigned_team', 'ServiceRequest', 'sr-1', { teamId: 'team-2', to: 'Network', from: 'Desk' })
+    expect(audit).toHaveBeenCalledWith(ctx, 'request.unassigned_user', 'ServiceRequest', 'sr-1', { userId: null, to: null, from: 'Ada', reason: 'team_changed' })
+    expect(r).toEqual({ id: 'sr-1' })
   })
 })

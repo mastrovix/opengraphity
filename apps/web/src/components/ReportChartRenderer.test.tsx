@@ -157,3 +157,30 @@ describe('ReportChartRenderer — KPI and table', () => {
     expect(rows.map((r) => within(r).getAllByRole('cell').map((c) => c.textContent))).toEqual([['INC1', 'Anna'], ['INC2', '—']])
   })
 })
+
+/**
+ * D5 (tour of 23 Sep 2026): «Requests per month» in a half-width widget drew
+ * its forty month labels on top of each other. The renderer measures the
+ * width it has and the axis shows the labels that fit.
+ */
+describe('ReportChartRenderer — a time axis shows the labels its width holds', () => {
+  const months = JSON.stringify(Array.from({ length: 40 }, (_, i) => ({ date: new Date(Date.UTC(2023, 8 + i, 1)).toISOString().slice(0, 10), value: i })))
+  const interval = () => {
+    const x = lastOption().xAxis as { axisLabel?: { interval?: number } }
+    return x.axisLabel?.interval
+  }
+
+  it.each(['line', 'area', 'bar'])('%s at half width: one label in N, not all forty', (chartType) => {
+    const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width: 450 } as DOMRect)
+    render(<ReportChartRenderer chartType={chartType} data={months} title="Per month" />)
+    expect(interval()).toBeGreaterThan(0)
+    spy.mockRestore()
+  })
+
+  it('with room for every month, every month is shown', () => {
+    const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width: 4000 } as DOMRect)
+    render(<ReportChartRenderer chartType="line" data={months} title="Per month" />)
+    expect(interval()).toBe(0)
+    spy.mockRestore()
+  })
+})

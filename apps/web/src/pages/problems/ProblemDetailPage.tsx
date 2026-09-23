@@ -17,7 +17,10 @@ import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SectionCard } from '@/components/ui/SectionCard'
-import { GET_PROBLEM, GET_USERS, GET_TEAMS, GET_ALL_CIS } from '@/graphql/queries'
+import { DetailLayout } from '@/components/ui/DetailLayout'
+import { TeamPicker } from '@/components/pickers/TeamPicker'
+import { TEAM_TYPE } from '@/lib/teamVocabularies'
+import { GET_PROBLEM, GET_USERS, GET_ALL_CIS } from '@/graphql/queries'
 import { GET_PROBLEM_DOSSIER } from '@/graphql/queries/proposals'
 import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
 import {
@@ -133,7 +136,6 @@ interface Problem {
   comments:             ProblemComment[]
 }
 
-interface Team  { id: string; name: string }
 interface User  { id: string; name: string; email: string; teams: { id: string; name: string }[] }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -150,10 +152,6 @@ export function ProblemDetailPage() {
   const [pendingTransition,      setPendingTransition]      = useState<WorkflowTransition | null>(null)
   const [transitionNotes,        setTransitionNotes]        = useState('')
   const [isTransitionDialogOpen, setIsTransitionDialogOpen] = useState(false)
-
-  const [selectedTeamId, setSelectedTeamId] = useState('')
-  const [selectedUserId, setSelectedUserId] = useState('')
-  const [showReassign,   setShowReassign]   = useState(false)
 
   const [ciSearch,      setCiSearch]      = useState('')
 
@@ -173,8 +171,6 @@ export function ProblemDetailPage() {
    * bottone che su 99 problem su 100 darebbe una pagina vuota è peggio di
    * un bottone che non c'è.
    */
-  const [fascicoloAperto, setFascicoloAperto] = useState(false)
-  const [copiato, setCopiato] = useState(false)
   const { data: dossierData } = useQuery<{ problemDossier: string | null }>(GET_PROBLEM_DOSSIER, {
     variables: { problemId: id ?? '' },
     skip: !id,
@@ -185,8 +181,7 @@ export function ProblemDetailPage() {
   const { can } = useMe()
   const canEditCustomFields = can('ticket.work')
   const { data, loading, error, refetch, startPolling, stopPolling } = useQuery<{ problem: Problem | null }>(GET_PROBLEM, { variables: { id }, skip: !id })
-  const { data: usersData }        = useQuery<{ users: User[] }>(GET_USERS)
-  const { data: teamsData }        = useQuery<{ teams: Team[] }>(GET_TEAMS)
+  const { data: usersData, error: usersError } = useQuery<{ users: User[] }>(GET_USERS)
 
   // CM-8: i tipi di CI esclusi per questo tipo di ticket non si propongono (l'API li rifiuta comunque).
   const { excluded: excludedCITypes } = useTicketCIExclusions('problem')
@@ -208,16 +203,6 @@ export function ProblemDetailPage() {
       else toast.success(t('toast.problem.transitionCompleted'))
       setIsTransitionDialogOpen(false); setPendingTransition(null); setTransitionNotes(''); void refetch()
     },
-    onError: (err) => showError(err),
-  })
-
-  const [assignToTeam, { loading: assigningTeam }] = useMutation(ASSIGN_PROBLEM_TO_TEAM, {
-    onCompleted: () => { toast.success(t('toast.problem.teamAssigned')); setSelectedTeamId(''); setShowReassign(false); void refetch() },
-    onError: (err) => showError(err),
-  })
-
-  const [assignToUser, { loading: assigningUser }] = useMutation(ASSIGN_PROBLEM_TO_USER, {
-    onCompleted: () => { toast.success(t('toast.problem.userAssigned')); setSelectedUserId(''); void refetch() },
     onError: (err) => showError(err),
   })
 
@@ -270,8 +255,6 @@ export function ProblemDetailPage() {
 
   const problem         = data?.problem
   useSlaSettling(problem?.slaStatus, !!problem?.resolvedAt, { startPolling, stopPolling })
-  const users           = usersData?.users ?? []
-  const teams           = teamsData?.teams ?? []
   const ciResults       = ciSearchData?.allCIs?.items ?? []
 
   function handleTransitionClick(tr: WorkflowTransition) {
@@ -314,10 +297,10 @@ export function ProblemDetailPage() {
     return (
       <div className="space-y-4" style={{ maxWidth: 1100, margin: '0 auto', padding: 24 }}>
         <Skeleton style={{ height: 32, width: 200 }} />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 24 }}>
+        <DetailLayout sideWidth={340}>
           <div className="space-y-4"><Skeleton style={{ height: 120 }} /><Skeleton style={{ height: 160 }} /></div>
           <div className="space-y-4"><Skeleton style={{ height: 200 }} /><Skeleton style={{ height: 240 }} /></div>
-        </div>
+        </DetailLayout>
       </div>
     )
   }
@@ -356,15 +339,7 @@ export function ProblemDetailPage() {
       />
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        {fascicolo && (
-          <Button
-            variant="secondary"
-            icon={<FileSearch size={13} />}
-            onClick={() => { setCopiato(false); setFascicoloAperto(true) }}
-          >
-            {t('pages.problemDetail.dossier')}
-          </Button>
-        )}
+        <ProblemDossier dossier={fascicolo} />
         <Button
           variant="secondary"
           disabled={exportingPdf}
@@ -389,8 +364,8 @@ export function ProblemDetailPage() {
         <WatcherBar entityType="problem" entityId={problem.id} />
       </div>
 
-      {/* Body grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 24 }}>
+      {/* Body grid: the main column shrinks, the side one keeps its width (D9) */}
+      <DetailLayout sideWidth={340}>
 
         {/* Left column */}
         <div>
@@ -427,81 +402,14 @@ export function ProblemDetailPage() {
               <DetailField label={t('detail.workflowStep')} value={
                 <PhaseBadge
                   phase={problem.workflowInstance?.currentStep ?? problem.status}
-                  label={wfLabelFor(problem.workflowInstance?.currentStep ?? problem.status) || (problem.workflowInstance?.currentStep ?? problem.status).replace(/_/g, ' ')}
+                  label={wfLabelFor(problem.workflowInstance?.currentStep ?? problem.status)}
                   category={wfCategoryOf(problem.workflowInstance?.currentStep ?? problem.status)}
                   style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, textTransform: 'none' }}
                 />
               } />
 
-              {/* Team assignment */}
-              <DetailField label={t('detail.assignedTeam')} value={
-                problem.assignedTeam && !showReassign ? (
-                  <div>
-                    <div style={{ fontWeight: 500 }}>{problem.assignedTeam.name}</div>
-                    <button type="button" onClick={() => setShowReassign(true)} style={{ marginTop: 4, background: 'none', border: 'none', padding: 0, fontSize: 'var(--font-size-body)', color: 'var(--accent)', cursor: 'pointer' }}>{t('detail.reassign')}</button>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {/* F-36: la Select ha un nome accessibile (era senza etichetta). */}
-                    <Select aria-label={t('detail.assignedTeam')} value={selectedTeamId} onChange={(e) => setSelectedTeamId(e.target.value)} style={{ padding: '7px 10px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', background: 'var(--surface)' }}>
-                      <option value="">{t('detail.selectTeam')}</option>
-                      {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                    </Select>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      {showReassign && (
-                        <button type="button" onClick={() => setShowReassign(false)} style={{ flex: 1, padding: '6px 0', background: 'none', border: '1px solid var(--border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', cursor: 'pointer' }}>{t('common.cancel')}</button>
-                      )}
-                      <button type="button" disabled={!selectedTeamId || assigningTeam} onClick={() => { if (!selectedTeamId) return; void assignToTeam({ variables: { problemId: problem.id, teamId: selectedTeamId } }) }} style={{ flex: 1, padding: '6px 0', backgroundColor: (!selectedTeamId || assigningTeam) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedTeamId || assigningTeam) ? 'var(--text-muted)' : colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: (!selectedTeamId || assigningTeam) ? 'not-allowed' : 'pointer' }}>
-                        {assigningTeam ? t('detail.assigning') : t('detail.assign')}
-                      </button>
-                    </div>
-                  </div>
-                )
-              } />
-
-              {/* User assignment */}
-              <DetailField label={t('detail.assignedTo')} value={
-                problem.assignee ? (
-                  <div>
-                    <div style={{ fontWeight: 500 }}>{problem.assignee.name}</div>
-                    <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>{problem.assignee.email}</div>
-                    {/* Togliere l'assegnazione: l'incident si poteva
-                        disassegnare, il problem no (revisione totale · B-18). */}
-                    <button
-                      type="button"
-                      disabled={assigningUser}
-                      onClick={() => void assignToUser({ variables: { problemId: problem.id, userId: null } })}
-                      style={{ marginTop: 6, padding: 0, background: 'none', border: 'none', color: 'var(--accent)', fontSize: 'var(--font-size-body)', cursor: assigningUser ? 'not-allowed' : 'pointer', textDecoration: 'underline' }}
-                    >
-                      {t('detail.removeAssignment')}
-                    </button>
-                  </div>
-                ) : !problem.assignedTeam ? (
-                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                    {t('pages.problemDetail.pickGroupFirst')}
-                  </span>
-                ) : (() => {
-                  const teamUsers = users.filter((u) => u.teams?.some((tm) => tm.id === problem.assignedTeam!.id))
-                  return (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <Select aria-label={t('detail.assignee')} value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} style={{ padding: '7px 10px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', background: 'var(--surface)' }}>
-                        <option value="">{t('detail.selectUser')}</option>
-                        {teamUsers.map((u) => (
-                          <option key={u.id} value={u.id}>{u.name}</option>
-                        ))}
-                      </Select>
-                      {teamUsers.length === 0 && (
-                        <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                          {t('pages.problemDetail.noUserInTeam', { team: problem.assignedTeam.name })}
-                        </span>
-                      )}
-                      <button type="button" disabled={!selectedUserId || assigningUser} onClick={() => { if (!selectedUserId) return; void assignToUser({ variables: { problemId: problem.id, userId: selectedUserId } }) }} style={{ padding: '6px 0', backgroundColor: (!selectedUserId || assigningUser) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedUserId || assigningUser) ? 'var(--text-muted)' : colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: (!selectedUserId || assigningUser) ? 'not-allowed' : 'pointer' }}>
-                        {assigningUser ? t('detail.assigning') : t('detail.assign')}
-                      </button>
-                    </div>
-                  )
-                })()
-              } />
+              {/* Team and person */}
+              <ProblemAssignmentFields problem={problem} usersData={usersData} usersError={usersError} onAssigned={() => void refetch()} />
 
               {/* Affected users */}
               <DetailField label={t('detail.affectedUsers')} value={
@@ -509,13 +417,19 @@ export function ProblemDetailPage() {
                   type="number"
                   value={editAffectedUsers ?? (problem.affectedUsers?.toString() ?? '')}
                   onChange={(e) => setEditAffectedUsers(e.target.value)}
-                  onBlur={() => {
+                  onBlur={(e) => {
                     const val = editAffectedUsers
-                    const num = val !== null ? parseInt(val, 10) : null
-                    if (val !== null && num !== problem.affectedUsers) {
-                      void updateProblem({ variables: { id: problem.id, input: { affectedUsers: num ?? undefined } } })
-                    }
                     setEditAffectedUsers(null)
+                    // What the browser cannot read as a number («-», «1e») reaches us as '':
+                    // it is not an emptied field, and clearing the count would be a lie.
+                    if (e.currentTarget.validity.badInput) { toast.error(t('pages.problemDetail.affectedUsersNotNumber')); return }
+                    if (val === null) return
+                    // An emptied field is a count no longer known: an explicit
+                    // null, which the API stores as such (it went out as NaN).
+                    const next = val.trim() === '' ? null : Number(val)
+                    // Typed and emptied again, or retyped as it was: nothing to save.
+                    if (next === problem.affectedUsers) return
+                    void updateProblem({ variables: { id: problem.id, input: { affectedUsers: next } } })
                   }}
                   placeholder="0"
                   min={0}
@@ -638,7 +552,7 @@ export function ProblemDetailPage() {
           />
 
         </div>
-      </div>
+      </DetailLayout>
 
       {/* Transition Dialog */}
       {isTransitionDialogOpen && pendingTransition && (
@@ -682,6 +596,150 @@ export function ProblemDetailPage() {
           />
         </Modal>
       )}
+    </PageContainer>
+  )
+}
+
+// ── Team and person ───────────────────────────────────────────────────────────
+
+/**
+ * Who works on the problem: a support team first, then a person OF THAT TEAM,
+ * who can be taken off again. The choices being made and the two assignments
+ * live here; the people are read by the page, together with the problem.
+ */
+function ProblemAssignmentFields({ problem, usersData, usersError, onAssigned }: {
+  problem:    Pick<Problem, 'id' | 'assignedTeam' | 'assignee'>
+  usersData:  { users: User[] } | undefined
+  usersError: { message: string } | undefined
+  /** An assignment went through: the problem is read again. */
+  onAssigned: () => void
+}) {
+  const { t } = useTranslation()
+
+  const [selectedTeam, setSelectedTeam] = useState<{ id: string; name: string } | null>(null)
+  const [selectedUserId, setSelectedUserId] = useState('')
+  const [showReassign,   setShowReassign]   = useState(false)
+
+  const [assignToTeam, { loading: assigningTeam }] = useMutation(ASSIGN_PROBLEM_TO_TEAM, {
+    onCompleted: () => { toast.success(t('toast.problem.teamAssigned')); setSelectedTeam(null); setShowReassign(false); onAssigned() },
+    onError: (err) => showError(err),
+  })
+
+  const [assignToUser, { loading: assigningUser }] = useMutation(ASSIGN_PROBLEM_TO_USER, {
+    onCompleted: () => { toast.success(t('toast.problem.userAssigned')); setSelectedUserId(''); onAssigned() },
+    onError: (err) => showError(err),
+  })
+
+  const users = usersData?.users ?? []
+
+  return (
+    <>
+      {/* Team assignment */}
+      <DetailField label={t('detail.assignedTeam')} value={
+        problem.assignedTeam && !showReassign ? (
+          <div>
+            <div style={{ fontWeight: 500 }}>{problem.assignedTeam.name}</div>
+            <button type="button" onClick={() => setShowReassign(true)} style={{ marginTop: 4, background: 'none', border: 'none', padding: 0, fontSize: 'var(--font-size-body)', color: 'var(--accent)', cursor: 'pointer' }}>{t('detail.reassign')}</button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {/* F-36: la Select ha un nome accessibile (era senza etichetta). D10: support teams, searchable. */}
+            <TeamPicker role={TEAM_TYPE.SUPPORT} label={t('detail.assignedTeam')} value={selectedTeam} onChange={setSelectedTeam} style={{ padding: '7px 10px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', background: 'var(--surface)' }} />
+            <div style={{ display: 'flex', gap: 6 }}>
+              {showReassign && (
+                <button type="button" onClick={() => setShowReassign(false)} style={{ flex: 1, padding: '6px 0', background: 'none', border: '1px solid var(--border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', cursor: 'pointer' }}>{t('common.cancel')}</button>
+              )}
+              <button type="button" disabled={!selectedTeam || assigningTeam} onClick={() => { if (!selectedTeam) return; void assignToTeam({ variables: { problemId: problem.id, teamId: selectedTeam.id } }) }} style={{ flex: 1, padding: '6px 0', backgroundColor: (!selectedTeam || assigningTeam) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedTeam || assigningTeam) ? 'var(--text-muted)' : colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: (!selectedTeam || assigningTeam) ? 'not-allowed' : 'pointer' }}>
+                {assigningTeam ? t('detail.assigning') : t('detail.assign')}
+              </button>
+            </div>
+          </div>
+        )
+      } />
+
+      {/* User assignment */}
+      <DetailField label={t('detail.assignedTo')} value={
+        problem.assignee ? (
+          <div>
+            <div style={{ fontWeight: 500 }}>{problem.assignee.name}</div>
+            <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>{problem.assignee.email}</div>
+            {/* Togliere l'assegnazione: l'incident si poteva
+                disassegnare, il problem no (revisione totale · B-18). */}
+            <button
+              type="button"
+              disabled={assigningUser}
+              onClick={() => void assignToUser({ variables: { problemId: problem.id, userId: null } })}
+              style={{ marginTop: 6, padding: 0, background: 'none', border: 'none', color: 'var(--accent)', fontSize: 'var(--font-size-body)', cursor: assigningUser ? 'not-allowed' : 'pointer', textDecoration: 'underline' }}
+            >
+              {t('detail.removeAssignment')}
+            </button>
+          </div>
+        ) : !problem.assignedTeam ? (
+          <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+            {t('pages.problemDetail.pickGroupFirst')}
+          </span>
+        ) : (() => {
+          const teamUsers = users.filter((u) => u.teams?.some((tm) => tm.id === problem.assignedTeam!.id))
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <Select aria-label={t('detail.assignee')} value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} style={{ padding: '7px 10px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', background: 'var(--surface)' }}>
+                <option value="">{t('detail.selectUser')}</option>
+                {teamUsers.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </Select>
+              {/* Who is in the team is known only once the people have
+                  answered: before that, or when they failed, «no user in
+                  the group» was a false claim about the team (tour of 23
+                  Sep 2026). */}
+              {!usersData ? (
+                usersError ? (
+                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-danger)' }}>
+                    {t('pages.problemDetail.usersUnreadable', { team: problem.assignedTeam.name, error: usersError.message })}
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                    {t('common.loading')}
+                  </span>
+                )
+              ) : teamUsers.length === 0 && (
+                <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                  {t('pages.problemDetail.noUserInTeam', { team: problem.assignedTeam.name })}
+                </span>
+              )}
+              <button type="button" disabled={!selectedUserId || assigningUser} onClick={() => { if (!selectedUserId) return; void assignToUser({ variables: { problemId: problem.id, userId: selectedUserId } }) }} style={{ padding: '6px 0', backgroundColor: (!selectedUserId || assigningUser) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedUserId || assigningUser) ? 'var(--text-muted)' : colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: (!selectedUserId || assigningUser) ? 'not-allowed' : 'pointer' }}>
+                {assigningUser ? t('detail.assigning') : t('detail.assign')}
+              </button>
+            </div>
+          )
+        })()
+      } />
+    </>
+  )
+}
+
+// ── The investigation dossier ─────────────────────────────────────────────────
+
+/**
+ * The dossier's button and the dialog it opens. The dossier is read by the
+ * page together with the problem; without one there is no button.
+ */
+function ProblemDossier({ dossier }: { dossier: string | null }) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  return (
+    <>
+      {dossier && (
+        <Button
+          variant="secondary"
+          icon={<FileSearch size={13} />}
+          onClick={() => { setCopied(false); setOpen(true) }}
+        >
+          {t('pages.problemDetail.dossier')}
+        </Button>
+      )}
 
       {/*
         IL FASCICOLO (20 set 2026).
@@ -692,17 +750,17 @@ export function ProblemDetailPage() {
         persona.
       */}
       <Modal
-        open={fascicoloAperto}
-        onClose={() => setFascicoloAperto(false)}
+        open={open}
+        onClose={() => setOpen(false)}
         title={t('pages.problemDetail.dossierTitle')}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setFascicoloAperto(false)}>{t('common.close')}</Button>
+            <Button variant="secondary" onClick={() => setOpen(false)}>{t('common.close')}</Button>
             <Button
-              icon={copiato ? <Check size={13} /> : <Copy size={13} />}
+              icon={copied ? <Check size={13} /> : <Copy size={13} />}
               onClick={() => {
-                void navigator.clipboard.writeText(fascicolo ?? '').then(
-                  () => { setCopiato(true); toast.success(t('pages.problemDetail.dossierCopied')) },
+                void navigator.clipboard.writeText(dossier ?? '').then(
+                  () => { setCopied(true); toast.success(t('pages.problemDetail.dossierCopied')) },
                   () => toast.error(t('pages.problemDetail.dossierCopyFailed')),
                 )
               }}>
@@ -718,8 +776,8 @@ export function ProblemDetailPage() {
           margin: 0, padding: 12, borderRadius: 6, border: '1px solid var(--color-border)',
           background: 'var(--color-muted)', maxHeight: '55vh', overflow: 'auto',
           fontSize: 12, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-        }}>{fascicolo}</pre>
+        }}>{dossier}</pre>
       </Modal>
-    </PageContainer>
+    </>
   )
 }

@@ -78,8 +78,8 @@ export function ModaleProgettoReportAI({ onChiudi, onApplica, descrizioneInizial
     void (async () => {
       try {
         const r = await proponi({ variables: { prompt: descrizione.trim() } })
-        const p = (r.data as { proposeReportSection?: ProgettoReport } | null | undefined)?.proposeReportSection
-        if (p) setProgetto(p)
+        // The schema promises a proposal (`ReportDesignProposal!`): a refusal rejects, it never answers «none».
+        setProgetto((r.data as { proposeReportSection: ProgettoReport }).proposeReportSection)
       } catch {
         /* L'avviso lo mostra il link degli errori, tradotto: qui si prende il
            rifiuto per non lasciare una promessa non gestita, e si TIENE la

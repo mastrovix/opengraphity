@@ -1,7 +1,8 @@
-import { lazy, Suspense, useId } from 'react'
+import { lazy, Suspense, useId, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
+import { useDialogFocus } from '@/hooks/useDialogFocus'
 import { useWidgetConfig, DATA_FREE_WIDGET_TYPES, DATA_FREE_HINT_KEY } from './useWidgetConfig'
 import { WidgetTypeSelector } from './WidgetTypeSelector'
 import { WidgetFilterConfig } from './WidgetFilterConfig'
@@ -37,21 +38,27 @@ const inputStyle: React.CSSProperties = {
 
 export function WidgetConfigPanel({ dashboardId, widget, onClose, onSaved }: Props) {
   const { t } = useTranslation()
-  const c = useWidgetConfig({ dashboardId, widget, onClose, onSaved })
+  const c = useWidgetConfig({ dashboardId, widget, onSaved })
   const id = useId()
   const titleId = id + '-title'
   const headingId = id + '-heading'
+  // `aria-modal` promises the keyboard stays inside: Tab walked out to the
+  // page behind — the layout's own Save — until the dialog took the shared
+  // contract of `Modal` (tour of 23 Sep 2026). Escape is part of it.
+  const panelRef = useRef<HTMLDivElement | null>(null)
+  useDialogFocus(panelRef, true, onClose)
 
   return createPortal(
-    // Il click sull'overlay (fuori dal pannello) chiude il dialogo: scorciatoia
-    // solo-mouse; da tastiera valgono Escape (gestito in useWidgetConfig) e il
-    // bottone "Chiudi" nell'header. Stesso pattern di components/Modal.tsx.
+    // A click on the overlay (outside the panel) closes the dialog: a mouse-only
+    // shortcut; from the keyboard, Escape (useDialogFocus) and the header's Close
+    // button. Same pattern as components/Modal.tsx.
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- overlay: chiusura via mouse, Escape/bottone per la tastiera
     <div
       style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: alpha.scrim, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={headingId}

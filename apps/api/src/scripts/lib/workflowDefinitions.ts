@@ -89,7 +89,8 @@ export const SERVICE_REQUEST_WORKFLOW: SeedableWorkflow = {
      */
     srStep('fulfilled',   ['Fulfilled', 'Evasa'],          'standard', 4, { is_initial: false, is_terminal: false, is_open: false, category: 'resolved' }),
     srStep('closed',      ['Closed', 'Chiusa'],         'end',      5, { is_initial: false, is_terminal: true,  is_open: false, category: 'closed' }),
-    srStep('rejected',    ['Rejected', 'Rifiutata'],      'end',      6, { is_initial: false, is_terminal: true,  is_open: false, category: 'closed' }),
+    // `failed`, like the rejection of a problem: a rejected request did not end well (tour of 23 Sep 2026, D27).
+    srStep('rejected',    ['Rejected', 'Rifiutata'],      'end',      6, { is_initial: false, is_terminal: true,  is_open: false, category: 'failed' }),
   ],
   transitions: [
     srTr('submitted',   'approval',    ['Send for approval', 'Invia ad approvazione']),

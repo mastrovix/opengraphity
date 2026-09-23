@@ -97,6 +97,8 @@ export interface StepEnteredInfo {
   enteredAt:  string
   /** Le note della transizione: finiscono nella nota interna sul ticket (B-4). */
   notes?:     string | null
+  /** Who signs the note when it is not a person: the rule's name (U-8). */
+  actorLabel?: string | null
   /** Il passo lasciato, per la storia. */
   fromStep?:  string | null
 }
@@ -156,6 +158,7 @@ async function writeStepEnteredTrace(info: StepEnteredInfo): Promise<void> {
       tenantId:   info.tenantId,
       text,
       authorId:   info.actorId,
+      authorLabel: info.actorLabel ?? null,
       isInternal: true,
       createdAt:  info.enteredAt,
     })

@@ -44,7 +44,19 @@ export default defineConfig({
       include: ['src/**/*.ts'],
       // `ESCLUSI_SEMPRE` vale per tutti i workspace; qui si aggiunge quello
       // che e' solo dell'api: gli script di servizio e i due punti d'ingresso.
-      exclude: [...ESCLUSI_SEMPRE, 'src/scripts/**', 'src/index.ts', 'src/worker.ts'],
+      /*
+       * Il generatore del tenant di prova si divide in due. La parte che
+       * PENSA — chi sono le persone, che forma ha il CMDB, come si muove un
+       * ticket nel workflow, quando scade uno SLA — e' logica di dominio e
+       * resta contata: i suoi test la tengono sopra il pavimento. La parte
+       * che SCRIVE (`writer`, i `write*`, `generate`, `clean`, `verify`, il
+       * catalogo e i report costruiti chiamando i resolver veri) e' uno
+       * strumento di sviluppo come `src/scripts/**`: il suo unico banco di
+       * prova e' un Neo4j vero, e si verifica con `--verify` dopo una corsa.
+       * Contarla con dei finti non direbbe niente su quello che scrive.
+       */
+      exclude: [...ESCLUSI_SEMPRE, 'src/scripts/**', 'src/index.ts', 'src/worker.ts',
+        'src/lib/testData/demoTenant/{writer,writeReference,writeTickets,generate,clean,afterRun,verify,catalogSetup,reports,serviceRequests}.ts'],
       /*
        * I PAVIMENTI stanno in `copertura.mjs` alla radice, con tutti gli altri
        * workspace e con l'OBIETTIVO del 95% deciso dal proprietario. Erano

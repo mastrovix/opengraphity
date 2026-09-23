@@ -24,7 +24,7 @@ vi.mock('sonner', () => ({ toast }))
 const { AnomalyRulesPage, ruleDraftProblem } = await import('./AnomalyRulesPage')
 
 type Spec = Parameters<typeof ruleDraftProblem>[1]
-const NO_SPEC: Spec = { ciTypes: false, relations: false, incidentSeverities: false, forbidden: false, thresholdMin: null, thresholdMax: null }
+const NO_SPEC: Spec = { ciTypes: false, relations: false, allRelationsWhenEmpty: false, incidentSeverities: false, forbidden: false, thresholdMin: null, thresholdMax: null }
 const SETTINGS = { enabled: true, severity: 'high', ciTypes: [], relations: [], threshold: null, incidentSeverities: [], forbidden: [] }
 
 const rule = (ruleKey: string, spec: Partial<Spec>, over: Record<string, unknown> = {}) => ({

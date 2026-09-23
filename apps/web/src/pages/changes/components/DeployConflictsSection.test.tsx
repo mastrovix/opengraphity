@@ -16,6 +16,8 @@ import { screen } from '@testing-library/react'
 import { renderWithProviders } from '@/test/utils'
 import { DeployConflictsSection } from './DeployConflictsSection'
 import type { ChangeDeployConflict } from '@/types/change'
+import en from '@/i18n/locales/en.json'
+import itJson from '@/i18n/locales/it.json'
 
 const conflitto = (over: Partial<ChangeDeployConflict> = {}): ChangeDeployConflict => ({
   changeId: 'chg-2', code: 'CHG00000002', title: 'Aggiornamento kernel', currentStep: 'scheduled',
@@ -29,8 +31,24 @@ const conflitto = (over: Partial<ChangeDeployConflict> = {}): ChangeDeployConfli
 describe('DeployConflictsSection', () => {
   it('senza conflitti lo DICE, invece di non comparire', () => {
     renderWithProviders(<DeployConflictsSection conflitti={[]} />)
-    expect(screen.getByText(/Release conflicts/)).toBeInTheDocument()
-    expect(screen.getByText(/No release conflict/)).toBeInTheDocument()
+    expect(screen.getByText(/Change deploy conflicts/)).toBeInTheDocument()
+    // D23: the empty state speaks of deploy, like the title — not of «release».
+    expect(screen.getByText('No deploy conflict: no other change deploys on these CIs in an overlapping window.')).toBeInTheDocument()
+    expect(screen.queryByText(/release/i)).not.toBeInTheDocument()
+  })
+
+  it('con un conflitto la testata è rossa e il titolo è BIANCO', () => {
+    /*
+     * Il rosso pieno con sopra il turchese di serie non si legge: il
+     * proprietario l'ha visto a schermo. Qui si pinna la coppia — fondo
+     * d'allarme e testo bianco — perché è una regola di leggibilità, non
+     * una preferenza.
+     */
+    renderWithProviders(<DeployConflictsSection conflitti={[conflitto()]} />)
+    const titolo = screen.getByText(/Change deploy conflicts/)
+    expect(titolo).toHaveStyle({ color: 'var(--color-white)' })
+    const testata = titolo.closest('div')!
+    expect(testata).toHaveStyle({ background: 'var(--color-danger)' })
   })
 
   it('mostra codice, titolo, CI e passo dell\'altra change', () => {
@@ -74,5 +92,14 @@ describe('DeployConflictsSection', () => {
   it('una change senza passo non mostra un separatore vuoto', () => {
     renderWithProviders(<DeployConflictsSection conflitti={[conflitto({ currentStep: null })]} />)
     expect(screen.getByText(/Aggiornamento kernel/).textContent).not.toMatch(/·\s*$/)
+  })
+
+  it('D23: in both languages the section speaks of deploy, as its title does, not of release', () => {
+    for (const texts of [en.pages.changeDetail.deployConflicts, itJson.pages.changeDetail.deployConflicts]) {
+      for (const key of ['title', 'none', 'lede', 'unreadable_one', 'unreadable_other'] as const) {
+        expect(texts[key], key).toMatch(/deploy/i)
+        expect(texts[key], key).not.toMatch(/release|rilasci/i)
+      }
+    }
   })
 })

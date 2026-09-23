@@ -32,22 +32,34 @@ const RULES: PasswordRules = {
 }
 
 const ADDRESSES = ['microsoft', 'google', 'saml'].map((kind) => ({
-  kind, redirectUri: `https://sso/realms/c-test/broker/${kind}/endpoint`,
-  samlSpMetadataUrl: kind === 'saml' ? 'https://sso/realms/c-test/broker/saml/endpoint/descriptor' : null,
+  kind,
+  redirectUris: [`https://sso/realms/c-test/broker/${kind}/endpoint`],
+  samlSpMetadataUrls: kind === 'saml' ? ['https://sso/realms/c-test/broker/saml/endpoint/descriptor'] : [],
 }))
+
+/**
+ * Two ways to reach the sign-in page (D71, tour of 23 Sep 2026): the local one
+ * and the Tailscale host. Each gets its own return address and SAML metadata.
+ */
+const ORIGINS = ['http://localhost:8080', 'https://mac.tail0.ts.net']
+const TWO_ORIGINS = ['microsoft', 'google', 'saml'].map((kind) => {
+  const redirectUris = ORIGINS.map((o) => `${o}/realms/c-test/broker/${kind}/endpoint`)
+  const samlSpMetadataUrls = kind === 'saml' ? redirectUris.map((u) => `${u}/descriptor`) : []
+  return { kind, redirectUris, samlSpMetadataUrls }
+})
 
 const MICROSOFT_ON = {
   kind: 'microsoft', displayName: 'Contoso login', enabled: true, clientId: 'app-1', tenant: 'contoso',
   hostedDomain: null, metadataUrl: null, redirectUri: 'https://sso/x', samlSpMetadataUrl: null,
 }
 
-function settings(extra: { providers?: unknown[]; outOfRange?: unknown[]; rules?: Partial<PasswordRules> } = {}) {
+function settings(extra: { providers?: unknown[]; outOfRange?: unknown[]; rules?: Partial<PasswordRules>; addresses?: unknown[] } = {}) {
   apolloFinto.risposte['GetLoginSettings'] = {
     loginSettings: {
       passwordRules: { __typename: 'PasswordRules', ...RULES, ...extra.rules },
       passwordRulesOutOfRange: extra.outOfRange ?? [],
       providers: extra.providers ?? [],
-      addresses: ADDRESSES,
+      addresses: extra.addresses ?? ADDRESSES,
     },
   }
 }
@@ -270,5 +282,44 @@ describe('LoginSecurityPage — providers', () => {
     await user.click(within(field).getByRole('button', { name: 'Copy' }))
     await expect(navigator.clipboard.readText()).resolves.toBe('https://sso/realms/c-test/broker/saml/endpoint/descriptor')
     expect(toast.success).toHaveBeenCalledWith('Copied!')
+  })
+})
+
+describe('LoginSecurityPage — every address to register (D71, tour of 23 Sep 2026)', () => {
+  const EVERY = 'Register every address: one for each address people use to reach the sign-in page'
+
+  it('one return address per origin, each with its own «Copy», and one line saying to register them all', async () => {
+    settings({ addresses: TWO_ORIGINS })
+    const { user } = renderWithProviders(<LoginSecurityPage />)
+    const microsoft = card('Microsoft (Entra ID)')
+    expect(within(microsoft).getByText(EVERY)).toBeInTheDocument()
+    const field = within(microsoft).getByText('Return address to register with the provider').parentElement!
+    expect(within(field).getByText('http://localhost:8080/realms/c-test/broker/microsoft/endpoint')).toBeInTheDocument()
+    const copies = within(field).getAllByRole('button', { name: 'Copy' })
+    expect(copies).toHaveLength(2)
+    // Each button says WHICH address it copies.
+    expect(copies[1]).toHaveAccessibleDescription('https://mac.tail0.ts.net/realms/c-test/broker/microsoft/endpoint')
+    await user.click(copies[1]!)
+    await expect(navigator.clipboard.readText()).resolves.toBe('https://mac.tail0.ts.net/realms/c-test/broker/microsoft/endpoint')
+  })
+
+  it('SAML: the metadata of OpenGrafo for every origin too', async () => {
+    settings({ addresses: TWO_ORIGINS })
+    const { user } = renderWithProviders(<LoginSecurityPage />)
+    const field = within(card('SAML')).getByText('OpenGrafo metadata for the provider').parentElement!
+    const copies = within(field).getAllByRole('button', { name: 'Copy' })
+    expect(copies).toHaveLength(2)
+    await user.click(copies[1]!)
+    await expect(navigator.clipboard.readText()).resolves.toBe('https://mac.tail0.ts.net/realms/c-test/broker/saml/endpoint/descriptor')
+  })
+
+  it('a single origin: one address, and no line about registering several', () => {
+    settings()
+    renderWithProviders(<LoginSecurityPage />)
+    expect(screen.queryByText(EVERY)).not.toBeInTheDocument()
+    const field = within(card('Google Workspace')).getByText('Return address to register with the provider').parentElement!
+    expect(within(field).getAllByRole('button', { name: 'Copy' })).toHaveLength(1)
+    // No SAML metadata outside the SAML card.
+    expect(within(card('Google Workspace')).queryByText('OpenGrafo metadata for the provider')).not.toBeInTheDocument()
   })
 })

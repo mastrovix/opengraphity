@@ -1,7 +1,7 @@
 import { useId, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Play, Clock, Upload, X } from 'lucide-react'
-import type { SyncSource, ConnectorInfo } from './useSyncPage'
+import type { SyncSource, ConnectorField, ConnectorInfo } from './useSyncPage'
 import { formatMs, StatusBadge, inputStyle, labelStyle, btnStyle } from './syncShared'
 import { Input, Select } from '@/components/ui/FormControls'
 import { Button } from '@/components/Button'
@@ -151,15 +151,33 @@ function TextareaFileField({ id, fieldName, value, onChange, required }: Textare
               <div style={{ fontSize: 'var(--font-size-table)', color: colors.slateLight, marginTop: 4 }}>{accept}</div>
             </div>
           )}
-          {/* Invisible required sentinel so browser validation fires when no file selected */}
+          {/*
+            Invisible required sentinel so browser validation fires when no file
+            is selected. Not `readOnly`: a read-only control is barred from
+            validation, so the source was created with no content (tour of
+            23 Sep 2026). Its value only ever comes from the file.
+          */}
           {required && (
-            <input type="text" value={value} required readOnly tabIndex={-1} aria-hidden="true"
+            <input type="text" value={value} required onChange={() => { /* the value comes from the file */ }} tabIndex={-1} aria-hidden="true"
               style={{ opacity: 0, height: 0, padding: 0, border: 'none', position: 'absolute' }} />
           )}
         </div>
       )}
     </div>
   )
+}
+
+/**
+ * The value a configuration field shows, and so the value it sends: what was
+ * typed or chosen, else its default, else — for a list, which always shows an
+ * option — its first option (tour of 23 Sep 2026: a list with no default
+ * showed «Europe» and sent nothing).
+ */
+function shownConfigValue(f: ConnectorField, form: Record<string, string>): string {
+  const typed = form[f.name]
+  if (typed !== undefined) return typed
+  if (f.defaultValue != null) return f.defaultValue
+  return f.options?.[0]?.value ?? ''
 }
 
 // ── Props ────────────────────────────────────────────────────────────────────
@@ -193,6 +211,9 @@ export function SyncSourcesTab({
   const [schedPreset,  setSchedPreset]  = useState('0 */6 * * *')
   const [schedCustom,  setSchedCustom]  = useState('')
   const [selectedType, setSelectedType] = useState('')
+  // The name belongs to the source, not to its connector: choosing the
+  // connector starts only the connector's fields again (tour of 23 Sep 2026).
+  const [name, setName] = useState('')
   const [form, setForm] = useState<Record<string, string>>({})
   const [credForm, setCredForm] = useState<Record<string, string>>({})
 
@@ -204,12 +225,12 @@ export function SyncSourcesTab({
     for (const f of selectedConnector?.configFields ?? []) {
       // Revisione totale · G-7: i campi con un valore predefinito lo mostravano
       // ma non lo mettevano nella configurazione, perché `form` era vuoto.
-      const value = form[f.name] ?? (f.defaultValue != null ? String(f.defaultValue) : '')
+      const value = shownConfigValue(f, form)
       if (value !== '') config[f.name] = value
     }
     try {
       await onCreateSource({
-        name: form['name'] ?? selectedType,
+        name,
         connectorType: selectedType,
         credentials: credForm,
         config,
@@ -218,7 +239,7 @@ export function SyncSourcesTab({
         ...(form['scheduleCron']?.trim() ? { scheduleCron: form['scheduleCron'].trim() } : {}),
       })
       setShowCreate(false)
-      setForm({}); setCredForm({}); setSelectedType('')
+      setName(''); setForm({}); setCredForm({}); setSelectedType('')
     } catch {
       // error already toasted by hook
     }
@@ -341,7 +362,7 @@ export function SyncSourcesTab({
           }
         >
               <label htmlFor={`${fid}-name`} style={labelStyle}>{t('common.name')}</label>
-              <Input id={`${fid}-name`} style={inputStyle} value={form['name'] ?? ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required />
+              <Input id={`${fid}-name`} style={inputStyle} value={name} onChange={e => setName(e.target.value)} required />
 
               <label htmlFor={`${fid}-connector`} style={labelStyle}>{t('pages.sync.connectorType')}</label>
               <Select id={`${fid}-connector`} style={inputStyle} value={selectedType} onChange={e => { setSelectedType(e.target.value); setForm({}); setCredForm({}) }} required>
@@ -378,14 +399,14 @@ export function SyncSourcesTab({
                         <div key={f.name}>
                           <label htmlFor={`${fid}-cfg-${f.name}`} style={labelStyle}>{f.label}{f.required && <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>}</label>
                           {f.options ? (
-                            <Select id={`${fid}-cfg-${f.name}`} style={inputStyle} value={form[f.name] ?? f.defaultValue ?? ''} onChange={e => setForm(c => ({ ...c, [f.name]: e.target.value }))}>
+                            <Select id={`${fid}-cfg-${f.name}`} style={inputStyle} value={shownConfigValue(f, form)} onChange={e => setForm(c => ({ ...c, [f.name]: e.target.value }))}>
                               {f.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                             </Select>
                           ) : f.type === 'textarea' ? (
                             <TextareaFileField
                               id={`${fid}-cfg-${f.name}`}
                               fieldName={f.name}
-                              value={form[f.name] ?? ''}
+                              value={shownConfigValue(f, form)}
                               onChange={v => setForm(c => ({ ...c, [f.name]: v }))}
                               required={f.required}
                             />
@@ -393,7 +414,7 @@ export function SyncSourcesTab({
                             <Input
                               id={`${fid}-cfg-${f.name}`}
                               style={inputStyle}
-                              value={form[f.name] ?? f.defaultValue ?? ''}
+                              value={shownConfigValue(f, form)}
                               onChange={e => setForm(c => ({ ...c, [f.name]: e.target.value }))}
                               required={f.required}
                             />

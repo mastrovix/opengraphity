@@ -145,15 +145,15 @@ export function ModaleProgettoAI({ itemId, nomeVoce, etichettaDi, onChiudi, onAp
 
   const chiedi = () => {
     void (async () => {
+      let r: Awaited<ReturnType<typeof proponi>>
       try {
-        const r = await proponi({ variables: { prompt: descrizione.trim(), itemId } })
-        const p = (r.data as { proposeServiceRequestDesign?: Progetto } | null | undefined)?.proposeServiceRequestDesign
-        if (p) setProgetto(p)
+        r = await proponi({ variables: { prompt: descrizione.trim(), itemId } })
       } catch {
-        /* L'avviso lo mostra il link degli errori, tradotto: qui si prende il
-           rifiuto per non lasciare una promessa non gestita, e si TIENE la
-           descrizione — chi ha scritto tre righe non le riscrive. */
+        // The mutation's onError has already told the user; the description stays, so nobody retypes it.
+        return
       }
+      // The proposal is non-null in the schema: a refusal rejects, it never resolves empty.
+      setProgetto((r.data as { proposeServiceRequestDesign: Progetto }).proposeServiceRequestDesign)
     })()
   }
 

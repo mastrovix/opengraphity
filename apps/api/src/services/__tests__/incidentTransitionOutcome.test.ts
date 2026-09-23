@@ -107,13 +107,26 @@ describe('avanzamento all\'assegnazione', () => {
     await svc.assignIncidentToTeam('inc-1', 'team-1', ctx)
     expect(vi.mocked(workflowEngine.transition).mock.calls[0]![1]).toMatchObject({ toStepName: 'assigned' })
   })
-  /** Giro UI del 15 set 2026 · U-8: la nota di una regola porta il nome della regola, non «Automation:» vuoto. */
+  /**
+   * Giro UI del 15 set 2026 · U-8: la nota di una regola porta il nome della
+   * regola, non «Automation:» vuoto. D12 (tour of 23 Sep 2026): when the
+   * assignment moves the workflow, the ONLY note is the one of the step entry
+   * («Workflow: <step> — <note>»), so the rule's name travels with the
+   * transition (`actorLabel`) and signs that note (stepEnteredPublisher).
+   */
   it('U-8: la nota scritta per conto di una regola ha author_label = nome della regola', async () => {
     const seen: Array<{ c: string; p: Record<string, unknown> }> = []
     session.executeWrite.mockImplementation(async (fn: (tx: unknown) => unknown) => fn({ run: async (c: string, p: Record<string, unknown>) => { seen.push({ c, p }); return { records: [] } } }))
     const { workflowEngine } = await import('@opengraphity/workflow')
     vi.mocked(workflowEngine.transition).mockResolvedValueOnce({ success: true } as never)
     await svc.assignIncidentToTeam('inc-1', 'team-1', { ...ctx, userId: 'automation', actorLabel: 'Hardware al Service Desk' })
+    expect(vi.mocked(workflowEngine.transition).mock.calls.at(-1)![1]).toMatchObject({ triggeredBy: 'automation', actorLabel: 'Hardware al Service Desk' })
+    expect(seen.find((w) => w.c.includes('HAS_COMMENT'))).toBeUndefined()
+
+    // No transition (the workflow refuses to move): the service writes the note itself, signed the same way.
+    seen.length = 0
+    vi.mocked(workflowEngine.transition).mockResolvedValueOnce({ success: false, error: 'guard' } as never)
+    await svc.assignIncidentToTeam('inc-1', 'team-1', { ...ctx, userId: 'automation', actorLabel: 'Hardware al Service Desk' }).catch(() => undefined)
     const comment = seen.find((w) => w.c.includes('HAS_COMMENT'))
     expect(comment?.c).toContain('author_label: $authorLabel')
     expect(comment?.p).toMatchObject({ userId: 'automation', authorLabel: 'Hardware al Service Desk' })

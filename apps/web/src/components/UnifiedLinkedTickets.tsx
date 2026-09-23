@@ -54,10 +54,15 @@ const ENTITY_TYPE: Record<LinkedKind, string> = {
  * La FASE di un ticket collegato con l'etichetta del workflow, non il nome
  * tecnico con i trattini bassi tolti (revisione totale · F-33): un passo
  * rinominato dal cliente si leggeva «in progress» invece di «In lavorazione».
+ *
+ * A step the workflow does not know reads as its name made readable: that
+ * is `labelFor`'s own fallback now. The one written here never ran, since
+ * `labelFor` gave back the raw name, and the row showed «waiting_vendor»
+ * (tour of 23 Sep 2026).
  */
 function StepCell({ kind, status }: { kind: LinkedKind; status: string }) {
   const { labelFor } = useWorkflowSteps(ENTITY_TYPE[kind])
-  const label = status ? (labelFor(status) || status.replace(/_/g, ' ')) : '—'
+  const label = status ? labelFor(status) : '—'
   return (
     <span style={{ width: 120, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>{label}</span>
   )

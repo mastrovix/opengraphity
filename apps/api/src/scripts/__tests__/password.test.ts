@@ -31,6 +31,16 @@ describe('generateTemporaryPassword', () => {
     expect(a).not.toBe(b)
     expect(a).toMatch(/^[A-Za-z0-9_-]{24}$/)
   })
+
+  // D70: a new realm requires an uppercase letter, a lowercase letter and a digit; 24 random characters lacked a digit about once in 60.
+  it('always satisfies the initial rules of a new realm', () => {
+    for (let i = 0; i < 2000; i++) {
+      const p = generateTemporaryPassword()
+      expect(p).toMatch(/[A-Z]/)
+      expect(p).toMatch(/[a-z]/)
+      expect(p).toMatch(/[0-9]/)
+    }
+  })
 })
 
 describe('readPasswordFromStdin', () => {

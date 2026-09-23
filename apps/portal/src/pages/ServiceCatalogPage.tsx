@@ -403,6 +403,7 @@ export function ServiceCatalogPage() {
                   referenceSearchLabel={t('catalog.searchReference')}
                   referenceNoResultsLabel={t('catalog.noResults')}
                   referenceClearLabel={t('catalog.clearReference')}
+                  referenceSearchFailedLabel={t('catalog.searchFailed')}
                 />
               </div>
             )}

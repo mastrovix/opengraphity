@@ -1,6 +1,7 @@
 import ReactECharts from 'echarts-for-react'
 import { useTranslation } from 'react-i18next'
 import { BarChart2 } from 'lucide-react'
+import { useElementWidth } from '@/lib/charts/useElementWidth'
 import { fontFamily, colors, palette } from '@/lib/tokens'
 import {
   buildBarOption, buildHorizontalBarOption, buildLineOption, buildPieOption, toPoints,
@@ -61,6 +62,20 @@ function ChartError({ title, message }: { title: string; message: string }) {
 
 const REPORT_STYLE = { showValueLabels: true } as const
 
+/**
+ * A chart with a category axis that knows its width (D5): a time axis shows
+ * the labels that fit — month and year at the year change — instead of all
+ * of them on top of each other in a half-width widget.
+ */
+function GraficoAsse({ opzione }: { opzione: (larghezza: number | undefined) => object }) {
+  const [ref, larghezza] = useElementWidth<HTMLDivElement>()
+  return (
+    <div ref={ref} style={{ width: '100%' }}>
+      <ReactECharts option={opzione(larghezza)} style={{ height: 320, width: '100%' }} opts={{ renderer: 'svg' }} theme="light" />
+    </div>
+  )
+}
+
 export function ReportChartRenderer({ chartType, data, title, error, errorKey, valueLabel, granularita }: Props) {
   const { t, i18n } = useTranslation()
   const locale = i18n.language
@@ -113,7 +128,7 @@ export function ReportChartRenderer({ chartType, data, title, error, errorKey, v
     }
 
     case 'bar':
-      return <ReactECharts option={buildBarOption(points(), { ...REPORT_STYLE, locale: i18n.language, granularita })} {...echartsProps} />
+      return <GraficoAsse opzione={(larghezza) => buildBarOption(points(), { ...REPORT_STYLE, locale: i18n.language, granularita, larghezza })} />
 
     case 'bar_horizontal':
       return <ReactECharts option={buildHorizontalBarOption(points(), { ...REPORT_STYLE, locale: i18n.language, granularita })} {...echartsProps} />
@@ -138,10 +153,10 @@ export function ReportChartRenderer({ chartType, data, title, error, errorKey, v
       // `REPORT_STYLE` anche qui (20 set 2026): linea e area erano gli unici
       // due grafici che non lo ricevevano, quindi i punti restavano senza il
       // loro valore mentre barre e torte lo scrivevano.
-      return <ReactECharts option={buildLineOption(points(), { ...REPORT_STYLE, locale: i18n.language, granularita })} {...echartsProps} />
+      return <GraficoAsse opzione={(larghezza) => buildLineOption(points(), { ...REPORT_STYLE, locale: i18n.language, granularita, larghezza })} />
 
     case 'area':
-      return <ReactECharts option={buildLineOption(points(), { ...REPORT_STYLE, area: true, locale: i18n.language, granularita })} {...echartsProps} />
+      return <GraficoAsse opzione={(larghezza) => buildLineOption(points(), { ...REPORT_STYLE, area: true, locale: i18n.language, granularita, larghezza })} />
 
     case 'table': {
       const d = parsed as TableData

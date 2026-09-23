@@ -18,6 +18,10 @@
 import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 
+/** Where the answer starts and ends on stdout: the only part check-cypher.mjs reads. */
+export const FRAGMENTS_BEGIN = '<<<cypher-fragments>>>'
+export const FRAGMENTS_END = '<<</cypher-fragments>>>'
+
 interface Richiesta { file: string; fn: string; args: unknown[] }
 type Risposta = { ok: true; cypher: string } | { ok: false; errore: string }
 
@@ -62,4 +66,10 @@ for (const r of richieste) {
  * l'event loop per sempre. Senza questa riga il processo non finisce e il
  * guardiano resta appeso — visto succedere alla prima prova.
  */
-process.stdout.write(JSON.stringify(risposte), () => { process.exit(0) })
+/*
+ * Between two markers (23 Sep 2026): the modules imported above write their own
+ * logs on stdout too — the driver's «[neo4j] Connected …» arrives whenever the
+ * connection is verified, before or after the answer — and JSON.parse of the
+ * whole output failed at random. check-cypher.mjs reads what is between them.
+ */
+process.stdout.write(`\n${FRAGMENTS_BEGIN}${JSON.stringify(risposte)}${FRAGMENTS_END}\n`, () => { process.exit(0) })

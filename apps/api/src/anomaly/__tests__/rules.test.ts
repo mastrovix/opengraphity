@@ -13,10 +13,14 @@ import { ANOMALY_RULE_KEYS, FACTORY_ANOMALY_RULES, type AnomalyRuleKey } from '.
 
 const LABELS: Record<string, string> = { server: 'Server', application: 'Application', certificate: 'Certificate', firewall: 'Firewall' }
 
+/** The relations of the tenant, as the engine resolves «no relation chosen» for the isolated cluster (D49). */
+const TENANT_RELATIONS = ['DEPENDS_ON', 'HOSTED_ON', 'INSTALLED_ON', 'USES_CERTIFICATE', 'REALIZES']
+
 function resolved(key: AnomalyRuleKey, over: Partial<ResolvedRuleSettings> = {}): ResolvedRuleSettings {
   const f = { ...FACTORY_ANOMALY_RULES[key], ...over }
   return {
     ...f,
+    relations: f.relations.length === 0 && key === 'isolated_cluster' ? TENANT_RELATIONS : f.relations,
     ciLabels: over.ciLabels ?? f.ciTypes.map((t) => LABELS[t]!),
     forbiddenLabels: over.forbiddenLabels ?? f.forbidden.map((x) => ({ fromLabel: LABELS[x.fromType]!, relation: x.relation, toLabel: LABELS[x.toType]! })),
   }
@@ -53,9 +57,13 @@ describe('buildAnomalyRule', () => {
     expect(spof.cypher).toContain('MATCH (dep)-[:DEPENDS_ON|CONNECTS_TO]->(ci)')
     const cycle = buildAnomalyRule('dependency_cycle', resolved('dependency_cycle', { threshold: 4 }))
     expect(cycle.cypher).toContain('[:DEPENDS_ON*2..4]')
-    const cluster = factory('isolated_cluster')
-    expect(cluster.cypher).toContain('AND (ci:Application OR ci:Certificate)')
-    expect(cluster.cypher).toContain('[:DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE*1..6]')
+    // D49: from the applications only, on the relations the engine resolved (every relation of the tenant when none is chosen)
+    const cluster = buildAnomalyRule('isolated_cluster', resolved('isolated_cluster', { ciLabels: ['Application'], relations: ['DEPENDS_ON', 'REALIZES'] }))
+    expect(cluster.cypher).toContain('AND (ci:Application)')
+    expect(cluster.cypher).toContain('[:DEPENDS_ON|REALIZES*1..6]')
+    // each exploration stops as soon as the answer is «not isolated»
+    expect(cluster.cypher).toContain('WITH DISTINCT reached LIMIT toInteger($threshold) + 1')
+    expect(cluster.cypher).toContain('WITH DISTINCT pr LIMIT toInteger($threshold) + 1')
   })
 
   it('le relazioni vietate sono quelle del cliente, una MATCH per ciascuna', () => {

@@ -6,7 +6,7 @@ import { logger } from '../lib/logger.js'
 import { ciTypeFromLabels } from '../lib/ciTypeFromLabels.js'
 import { createWorker, getQueue } from '../lib/bullmq.js'
 import { buildAnomalyRule, type AnomalyRule, type ResolvedRuleSettings } from './rules.js'
-import { anomalyRuleOptions, anomalyRuleProblem, loadAnomalyRuleConfigs, type AnomalyRuleConfig, type AnomalyRuleOptions } from './ruleConfig.js'
+import { ANOMALY_RULE_SPECS, anomalyRuleOptions, anomalyRuleProblem, loadAnomalyRuleConfigs, type AnomalyRuleConfig, type AnomalyRuleOptions } from './ruleConfig.js'
 
 export const ANOMALY_SCANNER_QUEUE = 'anomaly-scanner'
 
@@ -265,8 +265,11 @@ export function resolveRule(config: AnomalyRuleConfig, options: AnomalyRuleOptio
   const problem = anomalyRuleProblem(config, options)
   if (problem) throw problem
   const labelOf = new Map(options.ciTypes.map((t) => [t.name, t.neo4jLabel]))
+  // No relation chosen, on a rule where that means «all of them»: every relation between CIs of the tenant (D49).
+  const allRelations = config.relations.length === 0 && ANOMALY_RULE_SPECS[config.ruleKey].allRelationsWhenEmpty === true
   const settings: ResolvedRuleSettings = {
     ...config,
+    relations:       allRelations ? [...options.relations] : config.relations,
     ciLabels:        config.ciTypes.map((t) => labelOf.get(t)!),
     forbiddenLabels: config.forbidden.map((f) => ({ fromLabel: labelOf.get(f.fromType)!, relation: f.relation, toLabel: labelOf.get(f.toType)! })),
   }

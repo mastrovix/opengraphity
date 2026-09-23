@@ -50,6 +50,7 @@ import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { showError } from '@/lib/showError'
 import { toast } from 'sonner'
 import { colors, palette } from '@/lib/tokens'
+import { reloadQueries } from '@/lib/reloadQueries'
 
 interface Param { name: string; value: string }
 interface Ref { entityType: string; id: string; label: string | null; visible: boolean }
@@ -143,6 +144,9 @@ export function esitoDelGiro(
 const dataBreve = (iso: string | null, lingua: string): string =>
   iso ? new Date(iso).toLocaleDateString(lingua === 'it' ? 'it-IT' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''
 
+/** «Not now» puts a proposal off for a week: after that, it comes back. */
+const notNowUntil = (): string => new Date(Date.now() + 7 * 86_400_000).toISOString()
+
 export function ProposalsPage() {
   const { t, i18n } = useTranslation()
   const { can } = useMe()
@@ -185,17 +189,24 @@ export function ProposalsPage() {
   const puoDecidere = can('proposal.accept')
   const puoLanciare = can('proposal.run')
 
+  /*
+   * The action and the reload of the list are two things: a reload that
+   * failed after an action that worked said «That did not work» — and the
+   * run's result was never shown (tour of 23 Sep 2026). The reload runs on
+   * its own; if it fails, the error link says so.
+   */
   const conAttesa = async (id: string, fn: () => Promise<unknown>) => {
     setInCorso(id)
-    try { await fn(); await refetch() }
-    catch (e) { showError(e, t('pages.proposals.actionFailed')) }
+    try { await fn() }
+    catch (e) { showError(e, t('pages.proposals.actionFailed')); return }
     finally { setInCorso(null) }
+    reloadQueries(refetch)
   }
 
   const lancia = async () => {
     try {
       const esito = await analizza()
-      await refetch()
+      reloadQueries(refetch)
       const create = Number(esito.data?.runProposalAnalysis?.created ?? 0)
       const scartate = esito.data?.runProposalAnalysis?.skipped ?? []
       // Un esito riuscito è un successo, non un errore: `showError` lo
@@ -416,10 +427,7 @@ export function ProposalsPage() {
                   </Button>
                   {p.status === 'open' && (
                     <Button variant="secondary" disabled={occupato}
-                      onClick={() => {
-                        const fra7 = new Date(Date.now() + 7 * 86_400_000).toISOString()
-                        void conAttesa(p.id, () => rimanda({ variables: { id: p.id, until: fra7 } }))
-                      }}
+                      onClick={() => void conAttesa(p.id, () => rimanda({ variables: { id: p.id, until: notNowUntil() } }))}
                       icon={<Clock size={15} aria-hidden="true" />}>
                       {t('pages.proposals.notNow')}
                     </Button>

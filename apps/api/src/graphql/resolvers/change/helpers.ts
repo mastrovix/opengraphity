@@ -145,7 +145,7 @@ export async function chiaviDaCreare(
 export async function assertCIHasOwnerAndSupport(session: Session, tenantId: string, ciIds: string[]) {
   const rows = await runQuery<{ id: string; name: string; ownerTeamId: string | null; supportTeamId: string | null }>(session, `
     UNWIND $ciIds AS ciId
-    MATCH (ci {id: ciId, tenant_id: $tenantId})
+    MATCH (ci:ConfigurationItem {id: ciId, tenant_id: $tenantId})
     OPTIONAL MATCH (ci)-[:OWNED_BY]->(ownerT:Team)
     OPTIONAL MATCH (ci)-[:SUPPORTED_BY]->(supportT:Team)
     RETURN ci.id AS id, ci.name AS name,
@@ -177,7 +177,7 @@ export async function loadChange(session: Session, changeId: string, tenantId: s
 
 export async function getCIName(session: SessionOrTx, ciId: string, tenantId: string): Promise<string> {
   const row = await runQueryOne<{ name: string }>(session, `
-    MATCH (ci {id: $ciId, tenant_id: $tenantId})
+    MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
     RETURN coalesce(ci.name, ci.id) AS name
   `, { ciId, tenantId })
   return row?.name ?? ciId
@@ -306,7 +306,7 @@ export async function assertUserInCITeam(
   const rel = ROLE_TO_RELATION[role]
   const roleLabel = ROLE_LABEL[role]
   const row = await runQueryOne<{ ok: boolean | null }>(session, `
-    MATCH (ci {id: $ciId, tenant_id: $tenantId})-[:${rel}]->(team:Team)
+    MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})-[:${rel}]->(team:Team)
     OPTIONAL MATCH (u:User {id: $userId, tenant_id: $tenantId})-[:MEMBER_OF]->(team)
     RETURN u IS NOT NULL AS ok
   `, { ciId, tenantId, userId: ctx.userId })

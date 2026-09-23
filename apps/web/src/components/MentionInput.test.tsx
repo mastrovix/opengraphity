@@ -136,6 +136,17 @@ describe('MentionInput', () => {
     expect(onSubmit).toHaveBeenCalledTimes(1)
   })
 
+  it('⌘+Enter submits too: on a Mac the shortcut is made with the command key (D13)', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    render(<Harness onSubmit={onSubmit} />)
+    await user.type(box(), 'ready')
+    await user.keyboard('{Meta>}{Enter}{/Meta}')
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    // No new line was added by the shortcut.
+    expect(valueNow()).toBe('ready')
+  })
+
   it('Ctrl+Enter without an onSubmit handler does nothing harmful', async () => {
     const user = userEvent.setup()
     render(<Harness />)

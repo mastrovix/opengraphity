@@ -237,8 +237,10 @@
 }
 
 @theme inline {
-  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'Plus Jakarta Sans', system-ui, sans-serif;
+  /* Un carattere solo, e sta in `--font-family`: anche il «mono» è quello
+     (vedi la nota su `code, kbd, samp, pre`), perché il prodotto non ne ha due. */
+  --font-sans: var(--font-family);
+  --font-mono: var(--font-family);
 
   /* Design System Colors for Tailwind classes */
   --color-background:    var(--background);
@@ -337,7 +339,7 @@
   body {
     background-color: var(--background);
     color: var(--text-primary);
-    font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+    font-family: var(--font-family);
     font-size: var(--font-size-body);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
@@ -346,8 +348,18 @@
     font-weight: 600;
     letter-spacing: -0.01em;
   }
-  input, textarea, select {
-    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  /*
+   * ANCHE I BOTTONI (22 set 2026).
+   *
+   * Un `<button>` NON eredita il font: senza una regola esplicita prende
+   * quello dell'interfaccia del browser. La regola c'era, ma viveva in
+   * `style.css` — l'avanzo del modello di Vite, che nessuno importava — e
+   * così ogni bottone del prodotto era in Helvetica mentre tutto il resto
+   * era in Plus Jakarta Sans. Si vedeva nelle sezioni della change, dove su
+   * ventinove bottoni solo tre dichiaravano il font per conto proprio.
+   */
+  input, textarea, select, button {
+    font-family: var(--font-family);
     font-size: var(--font-size-body);
   }
 }
@@ -444,6 +456,14 @@ table thead th {
 }
 table thead tr {
   background: none !important;
+}
+/*
+  The header of a column pinned at the right edge (SortableFilterTable,
+  `sticky: 'end'`, D36): the tint above is translucent, and the headers that
+  scroll under a pinned one would show through it. Same tint, over white.
+*/
+table thead th.sft-sticky-end {
+  background: linear-gradient(var(--color-brand-a20), var(--color-brand-a20)), var(--color-white) !important;
 }
 
 /* ── Utility classes ───────────────────────────────────── */
@@ -637,6 +657,32 @@ code, kbd, samp, pre {
 }
 @media (max-width: 900px) {
   .og-split { grid-template-columns: minmax(0, 1fr); }
+}
+
+/*
+  THE DETAIL PAGE: A MAIN COLUMN THAT SHRINKS, A SIDE COLUMN THAT DOES NOT
+  (D9, tour of 23 Sep 2026). Used only through `DetailLayout`.
+
+  The pages wrote `'1fr 340px'` inline. A `1fr` track has an automatic
+  minimum — the widest thing inside it — so a wide table pushed the main
+  column and the side column went out of the page, cut off. `minmax(0, 1fr)`
+  lets the main column shrink; what is wider scrolls inside its own container
+  (`og-scroll-x`). The side width comes from the component
+  (`--og-detail-side`), because it differs by page.
+*/
+.og-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--og-detail-side, 340px);
+  gap: 24px;
+  align-items: start;
+}
+.og-detail.og-detail-side-first {
+  grid-template-columns: var(--og-detail-side, 340px) minmax(0, 1fr);
+}
+.og-detail > * { min-width: 0; }
+@media (max-width: 900px) {
+  .og-detail,
+  .og-detail.og-detail-side-first { grid-template-columns: minmax(0, 1fr); }
 }
 
 /*

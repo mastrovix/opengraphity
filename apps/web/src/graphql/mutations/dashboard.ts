@@ -114,10 +114,3 @@ export const DELETE_CUSTOM_WIDGET = gql`
   }
 `
 
-export const REORDER_CUSTOM_WIDGETS = gql`
-  mutation ReorderCustomWidgets($dashboardId: ID!, $widgetIds: [ID!]!) {
-    reorderCustomWidgets(dashboardId: $dashboardId, widgetIds: $widgetIds) {
-      id position
-    }
-  }
-`

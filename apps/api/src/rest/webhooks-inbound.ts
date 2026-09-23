@@ -56,7 +56,7 @@ export const transformScriptSemaphore = new Semaphore({
 async function resolveInboundCI(session: Parameters<typeof runQuery>[0], tenantId: string, ref: string): Promise<string> {
   const predicate = await ciLabelPredicateForTenant('ci', tenantId)
   const rows = await runQuery<{ id: string; name: string }>(session, `
-    MATCH (ci {tenant_id: $tenantId})
+    MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
     WHERE ${predicate} AND (ci.id = $ref OR toLower(ci.name) = toLower($ref))
     RETURN ci.id AS id, ci.name AS name LIMIT 2
   `, { tenantId, ref: ref.trim() })
