@@ -460,9 +460,9 @@ services:
       GRAPHQL_SCHEMA_CACHE_MAX: ${GRAPHQL_SCHEMA_CACHE_MAX:-25}
       MAX_CI_TYPES_PER_TENANT: ${MAX_CI_TYPES_PER_TENANT:-200}
       ATTACHMENT_MAX_MB_CAP: ${ATTACHMENT_MAX_MB_CAP:-100}
-      # Backup notturno (maintenance worker, che gira in QUESTO processo)
-      BACKUP_RETENTION: ${BACKUP_RETENTION:-14}
-      BACKUP_SKIP_KEYCLOAK: ${BACKUP_SKIP_KEYCLOAK:-false}
+      # Il backup notturno e le pulizie NON girano più qui (review del 23 set
+      # 2026): li fa il servizio `worker`, qui sotto. BACKUP_DIR e il volume dei
+      # backup restano per lanciare a mano backup/restore con `exec api`.
       # Durata dei due registri di log (ondata 3): quello del server e quello del browser
       SERVER_LOG_RETENTION_DAYS: ${SERVER_LOG_RETENTION_DAYS:-90}
       # Tetto mensile di gettoni degli analisti autonomi (rimedio c): la chiave
@@ -543,13 +543,28 @@ services:
       # GET /metrics of this process (scraped by prometheus as `worker:4000`)
       PORT: "4000"
       METRICS_TOKEN: ${METRICS_TOKEN:-}
+      # Il backup notturno e le pulizie (coda `maintenance`) girano QUI, fuori
+      # dall'event loop dell'API (review del 23 set 2026): l'export di tutto il
+      # grafo, gli allegati e i realm Keycloak. Le metriche del backup si
+      # leggono da `worker:4000`.
+      ATTACHMENT_DIR: /data/attachments
+      BACKUP_DIR: /data/backups
+      BACKUP_RETENTION: ${BACKUP_RETENTION:-14}
+      BACKUP_SKIP_KEYCLOAK: ${BACKUP_SKIP_KEYCLOAK:-false}
+      SERVER_LOG_RETENTION_DAYS: ${SERVER_LOG_RETENTION_DAYS:-90}
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_ADMIN_USER: admin
+      KEYCLOAK_ADMIN_PASSWORD: "${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD mancante in infra/.env}"
     volumes:
       - api_data:/data
+      - api_backups:/data/backups
     depends_on:
       neo4j:
         condition: service_healthy
       redis:
         condition: service_healthy
+      keycloak:
+        condition: service_started
     networks:
       - opengrafo-network
     healthcheck:

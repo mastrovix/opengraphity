@@ -364,6 +364,12 @@ export const CONFIG_PROFILES = {
     'neo4jUri', 'neo4jUser', 'neo4jPassword', 'neo4jMaxPoolSize',
     'embeddingsProvider', 'transformersCache',
   ],
+  // The process that runs the maintenance work group (backup and purges) also
+  // needs these (review of 23 Sep 2026): checked by worker.ts only when the
+  // profile starts that group, so the `events-worker` does not ask for them.
+  maintenance: [
+    'keycloakUrl', 'keycloakAdminUser', 'attachmentDir', 'backupDir',
+  ],
 } as const satisfies Record<string, readonly ConfigKey[]>
 
 export type ConfigProfile = keyof typeof CONFIG_PROFILES

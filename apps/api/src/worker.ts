@@ -24,6 +24,7 @@ import { validateConfig, config } from './lib/config.js'
 validateConfig('worker')
 import { workGroupsFor } from './lib/workerProfiles.js'
 const workGroups = workGroupsFor('worker', config.workerProfile)
+if (workGroups.includes('maintenance')) validateConfig('maintenance')
 
 // Registra le condizioni di transizione ITSM sul workflow engine (side-effect):
 // la correlazione degli allarmi e il motore dei servizi aprono e chiudono
@@ -36,6 +37,7 @@ import { startEmbeddingWorker } from './jobs/embeddingWorker.js'
 import { startEventIngestWorker } from './jobs/eventIngestWorker.js'
 import { startEventCorrelateWorker, startEventMaintenanceWorker } from './jobs/eventCorrelateWorker.js'
 import { startServiceImpactWorker } from './jobs/serviceImpactWorker.js'
+import { startMaintenanceWorker } from './workers/maintenance.worker.js'
 import { ServiceImpactConsumer } from './consumers/serviceImpactConsumer.js'
 import { closeAllQueues } from './lib/bullmq.js'
 import { startTenantQueueLifecycle, stopTenantQueueLifecycle } from './lib/tenantQueueLifecycle.js'
@@ -84,6 +86,10 @@ async function main() {
       startEventMaintenanceWorker(),
       startServiceImpactWorker(),
     )
+  }
+  if (workGroups.includes('maintenance')) {
+    // Backup and nightly purges, off the API's event loop (review of 23 Sep 2026).
+    workers.push(await startMaintenanceWorker())
   }
   if (workers.length === 0) {
     // The table cannot produce this today; if it ever does, an idle process must not look healthy.

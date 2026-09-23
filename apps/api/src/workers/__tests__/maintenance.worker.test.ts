@@ -92,10 +92,13 @@ const ARCHIVE    = `${BACKUP_DIR}/backup_new.tar.gz`
 const job = (name: string): Job => ({ name, data: {}, id: 'j-1' } as unknown as Job)
 const enoent = () => Object.assign(new Error('no such dir'), { code: 'ENOENT' })
 
-/** N archives named backup_<i>.tar.gz whose mtime grows with i (oldest first). */
+/** The nightly archive name of day `d` (1-based) of September 2026; its mtime grows with the day. */
+const nightly = (d: number, suffix = '') => `backup_2026-09-${String(d).padStart(2, '0')}_0000.tar.gz${suffix}`
+
+/** N valid nightly archives (days 1..N), plus any other file names, mtimes from the day in the name. */
 function archives(n: number, extra: string[] = []) {
-  readdirSync.mockReturnValue([...Array.from({ length: n }, (_, i) => `backup_${i}.tar.gz`), ...extra])
-  statSync.mockImplementation((p: string) => ({ mtimeMs: Number(/backup_(\d+)\.tar\.gz/.exec(p)?.[1] ?? 0) * 1000 }))
+  readdirSync.mockReturnValue([...Array.from({ length: n }, (_, i) => nightly(i + 1)), ...extra])
+  statSync.mockImplementation((p: string) => ({ mtimeMs: Number(/2026-09-(\d{2})/.exec(p)?.[1] ?? 0) * 1000 }))
 }
 
 let processor: AnyProcessor
@@ -195,16 +198,25 @@ describe('job backup_database', () => {
     expect(readdirSync).toHaveBeenCalledWith(BACKUP_DIR)   // rotation still ran
   })
 
-  it('retention: con 16 archivi cancella i 2 più vecchi (per mtime), includendo .partial/.invalid e ignorando i file non-archivio', async () => {
-    archives(15, ['backup_0.tar.gz.partial', 'backup_nodes_x.jsonl', 'notes.txt', 'backup_zzz.tgz'])
+  it('retention: con 16 archivi validi cancella i 2 più vecchi (per mtime), e ignora i file che non sono archivi notturni', async () => {
+    archives(16, ['backup_nodes_x.jsonl', 'notes.txt', 'backup_zzz.tgz', 'tenant_acme_2026-09-01_0000.tar.gz'])
 
     await processor(job('backup_database'))
 
     expect(readdirSync).toHaveBeenCalledWith(BACKUP_DIR)
-    expect(unlink).toHaveBeenCalledTimes(2)
-    // both backup_0.tar.gz and backup_0.tar.gz.partial have mtime 0 → the two oldest
-    expect(unlink.mock.calls.map((c) => c[0]).sort()).toEqual([`${BACKUP_DIR}/backup_0.tar.gz`, `${BACKUP_DIR}/backup_0.tar.gz.partial`])
+    expect(unlink.mock.calls.map((c) => c[0]).sort()).toEqual([`${BACKUP_DIR}/${nightly(1)}`, `${BACKUP_DIR}/${nightly(2)}`])
     expect(logInfo).toHaveBeenCalledWith({ retention: 14, deleted: 2 }, 'Old backups pruned')
+  })
+
+  // Review of 23 Sep 2026: failed archives shared the count, so 14 failed nights deleted the last good backup.
+  it('14 notti fallite non cancellano l\'ultimo backup valido: i falliti hanno il loro conto', async () => {
+    readdirSync.mockReturnValue([nightly(1), ...Array.from({ length: 15 }, (_, i) => nightly(i + 2, i % 2 ? '.invalid' : '.partial'))])
+    statSync.mockImplementation((p: string) => ({ mtimeMs: Number(/2026-09-(\d{2})/.exec(p)?.[1] ?? 0) * 1000 }))
+
+    await processor(job('backup_database'))
+
+    // 15 failed → the oldest one goes; the one valid archive stays.
+    expect(unlink.mock.calls.map((c) => c[0])).toEqual([`${BACKUP_DIR}/${nightly(2, '.partial')}`])
   })
 
   it('con 14 o meno archivi non cancella nulla', async () => {
@@ -217,7 +229,7 @@ describe('job backup_database', () => {
     readdirSync.mockImplementation(() => { throw enoent() })
     await expect(processor(job('backup_database'))).resolves.toBeUndefined()
     expect(unlink).not.toHaveBeenCalled()
-    expect(logInfo).toHaveBeenCalledWith({ backupDir: BACKUP_DIR }, expect.stringContaining('nothing to prune'))
+    expect(logInfo).toHaveBeenCalledWith({ retention: 14, deleted: 0 }, 'Old backups pruned')
   })
 
   it('altro errore fs (EACCES) durante la retention → il job fallisce', async () => {
@@ -278,3 +290,18 @@ describe('job purge_inapp_notifications', () => {
   })
 })
 
+// Review of 23 Sep 2026: after a restart the gauge was absent and BackupStale could not fire.
+describe('the backup metrics exist from the start', () => {
+  it('the gauge is the newest valid archive on disk, and every outcome starts at 0', async () => {
+    archives(3, [nightly(9, '.invalid')])
+    await startMaintenanceWorker()
+    expect(gaugeSet).toHaveBeenCalledWith({}, 3)
+    for (const result of ['ok', 'backup_failed', 'verify_failed']) expect(metricInc).toHaveBeenCalledWith({ result }, 0)
+  })
+
+  it('with no valid archive the gauge stays absent (BackupNeverVerified fires), and the start does not fail', async () => {
+    readdirSync.mockImplementation(() => { throw enoent() })
+    await expect(startMaintenanceWorker()).resolves.toBeTruthy()
+    expect(gaugeSet).not.toHaveBeenCalled()
+  })
+})

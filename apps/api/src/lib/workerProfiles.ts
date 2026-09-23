@@ -10,7 +10,7 @@
  *
  *   WORKER_PROFILE   processo API (index.ts)          processo worker (worker.ts)
  *   ─────────────────────────────────────────────────────────────────────────
- *   all (default)    ITSM + events                    embedding
+ *   all (default)    ITSM + events + maintenance      embedding + maintenance
  *   api              ITSM                             — (non valido per worker.ts)
  *   events           — (non valido per index.ts)      events
  *
@@ -23,7 +23,15 @@
  * (il servizio `events-worker`): due container che caricano il modello sono
  * memoria buttata, e il lavoro degli allarmi non deve aspettare l'inferenza.
  * Il lavoro ITSM (workflow, notifiche, SLA, webhook in uscita, report,
- * discovery, backup) resta sempre nell'API: non ha un profilo suo (ancora).
+ * discovery) resta sempre nell'API: non ha un profilo suo (ancora).
+ *
+ * `maintenance` = la coda della piattaforma con il backup notturno e le
+ * pulizie (review of 23 Sep 2026, owner's decision). Un export di tutto il
+ * grafo passava per l'event loop che serve le richieste: ora lo fa il
+ * servizio `worker` (profilo `all`), e l'API in compose (profilo `api`) non
+ * lo avvia più. In locale, con un processo solo (profilo `all`), lo avvia
+ * l'API. Due processi che lo avviano entrambi non fanno danni: un job della
+ * coda lo prende uno solo.
  *
  * Un profilo non ammesso per il processo è un errore di configurazione
  * all'avvio (fail-fast), mai un default: `WORKER_PROFILE=api` su worker.ts
@@ -36,7 +44,7 @@ export type WorkerProfile = (typeof WORKER_PROFILES)[number]
 export const PROCESS_KINDS = ['api', 'worker'] as const
 export type ProcessKind = (typeof PROCESS_KINDS)[number]
 
-export const WORK_GROUPS = ['events', 'embedding'] as const
+export const WORK_GROUPS = ['events', 'embedding', 'maintenance'] as const
 export type WorkGroup = (typeof WORK_GROUPS)[number]
 
 /** Le unità del gruppo `events`: nomi delle code (e del consumer) che il gruppo avvia. */
@@ -44,7 +52,7 @@ export const EVENT_WORK_UNITS = ['events-ingest', 'events-correlate', 'events-ma
 
 /** La tabella: per ogni profilo, i gruppi che ogni processo avvia. `null` = profilo non ammesso per quel processo. */
 export const PROFILE_TABLE: Readonly<Record<WorkerProfile, Readonly<Record<ProcessKind, readonly WorkGroup[] | null>>>> = {
-  all:    { api: ['events'], worker: ['embedding'] },
+  all:    { api: ['events', 'maintenance'], worker: ['embedding', 'maintenance'] },
   api:    { api: [],         worker: null },
   events: { api: null,       worker: ['events'] },
 }

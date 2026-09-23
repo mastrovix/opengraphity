@@ -180,6 +180,18 @@ groups:
           description: "Last verified backup {{ $value | humanizeDuration }} ago: check the maintenance worker logs and run backup-neo4j + verify-backup by hand."
           runbook: "docs/OPERATIONS.md §1 / §6 «Backup notturno fallito»"
 
+      # Review of 23 Sep 2026: the gauge is seeded at start from the newest
+      # verified archive on disk, so it is absent only when there is none at
+      # all, or when no process runs the maintenance worker.
+      - alert: BackupNeverVerified
+        expr: absent(opengrafo_backup_last_success_timestamp_seconds)
+        for: 26h
+        labels: { severity: critical, subsystem: platform }
+        annotations:
+          summary: "No verified backup is known to any process"
+          description: "For 26 hours no process has reported a verified backup: there is no valid archive in BACKUP_DIR, or the maintenance worker (the `worker` service) is not running."
+          runbook: "docs/OPERATIONS.md §1 / §6 «Backup notturno fallito»"
+
       - alert: BackupFailed
         expr: sum(increase(opengrafo_backup_runs_total{result!="ok"}[24h])) > 0
         labels: { severity: warning, subsystem: platform }

@@ -10,6 +10,11 @@
  *   migrate --dry-run             elenca cosa verrebbe applicato, senza lock né scritture
  *   migrate --to <id>             applica fino a <id> incluso
  *   migrate --init-schema         prima constraint/indici/counter (initSchema di packages/neo4j), poi le migrazioni
+ *   migrate --schema-only         SOLO constraint/indici/counter, nessuna migrazione: il primo passo di un
+ *                                 ripristino da zero (review of 23 Sep 2026). Le migrazioni su un database
+ *                                 vuoto seminano i vocabolari di sistema con id nuovi, e il restore dello
+ *                                 stesso nodo con l'id del backup violava il vincolo (tenant, nome) a metà
+ *                                 strada. Ordine: --schema-only → restore → migrate (docs/OPERATIONS.md §2).
  *   migrate --force               riapplica anche le migrazioni già applicate (devono essere idempotenti)
  *
  * Uso: pnpm --filter @opengraphity/api exec tsx --env-file=.env src/scripts/migrate.ts [opzioni]
@@ -28,11 +33,17 @@ const { values } = parseArgs({
     'dry-run':     { type: 'boolean', default: false },
     to:            { type: 'string' },
     'init-schema': { type: 'boolean', default: false },
+    'schema-only': { type: 'boolean', default: false },
     force:         { type: 'boolean', default: false },
   },
 })
 
 runScript('migrate', async () => {
+  if (values['schema-only']) {
+    if (values['init-schema'] || values.status || values['dry-run'] || values.force || values.to) throw new Error('--schema-only non è combinabile con altre opzioni')
+    await initSchema()
+    return
+  }
   if (values['init-schema']) {
     if (values.status || values['dry-run']) throw new Error('--init-schema non è combinabile con --status/--dry-run')
     await initSchema({ migrations: MIGRATIONS })

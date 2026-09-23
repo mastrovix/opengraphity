@@ -40,6 +40,9 @@ const ALLOWED: Readonly<Record<string, { count: number; reason: string }>> = {
   'apps/api/src/lib/tenantLifecycle.ts': {
     count: 3, reason: 'footprint and deletion of a whole tenant: every node of the tenant, whatever its label',
   },
+  'apps/api/src/scripts/backup-neo4j.ts': {
+    count: 2, reason: 'the backup of one tenant: every node of the tenant, whatever its label (review of 23 Sep 2026)',
+  },
   'apps/api/src/services/reportAgent.ts': {
     count: 2, reason: 'schema introspection for the AI analysis: every label the tenant has (cached per tenant)',
   },

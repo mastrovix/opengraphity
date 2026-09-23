@@ -83,35 +83,69 @@ export const REPEATABLE_JOBS: ReadonlyArray<{ name: string; pattern: string; des
 export const FORM_DRAFT_MAX_AGE_HOURS = 24
 
 // ── Retention: keep last N archives ──────────────────────────────────────────
-// `.partial` (unpublished) and `.invalid` (failed verification) archives are
-// rotated with the same rule: kept for forensics, never forever.
+//
+// Valid archives and failed ones are rotated SEPARATELY (review of 23 Sep
+// 2026). They shared one count: every failed night left a `.partial` or an
+// `.invalid`, so after N failed nights (N = BACKUP_RETENTION, 14) the N slots
+// all held broken archives and the last verified backup had been deleted —
+// with the nightly backup refused for two weeks in a row, which is exactly
+// what happened until D60 (18 Sep). Now the newest N verified archives are
+// kept whatever happens, and the failed ones (kept for forensics) have their
+// own N. Only nightly archives count: a tenant export (`tenant_<slug>_…`) or a
+// file of another name is never touched.
 
-const ARCHIVE_RE = /^backup_.*\.tar\.gz(\.partial|\.invalid)?$/
+const VALID_ARCHIVE_RE  = /^backup_\d{4}-\d{2}-\d{2}_\d{4}\.tar\.gz$/
+const FAILED_ARCHIVE_RE = /^backup_\d{4}-\d{2}-\d{2}_\d{4}\.tar\.gz\.(partial|invalid)$/
 
-export async function pruneOldBackups(dir: string, retention: number): Promise<string[]> {
-  let files: string[]
+/** The nightly archives of one kind in `dir`, oldest first; [] when the directory does not exist yet. */
+function archivesOldestFirst(dir: string, re: RegExp): string[] {
   try {
-    files = readdirSync(dir)
-      .filter(f => ARCHIVE_RE.test(f))
+    return readdirSync(dir)
+      .filter(f => re.test(f))
       .map(f => resolve(dir, f))
-      .sort((a, b) => statSync(a).mtimeMs - statSync(b).mtimeMs)   // oldest first
+      .sort((a, b) => statSync(a).mtimeMs - statSync(b).mtimeMs)
   } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code
-    if (code === 'ENOENT') {
-      maintenanceLogger.info({ backupDir: dir }, 'Backup directory does not exist yet — nothing to prune')
-      return []
-    }
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []
     throw err
   }
+}
 
-  if (files.length <= retention) return []
-
-  const toDelete = files.slice(0, files.length - retention)
-  for (const f of toDelete) {
-    await unlink(f)
-    maintenanceLogger.info({ file: f }, 'Deleted old backup')
+export async function pruneOldBackups(dir: string, retention: number): Promise<string[]> {
+  const deleted: string[] = []
+  for (const re of [VALID_ARCHIVE_RE, FAILED_ARCHIVE_RE]) {
+    const files = archivesOldestFirst(dir, re)
+    for (const f of files.slice(0, Math.max(0, files.length - retention))) {
+      await unlink(f)
+      maintenanceLogger.info({ file: f }, 'Deleted old backup')
+      deleted.push(f)
+    }
   }
-  return toDelete
+  return deleted
+}
+
+/**
+ * When the newest nightly archive was published, in Unix seconds, or null.
+ * A published `.tar.gz` passed its verification (a failed one is renamed
+ * `.invalid`), so this is the last verified backup.
+ */
+export function newestVerifiedBackupAt(dir: string): number | null {
+  const newest = archivesOldestFirst(dir, VALID_ARCHIVE_RE).at(-1)
+  return newest ? Math.floor(statSync(newest).mtimeMs / 1000) : null
+}
+
+/**
+ * The backup metrics exist from the start (review of 23 Sep 2026). The
+ * last-success gauge was set only by a backup of the running process, so
+ * after every restart it was absent and BackupStale (`time() - max(…)`) could
+ * not fire until a backup succeeded; the failure counter appeared only at its
+ * first failure, at 1, and `increase()` saw nothing. Now the gauge is the
+ * newest archive on disk, and every outcome starts at 0.
+ */
+export function seedBackupMetrics(dir: string): void {
+  for (const result of ['ok', 'backup_failed', 'verify_failed']) backupRunsTotal.inc({ result }, 0)
+  const at = newestVerifiedBackupAt(dir)
+  if (at !== null) backupLastSuccessTimestamp.set({}, at)
+  maintenanceLogger.info({ backupDir: dir, lastVerifiedBackupAt: at === null ? null : new Date(at * 1000).toISOString() }, 'Backup metrics seeded from the archives on disk')
 }
 
 // ── Backup + verification ────────────────────────────────────────────────────
@@ -269,6 +303,7 @@ export async function startMaintenanceWorker(): Promise<Worker> {
   // Stessa regola per la durata dei log: se è scritta male lo si scopre ora,
   // non alle cinque del mattino con il job che fallisce in silenzio.
   leggiGiorniDiRetention()
+  seedBackupMetrics(BACKUP_DIR)
   await scheduleRepeatableJobs()
 
   const worker = createWorker(MAINTENANCE_QUEUE, processMaintenanceJob, { concurrency: 1 })

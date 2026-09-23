@@ -168,7 +168,6 @@ const NOTE = new Map([
   ['apps/api/src/graphql/resolvers/workflowMutations.ts#saveWorkflowChanges', 64],
   ['apps/api/src/lib/stepDeadlines.ts#fireStepDeadline', 63],
   ['apps/api/src/lib/reportQueryBuilder.ts#validateReportSection', 63],
-  ['apps/api/src/scripts/verify-backup.ts#verifyBackup', 63],
   ['packages/web-core/src/tokenRefresh.ts#createTokenRefresh', 63],
   ['apps/api/src/lib/reportValueLabels.ts#loadReportValueLabeler', 62],
   ['apps/web/src/pages/proposals/ProposalsPage.tsx#ProposalsPage', 61],

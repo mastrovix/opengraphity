@@ -21,7 +21,7 @@ import { readFile, readdir, rm }     from 'node:fs/promises'
 import { basename, join, resolve }   from 'node:path'
 import { pathToFileURL }             from 'node:url'
 import { runScript }                 from './lib/runScript.js'
-import { validateManifest, tallyNodes, tallyRels, compareCounts, type BackupManifest } from './lib/backupManifest.js'
+import { validateManifest, tallyNodes, tallyRels, compareCounts, danglingRelations, type BackupManifest } from './lib/backupManifest.js'
 import { extractArchive, locateBackupFiles, restoreNodes, restoreRelations, summarizeSkipped } from './restore-neo4j.js'
 
 const execFileAsync = promisify(execFile)
@@ -38,6 +38,35 @@ export interface VerifyReport {
   rels: number
   /** Relazioni ricostruibili dal restore (dry-run). */
   restorableRels: number
+}
+
+/** The realms the manifest declares are in the archive, each for the right realm. */
+async function keycloakChecks(manifest: BackupManifest, keycloakDir: string | null, report: VerifyReport): Promise<void> {
+  if (manifest.keycloak.included) {
+    if (manifest.keycloak.realms.length > 0 && !keycloakDir) report.problems.push('manifest dichiara i realm Keycloak ma la directory keycloak/ manca')
+    else if (keycloakDir) {
+      const present = new Set((await readdir(keycloakDir)).map((f) => basename(f, '.json')))
+      for (const realm of manifest.keycloak.realms) {
+        if (!present.has(realm)) { report.problems.push(`keycloak/${realm}.json mancante`); continue }
+        try {
+          const body = JSON.parse(await readFile(join(keycloakDir, `${realm}.json`), 'utf8')) as { realm?: unknown }
+          if (body.realm !== realm) report.problems.push(`keycloak/${realm}.json: realm ${JSON.stringify(body.realm)} invece di "${realm}"`)
+        } catch (err) { report.problems.push(`keycloak/${realm}.json non parseabile: ${(err as Error).message}`) }
+      }
+    }
+  } else {
+    report.warnings.push(`realm Keycloak non inclusi (${manifest.keycloak.reason ?? 'motivo non indicato'})`)
+  }
+}
+
+/** A relationship with an end that is not among the nodes makes the restore end INCOMPLETE: the archive is not reliable. */
+async function danglingProblems(nodesFile: string, relsFile: string): Promise<string[]> {
+  try {
+    const dangling = await danglingRelations(nodesFile, relsFile)
+    return dangling.count > 0 ? [`${dangling.count} relazioni con un estremo che non è fra i nodi dell'archivio (es. ${dangling.sample.join('; ')})`] : []
+  } catch (err) {
+    return [(err as Error).message]
+  }
 }
 
 export async function verifyBackup(archivePath: string): Promise<VerifyReport> {
@@ -74,6 +103,9 @@ export async function verifyBackup(archivePath: string): Promise<VerifyReport> {
       report.problems.push(...compareCounts('relationship type', manifest.rels_by_type, rels.byKey))
     } catch (err) { report.problems.push((err as Error).message) }
 
+    // 2b. every relationship has both ends in the archive (review of 23 Sep 2026)
+    if (report.problems.length === 0) report.problems.push(...await danglingProblems(files.nodesFile, files.relsFile))
+
     // 3. attachments
     if (manifest.attachments.included) {
       if (!files.attachmentsTar) report.problems.push('manifest dichiara gli allegati ma attachments.tar manca')
@@ -91,21 +123,7 @@ export async function verifyBackup(archivePath: string): Promise<VerifyReport> {
     }
 
     // 4. keycloak
-    if (manifest.keycloak.included) {
-      if (manifest.keycloak.realms.length > 0 && !files.keycloakDir) report.problems.push('manifest dichiara i realm Keycloak ma la directory keycloak/ manca')
-      else if (files.keycloakDir) {
-        const present = new Set((await readdir(files.keycloakDir)).map((f) => basename(f, '.json')))
-        for (const realm of manifest.keycloak.realms) {
-          if (!present.has(realm)) { report.problems.push(`keycloak/${realm}.json mancante`); continue }
-          try {
-            const body = JSON.parse(await readFile(join(files.keycloakDir, `${realm}.json`), 'utf8')) as { realm?: unknown }
-            if (body.realm !== realm) report.problems.push(`keycloak/${realm}.json: realm ${JSON.stringify(body.realm)} invece di "${realm}"`)
-          } catch (err) { report.problems.push(`keycloak/${realm}.json non parseabile: ${(err as Error).message}`) }
-        }
-      }
-    } else {
-      report.warnings.push(`realm Keycloak non inclusi (${manifest.keycloak.reason ?? 'motivo non indicato'})`)
-    }
+    await keycloakChecks(manifest, files.keycloakDir, report)
 
     // 5. restore dry-run in-process (stesse funzioni dello script di restore)
     if (report.problems.length === 0) {
@@ -131,6 +149,7 @@ export function formatReport(r: VerifyReport): string {
   const lines = [
     `Archivio: ${r.archivePath}`,
     m ? `Creato: ${m.created_at} — app ${m.app_version}, Neo4j ${m.neo4j_version ?? '?'}` : 'Manifest: assente/invalido',
+    m ? `Contenuto: ${m.scope?.tenant ? `il tenant ${m.scope.tenant}` : "l'intera installazione"}` : '',
     `Nodi: ${r.nodes}${m ? ` (${Object.keys(m.nodes_by_label).length} label)` : ''}`,
     `Relazioni: ${r.rels}${m ? ` (${Object.keys(m.rels_by_type).length} tipi)` : ''}, ricostruibili dal restore: ${r.restorableRels}`,
     m ? `Schema: ${m.constraints.length} constraint, ${m.indexes.length} indici` : '',

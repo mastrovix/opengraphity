@@ -48,25 +48,42 @@ Garanzie (D-08):
   `BACKUP_SKIP_KEYCLOAK=true` (worker); il manifest lo registra.
 - Allegati: directory assente → non inclusi (registrato nel manifest, warning
   nel log), non è un errore. `--skip-attachments` per escluderli.
+- **Nessuna relazione monca** (revisione del 23 set 2026): con il grafo in uso
+  una relazione può arrivare negli stream con un nodo committato dopo che lo
+  stream dei nodi era già passato. Quel nodo si scrive allora insieme alla
+  relazione (il manifest conta quanti in `endpoint_nodes_added`), e il
+  ripristino non finisce più «INCOMPLETO» su un backup notturno. La verifica
+  rifiuta un archivio con una relazione il cui estremo non è fra i nodi.
 
 ### Backup schedulato
 
-Il maintenance worker dell'API (`workers/maintenance.worker.ts`, coda BullMQ
-`maintenance`) esegue ogni notte alle 00:00 (`0 0 * * *`):
+Il maintenance worker (`workers/maintenance.worker.ts`, coda BullMQ
+`maintenance`) gira nel servizio **`worker`** — gruppo `maintenance` del
+profilo `all`, §8 — e non più nell'API: un export di tutto il grafo passava per
+l'event loop che serve le richieste (revisione del 23 set 2026). Ogni notte
+alle 00:00 (`0 0 * * *`):
 
-1. `runBackup` in `BACKUP_DIR` (env obbligatoria in produzione; deve essere un
-   volume persistente del container `api`);
+1. `runBackup` in `BACKUP_DIR` (env obbligatoria in produzione; il volume
+   `api_backups`, montato su `worker` e — per i comandi a mano — su `api`);
 2. **verifica** dell'archivio (vedi sotto). Se fallisce: `logger.error` con i
    problemi, archivio rinominato in `.tar.gz.invalid`, job fallito (visibile
    nella coda), contatore `opengrafo_backup_runs_total{result="verify_failed"}`;
-3. **rotazione**: conserva gli ultimi `BACKUP_RETENTION` archivi (default
-   **14**), contando anche `.partial`/`.invalid`. Gira anche se il backup è
-   fallito, così il disco viene comunque liberato.
+3. **rotazione**: conserva i `BACKUP_RETENTION` archivi **validi** più recenti
+   (default **14**) e, a parte, altrettanti `.partial`/`.invalid` (per capire
+   che cosa è andato storto). Prima contavano insieme: 14 notti fallite di fila
+   cancellavano l'ultimo backup buono (revisione del 23 set 2026). Gira anche
+   se il backup è fallito, così il disco viene comunque liberato. Gli export
+   di un tenant (`tenant_<slug>_<stamp>.tar.gz`) non sono mai toccati.
 
-Metriche (`GET /metrics`): `opengrafo_backup_runs_total{result=ok|backup_failed|verify_failed}`
-e `opengrafo_backup_last_success_timestamp_seconds`. Allarme consigliato:
-`time() - opengrafo_backup_last_success_timestamp_seconds > 25*3600` oppure
-un incremento di `verify_failed`/`backup_failed`.
+Metriche (`GET /metrics` del `worker`, `worker:4000`):
+`opengrafo_backup_runs_total{result=ok|backup_failed|verify_failed}` e
+`opengrafo_backup_last_success_timestamp_seconds`. All'avvio il gauge prende
+la data dell'archivio valido più recente sul disco e i tre contatori partono
+da 0: prima, dopo ogni riavvio, il gauge mancava e `BackupStale` non poteva
+scattare, e il primo fallimento non si vedeva come incremento. Regole in
+`infra/prometheus/alerts.yml`: `BackupStale` (nessun backup verificato da 25
+ore), `BackupNeverVerified` (il gauge manca da 26 ore: nessun archivio valido,
+o il `worker` non gira), `BackupFailed`.
 
 Variabili: `BACKUP_DIR`, `ATTACHMENT_DIR`, `BACKUP_RETENTION` (default 14),
 `BACKUP_SKIP_KEYCLOAK` (default false), e per l'export dei realm
@@ -84,6 +101,20 @@ pnpm exec tsx --env-file=.env src/scripts/backup-neo4j.ts --output-dir ./backups
 È read-only sul DB; può girare con l'applicazione attiva. Nel container:
 `node dist/scripts/backup-neo4j.js --output-dir /backups`.
 
+### Backup di un solo tenant
+
+```bash
+pnpm exec tsx --env-file=.env src/scripts/backup-neo4j.ts --output-dir ./backups --tenant <slug>
+```
+
+Scrive `tenant_<slug>_<stamp>.tar.gz`, stesso formato: i nodi del tenant (e il
+suo nodo `:Tenant`), le relazioni fra loro e quelle verso i nodi di sistema
+spediti col prodotto (`tenant_id: 'system'`, scritti come estremi), la sua
+cartella `ATTACHMENT_DIR/<slug>` e il suo realm. Una relazione verso il nodo
+di un **altro** tenant non viene esportata: porterebbe dati altrui
+nell'archivio. Il manifest lo dichiara (`scope.tenant`). Si ripristina con
+`restore-neo4j --tenant <slug>` (§2).
+
 ### Verifica
 
 ```bash
@@ -95,7 +126,9 @@ riga, forma delle righe, conteggio totale e per label/tipo uguale al
 manifest; `attachments.tar` leggibile con il numero di file dichiarato;
 ogni `keycloak/<realm>.json` presente e del realm giusto; infine il
 **restore in `--dry-run` in-process** (stesse funzioni di `restore-neo4j`:
-label/tipi validati, piano dei MERGE). Stampa un riepilogo; **exit ≠ 0 su
+label/tipi validati, piano dei MERGE). E che ogni relazione abbia entrambi gli
+estremi fra i nodi dell'archivio: altrimenti il ripristino finirebbe
+«INCOMPLETO», e l'archivio non è affidabile. Stampa un riepilogo; **exit ≠ 0 su
 qualsiasi incoerenza**. Le relazioni fra nodi senza `id` (che il restore non
 può ricostruire) sono un AVVISO, non un errore: sono una proprietà dei dati.
 Richiede `NEO4J_*` raggiungibili (il pacchetto driver si connette all'import).
@@ -129,17 +162,24 @@ pnpm exec tsx --env-file=.env src/scripts/restore-neo4j.ts  --input ./backups/ba
 
 Procedura consigliata per un ripristino completo:
 
-1. Fermare l'API (`docker compose stop api`) così nessun worker scrive durante il restore.
+1. Fermare chi scrive (`docker compose stop api worker events-worker`) così niente cambia durante il restore.
 2. Verificare l'archivio (`verify-backup`).
 3. Per un ripristino **da zero** svuotare il DB esplicitamente (il restore è
    additivo e non cancella nulla): `MATCH (n) DETACH DELETE n` in batch, o
    ricreare il volume Neo4j.
-4. `pnpm neo4j:init` (constraint e indici: il restore non li ricrea).
+4. `pnpm neo4j:schema` — **solo** constraint e indici, nessuna migrazione. Non
+   `pnpm neo4j:init`: quello fa girare anche tutte le migrazioni, che su un
+   database vuoto seminano i vocabolari di sistema con id nuovi, e il restore
+   dello stesso nodo con l'id del backup violava il vincolo (tenant, nome) a
+   metà strada, con il grafo mezzo ripristinato (revisione del 23 set 2026).
+   E non dopo il restore: senza indici ogni `MERGE` per id scandisce l'intera
+   label, e su milioni di nodi il ripristino non finisce.
 5. `restore-neo4j --dry-run`, poi `--yes-restore`. Il comando termina con
    **exit ≠ 0 se il restore è parziale** (relazioni saltate perché un nodo di
    testa manca o non ha `id`): leggere il riepilogo prima di riaprire il servizio.
-6. `migrate.ts --status`: le migrazioni applicate sono nel backup
-   (nodi `:Migration`), quindi lo stato torna coerente con il codice.
+6. `migrate.ts` (senza opzioni): le migrazioni applicate prima del backup sono
+   nel backup (nodi `:Migration`), quindi girano solo quelle più recenti.
+   `migrate.ts --status` deve dire 0 pendenti.
 7. Allegati: `tar -xf attachments.tar -C $ATTACHMENT_DIR` (estrarre prima
    `attachments.tar` dall'archivio: `tar -xzf backup_<stamp>.tar.gz backup_<stamp>/attachments.tar`).
 8. Keycloak: importare `keycloak/<realm>.json` da console admin
@@ -151,14 +191,49 @@ Procedura consigliata per un ripristino completo:
    volume a container fermo. Revisione totale · H-27: qui c'era scritto «dump
    del suo database Postgres», e durante un restore l'operatore cercava un
    database che non c'è.
-9. Riavviare l'API; il worker embedding ricrea l'indice vettoriale e ricalcola
-   gli embedding mancanti (`backfill-embeddings` se serve).
+9. Riavviare `api`, `worker`, `events-worker`; il worker embedding ricrea
+   l'indice vettoriale e ricalcola gli embedding mancanti (`backfill-embeddings`
+   se serve).
+
+### Ripristino di un solo tenant
+
+```bash
+pnpm exec tsx --env-file=.env src/scripts/restore-neo4j.ts --input ./backups/tenant_<slug>_<stamp>.tar.gz --tenant <slug> --dry-run
+pnpm exec tsx --env-file=.env src/scripts/restore-neo4j.ts --input ./backups/tenant_<slug>_<stamp>.tar.gz --tenant <slug> --yes-restore
+```
+
+- `--tenant` deve essere quello dell'archivio: un archivio di tenant senza
+  `--tenant`, o un backup dell'intera installazione con `--tenant`, sono
+  rifiutati prima di scrivere.
+- Prima di scrivere si legge tutto `nodes.jsonl`: un solo nodo che non sia del
+  tenant (o di sistema) rifiuta il ripristino — finirebbe dentro un altro cliente.
+- È additivo come il resto: per rimettere un tenant com'era, cancellarlo prima
+  (console di piattaforma) e ripristinarlo.
+- Allegati: `tar -xf attachments.tar -C $ATTACHMENT_DIR/<slug>`; realm: come al
+  passo 8, solo `keycloak/<slug>.json`.
 
 Cosa il restore **NON** ripristina: allegati e realm (passi 7–8), constraint e
-indici (passo 4), utenti Keycloak, la cache Redis (si rigenera), le code
+indici (passo 4, `neo4j:schema`), utenti Keycloak, la cache Redis (si rigenera), le code
 BullMQ (job in volo persi: i job ripetibili vengono ri-registrati all'avvio).
 Semantica sui nodi: MERGE per `(prima label, id)`; senza `id` MERGE per chiave
-naturale (`Counter`) o creazione solo se non esiste un nodo identico. Le
+naturale (`Counter`, `DomainMatrix`, `AnomalyConfig`, `CatalogFormRevision`) o,
+per gli archivi scritti prima che ogni nodo avesse un id, creazione una volta
+per elementId dell'archivio. Sulle relazioni: l'identità è estremi + tipo +
+proprietà, e ognuna si riscrive tante volte quante sono nell'archivio — due
+relazioni parallele dello stesso tipo (lo scatto a tempo e «Conferma la
+risoluzione» fra gli stessi due passi) restano due.
+
+La prima prova di ripristino vera (23 set 2026, su una copia, 4,8 milioni di
+nodi e 5 milioni di relazioni) ha trovato tre difetti che nessun test vedeva,
+tutti corretti: (1) molte etichette non hanno un indice su `id` e ogni MERGE
+scandiva l'etichetta intera — 200 nodi al secondo, sei ore; ora il restore crea
+indici temporanei `og_restore_*` e li toglie alla fine (tutto in ~6 minuti);
+(2) le righe delle tabelle dei moduli non avevano `id` e le 12.736 relazioni
+che le legavano alle richieste andavano perse (ora hanno un id, migrazione
+`20261008_1030`, e i nodi senza id si ritrovano per elementId dell'archivio);
+(3) `MERGE` sulle relazioni fondeva quelle parallele in una, e il conteggio
+diceva «ripristinate» lo stesso. Rifare la prova dopo ogni cambiamento del
+modello dei dati, su una copia: un backup mai ripristinato non è un backup. Le
 proprietà temporali native di Neo4j vengono ripristinate come stringhe ISO
 (l'applicazione usa stringhe ISO ovunque).
 
@@ -1610,8 +1685,8 @@ letta da `index.ts` (API) e `worker.ts` (worker):
 
 | `WORKER_PROFILE` | processo API (`dist/index.js`) | processo worker (`dist/worker.js`) |
 |---|---|---|
-| `all` (default fuori dal compose) | ITSM **+ allarmi/servizi** — il comportamento precedente | embedding (servizio compose `worker`) |
-| `api` | solo ITSM: workflow, notifiche, SLA, webhook in uscita, report, discovery, backup, email digest | *non ammesso* |
+| `all` (default fuori dal compose) | ITSM **+ allarmi/servizi + manutenzione** — un processo solo, tutto dentro | embedding **+ manutenzione** (backup notturno e pulizie: servizio compose `worker`) |
+| `api` | solo ITSM: workflow, notifiche, SLA, webhook in uscita, report, discovery, email digest — **niente backup** (dal 23 set 2026 è del `worker`) | *non ammesso* |
 | `events` | *non ammesso* | **allarmi/servizi**: `events-ingest`, `events-correlate`, `events-maintenance`, `services-impact` e il consumer `service-impact-consumer` (servizio compose `events-worker`) |
 
 Un profilo non ammesso per il processo ferma l'avvio con l'elenco dei validi
@@ -1619,7 +1694,11 @@ Un profilo non ammesso per il processo ferma l'avvio con l'elenco dei validi
 nessun default. L'embedding nel processo API resta governato da
 `EMBEDDING_WORKER_EXTERNAL` come prima; nel worker gira solo con `all`: il
 servizio `events-worker` **non** calcola embedding (due container che caricano
-il modello sono memoria buttata), serve il servizio `worker`.
+il modello sono memoria buttata), serve il servizio `worker`. Il gruppo
+`maintenance` (coda `maintenance`: backup, purghe, dai log agli eventi) chiede
+anche `BACKUP_DIR`, `ATTACHMENT_DIR`, `KEYCLOAK_URL`, `KEYCLOAK_ADMIN_USER`
+(profilo di configurazione `maintenance`), controllati solo nel processo che
+lo avvia: `events-worker` non li chiede.
 
 Cosa cambia con il profilo `events` nel container dedicato:
 

@@ -171,6 +171,8 @@ export class DemoWriter {
         MATCH (p:${p} {id: row.parent, tenant_id: $tenantId})
         CREATE (p)-[r:${t}]->(n:${c})
         SET n = row.props, r = row.relProps
+        // Every node has an id, as the product writes them (a form table row had none: review of 23 Sep 2026).
+        SET n.id = coalesce(n.id, randomUUID())
         RETURN count(n) AS n
       `, { rows: data, tenantId: this.tenantId }))
       const n = Number(result.records[0]?.get('n') ?? 0)

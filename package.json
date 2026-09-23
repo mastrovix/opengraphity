@@ -12,6 +12,7 @@
     "vocabolario:log": "node scripts/genera-vocabolario-log.mjs",
     "check:vocabolario": "node scripts/genera-vocabolario-log.mjs --check",
     "neo4j:init": "pnpm --filter @opengraphity/api migrate -- --init-schema",
+    "neo4j:schema": "pnpm --filter @opengraphity/api migrate -- --schema-only",
     "deploy:web": "pnpm --filter @opengraphity/web build && docker compose -f infra/docker-compose.yml up -d --build web",
     "test:e2e": "playwright test --config e2e/playwright.config.ts"
   },

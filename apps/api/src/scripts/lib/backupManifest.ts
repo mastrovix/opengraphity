@@ -8,8 +8,12 @@
  *     manifest.json          counts, schema, versions, what is included
  *     nodes.jsonl            {id: elementId, labels: [...], props: {...}} per line
  *     rels.jsonl             {startId, startLabels, startProps, relType, relProps, endId, endLabels, endProps}
- *     attachments.tar        (optional) plain tar of ATTACHMENT_DIR
- *     keycloak/<realm>.json  (optional) partial-export of every tenant realm
+ *     attachments.tar        (optional) plain tar of ATTACHMENT_DIR (of ATTACHMENT_DIR/<tenant> for a tenant export)
+ *     keycloak/<realm>.json  (optional) partial-export of every tenant realm (of the one realm for a tenant export)
+ *
+ * `scope` (review of 23 Sep 2026): absent or `{tenant: null}` = the whole
+ * installation; `{tenant: '<slug>'}` = one tenant's nodes, the relationships
+ * among them, and the system nodes they point to (written as endpoint nodes).
  */
 import { createReadStream } from 'node:fs'
 import { createInterface } from 'node:readline'
@@ -42,6 +46,19 @@ export interface BackupManifest {
   indexes: Record<string, unknown>[]
   attachments: { included: boolean; dir: string | null; file_count: number; total_bytes: number; reason: string | null }
   keycloak: { included: boolean; realms: string[]; reason: string | null }
+  /** What the archive covers; absent in archives written before 23 Sep 2026 (= the installation). */
+  scope?: { tenant: string | null }
+  /**
+   * Nodes written because a relationship points to them and the node stream
+   * did not carry them: committed while the backup ran, or — for a tenant
+   * export — the system nodes the tenant's nodes refer to.
+   */
+  endpoint_nodes_added?: number
+}
+
+/** The tenant an archive belongs to, or null for a whole-installation archive. */
+export function manifestTenant(m: Pick<BackupManifest, 'scope'>): string | null {
+  return m.scope?.tenant ?? null
 }
 
 // ── Manifest validation ──────────────────────────────────────────────────────
@@ -70,6 +87,10 @@ export function validateManifest(raw: unknown): BackupManifest {
   if (!att || typeof att['included'] !== 'boolean') throw new Error('manifest.json: attachments.included missing')
   const kc = m['keycloak'] as Record<string, unknown> | undefined
   if (!kc || typeof kc['included'] !== 'boolean' || !Array.isArray(kc['realms'])) throw new Error('manifest.json: keycloak.{included,realms} missing')
+  const scope = m['scope'] as Record<string, unknown> | undefined
+  if (scope !== undefined && (typeof scope !== 'object' || scope === null || (scope['tenant'] !== null && (typeof scope['tenant'] !== 'string' || !scope['tenant'])))) {
+    throw new Error('manifest.json: scope.tenant must be a tenant slug or null')
+  }
   // The sum of rels_by_type must equal rel_count (each rel has one type); nodes
   // may carry several labels, so nodes_by_label is only checked per label.
   const relSum = Object.values(m['rels_by_type'] as Record<string, number>).reduce((s, n) => s + n, 0)
@@ -137,4 +158,71 @@ export function compareCounts(what: string, expected: Record<string, number>, ac
     if (e !== a) problems.push(`${what} "${k}": manifest ${e}, file ${a}`)
   }
   return problems
+}
+
+// ── Which nodes an archive carries, by elementId ─────────────────────────────
+
+/**
+ * A set of Neo4j elementIds, small enough for a graph of millions of nodes
+ * (review of 23 Sep 2026). An elementId is `<n>:<database id>:<internal id>`,
+ * and within one database the internal ids are dense integers: they go in a
+ * bitmap — about 600 KB for five million nodes, where a Set of strings would
+ * hold hundreds of megabytes in the process that runs the backup. An id of
+ * any other shape falls back to a plain Set, so correctness never depends on
+ * the format.
+ */
+export class ElementIdSet {
+  private bits = new Uint8Array(1 << 16)
+  private prefix: string | null = null
+  private readonly other = new Set<string>()
+
+  private split(id: string): number | null {
+    const i = id.lastIndexOf(':')
+    if (i < 0) return null
+    const n = Number(id.slice(i + 1))
+    if (!Number.isSafeInteger(n) || n < 0) return null
+    const prefix = id.slice(0, i)
+    if (this.prefix === null) this.prefix = prefix
+    return prefix === this.prefix ? n : null
+  }
+
+  add(id: string): void {
+    const n = this.split(id)
+    if (n === null) { this.other.add(id); return }
+    const byte = n >>> 3
+    if (byte >= this.bits.length) {
+      let size = this.bits.length
+      while (size <= byte) size *= 2
+      const grown = new Uint8Array(size)
+      grown.set(this.bits)
+      this.bits = grown
+    }
+    this.bits[byte]! |= 1 << (n & 7)
+  }
+
+  has(id: string): boolean {
+    const n = this.split(id)
+    if (n === null) return this.other.has(id)
+    const byte = n >>> 3
+    return byte < this.bits.length && (this.bits[byte]! & (1 << (n & 7))) !== 0
+  }
+}
+
+/**
+ * The relationships of an archive whose endpoint is not among its nodes: a
+ * restore would not rebuild them and would end INCOMPLETE (review of 23 Sep
+ * 2026). An archive with any is not a reliable backup.
+ */
+export async function danglingRelations(nodesFile: string, relsFile: string): Promise<{ count: number; sample: string[] }> {
+  const ids = new ElementIdSet()
+  for await (const row of readJsonl<NodeRow>(nodesFile)) ids.add(row.id)
+  let count = 0
+  const sample: string[] = []
+  for await (const row of readJsonl<RelRow>(relsFile)) {
+    const missing = !ids.has(row.startId) ? row.startId : !ids.has(row.endId) ? row.endId : null
+    if (missing === null) continue
+    count++
+    if (sample.length < 5) sample.push(`${row.startLabels.join(':')}-[${row.relType}]->${row.endLabels.join(':')} (${missing})`)
+  }
+  return { count, sample }
 }

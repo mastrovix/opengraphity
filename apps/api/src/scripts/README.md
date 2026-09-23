@@ -59,9 +59,11 @@ fallita. Ogni migrazione gira nella sua transazione insieme al marker, salvo
 deve essere idempotente. Niente rollback: si scrive una nuova migrazione.
 Procedura completa e stato in `docs/OPERATIONS.md`.
 
-`pnpm neo4j:init` (packages/neo4j) crea constraint e indici e NON conosce le
-migrazioni dell'API: per fare tutto in un colpo usare
-`migrate.ts --init-schema` (schema, poi migrazioni).
+`pnpm neo4j:init` è `migrate.ts --init-schema`: constraint, indici e contatori,
+**poi tutte le migrazioni** — per un'installazione nuova. `pnpm neo4j:schema`
+è `migrate.ts --schema-only`: solo constraint, indici e contatori, ed è il
+primo passo di un ripristino da zero (schema → restore → `migrate`; vedi
+`docs/OPERATIONS.md` §2).
 
 ## Seed di configurazione (idempotenti, MERGE per chiave naturale)
 

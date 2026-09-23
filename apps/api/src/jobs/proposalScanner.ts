@@ -6,7 +6,8 @@
  * giro notturno è una riga» — e non lo è, per tre ragioni verificate nel
  * codice:
  *
- *  1. `startMaintenanceWorker()` gira nel processo **API**, e
+ *  1. `startMaintenanceWorker()` girava nel processo **API** (dal 23 set 2026
+ *     gira nel servizio `worker`, gruppo `maintenance`, ma la ragione resta), e
  *     `workerProfiles.ts` racconta perché `events` ed `embedding` sono stati
  *     estratti: «~70 slot di job sopra un pool Neo4j da 50 condiviso con i
  *     resolver». Un giro che per ogni cliente legge la configurazione e un

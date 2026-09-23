@@ -1303,6 +1303,9 @@ export async function writeFormTables(
    *
    * L'atomicità c'era già e resta: chi chiama passa una transazione.
    */
+  // Every row has an `id` (review of 23 Sep 2026): without one the restore
+  // could not find it again, and matched it by its values — two requests with
+  // the same line would have shared one row.
   const righe = tables.flatMap((t) =>
     t.rows.map((valori, indice) => ({ field: t.field, index: indice, values: valori })),
   )
@@ -1310,7 +1313,7 @@ export async function writeFormTables(
   await runQuery(session, `
     MATCH (s:ServiceRequest {id: $entityId, tenant_id: $tenantId})
     UNWIND $righe AS riga
-    CREATE (s)-[:FORM_TABLE_ROW {field: riga.field, row_index: riga.index}]->(r:FormTableRow {tenant_id: $tenantId})
+    CREATE (s)-[:FORM_TABLE_ROW {field: riga.field, row_index: riga.index}]->(r:FormTableRow {tenant_id: $tenantId, id: randomUUID()})
     SET r += riga.values`,
   { entityId, tenantId, righe })
 }

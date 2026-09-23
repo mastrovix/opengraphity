@@ -379,13 +379,14 @@ esattamente le immagini precedenti.
 ## 10. Backup e restore
 
 **Cosa fa il backup oggi** (`apps/api/src/scripts/backup-neo4j.ts`, lanciato
-dal maintenance worker dell'API ogni giorno a mezzanotte, retention degli
-ultimi N archivi): export via Cypher di **tutti i nodi e le relazioni** in
+dal maintenance worker del servizio **`worker`** ogni giorno a mezzanotte —
+non più dall'API, dal 23 set 2026 — retention degli ultimi N archivi validi,
+e a parte degli ultimi N falliti): export via Cypher di **tutti i nodi e le relazioni** in
 JSONL, compresso in `backup_<stamp>.tar.gz` sotto `BACKUP_DIR`
 (`/data/backups` → volume `api_backups`). Non è un `neo4j-admin dump`, ma
 **una sola transazione di lettura**, quindi l'export è coerente; il manifest
-registra anche `SHOW CONSTRAINTS` e `SHOW INDEXES`, che `migrate --init-schema`
-ricrea. **Include** gli allegati (`attachments.tar`) e i realm Keycloak
+registra anche `SHOW CONSTRAINTS` e `SHOW INDEXES`, che `pnpm neo4j:schema`
+ricrea. Un solo tenant: `backup-neo4j --tenant <slug>` (OPERATIONS §1). **Include** gli allegati (`attachments.tar`) e i realm Keycloak
 (`keycloak/<realm>.json`, senza gli utenti). **Non include**: gli utenti
 Keycloak, Redis (code BullMQ — ricostruibili), Grafana/Prometheus/Loki.
 
@@ -423,13 +424,19 @@ docker compose -f infra/docker-compose.yml start keycloak
 
 **Restore Neo4j** (`restore-neo4j.ts`: idempotente e additivo — MERGE per id;
 per un ripristino da zero svuotare prima il DB esplicitamente; esce ≠ 0 se una
-relazione non è ricostruibile):
+relazione non è ricostruibile). L'ordine conta: **solo lo schema, poi il
+restore, poi le migrazioni** (OPERATIONS §2 spiega perché: prima qui c'era il
+contrario, e il restore di un grafo grande senza indici non finiva; `neo4j:init`
+al posto dello schema lo rompeva a metà):
 
 ```bash
+docker compose -f infra/docker-compose.yml stop api worker events-worker
 docker compose -f infra/docker-compose.yml cp offsite/neo4j/backup_<stamp>.tar.gz api:/data/backups/
-docker compose -f infra/docker-compose.yml exec api node --no-node-snapshot dist/scripts/restore-neo4j.js --input /data/backups/backup_<stamp>.tar.gz --dry-run
-docker compose -f infra/docker-compose.yml exec api node --no-node-snapshot dist/scripts/restore-neo4j.js --input /data/backups/backup_<stamp>.tar.gz --yes-restore
-NEO4J_URI=bolt://localhost:7687 pnpm neo4j:init      # indici e constraint
+docker compose -f infra/docker-compose.yml run --rm --no-deps api node --no-node-snapshot dist/scripts/migrate.js --schema-only
+docker compose -f infra/docker-compose.yml run --rm --no-deps api node --no-node-snapshot dist/scripts/restore-neo4j.js --input /data/backups/backup_<stamp>.tar.gz --dry-run
+docker compose -f infra/docker-compose.yml run --rm --no-deps api node --no-node-snapshot dist/scripts/restore-neo4j.js --input /data/backups/backup_<stamp>.tar.gz --yes-restore
+docker compose -f infra/docker-compose.yml run --rm --no-deps api node --no-node-snapshot dist/scripts/migrate.js
+docker compose -f infra/docker-compose.yml start api worker events-worker
 ```
 
 Allegati: ricopiare `offsite/attachments` in `api_data:/data/attachments`

@@ -12,7 +12,7 @@ describe('PROFILE_TABLE', () => {
     expect(WORKER_PROFILES).toEqual(['all', 'api', 'events'])
     expect(PROCESS_KINDS).toEqual(['api', 'worker'])
     expect(PROFILE_TABLE).toEqual({
-      all:    { api: ['events'], worker: ['embedding'] },
+      all:    { api: ['events', 'maintenance'], worker: ['embedding', 'maintenance'] },
       api:    { api: [],         worker: null },
       events: { api: null,       worker: ['events'] },
     })
@@ -28,6 +28,14 @@ describe('PROFILE_TABLE', () => {
     expect(workGroupsFor('api', 'api')).toEqual([])
     expect(workGroupsFor('worker', 'events')).toEqual(['events'])
     expect(runsWorkGroup('worker', 'events', 'embedding')).toBe(false)
+  })
+
+  // Review of 23 Sep 2026 (owner's decision): the backup runs off the API's event loop.
+  it('il backup (gruppo maintenance) lo avvia il servizio `worker` (all); l\'API solo quando è sola (all), mai col profilo `api` del compose; mai `events-worker`', () => {
+    expect(runsWorkGroup('worker', 'all', 'maintenance')).toBe(true)
+    expect(runsWorkGroup('api', 'all', 'maintenance')).toBe(true)
+    expect(runsWorkGroup('api', 'api', 'maintenance')).toBe(false)
+    expect(runsWorkGroup('worker', 'events', 'maintenance')).toBe(false)
   })
 
   it('profilo non ammesso per il processo → errore con l\'elenco dei validi (fail-fast, nessun default)', () => {

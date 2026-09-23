@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { validateManifest, tallyNodes, tallyRels, compareCounts, MANIFEST_FORMAT } from '../lib/backupManifest.js'
+import { validateManifest, tallyNodes, tallyRels, compareCounts, manifestTenant, ElementIdSet, danglingRelations, MANIFEST_FORMAT } from '../lib/backupManifest.js'
 
 let dir: string
 beforeAll(async () => { dir = await mkdtemp(join(tmpdir(), 'og-manifest-test-')) })
@@ -77,5 +77,62 @@ describe('compareCounts', () => {
       'label "B": manifest 2, file 0',
       'label "C": manifest 0, file 1',
     ])
+  })
+})
+
+// ── Review of 23 Sep 2026 ─────────────────────────────────────────────────────
+
+describe('scope of an archive', () => {
+  it('absent or null = the installation; a slug = one tenant; anything else is refused', () => {
+    expect(manifestTenant(validateManifest(manifest()))).toBeNull()
+    expect(manifestTenant(validateManifest(manifest({ scope: { tenant: null } })))).toBeNull()
+    expect(manifestTenant(validateManifest(manifest({ scope: { tenant: 'acme' } })))).toBe('acme')
+    for (const scope of [{ tenant: '' }, { tenant: 3 }, null, 'acme']) {
+      expect(() => validateManifest(manifest({ scope }))).toThrow(/scope\.tenant/)
+    }
+  })
+})
+
+describe('ElementIdSet', () => {
+  it('keeps the ids of one database in a bitmap, growing as needed', () => {
+    const ids = new ElementIdSet()
+    ids.add('4:db-1:0')
+    ids.add('4:db-1:7')
+    ids.add('4:db-1:5000000')   // far past the initial 64 KB
+    expect(['4:db-1:0', '4:db-1:7', '4:db-1:5000000'].every((i) => ids.has(i))).toBe(true)
+    expect(ids.has('4:db-1:1')).toBe(false)
+    expect(ids.has('4:db-1:99999999')).toBe(false)
+  })
+
+  it('an id of another shape or another database falls back to a plain set: correctness never depends on the format', () => {
+    const ids = new ElementIdSet()
+    ids.add('4:db-1:3')
+    ids.add('4:db-2:3')
+    ids.add('no-colons')
+    ids.add('4:db-1:x')
+    expect(ids.has('4:db-2:3')).toBe(true)
+    expect(ids.has('4:db-2:4')).toBe(false)
+    expect(ids.has('no-colons')).toBe(true)
+    expect(ids.has('4:db-1:x')).toBe(true)
+    expect(ids.has('other')).toBe(false)
+  })
+})
+
+describe('danglingRelations', () => {
+  const node = (id: string) => JSON.stringify({ id, labels: ['User'], props: { id } })
+  const rel = (a: string, b: string) => JSON.stringify({ startId: a, startLabels: ['User'], startProps: {}, relType: 'KNOWS', relProps: {}, endId: b, endLabels: ['Team'], endProps: {} })
+
+  it('counts the relationships whose start or end is not among the nodes, with a sample', async () => {
+    await writeFile(join(dir, 'd-nodes.jsonl'), [node('4:x:1'), node('4:x:2')].join('\n'))
+    await writeFile(join(dir, 'd-rels.jsonl'), [rel('4:x:1', '4:x:2'), rel('4:x:1', '4:x:9'), rel('4:x:8', '4:x:2')].join('\n'))
+    const out = await danglingRelations(join(dir, 'd-nodes.jsonl'), join(dir, 'd-rels.jsonl'))
+    expect(out.count).toBe(2)
+    expect(out.sample).toEqual(['User-[KNOWS]->Team (4:x:9)', 'User-[KNOWS]->Team (4:x:8)'])
+  })
+
+  it('none when every relationship has both ends', async () => {
+    await writeFile(join(dir, 'e-nodes.jsonl'), [node('4:x:1'), node('4:x:2')].join('\n'))
+    await writeFile(join(dir, 'e-rels.jsonl'), rel('4:x:2', '4:x:1'))
+    await expect(danglingRelations(join(dir, 'e-nodes.jsonl'), join(dir, 'e-rels.jsonl'))).resolves.toEqual({ count: 0, sample: [] })
   })
 })

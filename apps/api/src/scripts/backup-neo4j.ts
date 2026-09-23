@@ -15,7 +15,16 @@
  *     renamed to `.tar.gz` ONLY after the rows written match the counts read
  *     in the same transaction; a `.partial` is never a valid backup.
  *
- * Usage: pnpm --filter @opengraphity/api backup:neo4j -- [--output-dir ./backups] [--skip-keycloak] [--skip-attachments]
+ *   - ONE TENANT (review of 23 Sep 2026): `--tenant <slug>` exports that
+ *     tenant's nodes, the relationships among them and those to the shipped
+ *     `system` nodes (which ride along as endpoint nodes), its attachment
+ *     directory and its realm, as `tenant_<slug>_<stamp>.tar.gz` — a name the
+ *     nightly rotation never touches. Restored with `restore:neo4j --tenant`.
+ *   - no dangling relationship: a relationship whose endpoint the node stream
+ *     did not carry (committed while the backup ran) writes that endpoint too,
+ *     so the restore never ends «INCOMPLETE» on a live backup.
+ *
+ * Usage: pnpm --filter @opengraphity/api backup:neo4j -- [--output-dir ./backups] [--tenant <slug>] [--skip-keycloak] [--skip-attachments]
  * Env:   NEO4J_*, ATTACHMENT_DIR, and (unless --skip-keycloak) KEYCLOAK_URL, KEYCLOAK_ADMIN_USER, KEYCLOAK_ADMIN_PASSWORD
  */
 import { parseArgs, promisify }            from 'node:util'
@@ -33,7 +42,7 @@ import { getDriver, toNative }             from '@opengraphity/neo4j'
 import { createKeycloakAdmin, keycloakConfigFromEnv, type KeycloakAdminConfig } from './lib/keycloakAdmin.js'
 import {
   MANIFEST_FILE, NODES_FILE, RELS_FILE, ATTACHMENTS_TAR, KEYCLOAK_DIR, MANIFEST_FORMAT,
-  type BackupManifest,
+  ElementIdSet, type BackupManifest,
 } from './lib/backupManifest.js'
 import { runScript } from './lib/runScript.js'
 import { config }    from '../lib/config.js'
@@ -55,6 +64,8 @@ export interface BackupOptions {
   keycloak?: KeycloakAdminConfig
   /** Version written in the manifest (default: apps/api/package.json). */
   appVersion?: string
+  /** One tenant instead of the whole installation. */
+  tenant?: string
   log?: BackupLogger
 }
 
@@ -119,7 +130,8 @@ async function dirStats(dir: string): Promise<{ files: number; bytes: number }> 
 // ── Graph export (single read transaction) ───────────────────────────────────
 
 interface GraphExport {
-  nodeCount: number; relCount: number
+  /** Nodes from the node stream; `endpointNodes` came from relationships (see ElementIdSet). */
+  nodeCount: number; relCount: number; endpointNodes: number
   /** Counted before the streams and again after them, in the same transaction. */
   dbNodeCount: number; dbRelCount: number
   dbNodeCountAfter: number; dbRelCountAfter: number
@@ -158,18 +170,59 @@ const RELS_CYPHER  = `
   RETURN elementId(a) AS startId, labels(a) AS startLabels, properties(a) AS startProps,
          type(r) AS relType, properties(r) AS relProps,
          elementId(b) AS endId, labels(b) AS endLabels, properties(b) AS endProps`
+const COUNT_CYPHER = 'MATCH (n) WITH count(n) AS nodes MATCH ()-[r]->() RETURN nodes, count(r) AS rels'
 
-async function exportGraph(session: Session, stagingDir: string, log: BackupLogger): Promise<GraphExport> {
+/**
+ * The same three statements for ONE tenant: its nodes (and its Tenant node,
+ * which has no tenant_id), the relationships with at least one end in the
+ * tenant and the other in the tenant or among the shipped `system` nodes.
+ * A relationship to another tenant's node is not exported: it would carry
+ * that tenant's data into this one's archive.
+ */
+// Written out in full (no composing): scripts/check-cypher.mjs verifies the
+// tenant filter only on literals. In words: a node is the tenant's when its
+// tenant_id is the tenant or it is the tenant's own Tenant node; a
+// relationship is exported when one end is the tenant's and the other is the
+// tenant's or a shipped `system` node.
+const TENANT_CYPHER = {
+  nodes: `MATCH (n) WHERE n.tenant_id = $tenant OR (n:Tenant AND n.id = $tenant)
+  RETURN elementId(n) AS id, labels(n) AS labels, properties(n) AS props`,
+  rels: `MATCH (a)-[r]->(b)
+  WHERE (a.tenant_id = $tenant OR (a:Tenant AND a.id = $tenant) OR b.tenant_id = $tenant OR (b:Tenant AND b.id = $tenant))
+    AND (a.tenant_id = $tenant OR (a:Tenant AND a.id = $tenant) OR a.tenant_id = 'system')
+    AND (b.tenant_id = $tenant OR (b:Tenant AND b.id = $tenant) OR b.tenant_id = 'system')
+  RETURN elementId(a) AS startId, labels(a) AS startLabels, properties(a) AS startProps,
+         type(r) AS relType, properties(r) AS relProps,
+         elementId(b) AS endId, labels(b) AS endLabels, properties(b) AS endProps`,
+  count: `MATCH (n) WHERE n.tenant_id = $tenant OR (n:Tenant AND n.id = $tenant)
+  WITH count(n) AS nodes
+  MATCH (a)-[r]->(b)
+  WHERE (a.tenant_id = $tenant OR (a:Tenant AND a.id = $tenant) OR b.tenant_id = $tenant OR (b:Tenant AND b.id = $tenant))
+    AND (a.tenant_id = $tenant OR (a:Tenant AND a.id = $tenant) OR a.tenant_id = 'system')
+    AND (b.tenant_id = $tenant OR (b:Tenant AND b.id = $tenant) OR b.tenant_id = 'system')
+  RETURN nodes, count(r) AS rels`,
+}
+
+async function exportGraph(session: Session, stagingDir: string, log: BackupLogger, tenant: string | null): Promise<GraphExport> {
   const nodesStream = createWriteStream(join(stagingDir, NODES_FILE), { encoding: 'utf8' })
   const relsStream  = createWriteStream(join(stagingDir, RELS_FILE),  { encoding: 'utf8' })
-  const out: GraphExport = { nodeCount: 0, relCount: 0, dbNodeCount: 0, dbRelCount: 0, dbNodeCountAfter: 0, dbRelCountAfter: 0, nodesByLabel: {}, relsByType: {} }
+  const out: GraphExport = { nodeCount: 0, relCount: 0, endpointNodes: 0, dbNodeCount: 0, dbRelCount: 0, dbNodeCountAfter: 0, dbRelCountAfter: 0, nodesByLabel: {}, relsByType: {} }
+  const cypher = tenant ? TENANT_CYPHER : { nodes: NODES_CYPHER, rels: RELS_CYPHER, count: COUNT_CYPHER }
+  const params = tenant ? { tenant } : {}
+  // The nodes written so far, to write the endpoint of a relationship the node stream did not carry.
+  const written = new ElementIdSet()
+  const writeNode = async (id: string, labels: string[], props: unknown) => {
+    await writeLine(nodesStream, JSON.stringify({ id, labels, props }))
+    written.add(id)
+    tally(out.nodesByLabel, labels)
+  }
 
   // One explicit READ transaction for counts + both streams: every row comes
   // from the same transactional view, in whatever order the store yields it
   // (no pagination, so no ordering assumption at all).
   const tx = session.beginTransaction()
   const countGraph = async (): Promise<{ nodes: number; rels: number }> => {
-    const counts = await tx.run('MATCH (n) WITH count(n) AS nodes MATCH ()-[r]->() RETURN nodes, count(r) AS rels')
+    const counts = await tx.run(cypher.count, params)
     const c = counts.records[0]
     if (!c) throw new Error('count query returned no row')
     return { nodes: toNative(c.get('nodes')) as number, rels: toNative(c.get('rels')) as number }
@@ -178,29 +231,34 @@ async function exportGraph(session: Session, stagingDir: string, log: BackupLogg
     const before = await countGraph()
     out.dbNodeCount = before.nodes
     out.dbRelCount  = before.rels
-    log.info({ nodes: out.dbNodeCount, rels: out.dbRelCount }, 'Graph counts read')
+    log.info({ nodes: out.dbNodeCount, rels: out.dbRelCount, tenant }, 'Graph counts read')
 
-    const nodesResult: Result = tx.run(NODES_CYPHER)
+    const nodesResult: Result = tx.run(cypher.nodes, params)
     for await (const r of nodesResult) {
-      const labels = r.get('labels') as string[]
-      await writeLine(nodesStream, JSON.stringify({ id: r.get('id'), labels, props: toNative(r.get('props')) }))
+      await writeNode(r.get('id') as string, r.get('labels') as string[], toNative(r.get('props')))
       out.nodeCount++
-      tally(out.nodesByLabel, labels)
       if (out.nodeCount % 50_000 === 0) log.info({ nodes: out.nodeCount }, 'Nodes exported so far')
     }
 
-    const relsResult: Result = tx.run(RELS_CYPHER)
+    const relsResult: Result = tx.run(cypher.rels, params)
     for await (const r of relsResult) {
       const relType = r.get('relType') as string
-      await writeLine(relsStream, JSON.stringify({
-        startId: r.get('startId'), startLabels: r.get('startLabels'), startProps: toNative(r.get('startProps')),
+      const row = {
+        startId: r.get('startId') as string, startLabels: r.get('startLabels') as string[], startProps: toNative(r.get('startProps')),
         relType, relProps: toNative(r.get('relProps')),
-        endId: r.get('endId'), endLabels: r.get('endLabels'), endProps: toNative(r.get('endProps')),
-      }))
+        endId: r.get('endId') as string, endLabels: r.get('endLabels') as string[], endProps: toNative(r.get('endProps')),
+      }
+      // Read committed: a node committed after the node stream passed, or a
+      // system node a tenant points to, is only here. Without it the restore
+      // cannot rebuild the relationship (review of 23 Sep 2026).
+      if (!written.has(row.startId)) { await writeNode(row.startId, row.startLabels, row.startProps); out.endpointNodes++ }
+      if (!written.has(row.endId))   { await writeNode(row.endId, row.endLabels, row.endProps); out.endpointNodes++ }
+      await writeLine(relsStream, JSON.stringify(row))
       out.relCount++
       tally(out.relsByType, [relType])
       if (out.relCount % 50_000 === 0) log.info({ rels: out.relCount }, 'Relationships exported so far')
     }
+    if (out.endpointNodes > 0) log.info({ endpointNodes: out.endpointNodes, tenant }, 'Endpoint nodes written from relationships')
     const after = await countGraph()
     out.dbNodeCountAfter = after.nodes
     out.dbRelCountAfter  = after.rels
@@ -240,10 +298,13 @@ async function exportAttachments(opts: BackupOptions, stagingDir: string, log: B
     log.warn({ attachmentDir: opts.attachmentDir }, 'Attachment directory does not exist — not included')
     return { ...none, reason: 'directory not found' }
   }
-  const { files, bytes } = await dirStats(opts.attachmentDir)
-  await execFileAsync('tar', ['-cf', join(stagingDir, ATTACHMENTS_TAR), '-C', opts.attachmentDir, '.'])
-  log.info({ files, bytes }, 'Attachments archived')
-  return { included: true, dir: opts.attachmentDir, file_count: files, total_bytes: bytes, reason: null }
+  // A tenant's files live in ATTACHMENT_DIR/<tenant>; a tenant with none yet has no directory.
+  const dir = opts.tenant ? join(opts.attachmentDir, opts.tenant) : opts.attachmentDir
+  if (opts.tenant && !(await dirExists(dir))) return { ...none, dir, reason: 'the tenant has no attachment directory' }
+  const { files, bytes } = await dirStats(dir)
+  await execFileAsync('tar', ['-cf', join(stagingDir, ATTACHMENTS_TAR), '-C', dir, '.'])
+  log.info({ files, bytes, dir }, 'Attachments archived')
+  return { included: true, dir, file_count: files, total_bytes: bytes, reason: null }
 }
 
 // ── Keycloak realms ──────────────────────────────────────────────────────────
@@ -252,7 +313,7 @@ async function exportKeycloak(opts: BackupOptions, session: Session, stagingDir:
   if (opts.skipKeycloak) return { included: false, realms: [], reason: 'skipped by option (--skip-keycloak)' }
   if (!opts.keycloak) throw new Error('Keycloak export requested but no Keycloak admin configuration given (pass --skip-keycloak to skip it knowingly)')
 
-  const tenants = (await session.run('MATCH (t:Tenant) RETURN t.id AS id ORDER BY t.id')).records
+  const tenants = (await session.run('MATCH (t:Tenant) WHERE $tenant IS NULL OR t.id = $tenant RETURN t.id AS id ORDER BY t.id', { tenant: opts.tenant ?? null })).records
     .map((r) => r.get('id') as unknown)
   const realms: string[] = []
   for (const id of tenants) {
@@ -284,6 +345,19 @@ async function exportKeycloak(opts: BackupOptions, session: Session, stagingDir:
   return { included: true, realms, reason: null }
 }
 
+// ── Tenant ───────────────────────────────────────────────────────────────────
+
+/** A slug ends up in file names and a realm URL: the same shape the realms use. */
+export function assertTenantSlug(slug: string): string {
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(slug)) throw new Error(`Invalid tenant slug ${JSON.stringify(slug)}`)
+  return slug
+}
+
+async function assertTenantExists(session: Session, tenant: string): Promise<void> {
+  const res = await session.run('MATCH (t:Tenant {id: $tenant}) RETURN count(t) AS n', { tenant })
+  if (Number(toNative(res.records[0]?.get('n')) ?? 0) === 0) throw new Error(`Tenant "${tenant}" does not exist: nothing to export`)
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 export async function runBackup(opts: BackupOptions): Promise<BackupResult> {
@@ -292,17 +366,22 @@ export async function runBackup(opts: BackupOptions): Promise<BackupResult> {
   const outputDir = resolve(opts.outputDir)
   await mkdir(outputDir, { recursive: true })
 
+  const tenant     = opts.tenant ? assertTenantSlug(opts.tenant) : null
   const stamp      = stampNow()
-  const name       = `backup_${stamp}`
+  // The staging directory is `backup_…` either way (the restore looks for it);
+  // a tenant archive is named so that the nightly rotation never counts it.
+  const name       = tenant ? `backup_${stamp}_tenant_${tenant}` : `backup_${stamp}`
+  const fileBase   = tenant ? `tenant_${tenant}_${stamp}` : name
   const stagingDir = join(outputDir, name)
-  const partial    = join(outputDir, `${name}.tar.gz.partial`)
-  const archive    = join(outputDir, `${name}.tar.gz`)
+  const partial    = join(outputDir, `${fileBase}.tar.gz.partial`)
+  const archive    = join(outputDir, `${fileBase}.tar.gz`)
   await mkdir(stagingDir, { recursive: false })   // a second backup in the same second must not share the staging dir
   log.info({ stagingDir }, 'Starting backup')
 
   const session = getDriver().session({ defaultAccessMode: neo4j.session.READ })
   try {
-    const graph  = await exportGraph(session, stagingDir, log)
+    if (tenant) await assertTenantExists(session, tenant)
+    const graph  = await exportGraph(session, stagingDir, log, tenant)
     const schema = await readSchema(session)
     const attachments = await exportAttachments(opts, stagingDir, log)
     const keycloak    = await exportKeycloak(opts, session, stagingDir, log)
@@ -312,7 +391,7 @@ export async function runBackup(opts: BackupOptions): Promise<BackupResult> {
       created_at:     new Date().toISOString(),
       app_version:    opts.appVersion ?? readAppVersion(),
       neo4j_version:  schema.neo4jVersion,
-      node_count:     graph.nodeCount,
+      node_count:     graph.nodeCount + graph.endpointNodes,
       rel_count:      graph.relCount,
       nodes_by_label: graph.nodesByLabel,
       rels_by_type:   graph.relsByType,
@@ -320,6 +399,8 @@ export async function runBackup(opts: BackupOptions): Promise<BackupResult> {
       indexes:        schema.indexes,
       attachments,
       keycloak,
+      scope:          { tenant },
+      endpoint_nodes_added: graph.endpointNodes,
     }
     await writeFile(join(stagingDir, MANIFEST_FILE), JSON.stringify(manifest, null, 2), 'utf8')
 
@@ -333,8 +414,8 @@ export async function runBackup(opts: BackupOptions): Promise<BackupResult> {
     await rename(partial, archive)
 
     const durationMs = Date.now() - start
-    log.info({ archive, nodeCount: graph.nodeCount, relCount: graph.relCount, attachments: attachments.included, keycloakRealms: keycloak.realms.length, durationMs }, 'Backup published')
-    return { archivePath: archive, nodeCount: graph.nodeCount, relCount: graph.relCount, durationMs, manifest }
+    log.info({ archive, tenant, nodeCount: graph.nodeCount + graph.endpointNodes, relCount: graph.relCount, attachments: attachments.included, keycloakRealms: keycloak.realms.length, durationMs }, 'Backup published')
+    return { archivePath: archive, nodeCount: graph.nodeCount + graph.endpointNodes, relCount: graph.relCount, durationMs, manifest }
   } finally {
     await session.close()
     await rm(stagingDir, { recursive: true, force: true })
@@ -352,6 +433,7 @@ if (isDirectRun) {
   const { values } = parseArgs({
     options: {
       'output-dir':       { type: 'string', short: 'o', default: './backups' },
+      tenant:             { type: 'string' },
       'skip-keycloak':    { type: 'boolean', default: false },
       'skip-attachments': { type: 'boolean', default: false },
     },
@@ -363,6 +445,7 @@ if (isDirectRun) {
       attachmentDir:   config.attachmentDir,
       skipAttachments: values['skip-attachments'] === true,
       skipKeycloak,
+      tenant:          values['tenant'],
       keycloak:        skipKeycloak ? undefined : keycloakConfigFromEnv(),
     })
   })

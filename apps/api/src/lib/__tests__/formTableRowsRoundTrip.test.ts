@@ -120,7 +120,8 @@ describe('righe di tabella: scrittura e filtro parlano la stessa lingua', () => 
     expect(righe.map((r) => r.index)).toEqual([0, 1])
     expect(righe.map((r) => r.values['persona'])).toEqual(['Ada', 'Grace'])
     expect(righe.every((r) => r.field === 'persone_da_abilitare')).toBe(true)
-    expect(scritture[0]!.query).toContain('r:FormTableRow {tenant_id: $tenantId}')
+    // And an id of its own (review of 23 Sep 2026): the restore finds a node by id.
+    expect(scritture[0]!.query).toContain('r:FormTableRow {tenant_id: $tenantId, id: randomUUID()}')
     expect(scritture[0]!.params['tenantId']).toBe('t1')
   })
 

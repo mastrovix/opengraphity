@@ -125,6 +125,7 @@ describe('config — production has no silent defaults', () => {
     })
     expect(() => validateConfig('api')).not.toThrow()
     expect(() => validateConfig('worker')).not.toThrow()
+    expect(() => validateConfig('maintenance')).not.toThrow()
     expect(config.attachmentDir).toBe('/data/attachments')
   })
 
@@ -137,5 +138,14 @@ describe('config — production has no silent defaults', () => {
     // the worker serves GET /metrics: port and token are part of its profile
     expect(CONFIG_PROFILES.worker).toContain('port')
     expect(CONFIG_PROFILES.worker).toContain('metricsToken')
+  })
+
+  // Review of 23 Sep 2026: the backup moved to the worker; only the process that runs it asks for its keys.
+  it('the maintenance keys are the backup\'s, part of the api profile, and not of the plain worker profile', () => {
+    expect([...CONFIG_PROFILES.maintenance].sort()).toEqual(['attachmentDir', 'backupDir', 'keycloakAdminUser', 'keycloakUrl'])
+    for (const k of CONFIG_PROFILES.maintenance) {
+      expect(CONFIG_PROFILES.api).toContain(k)
+      expect(CONFIG_PROFILES.worker).not.toContain(k)
+    }
   })
 })

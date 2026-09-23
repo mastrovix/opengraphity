@@ -152,8 +152,10 @@ async function main() {
   registerAllConnectors()
   const syncWorker        = startSyncWorker()
 
-  // Start maintenance worker (backup scheduler)
-  const maintenanceWorker = await startMaintenanceWorker()
+  // The maintenance worker (backup and nightly purges) runs where the profile
+  // says: the `worker` service in compose, this process only when it is alone
+  // (lib/workerProfiles.ts, review of 23 Sep 2026).
+  const maintenanceWorker = workGroups.includes('maintenance') ? await startMaintenanceWorker() : null
 
   /*
    * IL SINK DEI LOG DEL SERVER (20 set 2026, ondata 3). Da qui in poi ogni
@@ -190,7 +192,8 @@ async function main() {
   // redelivered at-least-once on the next boot (idempotency in BaseConsumer and
   // the SLAStatus MERGE keep that safe, but draining cleanly avoids the churn).
   const bullWorkers: Closable[] = [
-    anomalyWorker, proposalWorker, autoanalisiWorker, workflowWorker, syncWorker, maintenanceWorker,
+    anomalyWorker, proposalWorker, autoanalisiWorker, workflowWorker, syncWorker,
+    ...(maintenanceWorker ? [maintenanceWorker] : []),
     notificationWorker, webhookDeliveryWorker, ...eventWorkers,
     emailDigestWorker, reportScheduler,
     ...(embeddingWorker ? [embeddingWorker] : []),
