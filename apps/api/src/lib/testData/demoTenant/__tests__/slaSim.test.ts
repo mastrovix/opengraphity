@@ -27,6 +27,7 @@ import { simulateSla, selectPolicy, plannedResolveDeadline, type SlaClock, type 
 import type { PlannedSlaPolicy } from '../config.js'
 import type { LiveStep } from '../workflowModel.js'
 import { HOUR, MINUTE } from '../clock.js'
+import { parseServiceCalendar } from '@opengraphity/sla'
 
 // @opengraphity/sla (the product's deadline arithmetic) also carries the SLA engine, which reaches Neo4j: no driver here.
 vi.mock('@opengraphity/neo4j', () => ({ runQuery: vi.fn(), runQueryOne: vi.fn(), getSession: vi.fn(), writeSession: vi.fn() }))
@@ -154,5 +155,48 @@ describe('the pause, as pauseSLA and resumeSLA keep it', () => {
     const sla = run([[0.25, ASSIGNED], [1, IN_PROGRESS]], 100)
     expect(sla).toMatchObject({ breached: true, breached_at: iso(T0 + 24 * HOUR), paused_at: null })
     expect(Date.parse(sla.response_deadline) - T0).toBe(60 * MINUTE)
+  })
+})
+
+// ── Review of 23 Sep 2026 ─────────────────────────────────────────────────────
+
+describe('the breach job fires at the deadline, whatever comes after', () => {
+  it('an open ticket put on hold AFTER its deadline is breached, at the deadline — not merely paused', () => {
+    const s = run([[1, IN_PROGRESS], [30, PENDING]], 100)
+    expect(s.paused_at).toBe(iso(T0 + 30 * HOUR))
+    expect(s.breached).toBe(true)
+    expect(s.breached_at).toBe(iso(T0 + 24 * HOUR))
+  })
+
+  it('a ticket paused after its deadline and resolved later stays breached, even within the moved deadline', () => {
+    const s = run([[1, IN_PROGRESS], [30, PENDING], [31, IN_PROGRESS], [32, RESOLVED]])
+    expect(s.breached).toBe(true)
+    expect(s.breached_at).toBe(iso(T0 + 24 * HOUR))
+  })
+
+  it('a ticket paused BEFORE its deadline and still on hold is not breached', () => {
+    const s = run([[1, IN_PROGRESS], [20, PENDING]], 100)
+    expect(s.breached).toBe(false)
+  })
+
+  it('after a reopen, the breach keeps the moment it happened, not the moved deadline', () => {
+    const s = run([[1, IN_PROGRESS], [30, RESOLVED], [40, IN_PROGRESS]], 100)
+    expect(s.breached).toBe(true)
+    expect(s.breached_at).toBe(iso(T0 + 24 * HOUR))
+  })
+})
+
+describe('a pause moves the deadline by the time the policy\'s clock counted', () => {
+  // Monday to Friday, 08:00-18:00 in Rome; T0 is Tuesday 1 Sep 10:00 in Rome.
+  const CAL = parseServiceCalendar({ days: [1, 2, 3, 4, 5], start: '08:00', end: '18:00', holidays: [] })
+  const OFFICE: SlaClock = { calendars: new Map([['cal-it', CAL]]), tenantTimeZone: 'Europe/Rome' }
+  const office = policy('P3 office hours', { calendarId: 'cal-it', resolveMinutes: 3000 })   // five service days
+
+  it('on hold from Friday 17:00 to Monday 09:00 the clock missed two service hours, not 64', () => {
+    const s = simulateSla([office], OFFICE, T0 + 150 * HOUR, ticket([[1, IN_PROGRESS], [79, WAITING_VENDOR], [143, IN_PROGRESS]]))!
+    // Without the pause: Tuesday 8 Sep 10:00 Rome; two service hours later: 12:00 Rome.
+    expect(s.resolve_deadline).toBe('2026-09-08T10:00:00.000Z')
+    expect(s.paused_total_ms).toBe(2 * HOUR)
+    expect(s.breached).toBe(false)
   })
 })

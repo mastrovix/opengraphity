@@ -129,6 +129,12 @@ export async function writeConfig(w: DemoWriter, rng: Rng, clock: DemoClock, con
  * The OLA and UC contracts. Written after the tickets (olaPlan.ts chooses
  * them on the simulated work), dated at the start like the rest of the
  * configuration.
+ *
+ * Written SWITCHED OFF, and switched on at the end of the run (review of 23
+ * Sep 2026): the OLA sweep of the running workers reads every enabled
+ * contract each minute, and in the minutes between here and the marking of
+ * the past alerts (afterRun.ts) it found every open ticket past its target and
+ * sent the burst of alerts the marking exists to prevent.
  */
 export async function writeOlaContracts(w: DemoWriter, rng: Rng, clock: DemoClock, olas: readonly PlannedOla[], admin: PlannedUser): Promise<void> {
   await w.nodes(['OLAContract'], olas.map((o) => ({
@@ -136,7 +142,7 @@ export async function writeOlaContracts(w: DemoWriter, rng: Rng, clock: DemoCloc
     response_minutes: o.responseMinutes, resolve_minutes: o.resolveMinutes,
     business_hours: o.calendarId !== null, calendar_id: o.calendarId, timezone: o.timezone, party_type: o.partyType, party_name: null,
     compliance_target: o.complianceTarget, compliance_warning: o.complianceWarning,
-    team_id: o.teamId, enabled: true, created_at: clock.iso(o.createdAtMs),
+    team_id: o.teamId, enabled: false, created_at: clock.iso(o.createdAtMs),
   })))
   await w.nodes(['AuditEntry'], olas.map((o) => auditRow(rng, admin, 'ola_contract.created', 'OLAContract', o.id, o.createdAtMs)))
 }

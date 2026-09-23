@@ -40,7 +40,8 @@ import { changeResolvers } from '../../../graphql/resolvers/change/index.js'
 import { serviceRequestResolvers } from '../../../graphql/resolvers/service_request.js'
 import { loadTicketWorkflows } from './workflowModel.js'
 import { DECLARED_EDGES } from './cmdb.js'
-import { DEMO_RATIOS, type DemoCounts } from './options.js'
+import { DEFAULT_DEMO_COUNTS, DEMO_RATIOS, type DemoCounts } from './options.js'
+import { OLA_CONTRACT_COUNT } from './olaPlan.js'
 import { getEventPolicy } from '../../../services/events/policy.js'
 import { configurationIssues, invalidateConfigurationIssues } from '../../configurationIssues.js'
 import { AI_AUDIT_ACTIONS } from '../../dailyWorkAggregates.js'
@@ -176,11 +177,7 @@ async function workflowHistories(v: Verifier): Promise<void> {
   const defById = new Map(workflows.all.map((d) => [d.id, d]))
   let histories = 0
   for (const label of ['Incident', 'Problem', 'Change', 'ServiceRequest']) {
-    const rows = await v.rows<{ id: string; status: string | null; created: string; updated: string; def: string; cur: string; wiStatus: string; ex: Array<Record<string, unknown>> }>(`
-      MATCH (e:${label} {tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)-[:STEP_HISTORY]->(x:WorkflowStepExecution)
-      WITH e, wi, x ORDER BY x.entered_at, coalesce(x.exited_at, '9999') , x.from_step IS NULL DESC
-      RETURN e.id AS id, e.status AS status, e.created_at AS created, e.updated_at AS updated, wi.definition_id AS def,
-             wi.current_step AS cur, wi.status AS wiStatus, collect(properties(x)) AS ex`)
+   for await (const rows of historyPages(v, label)) {
     for (const r of rows) {
       histories++
       const def = defById.get(r.def)!
@@ -197,8 +194,34 @@ async function workflowHistories(v: Verifier): Promise<void> {
       v.check(open.length === 1, `${label} ${r.id}: ${String(open.length)} open history rows`)
       v.check(r.created <= r.updated && r.updated <= v.nowIso, `${label} ${r.id}: dates out of order`)
     }
+   }
   }
   v.facts.push(`workflow histories checked: ${String(histories)}`)
+}
+
+type HistoryRow = { id: string; status: string | null; created: string; updated: string; def: string; cur: string; wiStatus: string; ex: Array<Record<string, unknown>> }
+
+/**
+ * The histories a page of tickets at a time (review of 23 Sep 2026). One
+ * statement per label collected every history row of every ticket — about a
+ * million property maps for the service requests at full scale, in one
+ * transaction on a machine that has already hit the per-transaction memory
+ * limit (clean.ts). Now the ids of a page first, then their histories.
+ */
+async function* historyPages(v: Verifier, label: string): AsyncGenerator<HistoryRow[]> {
+  let after = ''
+  for (;;) {
+    const ids = (await v.rows<{ id: string }>(`MATCH (e:${label} {tenant_id: $tenantId}) WHERE e.id > $after RETURN e.id AS id ORDER BY e.id LIMIT 2000`,
+      { after })).map((r) => r.id)
+    if (!ids.length) return
+    after = ids[ids.length - 1]!
+    yield await v.rows<HistoryRow>(`
+      MATCH (e:${label} {tenant_id: $tenantId}) WHERE e.id IN $ids
+      MATCH (e)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)-[:STEP_HISTORY]->(x:WorkflowStepExecution)
+      WITH e, wi, x ORDER BY x.entered_at, coalesce(x.exited_at, '9999') , x.from_step IS NULL DESC
+      RETURN e.id AS id, e.status AS status, e.created_at AS created, e.updated_at AS updated, wi.definition_id AS def,
+             wi.current_step AS cur, wi.status AS wiStatus, collect(properties(x)) AS ex`, { ids })
+  }
 }
 
 // ── Changes: conflicts and resolutions (the app's own conflict rule) ─────────
@@ -358,6 +381,16 @@ async function listPages(v: Verifier, ctx: GraphQLContext, counts: DemoCounts): 
 }
 
 async function slaOlaAndForms(v: Verifier, ctx: GraphQLContext): Promise<void> {
+  // The contracts the run made are all there, and a full demo has the owner's twelve (review of 23 Sep 2026).
+  const run = await v.rows<{ planned: unknown; counts: string | null }>(`MATCH (r:DemoDataRun {tenant_id: $tenantId}) WHERE r.status = 'completed' RETURN r.ola_contracts AS planned, r.counts AS counts ORDER BY r.completed_at DESC LIMIT 1`)
+  const contracts = await v.one(`MATCH (o:OLAContract {tenant_id: $tenantId}) WHERE o.demo_run_id IS NOT NULL RETURN count(o) AS n`)
+  const planned = run[0]?.planned == null ? null : toNumber(run[0].planned)
+  if (planned !== null) v.check(contracts === planned, `OLA/UC contracts: ${String(contracts)}, the run made ${String(planned)}`)
+  const runCounts = run[0]?.counts ? JSON.parse(run[0].counts) as { problems?: number; incidents?: number } : {}
+  if ((runCounts.problems ?? 0) >= DEFAULT_DEMO_COUNTS.problems && (runCounts.incidents ?? 0) >= DEFAULT_DEMO_COUNTS.incidents) {
+    v.check(contracts === OLA_CONTRACT_COUNT, `OLA/UC contracts: ${String(contracts)} of the ${String(OLA_CONTRACT_COUNT)} the full demo has`)
+  }
+  v.facts.push(`OLA/UC contracts: ${String(contracts)}`)
   for (const [label, entity] of [['Incident', 'incident'], ['Problem', 'problem'], ['ServiceRequest', 'service_request']] as const) {
     const withoutSla = await v.one(`MATCH (e:${label} {tenant_id: $tenantId}) WHERE NOT (e)-[:HAS_SLA]->(:SLAStatus) RETURN count(e) AS n`)
     v.check(withoutSla === 0, `${label}: ${String(withoutSla)} without SLA`)

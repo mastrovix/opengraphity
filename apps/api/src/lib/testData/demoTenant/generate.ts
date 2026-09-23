@@ -20,10 +20,10 @@ import { PERMISSIONS } from '@opengraphity/types'
 import type { GraphQLContext } from '../../../auth/resolveAuth.js'
 import { Rng } from './random.js'
 import { DAY, DemoClock, HOUR, MINUTE } from './clock.js'
-import { assertDemoCounts, DEMO_RATIOS, type DemoOptions } from './options.js'
+import { assertDemoCounts, DEFAULT_DEMO_COUNTS, DEMO_RATIOS, type DemoOptions } from './options.js'
 import { planPeople, type PlannedUser } from './people.js'
 import { planCMDB, type CMDBPlan, type PlannedCI } from './cmdb.js'
-import { planConfig, type ConfigPlan } from './config.js'
+import { planConfig, type ConfigPlan, type PlannedOla } from './config.js'
 import { DemoWriter, ensureIdIndexes, int } from './writer.js'
 import { planClientLogs } from './clientLogs.js'
 import { planMonitoring, MONITORING_SOURCES, type IncidentWindow, type DeployWindow, type MonitoringPlan } from './monitoring.js'
@@ -52,7 +52,7 @@ import { changeEnvironmentWeight } from '../../changeEnvironmentWeight.js'
 import { systemTextIn, formatInstantIn } from '../../systemText.js'
 import { languageFor } from '../../tenantLanguage.js'
 import { loadStepFacts } from '../../stepEvent.js'
-import { markOlaAlerts, scheduleOpenSlaJobs } from './afterRun.js'
+import { enableRunOlaContracts, markOlaAlerts, scheduleOpenSlaJobs } from './afterRun.js'
 import { CERTIFICATE_DATABASE_RELATIONS } from '../../../scripts/migrations/20261007_1020_certificates_on_databases.js'
 import { integrationsResolvers } from '../../../graphql/resolvers/integrations.js'
 import { serviceResolvers } from '../../../graphql/resolvers/services.js'
@@ -213,23 +213,27 @@ interface Run {
   log: Log
   timeZone: string
   started: number
+  /** OLA and UC contracts made (planOlaContractsOrStop), kept on the run for verify. */
+  olaContractsPlanned?: number
 }
 
 export async function generateDemoTenant(opts: DemoOptions, log: Log): Promise<DemoRunResult> {
   assertDemoCounts(opts.counts)
   const started = Date.now()
   const session = getSession(undefined, neo4j.session.WRITE)
+  const runId = `${opts.seed}@${new Date(opts.nowMs).toISOString()}`
+  let recorded = false
   try {
     const { timeZone } = await preflight(session, opts.tenantId)
     const clock = new DemoClock(opts.nowMs, opts.years, timeZone)
     const rng = new Rng(opts.seed)
-    const runId = `${opts.seed}@${new Date(opts.nowMs).toISOString()}`
     log(`run ${runId}: ${new Date(clock.startMs).toISOString().slice(0, 10)} → ${new Date(opts.nowMs).toISOString().slice(0, 10)} (${timeZone})`)
     const w = new DemoWriter(session, opts.tenantId, runId, 2000)
     const run: Run = { session, opts, clock, rng, runId, w, log, timeZone, started }
     const indexes = await ensureIdIndexes(session)
     if (indexes > 0) log(`${String(indexes)} missing (:Label {id}) indexes created: without them attaching the edges is a label scan per batch`)
     await recordRun(run)
+    recorded = true
 
     const ref = await writeReference(run)
     const world = await buildWorld(run, ref)
@@ -243,7 +247,7 @@ export async function generateDemoTenant(opts: DemoOptions, log: Log): Promise<D
     if (embedded) log(`embeddings: ${String(embedded.incidents)} incidents, ${String(embedded.articles)} articles`)
     await simulateRequestsPhase(run, world, catalog, olaFacts)
     await organizationPhase(run, ctx, catalog, ref.admin)
-    const olas = planOlaContracts(rng.fork('ola'), ref.people, ref.config, olaFacts, timeZone, clock.startMs, clock.nowMs)
+    const olas = planOlaContractsOrStop(run, ref, olaFacts)
     await writeOlaContracts(w, rng.fork('ola-audit'), clock, olas, ref.admin)
     log(`OLA and UC contracts: ${String(olas.length)}, each on the team that does the work`)
     await writeMonitoring(run, tickets.monitoring, sourceIds)
@@ -259,11 +263,49 @@ export async function generateDemoTenant(opts: DemoOptions, log: Log): Promise<D
 
     await session.executeWrite((tx) => tx.run(`
       MATCH (r:DemoDataRun {id: $runId, tenant_id: $tenantId})
-      SET r.status = 'completed', r.completed_at = $at, r.nodes = $nodes, r.relationships = $rels`,
-    { runId, tenantId: opts.tenantId, at: new Date().toISOString(), nodes: w.stats.nodes, rels: w.stats.relationships }))
+      SET r.status = 'completed', r.completed_at = $at, r.nodes = $nodes, r.relationships = $rels, r.ola_contracts = $olaContracts`,
+    { runId, tenantId: opts.tenantId, at: new Date().toISOString(), nodes: w.stats.nodes, rels: w.stats.relationships, olaContracts: run.olaContractsPlanned ?? null }))
     return { runId, nodes: w.stats.nodes, relationships: w.stats.relationships, durationMs: Date.now() - started }
+  } catch (err) {
+    if (recorded) await markLeftovers(session, opts.tenantId, runId, new Date(started).toISOString(), log)
+    throw err
   } finally {
     await session.close()
+  }
+}
+
+/**
+ * A RUN THAT STOPS LEAVES NOTHING THE CLEAN-UP CANNOT SEE (review of 23 Sep 2026).
+ *
+ * What the generator makes through the product's own mutations — vocabularies,
+ * form fields, catalog items, sources, service maps, reports, notification
+ * channels — gets the run's mark only when its phase has finished. A phase
+ * designed to stop on a form the product refuses left what it had made so far
+ * unmarked: `--clean` removes only marked nodes, and the next run's preflight
+ * refused the tenant for «its own» catalog items. On a failure, every node of
+ * the tenant written since the run started and still unmarked is marked as the
+ * run's, and the run as failed; the error then goes on. The tenant is the
+ * demo's own (preflight): what was written since the start is the run's.
+ */
+export async function markLeftovers(session: Session, tenantId: string, runId: string, sinceIso: string, log: Log): Promise<void> {
+  try {
+    const labels = (await runQuery<{ label: string }>(session, 'CALL db.labels() YIELD label RETURN label', {}))
+      .map((r) => r.label).filter((l) => /^[A-Za-z][A-Za-z0-9_]*$/.test(l))
+    let marked = 0
+    for (const label of labels) {
+      const rows = await runQuery<{ n: unknown }>(session, `
+        MATCH (n:${label} {tenant_id: $tenantId})
+        WHERE n.demo_run_id IS NULL AND n.created_at >= $since
+        SET n.demo_run_id = $runId
+        RETURN count(n) AS n`, { tenantId, since: sinceIso, runId })
+      marked += Number(rows[0]?.n ?? 0)
+    }
+    await runQuery(session, `MATCH (r:DemoDataRun {id: $runId, tenant_id: $tenantId}) SET r.status = 'failed', r.failed_at = $at`,
+      { runId, tenantId, at: new Date().toISOString() })
+    log(`run stopped: ${String(marked)} nodes it had made through the product marked as the run's, so --clean removes them`)
+  } catch (err) {
+    // The original error matters more: this one is said, not thrown.
+    log(`run stopped, and marking what it had made FAILED too (${(err as Error).message}): clean the tenant by hand before the next run`)
   }
 }
 
@@ -272,6 +314,25 @@ export async function generateDemoTenant(opts: DemoOptions, log: Log): Promise<D
  * the clean-up can put it back: the counters, the catalog limits, the event
  * policy (D4) and the notification retention (D55).
  */
+/**
+ * The OLA and UC contracts, or a stop (review of 23 Sep 2026). A contract the
+ * simulated tickets cannot support used to disappear without a word — the two
+ * problem OLAs of the owner's twelve. On the full demo that stops the run,
+ * naming each one; at a reduced scale (fewer tickets per team) each is written
+ * in the log as a warning. The number made is kept on the run for verify.
+ */
+function planOlaContractsOrStop(run: Run, ref: Reference, facts: OlaFacts): PlannedOla[] {
+  const { contracts, shortfalls } = planOlaContracts(run.rng.fork('ola'), ref.people, ref.config, facts, run.timeZone, run.clock.startMs, run.clock.nowMs)
+  if (shortfalls.length) {
+    const full = run.opts.counts.problems >= DEFAULT_DEMO_COUNTS.problems && run.opts.counts.incidents >= DEFAULT_DEMO_COUNTS.incidents
+    const list = shortfalls.map((x) => `\n  - ${x}`).join('')
+    if (full) throw new Error(`demo generator: OLA/UC contracts the demo asks for cannot be made from the simulated tickets:${list}`)
+    run.log(`WARNING — reduced scale, OLA/UC contracts not made:${list}`)
+  }
+  run.olaContractsPlanned = contracts.length
+  return contracts
+}
+
 async function recordRun(run: Run): Promise<void> {
   const { session, opts, w } = run
   const counters = await runQuery<{ kind: string; value: number }>(session,
@@ -793,16 +854,22 @@ async function writeReportsPhase(run: Run, ctx: GraphQLContext, world: World, ad
   log(`reports: ${String(reports.templates.length)}, dashboard "Operations Overview"`)
 }
 
-/** The app's timers, for the tickets still open (only when "now" is now). */
+/**
+ * The app's timers, for the tickets still open (only when "now" is now), and
+ * then the OLA contracts switched on: they were written off, so that the
+ * running workers' OLA sweep does not alert the past before it is marked.
+ */
 async function afterRunPhase(run: Run): Promise<void> {
-  const { session, opts, log } = run
+  const { session, opts, log, runId } = run
   if (Math.abs(opts.nowMs - Date.now()) >= DAY) {
     log('timers: "now" is not the present, no SLA job queued and no OLA alert marked')
-    return
+  } else {
+    const alerted = await markOlaAlerts(session, opts.tenantId, new Date(opts.nowMs), runId)
+    const jobs = await scheduleOpenSlaJobs(session, opts.tenantId, new Date(opts.nowMs))
+    log(`timers: ${String(jobs)} SLA jobs queued, ${String(alerted)} OLA breaches marked as already alerted`)
   }
-  const alerted = await markOlaAlerts(session, opts.tenantId, new Date(opts.nowMs))
-  const jobs = await scheduleOpenSlaJobs(session, opts.tenantId, new Date(opts.nowMs))
-  log(`timers: ${String(jobs)} SLA jobs queued, ${String(alerted)} OLA breaches marked as already alerted`)
+  const enabled = await enableRunOlaContracts(session, opts.tenantId, runId)
+  log(`OLA and UC contracts switched on: ${String(enabled)}`)
 }
 
 /**

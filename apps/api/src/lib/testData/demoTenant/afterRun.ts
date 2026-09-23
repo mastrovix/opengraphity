@@ -26,13 +26,17 @@ import { loadChangeUnits, olaUnitAlertKey } from '../../olaChangeUnits.js'
 import { olaOpenTicketsCypher } from '../../olaSweep.js'
 import { OLA_CONCLUDED_FIELD } from '../../olaAttainment.js'
 
-export async function markOlaAlerts(session: Session, tenantId: string, now: Date): Promise<number> {
+/**
+ * `runId`: the run's own contracts count although they are still switched
+ * off — they are switched on after this (enableRunOlaContracts).
+ */
+export async function markOlaAlerts(session: Session, tenantId: string, now: Date, runId: string | null = null): Promise<number> {
   const contracts = await runQuery<{ id: string; name: string; entityType: string; teamId: string; resolveMinutes: unknown; businessHours: boolean; calendarId: string | null; createdAt: string | null; timezone: string | null }>(session, `
     MATCH (o:OLAContract {tenant_id: $tenantId})
-    WHERE coalesce(o.enabled, true) = true AND o.team_id IS NOT NULL
+    WHERE (coalesce(o.enabled, true) = true OR o.demo_run_id = $runId) AND o.team_id IS NOT NULL
     RETURN o.id AS id, o.name AS name, o.entity_type AS entityType, o.team_id AS teamId, o.resolve_minutes AS resolveMinutes,
            coalesce(o.business_hours, false) AS businessHours, o.calendar_id AS calendarId, o.created_at AS createdAt, o.timezone AS timezone
-  `, { tenantId })
+  `, { tenantId, runId })
   let marked = 0
   for (const c of contracts) {
     const calendar = await calendarFor(tenantId, { name: c.name, businessHours: c.businessHours, calendarId: c.calendarId })
@@ -59,6 +63,16 @@ export async function markOlaAlerts(session: Session, tenantId: string, now: Dat
     }
   }
   return marked
+}
+
+/** Switches on the contracts the run wrote switched off (writeReference.ts), once their past alerts are marked. */
+export async function enableRunOlaContracts(session: Session, tenantId: string, runId: string): Promise<number> {
+  const rows = await runQuery<{ n: unknown }>(session, `
+    MATCH (o:OLAContract {tenant_id: $tenantId, demo_run_id: $runId}) WHERE o.enabled = false
+    SET o.enabled = true
+    RETURN count(o) AS n
+  `, { tenantId, runId })
+  return toNumber(rows[0]?.n ?? 0)
 }
 
 export async function scheduleOpenSlaJobs(session: Session, tenantId: string, now: Date): Promise<number> {

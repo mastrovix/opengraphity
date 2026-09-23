@@ -41,7 +41,7 @@ describe('the contracts of the demo', () => {
   for (const t of teams) for (let i = 0; i < 60; i++) facts.add('incident', trail(t.id, i, 4) as never)
   const people = { teams, users: [] } as unknown as PeoplePlan
   const config = { calendars: [CAL_IT, CAL_APAC], calendar: CAL_IT } as unknown as ConfigPlan
-  const olas = planOlaContracts(new Rng('ola'), people, config, facts, 'Europe/Rome', START, NOW)
+  const olas = planOlaContracts(new Rng('ola'), people, config, facts, 'Europe/Rome', START, NOW).contracts
   const of = (teamId: string) => olas.find((o) => o.teamId === teamId)!
 
   it('a team outside the tenant\'s zone gets contracts too', () => {

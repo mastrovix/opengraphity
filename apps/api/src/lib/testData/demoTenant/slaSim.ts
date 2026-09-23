@@ -16,10 +16,17 @@
  *  - deadlines: `calculateDeadline` of `@opengraphity/sla`, the app's own
  *    function, from the ticket's creation;
  *  - pause: the type the step's `sla_pause` action asks for, otherwise both;
- *    resuming moves the deadlines by the wall-clock time paused, as
- *    `resumeSLA` does (not by business minutes);
+ *    resuming moves the deadlines by the time the policy's clock counted
+ *    while paused — wall-clock on a 24×7 policy, service hours on a policy
+ *    with a calendar — as `resumeSLA` does since the review of 23 Sep 2026
+ *    (`shiftedDeadline`, the same arithmetic as status.ts);
  *  - reopening (SL-3): back to an open step from a concluded one, the
- *    deadline moves by the time spent concluded and the SLA runs again;
+ *    deadline moves by the time spent concluded, counted the same way, and
+ *    the SLA runs again;
+ *  - breach: at every move, if the resolve clock was running and the
+ *    deadline has passed, the breach job has fired AT the deadline — a
+ *    pause or a conclusion that comes later does not undo it (review of 23
+ *    Sep 2026: a ticket on hold past its deadline showed paused, not breached);
  *  - conclusion: `resolve_met = resolved_at <= deadline (+ open pause)`, and
  *    `breached_at = resolve_deadline` when breached — what the breach job
  *    writes, and what migration 20261002_1000 wrote for older rows;
@@ -28,7 +35,7 @@
  *  - a response not given by its deadline was notified by the scheduler at
  *    that deadline (`response_breach_notified_at`).
  */
-import { calculateDeadline, type ServiceCalendar } from '@opengraphity/sla'
+import { businessMinutesBetween, calculateDeadline, type ServiceCalendar } from '@opengraphity/sla'
 import type { PlannedSlaPolicy } from './config.js'
 import type { LiveStep } from './workflowModel.js'
 
@@ -46,6 +53,31 @@ function deadlineOf(policy: PlannedSlaPolicy, clock: SlaClock, from: Date, minut
   const calendar = businessHours ? clock.calendars.get(policy.calendarId!) : undefined
   if (businessHours && !calendar) throw new Error(`SLA policy "${policy.name}": its calendar ${policy.calendarId!} is not planned`)
   return calculateDeadline(from, minutes, businessHours, policy.timezone ?? clock.tenantTimeZone, calendar ?? null).getTime()
+}
+
+/**
+ * `deadlineMs` moved forward by the time between `fromMs` and `toMs` that the
+ * policy's clock counts, and that time in ms (status.ts countedMs/extendDeadline).
+ */
+export function shiftedDeadline(policy: PlannedSlaPolicy, clock: SlaClock, deadlineMs: number, fromMs: number, toMs: number): { deadlineMs: number; countedMs: number } {
+  if (toMs <= fromMs) return { deadlineMs, countedMs: 0 }
+  if (policy.calendarId === null) return { deadlineMs: deadlineMs + (toMs - fromMs), countedMs: toMs - fromMs }
+  const calendar = clock.calendars.get(policy.calendarId)
+  if (!calendar) throw new Error(`SLA policy "${policy.name}": its calendar ${policy.calendarId} is not planned`)
+  const zone = policy.timezone ?? clock.tenantTimeZone
+  const minutes = businessMinutesBetween(new Date(fromMs), new Date(toMs), true, zone, calendar)
+  if (minutes <= 0) return { deadlineMs, countedMs: 0 }
+  return { deadlineMs: calculateDeadline(new Date(deadlineMs), minutes, true, zone, calendar).getTime(), countedMs: minutes * 60_000 }
+}
+
+/** Leaving a waiting step (`resumeSLA`): the deadlines the pause held move by the time the clock counted. */
+function resumed(
+  policy: PlannedSlaPolicy, clock: SlaClock, pausedAtMs: number, pausedType: 'resolve' | 'response' | 'both', atMs: number,
+  resolveMs: number, responseMs: number,
+): { resolveMs: number; responseMs: number; countedMs: number } {
+  const resolve = pausedType === 'response' ? { deadlineMs: resolveMs, countedMs: 0 } : shiftedDeadline(policy, clock, resolveMs, pausedAtMs, atMs)
+  const response = pausedType === 'resolve' ? { deadlineMs: responseMs, countedMs: 0 } : shiftedDeadline(policy, clock, responseMs, pausedAtMs, atMs)
+  return { resolveMs: resolve.deadlineMs, responseMs: response.deadlineMs, countedMs: pausedType === 'response' ? response.countedMs : resolve.countedMs }
 }
 
 export interface SlaTicket {
@@ -118,23 +150,34 @@ export function simulateSla(
   let breached = false
 
   let reopenedAt: number | null = null
+  let breachedAt: number | null = null
+  const resolveClockRuns = () => resolvedAt === null && !(pausedAt !== null && (pausedType ?? 'both') !== 'response')
+  // The breach job: it fires at the deadline if the resolve clock is running then.
+  const breachJob = (atMs: number) => {
+    if (!breached && resolveClockRuns() && resolveDeadline < atMs) { breached = true; breachedAt = resolveDeadline }
+  }
   for (const move of t.moves) {
+    breachJob(move.atMs)
     if (resolvedAt !== null) {
       // A second conclusion (resolved → closed) changes nothing (engine.ts).
       if (concludes(move.step)) continue
       // SL-3: back to an open step — the SLA reopens, its deadline moved by
       // the time spent concluded (`reopenSLA`); a breach already recorded stays.
-      resolveDeadline += Math.max(0, move.atMs - resolvedAt)
+      const moved = shiftedDeadline(policy, clock, resolveDeadline, resolvedAt, move.atMs)
+      resolveDeadline = moved.deadlineMs
+      pausedTotal += moved.countedMs
       reopenedAt = move.atMs
       resolvedAt = null
       met = false
     }
     if (respondedAtMs === null) respondedAtMs = move.atMs // leaving the initial step
     if (concludes(move.step)) {
-      const pausedResolve = pausedAt !== null && (pausedType ?? 'both') !== 'response'
-      const shift = pausedResolve ? Math.max(0, move.atMs - pausedAt!) : 0
-      resolveDeadline += shift
-      pausedTotal += shift
+      // A pause still open on the resolve clock is closed by the conclusion (`markResolveMet`).
+      if (pausedAt !== null && (pausedType ?? 'both') !== 'response') {
+        const moved = shiftedDeadline(policy, clock, resolveDeadline, pausedAt!, move.atMs)
+        resolveDeadline = moved.deadlineMs
+        pausedTotal += moved.countedMs
+      }
       pausedAt = null; pausedType = null
       resolvedAt = move.atMs
       met = move.atMs <= resolveDeadline
@@ -147,16 +190,14 @@ export function simulateSla(
       continue
     }
     if (pausedAt !== null) {
-      const shift = Math.max(0, move.atMs - pausedAt)
-      resolveDeadline += (pausedType === 'response' ? 0 : shift)
-      if (pausedType === 'response' || pausedType === 'both') responseDeadline += shift
-      pausedTotal += shift
+      const r = resumed(policy, clock, pausedAt, pausedType ?? 'both', move.atMs, resolveDeadline, responseDeadline)
+      resolveDeadline = r.resolveMs; responseDeadline = r.responseMs; pausedTotal += r.countedMs
       pausedAt = null; pausedType = null
     }
   }
 
-  // Still open: the breach job has fired if the deadline passed while not paused.
-  if (resolvedAt === null && pausedAt === null && resolveDeadline < nowMs) breached = true
+  // Still open: the breach job has fired if the deadline passed while the resolve clock ran.
+  breachJob(nowMs)
 
   const responseLate = (respondedAtMs ?? nowMs) > responseDeadline && responseDeadline < nowMs
   return {
@@ -166,7 +207,10 @@ export function simulateSla(
     response_met: respondedAtMs !== null,
     resolve_met: resolvedAt !== null && met,
     breached,
-    breached_at: breached ? new Date(resolveDeadline).toISOString() : null,
+    // When the breach happened: the deadline the job fired at; a late conclusion
+    // with no job before it (paused at the deadline) counts at the deadline, as
+    // migration 20261002_1000 wrote for older rows.
+    breached_at: breached ? new Date(breachedAt ?? resolveDeadline).toISOString() : null,
     resolved_at: resolvedAt === null ? null : new Date(resolvedAt).toISOString(),
     paused_at: pausedAt === null ? null : new Date(pausedAt).toISOString(),
     paused_type: pausedType,

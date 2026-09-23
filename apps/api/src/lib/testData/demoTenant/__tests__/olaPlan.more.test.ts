@@ -69,8 +69,9 @@ function factsOf(spec: Array<[teamId: string, count: number, hours: number, kind
   return facts
 }
 
-const plan = (teams: PlannedTeam[], facts: OlaFacts) =>
+const planned = (teams: PlannedTeam[], facts: OlaFacts) =>
   planOlaContracts(new Rng('ola-more'), { teams, users: [] } as unknown as PeoplePlan, CONFIG, facts, TZ, START, NOW)
+const plan = (teams: PlannedTeam[], facts: OlaFacts) => planned(teams, facts).contracts
 
 describe('D64: what a team concluded', () => {
   it('a ticket counts for every team that held it, with the segment still open when it was concluded', () => {
@@ -117,7 +118,8 @@ describe('D64: the target a team can keep', () => {
   })
 
   it('a team that no round target can hold has none', () => {
-    const slow = factsOf([['t-1', 30, 20 * 24]]).of('t-1', 'incident')
+    // Past the top of the ladder: 30 days of team time (review of 23 Sep 2026: it was 20 days).
+    const slow = factsOf([['t-1', 30, 40 * 24]]).of('t-1', 'incident')
     expect(at(slow)).toBeNull()
   })
 })
@@ -164,7 +166,7 @@ describe('D64: who gets a contract', () => {
   })
 
   it('a team no round target fits gets no contract, even when it is the busiest', () => {
-    const olas = plan([team('slow', 'Italy', 'internal'), team('fast', 'Italy', 'internal')], factsOf([['slow', 90, 20 * 24], ['fast', 40, 3]]))
+    const olas = plan([team('slow', 'Italy', 'internal'), team('fast', 'Italy', 'internal')], factsOf([['slow', 90, 40 * 24], ['fast', 40, 3]]))
     expect(olas.map((o) => o.teamId)).toEqual(['fast'])
   })
 
@@ -175,5 +177,33 @@ describe('D64: who gets a contract', () => {
       team('noregion', null, 'internal'),
     ]
     expect(plan(teams, factsOf([['owner', 60, 3], ['cab', 60, 3], ['noregion', 60, 3]]))).toEqual([])
+  })
+})
+
+// Review of 23 Sep 2026: the two problem OLAs of the owner's twelve disappeared without a word.
+describe('no contract disappears in silence', () => {
+  it('a problem team qualifies with five concluded problems: there are about three per team', () => {
+    const olas = plan([team('p', 'Italy', 'internal')], factsOf([['p', 5, 3, 'problem']]))
+    expect(olas.map((o) => [o.teamId, o.entityType])).toEqual([['p', 'problem']])
+  })
+
+  it('a problem worked for weeks still gets a round target: the ladder reaches 30 days', () => {
+    const olas = plan([team('p', 'Italy', 'internal')], factsOf([['p', 6, 25 * 24, 'problem']]))
+    expect(olas[0]!.resolveMinutes).toBe(43200)
+  })
+
+  it('a team with no target gives its slot to the next busiest, instead of taking it and being dropped', () => {
+    const teams = ['slow', 'a', 'b', 'c', 'd'].map((id) => team(id, 'Italy', 'internal'))
+    const olas = plan(teams, factsOf([['slow', 99, 40 * 24], ['a', 80, 3], ['b', 70, 3], ['c', 60, 3], ['d', 50, 3]]))
+    expect(olas.filter((o) => o.entityType === 'incident').map((o) => o.teamId)).toEqual(['a', 'b', 'c', 'd'])
+  })
+
+  it('every contract that could not be made is named, with the count and the reason', () => {
+    const { contracts, shortfalls } = planned([team('a', 'Italy', 'internal')], factsOf([['a', 60, 3]]))
+    expect(contracts).toHaveLength(1)
+    expect(shortfalls).toHaveLength(5)
+    expect(shortfalls[0]).toMatch(/^OLA on incidents: 1 of 4 — 1 internal teams concluded at least 25/)
+    expect(shortfalls.find((x) => x.startsWith('OLA on problems'))).toMatch(/0 of 2 — 0 internal teams concluded at least 5/)
+    expect(shortfalls.find((x) => x.startsWith('UC on service requests'))).toMatch(/0 of 2 — 0 external teams/)
   })
 })
