@@ -417,6 +417,7 @@ export async function runAction(
             headers: { 'Content-Type': 'application/json', ...(p.headers ?? {}) },
             body:    p.method !== 'GET' ? rawPayload : undefined,
             signal:  controller.signal,
+            redirect: 'manual',   // its target was never checked (review of 23 Sep 2026)
           })
           if (res.ok) {
             log.info({ host: safeHost, status: res.status, durationMs: Date.now() - t0 }, 'call_webhook completed')

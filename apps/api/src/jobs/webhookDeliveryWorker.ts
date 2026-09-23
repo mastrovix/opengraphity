@@ -76,6 +76,8 @@ async function processDelivery(job: Job<DeliveryJobData>): Promise<void> {
       headers: finalHeaders,
       body: method !== 'GET' ? body : undefined,
       signal: controller.signal,
+      // A redirect is not followed: its target was never checked (review of 23 Sep 2026).
+      redirect: 'manual',
     })
     // C-29: il corpo della risposta si scarta subito, altrimenti la
     // connessione resta aperta finché non passa il garbage collector.

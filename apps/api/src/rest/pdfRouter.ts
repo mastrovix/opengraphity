@@ -8,6 +8,7 @@ import { tenantBrand, tenantLogoFile } from '../lib/brand.js'
 import { Router, type Router as ExpressRouter } from 'express'
 import { getSession, type Queryable } from '@opengraphity/neo4j'
 import { authMiddleware } from '../middleware/auth.js'
+import { runRoute } from './routeSafety.js'
 import { logger } from '../lib/logger.js'
 import { audit } from '../lib/audit.js'
 import { NotFoundError } from '../lib/errors.js'
@@ -41,7 +42,7 @@ export function makePdfRouter<D>(spec: PdfRouteSpec<D>): ExpressRouter {
 
   // Generates the full audit dossier as PDF (Bearer user auth).
   router.get(spec.path, authMiddleware, (req, res) => {
-    void (async () => {
+    runRoute(res, `${logTag} export`, async () => {
       const { tenantId, userId, email, role } = req.user!
       const id = parametro(req, 'id')
 
@@ -79,7 +80,7 @@ export function makePdfRouter<D>(spec: PdfRouteSpec<D>): ExpressRouter {
       } finally {
         await session.close()
       }
-    })()
+    })
   })
 
   return router

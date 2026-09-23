@@ -38,7 +38,9 @@ const h = vi.hoisted(() => {
   }
 })
 
-vi.mock('@kubernetes/client-node', () => ({
+vi.mock('@kubernetes/client-node', async (orig) => ({
+  // The real YAML reader: the connector checks the kubeconfig's fields with it.
+  loadYaml: (await orig<typeof import('@kubernetes/client-node')>()).loadYaml,
   KubeConfig: h.KubeConfig, CoreV1Api: h.CoreV1Api, AppsV1Api: h.AppsV1Api, NetworkingV1Api: h.NetworkingV1Api,
 }))
 

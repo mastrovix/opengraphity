@@ -116,6 +116,12 @@ describe('policy ↔ schema', () => {
     // esattamente il guasto C-7 in un'altra forma.
     expect(allowedRoles('Query', 'criticalServiceCriticalities')).toEqual(['admin', 'operator', 'viewer'])
   })
+
+  it('the priority matrix is read by all staff: the incident and problem forms need it (review of 23 Sep 2026)', () => {
+    // It was read through domainMatrices, which is admin-only: an operator
+    // opening «New incident» got Forbidden and could not submit the form.
+    expect(allowedRoles('Query', 'priorityMatrix')).toEqual(['admin', 'operator', 'viewer'])
+  })
 })
 
 /**

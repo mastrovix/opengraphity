@@ -33,7 +33,7 @@ vi.mock('@/components/ticket/customFields/customFields', async (orig) => ({
 }))
 vi.mock('@/components/TriageSuggestionCard', () => ({ TriageSuggestionCard: () => null }))
 
-const matrix = () => ({ domainMatrices: [{
+const matrix = () => ({ priorityMatrix: {
   kind: 'priority', inputs: ['impact', 'urgency'], output: 'priority',
   inputValues: [['low', 'medium', 'high'], ['low', 'medium', 'high']],
   outputValues: ['low', 'medium', 'high', 'critical'],
@@ -41,12 +41,12 @@ const matrix = () => ({ domainMatrices: [{
     { key: 'medium|medium', inputs: ['medium', 'medium'], value: 'medium' },
     { key: 'high|low', inputs: ['high', 'low'], value: 'high' },
   ],
-}] })
+} })
 
 beforeEach(() => {
   apolloFinto.reset()
   resetInFlight()
-  apolloFinto.risposte['GetDomainMatrices'] = matrix()
+  apolloFinto.risposte['GetPriorityMatrix'] = matrix()
   apolloFinto.risposte['GetTeams'] = { teams: [] }
   apolloFinto.risposte['GetTeamChoices'] = { teams: [] }
   apolloFinto.risposte['GetAllCIs'] = { allCIs: { items: [{ id: 'ci-1', name: 'db-prod-01', type: 'database', environment: 'production', supportGroup: null }] } }
@@ -64,7 +64,7 @@ describe('CreateIncidentPage: while the server is still working', () => {
     await user.click(screen.getAllByRole('button', { name: 'high' })[0]!)
     await user.click(screen.getAllByRole('button', { name: 'low' })[1]!)
     // The network answers again, with the same matrix in a new object.
-    apolloFinto.risposte['GetDomainMatrices'] = matrix()
+    apolloFinto.risposte['GetPriorityMatrix'] = matrix()
     await user.type(screen.getByRole('textbox', { name: /production database is unreachable/ }), 'DB down')
     expect(pressed(0)).toBe('high')
     expect(pressed(1)).toBe('low')

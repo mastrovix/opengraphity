@@ -42,7 +42,7 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
       'myTasks', 'myPendingApprovals', 'pendingTicketApprovals', 'myNotifications', 'isWatching', 'watchers',
       'notificationRouting', 'aiSettings', 'tenantTimezoneSettings', 'tenantInAppRetentionDays', 'serviceCalendars',
       'ciTypes', 'baseCIType', 'itilTypes', 'itilTypeFields', 'ticketCIExclusions',
-      'enumTypes', 'enumType', 'criticalServiceCriticalities', 'preApprovedChangeTypes', 'riskBandThresholds',
+      'enumTypes', 'enumType', 'criticalServiceCriticalities', 'priorityMatrix', 'preApprovedChangeTypes', 'riskBandThresholds',
       'navigableEntities', 'navigableRelations', 'reachableEntities',
       'workflowDefinitions', 'workflowDefinition', 'workflowDefinitionById', 'workflowEventTypes',
       // Solo nome ed etichetta dei passi, per LEGGERE uno stato: stesso

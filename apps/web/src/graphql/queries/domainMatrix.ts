@@ -16,6 +16,19 @@ export const GET_DOMAIN_MATRICES = gql`
 `
 
 /**
+ * The customer's priority matrix alone. The incident and problem forms read
+ * it, and every staff member may: `domainMatrices` is admin configuration, and
+ * reading it left operators unable to create an incident (review of 23 Sep
+ * 2026).
+ */
+export const GET_PRIORITY_MATRIX = gql`
+  query GetPriorityMatrix {
+    priorityMatrix { ...DomainMatrixFields }
+  }
+  ${DOMAIN_MATRIX_FIELDS}
+`
+
+/**
  * Le criticità che valgono «servizio critico» secondo la matrice del cliente
  * (le celle che portano all'impatto più alto). Il banner della console
  * allarmi le chiede al server invece di tenerne una copia: la copia nel web

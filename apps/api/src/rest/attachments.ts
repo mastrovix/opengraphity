@@ -8,6 +8,7 @@ import Busboy from 'busboy'
 import { getSession, runQueryOne } from '@opengraphity/neo4j'
 import { authMiddleware } from '../middleware/auth.js'
 import { logger } from '../lib/logger.js'
+import { runRoute, sendFile } from './routeSafety.js'
 import { config } from '../lib/config.js'
 import { ValidationError } from '../lib/errors.js'
 import { attachmentPolicy, extensionAllowed, fileExtension, type AttachmentPolicy } from '../lib/attachmentPolicy.js'
@@ -209,7 +210,7 @@ async function handleUpload(req: Request, res: Response): Promise<void> {
   })
 
   busboy.on('finish', () => {
-    void (async () => {
+    runRoute(res, '[attachment] upload', async () => {
       await writeDone
       if (rejected || res.headersSent) { if (rejected) cleanup(); return }
 
@@ -267,7 +268,7 @@ async function handleUpload(req: Request, res: Response): Promise<void> {
       } finally {
         await session.close()
       }
-    })()
+    })
   })
 
   req.pipe(busboy)
@@ -276,7 +277,7 @@ async function handleUpload(req: Request, res: Response): Promise<void> {
 // ── GET /api/attachments/:id ──────────────────────────────────────────────────
 
 router.get('/attachments/:id', authMiddleware, (req, res: Response) => {
-  void (async () => {
+  runRoute(res, '[attachment] download', async () => {
     const { tenantId, userId, permissions } = req.user!
     const { id }       = req.params
 
@@ -314,11 +315,11 @@ router.get('/attachments/:id', authMiddleware, (req, res: Response) => {
 
       res.setHeader('Content-Type', fileMime)
       res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`)
-      fs.createReadStream(storagePath).pipe(res)
+      sendFile(res, storagePath, '[attachment] download')
     } finally {
       await session.close()
     }
-  })()
+  })
 })
 
 export { router as attachmentRouter }

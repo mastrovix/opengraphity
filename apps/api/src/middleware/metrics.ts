@@ -602,7 +602,7 @@ export const graphqlMetricsPlugin: ApolloServerPlugin<GraphQLContext> = {
           if (code === 'UNAUTHORIZED' || code === 'GRAPHQL_VALIDATION_FAILED' || code === 'GRAPHQL_PARSE_FAILED') continue
           const root = err.path?.[0]
           const name = root != null ? `${rootType}.${String(root)}` : `${rootType}.<request>`
-          recordResolverError(name, err.message)
+          recordResolverError((ctx.contextValue as { tenantId?: string } | undefined)?.tenantId ?? '', name, err.message)
         }
       },
     }
@@ -702,15 +702,23 @@ export function recordSlowQuery(query: string, durationMs: number): void {
 
 // ── Resolver error tracking ───────────────────────────────────────────────────
 
-const resolverErrors = new Map<string, { count: number; lastError: string }>()
+/**
+ * Per tenant (review of 23 Sep 2026): an error message carries the tenant's
+ * data ("already acknowledged by <name>", a host name), and every tenant's
+ * admin reads this panel. A request with no tenant (not signed in) is kept
+ * under '' and shown to nobody.
+ */
+const resolverErrors = new Map<string, Map<string, { count: number; lastError: string }>>()
 
-export function recordResolverError(resolverName: string, error: string): void {
-  const existing = resolverErrors.get(resolverName)
+export function recordResolverError(tenantId: string, resolverName: string, error: string): void {
+  let byResolver = resolverErrors.get(tenantId)
+  if (!byResolver) { byResolver = new Map(); resolverErrors.set(tenantId, byResolver) }
+  const existing = byResolver.get(resolverName)
   if (existing) {
     existing.count += 1
     existing.lastError = error
   } else {
-    resolverErrors.set(resolverName, { count: 1, lastError: error })
+    byResolver.set(resolverName, { count: 1, lastError: error })
   }
 }
 
@@ -774,7 +782,8 @@ export function getRequestMetrics(): RequestMetricsData {
   }
 }
 
-export function getGraphQLMetrics(): GraphQLMetricsData {
+/** The timings are the process's; the errors are `tenantId`'s only. */
+export function getGraphQLMetrics(tenantId: string): GraphQLMetricsData {
   const resolverList: ResolverMetricData[] = graphqlResolverDurationSeconds.snapshot().map(s => ({
     name:      s.labels['resolver'] ?? 'unknown',
     averageMs: s.count > 0 ? (s.sum / s.count) * 1000 : 0,
@@ -786,7 +795,7 @@ export function getGraphQLMetrics(): GraphQLMetricsData {
 
   const totalOperations = resolverList.reduce((acc, r) => acc + r.count, 0)
 
-  const errorsByResolver: ResolverErrorData[] = Array.from(resolverErrors.entries()).map(([name, e]) => ({
+  const errorsByResolver: ResolverErrorData[] = Array.from(resolverErrors.get(tenantId)?.entries() ?? []).map(([name, e]) => ({
     name,
     count:     e.count,
     lastError: e.lastError,

@@ -4,6 +4,7 @@ import { Router, type Router as ExpressRouter } from 'express'
 import { authMiddleware } from '../middleware/auth.js'
 import { REPORT_PATH_SEGMENT_RE, tenantReportDir } from '../graphql/resolvers/reportExport.js'
 import { logger } from '../lib/logger.js'
+import { sendFile } from './routeSafety.js'
 import { parametro } from './parametroDiRotta.js'
 
 const router: ExpressRouter = Router()
@@ -46,7 +47,7 @@ router.get('/reports/:filename', authMiddleware, (req, res) => {
   res.setHeader('Content-Type', mime)
   res.setHeader('Content-Disposition', `attachment; filename="${dlName}"`)
   logger.info({ filename, tenantId }, '[report-download] serving file')
-  fs.createReadStream(filePath).pipe(res)
+  sendFile(res, filePath, '[report-download]')
 })
 
 export { router as reportsRouter }

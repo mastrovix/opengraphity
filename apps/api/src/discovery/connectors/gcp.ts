@@ -33,6 +33,15 @@ function parseKeyFile(creds: Record<string, string>): Record<string, unknown> {
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
       throw new Error('must be a JSON object')
     }
+    // Only a service account key (review of 23 Sep 2026). google-auth-library
+    // also accepts `external_account`, whose credential_source makes the
+    // worker fetch any URL or read any local file (/proc/self/environ) and
+    // post it to a token_url the tenant chooses; `authorized_user` and the
+    // impersonation types reach other token endpoints. None is a sync source.
+    const type = (parsed as Record<string, unknown>)['type']
+    if (type !== 'service_account') {
+      throw new Error(`type must be "service_account" (a service account key), not ${JSON.stringify(type ?? null)}`)
+    }
     return parsed as Record<string, unknown>
   } catch (err) {
     throw connectorError(TYPE, 'service_account_json parse', err)

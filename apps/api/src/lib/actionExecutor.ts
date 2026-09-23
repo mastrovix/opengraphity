@@ -406,6 +406,7 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
           headers: { 'Content-Type': 'application/json', ...headers },
           body:    method !== 'GET' ? payload : undefined,
           signal:  controller.signal,
+          redirect: 'manual',   // its target was never checked (review of 23 Sep 2026)
         })
         /**
          * Il CORPO della risposta si consuma sempre (revisione totale ·

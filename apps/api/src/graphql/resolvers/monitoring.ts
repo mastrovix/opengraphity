@@ -96,7 +96,7 @@ export const monitoringResolvers = {
       requireSystemPermission(ctx)
 
       const requests = getRequestMetrics()
-      const graphql  = getGraphQLMetrics()
+      const graphql  = getGraphQLMetrics(ctx.tenantId)
       const neo4j    = getNeo4jMetrics()
       const system   = getProcessMetrics()
       const queues   = getQueueMetricsSnapshot()

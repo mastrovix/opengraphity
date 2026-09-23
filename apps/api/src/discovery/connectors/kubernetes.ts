@@ -28,10 +28,45 @@ type K8sConfig = {
 
 const ALL_RESOURCE_TYPES = ['node', 'deployment', 'statefulset', 'service', 'ingress'] as const
 
+/**
+ * THE KUBECONFIG OF A CUSTOMER CARRIES ITS CREDENTIALS, NOTHING ELSE (review
+ * of 23 Sep 2026).
+ *
+ * The library runs a user's `exec` plugin with child_process.spawn and reads
+ * `token-file`, `client-certificate`, `client-key` and `certificate-authority`
+ * from the local disk. A tenant admin could therefore run a command inside
+ * the API process, or send /proc/self/environ as a bearer token to a server
+ * of their choice, from «Test connection». Only the inline fields below are
+ * accepted; anything else is refused by name before the library sees it.
+ */
+const KUBECONFIG_USER_FIELDS = new Set(['token', 'client-certificate-data', 'client-key-data', 'username', 'password'])
+const KUBECONFIG_CLUSTER_FIELDS = new Set(['server', 'certificate-authority-data', 'insecure-skip-tls-verify', 'tls-server-name'])
+
+export function assertInlineKubeconfig(parsed: unknown): void {
+  const doc = (parsed ?? {}) as { users?: unknown; clusters?: unknown }
+  const check = (entries: unknown, key: 'user' | 'cluster', allowed: ReadonlySet<string>) => {
+    if (entries == null) return
+    if (!Array.isArray(entries)) throw new ConnectorError(TYPE, 'credentials', new Error(`kubeconfig: "${key}s" must be a list`))
+    for (const entry of entries as Array<Record<string, unknown> | null>) {
+      const fields = (entry?.[key] ?? {}) as Record<string, unknown>
+      const refused = Object.keys(fields).filter((f) => !allowed.has(f))
+      if (refused.length) {
+        throw new ConnectorError(TYPE, 'credentials', new Error(
+          `kubeconfig ${key} "${String(entry?.['name'] ?? '')}": ${refused.join(', ')} not accepted — use inline credentials only (${[...allowed].join(', ')})`))
+      }
+    }
+  }
+  check(doc.users, 'user', KUBECONFIG_USER_FIELDS)
+  check(doc.clusters, 'cluster', KUBECONFIG_CLUSTER_FIELDS)
+}
+
 async function makeKubeConfig(creds: Record<string, string>, cfg: K8sConfig): Promise<KubeConfig> {
-  const { KubeConfig } = await import('@kubernetes/client-node')
+  const { KubeConfig, loadYaml } = await import('@kubernetes/client-node')
   const kc = new KubeConfig()
   if (creds['kubeconfig']) {
+    let parsed: unknown
+    try { parsed = loadYaml(creds['kubeconfig']) } catch (err) { throw new ConnectorError(TYPE, 'credentials', err) }
+    assertInlineKubeconfig(parsed)
     kc.loadFromString(creds['kubeconfig'])
   } else if (creds['bearer_token'] && cfg.server_url) {
     kc.loadFromOptions({

@@ -223,7 +223,7 @@ beforeEach(() => {
   apolloFinto.risposte['GetIncident'] = { incident: incident() }
   apolloFinto.risposte['GetUsers'] = { users: USERS }
   apolloFinto.risposte['GetMe'] = { me: me(['ticket.work']) }
-  apolloFinto.risposte['GetDomainMatrices'] = { domainMatrices: [MATRIX] }
+  apolloFinto.risposte['GetPriorityMatrix'] = { priorityMatrix: MATRIX }
   apolloFinto.risposte['GetWorkflowDefinition'] = { workflowDefinition: { steps: STEPS, transitions: [] } }
   apolloFinto.risposte['GetWorkflowStepLabels'] = { workflowStepLabels: [] }
   apolloFinto.risposte['GetAISettings'] = { aiSettings: { features: { postIncident: true, kbArticles: true } } }
@@ -345,11 +345,11 @@ describe('IncidentDetailPage: the details', () => {
   })
 
   it('a value the Dictionary has no label for is shown as it is', async () => {
-    apolloFinto.risposte['GetDomainMatrices'] = { domainMatrices: [{
+    apolloFinto.risposte['GetPriorityMatrix'] = { priorityMatrix: {
       ...MATRIX,
       inputValues: [['low', 'extreme'], ['low', 'whenever']], outputValues: ['low', 'p0'],
       cells: [{ key: 'low|low', inputs: ['low', 'low'], value: 'low' }, { key: 'extreme|whenever', inputs: ['extreme', 'whenever'], value: 'p0' }],
-    }] }
+    } }
     const { user } = show({ impact: 'extreme', urgency: 'whenever', priority: 'p0' })
     expect(field('Impact / Urgency')).toHaveTextContent('extreme / whenever')
     await user.click(screen.getByRole('button', { name: 'Edit' }))
@@ -844,7 +844,7 @@ describe('IncidentDetailPage: editing the fields', () => {
 
 describe('IncidentDetailPage: when the tenant\'s data cannot be read', () => {
   it('without the priority matrix nothing is invented: no scale, no code, and a save keeps the incident\'s own values', async () => {
-    apolloFinto.erroriQuery['GetDomainMatrices'] = new Error('matrices down')
+    apolloFinto.erroriQuery['GetPriorityMatrix'] = new Error('matrices down')
     apolloFinto.esiti['UpdateIncident'] = { data: { updateIncident: { id: 'inc-1' } } }
     const { user } = mount()
     expect(within(field('Priority')).getByText('P?')).toBeInTheDocument()
@@ -861,7 +861,7 @@ describe('IncidentDetailPage: when the tenant\'s data cannot be read', () => {
   // complete it in Settings», sending the administrator to fix a matrix that
   // may be fine.
   it('an unreadable matrix is said as such, not blamed on its content', async () => {
-    apolloFinto.erroriQuery['GetDomainMatrices'] = new Error('matrices down')
+    apolloFinto.erroriQuery['GetPriorityMatrix'] = new Error('matrices down')
     const { user } = show({ impact: null, urgency: null })
     await user.click(screen.getByRole('button', { name: 'Edit' }))
     expect(within(dialog('Edit the incident')).queryByText(/complete it in Settings/)).not.toBeInTheDocument()
@@ -870,7 +870,7 @@ describe('IncidentDetailPage: when the tenant\'s data cannot be read', () => {
   })
 
   it('a matrix still being read is not blamed either', async () => {
-    inFlight.add('GetDomainMatrices')
+    inFlight.add('GetPriorityMatrix')
     const { user } = mount()
     await user.click(screen.getByRole('button', { name: 'Edit' }))
     expect(within(dialog('Edit the incident')).getByText('Resulting priority:').querySelector('strong')).toHaveTextContent('Loading...')

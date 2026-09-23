@@ -154,7 +154,6 @@ const NOTE = new Map([
   ['apps/api/src/lib/tenantOnboarding.ts#onboardTenant', 73],
   ['apps/web/src/pages/settings/EventPolicyPage.tsx#EventPolicyPage', 62],
   ['apps/web/src/pages/teams/TeamDetailPage.tsx#TeamDetailPage', 72],
-  ['apps/api/src/lib/cypherGuard.ts#assertSafeReadOnlyCypher', 70],
   ['apps/api/src/graphql/resolvers/dynamic-ci.ts#buildDynamicCIResolvers', 69],
   ['apps/api/src/graphql/resolvers/whatif.ts#whatIfAnalysis', 69],
   ['apps/web/src/components/MentionInput.tsx#MentionInput', 69],

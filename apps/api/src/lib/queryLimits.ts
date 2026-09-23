@@ -49,23 +49,44 @@ export function fragmentsOf(doc: { definitions: readonly unknown[] }): Fragments
  */
 const isSpread = (n: FieldLikeNode) => n.kind === 'FragmentSpread' || n.kind === 'InlineFragment'
 
-function getDepth(node: FieldLikeNode, current: number, fragments: Fragments, seen: ReadonlySet<string> = new Set()): number {
-  let scope = seen
+/**
+ * ONE FRAGMENT IS MEASURED ONCE (review of 23 Sep 2026).
+ *
+ * The walk resolved every spread by walking its definition again. A fragment
+ * spreading the next one twice, twenty deep, is walked 2^20 times: a one-kilobyte
+ * request took seconds of validation on the event loop that serves every
+ * tenant, before the rate limiter could see it. Each fragment's depth and
+ * field count are now computed once per document and reused; a fragment
+ * already being measured (a cycle, which another rule refuses) counts as 0.
+ */
+function measure<T>(fragments: Fragments, memo: Map<string, T | 'measuring'>, name: string, zero: T, compute: (def: FieldLikeNode) => T): T {
+  const known = memo.get(name)
+  if (known === 'measuring') return zero
+  if (known !== undefined) return known
+  const def = fragments.get(name)
+  if (!def) return zero
+  memo.set(name, 'measuring')
+  const value = compute(def)
+  memo.set(name, value)
+  return value
+}
+
+/** Depth below `node`: a field is a level, a spread or an inline fragment is not. */
+function relativeDepth(node: FieldLikeNode, fragments: Fragments, memo: Map<string, number | 'measuring'>): number {
   if (node.kind === 'FragmentSpread' && node.name) {
-    const name = node.name.value
-    if (seen.has(name)) return current
-    const def = fragments.get(name)
-    if (!def) return current
-    node = def
-    scope = new Set([...seen, name])
+    return measure(fragments, memo, node.name.value, 0, (def) => relativeDepth(def, fragments, memo))
   }
-  if (!node.selectionSet) return current
-  return Math.max(
-    ...node.selectionSet.selections.map((sel) => {
-      const child = sel as FieldLikeNode
-      return getDepth(child, isSpread(child) ? current : current + 1, fragments, scope)
-    }),
-  )
+  if (!node.selectionSet) return 0
+  let deepest = 0
+  for (const sel of node.selectionSet.selections) {
+    const child = sel as FieldLikeNode
+    deepest = Math.max(deepest, (isSpread(child) ? 0 : 1) + relativeDepth(child, fragments, memo))
+  }
+  return deepest
+}
+
+function getDepth(node: FieldLikeNode, fragments: Fragments): number {
+  return relativeDepth(node, fragments, new Map())
 }
 
 export function depthLimit(maxDepth: number): ValidationRule {
@@ -74,7 +95,7 @@ export function depthLimit(maxDepth: number): ValidationRule {
       const fragments = fragmentsOf(node)
       for (const def of node.definitions) {
         if (def.kind === 'OperationDefinition') {
-          const depth = getDepth(def as unknown as FieldLikeNode, 0, fragments)
+          const depth = getDepth(def as unknown as FieldLikeNode, fragments)
           if (depth > maxDepth) {
             context.reportError(
               new GraphQLError(
@@ -93,21 +114,15 @@ export function depthLimit(maxDepth: number): ValidationRule {
 // does not stop breadth amplification — the same expensive field aliased N
 // times stays shallow but multiplies the work. This caps that.
 // M-1: i campi dentro un fragment contano dove sta lo spread.
-function countFields(node: FieldLikeNode, fragments: Fragments, seen: ReadonlySet<string> = new Set()): number {
-  let scope = seen
+function countFields(node: FieldLikeNode, fragments: Fragments, memo: Map<string, number | 'measuring'> = new Map()): number {
   if (node.kind === 'FragmentSpread' && node.name) {
-    const name = node.name.value
-    if (seen.has(name)) return 0
-    const def = fragments.get(name)
-    if (!def) return 0
-    node = def
-    scope = new Set([...seen, name])
+    return measure(fragments, memo, node.name.value, 0, (def) => countFields(def, fragments, memo))
   }
   if (!node.selectionSet) return 0
   let total = 0
   for (const sel of node.selectionSet.selections) {
     const child = sel as FieldLikeNode
-    total += (isSpread(child) ? 0 : 1) + countFields(child, fragments, scope)
+    total += (isSpread(child) ? 0 : 1) + countFields(child, fragments, memo)
   }
   return total
 }

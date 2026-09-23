@@ -48,7 +48,7 @@ async function fetchWithTimeout(url: string, init: RequestInit): Promise<Respons
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), OUTBOUND_TIMEOUT_MS)
   try {
-    return await fetch(url, { ...init, signal: controller.signal })
+    return await fetch(url, { ...init, signal: controller.signal, redirect: 'manual' })  // a redirect's target was never checked
   } finally {
     clearTimeout(timer)
   }

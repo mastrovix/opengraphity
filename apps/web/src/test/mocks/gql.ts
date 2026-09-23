@@ -2,7 +2,7 @@
  * Mock GraphQL riusabili (MockedProvider). I risultati includono `__typename`
  * perché la cache Apollo 4 aggiunge sempre il campo alla query.
  */
-import { GET_ME, GET_ROLES, GET_ANOMALY_STATS, GET_TEAMS, GET_TEAM_CHOICES, GET_USERS, SEARCH_USERS, GET_WORKFLOW_LIST, GET_WORKFLOW_DEFINITION, GET_ITIL_TYPES, GET_BASE_CI_TYPE, GET_DOMAIN_MATRICES } from '@/graphql/queries'
+import { GET_ME, GET_ROLES, GET_ANOMALY_STATS, GET_TEAMS, GET_TEAM_CHOICES, GET_USERS, SEARCH_USERS, GET_WORKFLOW_LIST, GET_WORKFLOW_DEFINITION, GET_ITIL_TYPES, GET_BASE_CI_TYPE, GET_DOMAIN_MATRICES, GET_PRIORITY_MATRIX } from '@/graphql/queries'
 import type { GqlMock } from '@/test/utils'
 import { FACTORY_ROLE_PERMISSIONS, isUserRole } from '@opengraphity/types'
 
@@ -235,17 +235,29 @@ export function domainMatricesMock(opts: {
       return [`${i}|${u}`, priorities[rank]!]
     })),
   )
+  const matrix = {
+    __typename: 'DomainMatrix',
+    kind: 'priority', inputs: ['impact', 'urgency'], output: 'priority',
+    inputValues: [impacts, urgencies], outputValues: priorities,
+    cells: Object.entries(cells).map(([key, value]) => ({
+      __typename: 'DomainMatrixCell', key, inputs: key.split('|'), value,
+    })),
+    missing: [], stale: [], invalid: [], isDefault: false, updatedAt: null,
+  }
   return {
     request: { query: GET_DOMAIN_MATRICES },
-    result: { data: { domainMatrices: [{
-      __typename: 'DomainMatrix',
-      kind: 'priority', inputs: ['impact', 'urgency'], output: 'priority',
-      inputValues: [impacts, urgencies], outputValues: priorities,
-      cells: Object.entries(cells).map(([key, value]) => ({
-        __typename: 'DomainMatrixCell', key, inputs: key.split('|'), value,
-      })),
-      missing: [], stale: [], invalid: [], isDefault: false, updatedAt: null,
-    }] } },
+    result: { data: { domainMatrices: [matrix] } },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+  }
+}
+
+/** The same matrix through `priorityMatrix`, which the incident and problem forms read. */
+export function priorityMatrixMock(opts: Parameters<typeof domainMatricesMock>[0] = {}): GqlMock {
+  const all = domainMatricesMock(opts)
+  const data = all.result as { data: { domainMatrices: unknown[] } }
+  return {
+    request: { query: GET_PRIORITY_MATRIX },
+    result: { data: { priorityMatrix: data.data.domainMatrices[0] } },
     maxUsageCount: Number.POSITIVE_INFINITY,
   }
 }

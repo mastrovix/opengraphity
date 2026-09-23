@@ -140,7 +140,7 @@ describe('graphqlMetricsPlugin', () => {
     const done = (exec as { willResolveField: (a: unknown) => () => void })
       .willResolveField({ info: { parentType: { name: 'Query' }, fieldName: 'incidents' } })
     done()
-    const g = m.getGraphQLMetrics()
+    const g = m.getGraphQLMetrics('t1')
     expect(g.totalOperations).toBe(1)
     expect(g.slowestResolvers[0]!.name).toBe('Query.incidents')
   })
@@ -148,18 +148,19 @@ describe('graphqlMetricsPlugin', () => {
   it('errors without an operation or a path are still recorded, not lost; parse errors are ignored', async () => {
     const listeners = await m.graphqlMetricsPlugin.requestDidStart!({} as never)
     await listeners!.didEncounterErrors!({
+      contextValue: { tenantId: 't1' },
       operation: undefined,
       errors: [
         { message: 'no path' },
         { message: 'parse', extensions: { code: 'GRAPHQL_PARSE_FAILED' } },
       ],
     } as never)
-    expect(m.getGraphQLMetrics().errorsByResolver).toEqual([{ name: 'Unknown.<request>', count: 1, lastError: 'no path' }])
+    expect(m.getGraphQLMetrics('t1').errorsByResolver).toEqual([{ name: 'Unknown.<request>', count: 1, lastError: 'no path' }])
   })
 
   it('a resolver series without a name label reads as "unknown" on the dashboard', () => {
     m.graphqlResolverDurationSeconds.observe({}, 0.002)
-    expect(m.getGraphQLMetrics().slowestResolvers[0]).toMatchObject({ name: 'unknown', count: 1 })
+    expect(m.getGraphQLMetrics('t1').slowestResolvers[0]).toMatchObject({ name: 'unknown', count: 1 })
   })
 })
 

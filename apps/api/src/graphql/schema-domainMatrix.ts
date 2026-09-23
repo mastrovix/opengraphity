@@ -66,6 +66,16 @@ export function domainMatrixSDL(): string {
     domainMatrices: [DomainMatrix!]!
 
     """
+    The customer's priority matrix alone (impact × urgency → priority), with
+    its vocabulary values. The incident and problem forms need it to offer the
+    right values and to show the priority, so every staff member reads it;
+    the other matrices stay admin configuration. It was read through
+    \`domainMatrices\`, which is admin-only, and an operator could not create
+    an incident (review of 23 Sep 2026).
+    """
+    priorityMatrix: DomainMatrix!
+
+    """
     Le criticità che la matrice \`service_impact\` del cliente traduce
     nell'impatto più ALTO: è la definizione di «servizio critico» per il
     banner della console allarmi. Prima quei due valori erano copiati nel web

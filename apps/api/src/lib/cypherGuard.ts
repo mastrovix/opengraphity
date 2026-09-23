@@ -22,6 +22,14 @@
 //      Slack webhook URLs and transform scripts through the tool.
 //      `redactSensitiveValue` is the second line on the rows the query returns.
 //
+//   6. names are scoped as Cypher scopes them (review of 23 Sep 2026): after
+//      WITH only the names it projects keep their anchor, the two sides of a
+//      UNION share nothing, and a CALL { } body sees only what its leading WITH
+//      imports. Before, a name anchored anywhere counted everywhere, and
+//      `MATCH (x:Incident {tenant_id: $tenantId}) WITH count(x) AS c
+//      MATCH (x:User) RETURN x.email` read the users of every tenant.
+//      `foreignTenantIn` is the second line on the rows the query returns.
+//
 // The check is deliberately strict: a legitimate query it rejects costs the
 // model one retry; a malicious query it accepts costs a cross-tenant leak.
 
@@ -84,7 +92,6 @@ const BOOLEAN_NEUTRALISER_RE = /(?<![\w.])(OR|XOR|NOT)(?!\w)/i
 const IS_NOT_RE = /(?<![\w.])IS\s+NOT(?!\w)/gi
 
 const SENSITIVE_PROPERTY_RE = new RegExp(`(?<![\\w$])[A-Za-z_][A-Za-z0-9_]*\\s*\\.\\s*(${[...SENSITIVE_PROPERTY_KEYS].join('|')})(?!\\w)|\\{[^}]*(?<![\\w$])(${[...SENSITIVE_PROPERTY_KEYS].join('|')})\\s*:`, 'i')
-const DYNAMIC_PROPERTY_RE = /[A-Za-z0-9_)\]]\s*\[\s*(''|""|\$)/
 
 /**
  * Seconda linea di D-1 sulle righe restituite: un nodo con un'etichetta
@@ -171,6 +178,7 @@ function precedingToken(text: string, index: number): { word: string | null; cha
 }
 
 interface NodePattern {
+  index:        number
   alias:        string | null
   hasLabel:     boolean
   labels:       string[]
@@ -190,6 +198,7 @@ function extractNodePatterns(text: string): NodePattern[] {
       continue
     }
     nodes.push({
+      index:        m.index,
       alias:        m[1] ?? null,
       hasLabel:     (m[2] ?? '').length > 0,
       labels:       (m[2] ?? '').split(/[:|&!%\s]+/).filter(Boolean),
@@ -246,40 +255,244 @@ export function assertSafeReadOnlyCypher(query: string): void {
   const nodes = extractNodePatterns(text)
   if (nodes.length === 0) throw new UnsafeCypherError('no node pattern found: every query must start from MATCH (x:Label {tenant_id: $tenantId})')
 
-  // Group into paths and require each one to be anchored.
+  // 4 and 6. Every path anchored to the tenant, name by name, scope by scope.
+  assertScopedQuery(text, new Set())
+
+  // 5. What a report must never read (D-1).
+  for (const n of nodes) {
+    if (/[!%]/.test(n.labelExpr)) throw new UnsafeCypherError('label expressions with ! or % are not allowed: name the labels')
+    const denied = n.labels.find((l) => SENSITIVE_LABELS.has(l))
+    if (denied) throw new UnsafeCypherError(`label ${denied} is not readable by reports`)
+  }
+  SENSITIVE_PROPERTY_RE.lastIndex = 0
+  const prop = SENSITIVE_PROPERTY_RE.exec(text)
+  if (prop) throw new UnsafeCypherError(`property ${prop[1]} is not readable by reports`)
+  if (hasDynamicAccess(text)) throw new UnsafeCypherError('dynamic property access x[\'…\'] is not allowed: use x.property')
+
+}
+
+// ── Scopes (review of 23 Sep 2026) ─────────────────────────────────────────
+//
+// A name keeps its tenant anchor only inside the scope that bound it. The
+// analysis runs on the text `stripCypherLiterals` returns, so brackets inside
+// strings are already gone.
+
+/** Words that end the projection of a WITH. */
+const PROJECTION_END = new Set(['MATCH', 'OPTIONAL', 'WHERE', 'UNWIND', 'RETURN', 'ORDER', 'SKIP', 'LIMIT', 'CALL', 'WITH'])
+/** Clause words a tenant predicate in a WHERE can be attached to. */
+const CLAUSE_WORDS = new Set(['MATCH', 'OPTIONAL', 'WITH', 'UNWIND', 'RETURN', 'ORDER', 'CALL'])
+
+interface Word { word: string; index: number; depth: number }
+
+/** Nesting depth of every character: (), [] and {}. A closing bracket has the outer depth. */
+function depthMap(text: string): number[] {
+  const depth: number[] = new Array<number>(text.length)
+  let d = 0
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!
+    if (ch === ')' || ch === ']' || ch === '}') d = Math.max(0, d - 1)
+    depth[i] = d
+    if (ch === '(' || ch === '[' || ch === '{') d++
+  }
+  return depth
+}
+
+/** The bare words of the text, without property names, parameters and labels. */
+function wordsOf(text: string, depth: number[]): Word[] {
+  const out: Word[] = []
+  const re = /[A-Za-z_][A-Za-z0-9_]*/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    const before = text.slice(0, m.index).trimEnd().slice(-1)
+    if (before === '.' || before === ':' || text[m.index - 1] === '$') continue
+    out.push({ word: m[0].toUpperCase(), index: m.index, depth: depth[m.index]! })
+  }
+  return out
+}
+
+/** Index of the bracket that closes the one at `open`. */
+function closingOf(text: string, open: number): number {
+  let d = 0
+  for (let i = open; i < text.length; i++) {
+    const ch = text[i]!
+    if (ch === '(' || ch === '[' || ch === '{') d++
+    else if (ch === ')' || ch === ']' || ch === '}') { d--; if (d === 0) return i }
+  }
+  throw new UnsafeCypherError('unbalanced brackets')
+}
+
+/** The query split at its top-level UNIONs: each side is a scope of its own. */
+function unionParts(text: string): string[] {
+  const depth = depthMap(text)
+  const parts: string[] = []
+  let start = 0
+  for (const w of wordsOf(text, depth)) {
+    if (w.word !== 'UNION') continue
+    if (w.depth > 0) throw new UnsafeCypherError('UNION inside a subquery expression is not supported')
+    parts.push(text.slice(start, w.index))
+    start = w.index + 'UNION'.length
+  }
+  parts.push(text.slice(start))
+  return parts.map((p) => p.replace(/^\s*ALL(?!\w)/i, ' '))
+}
+
+interface CallBody { start: number; body: string }
+
+/** The top-level `CALL { … }` bodies, and the text with them blanked out. */
+function callBodies(text: string): { outer: string; calls: CallBody[] } {
+  const depth = depthMap(text)
+  const calls: CallBody[] = []
+  let outer = text
+  let skipUntil = -1
+  for (const w of wordsOf(text, depth)) {
+    if (w.index < skipUntil || w.word !== 'CALL') continue
+    const open = w.index + 4 + (text.slice(w.index + 4).search(/\S/))
+    if (text[open] !== '{') continue   // a procedure: checked by CALL_RE
+    if (w.depth > 0) throw new UnsafeCypherError('CALL { } is only supported at the top level of the query')
+    const close = closingOf(text, open)
+    calls.push({ start: w.index, body: text.slice(open + 1, close) })
+    outer = outer.slice(0, w.index) + ' '.repeat(close + 1 - w.index) + outer.slice(close + 1)
+    skipUntil = close + 1
+  }
+  return { outer, calls }
+}
+
+/** The names a WITH projection carries into the next scope with their anchor. */
+function projectedNames(projection: string, anchored: ReadonlySet<string>): Set<string> {
+  const out = new Set<string>()
+  const depth = depthMap(projection)
+  let start = 0
+  const items: string[] = []
+  for (let i = 0; i <= projection.length; i++) {
+    if (i === projection.length || (projection[i] === ',' && depth[i] === 0)) { items.push(projection.slice(start, i)); start = i + 1 }
+  }
+  for (const raw of items) {
+    const item = raw.trim().replace(/^DISTINCT(?!\w)\s*/i, '')
+    if (item === '*') { for (const a of anchored) out.add(a); continue }
+    const m = /^([A-Za-z_]\w*)(?:\s+AS\s+([A-Za-z_]\w*))?$/i.exec(item)
+    if (m && anchored.has(m[1]!)) out.add(m[2] ?? m[1]!)
+  }
+  return out
+}
+
+/**
+ * Aliases a `WHERE alias.tenant_id = $tenantId` really restricts: the WHERE
+ * is at the top level of its scope and belongs to a MATCH (not an OPTIONAL
+ * MATCH, whose WHERE only empties the optional part) or to a WITH.
+ */
+function whereAnchoredAliases(text: string, words: Word[], depth: number[], from: number, to: number, startsWithWith: boolean): Set<string> {
+  const out = new Set<string>()
+  WHERE_TENANT_RE.lastIndex = 0
+  let m: RegExpExecArray | null
+  while ((m = WHERE_TENANT_RE.exec(text)) !== null) {
+    if (m.index < from || m.index >= to || depth[m.index] !== 0) continue
+    const before = words.filter((w) => w.depth === 0 && w.index >= from && w.index < m!.index)
+    const clause = [...before].reverse().find((w) => CLAUSE_WORDS.has(w.word))
+    const inWhere = before.some((w) => w.word === 'WHERE' && (!clause || w.index > clause.index))
+    if (!inWhere) continue
+    const plainMatch = clause?.word === 'MATCH' && before[before.indexOf(clause) - 1]?.word !== 'OPTIONAL'
+    if (plainMatch || clause?.word === 'WITH' || (!clause && startsWithWith)) out.add(m[1] ?? m[2]!)
+  }
+  return out
+}
+
+/** Throws unless every node pattern of the query is anchored to the tenant in its own scope. */
+function assertScopedQuery(text: string, carried: ReadonlySet<string>): void {
+  for (const part of unionParts(text)) assertScopedPart(part, carried)
+}
+
+function assertScopedPart(text: string, carried: ReadonlySet<string>): void {
+  const { outer, calls } = callBodies(text)
+  const depth = depthMap(outer)
+  const words = wordsOf(outer, depth)
+  const withs = words.filter((w, i) => w.word === 'WITH' && !['STARTS', 'ENDS'].includes(words[i - 1]?.word ?? ''))
+  if (withs.some((w) => w.depth > 0)) throw new UnsafeCypherError('WITH inside a subquery expression is not supported')
+  const nodes = extractNodePatterns(outer)
+
+  let inScope = new Set(carried)
+  const bounds = [0, ...withs.map((w) => w.index), outer.length]
+  for (let k = 0; k < bounds.length - 1; k++) {
+    const from = k === 0 ? 0 : bounds[k]! + 'WITH'.length
+    const to = bounds[k + 1]!
+    if (k > 0) {
+      const end = words.find((w) => w.index >= from && w.index < to && w.depth === 0 && PROJECTION_END.has(w.word))?.index ?? to
+      inScope = projectedNames(outer.slice(from, end), inScope)
+    }
+    const whereAnchored = whereAnchoredAliases(outer, words, depth, from, to, k > 0)
+    const segmentNodes = nodes.filter((n) => n.index >= from && n.index < to)
+    const segmentCalls = calls.filter((c) => c.start >= from && c.start < to)
+    inScope = assertScopedSegment(segmentNodes, segmentCalls, inScope, whereAnchored)
+  }
+}
+
+/** One scope: its paths in textual order, and the CALL bodies it contains. Returns the anchored names. */
+function assertScopedSegment(nodes: NodePattern[], calls: CallBody[], inScope: ReadonlySet<string>, whereAnchored: ReadonlySet<string>): Set<string> {
+  const anchored = new Set(inScope)
+  const labeled = new Set<string>()
+  const pending = [...calls]
   const paths: NodePattern[][] = []
   for (const n of nodes) {
     if (n.continues && paths.length) paths[paths.length - 1]!.push(n)
     else paths.push([n])
   }
-
-  const bound = new Set<string>()
+  const runCallsBefore = (index: number) => {
+    while (pending.length && pending[0]!.start < index) {
+      const call = pending.shift()!
+      const imports = /^\s*WITH(?!\w)/i.test(call.body) ? anchored : new Set<string>()
+      assertScopedQuery(call.body, imports)
+    }
+  }
   for (const path of paths) {
-    const anchored = path.some(n =>
-      n.inlineTenant ||
-      (n.alias !== null && (whereScoped.has(n.alias) || bound.has(n.alias))),
-    )
-    if (!anchored) {
+    runCallsBefore(path[0]!.index)
+    const ok = path.some((n) => n.inlineTenant || (n.alias !== null && (anchored.has(n.alias) || whereAnchored.has(n.alias))))
+    if (!ok) {
       const first = path[0]!
       const desc = first.alias ?? (first.hasLabel ? '<no alias>' : '()')
       throw new UnsafeCypherError(`pattern not bound to the tenant starting from (${desc}): add {tenant_id: $tenantId} to the node or ${first.alias ?? 'x'}.tenant_id = $tenantId`)
     }
-    for (const n of path) if (n.alias) bound.add(n.alias)
-  }
-
-  // 5. What a report must never read (D-1).
-  const labeledAliases = new Set(nodes.filter((n) => n.hasLabel && n.alias).map((n) => n.alias!))
-  for (const n of nodes) {
-    if (/[!%]/.test(n.labelExpr)) throw new UnsafeCypherError('label expressions with ! or % are not allowed: name the labels')
-    const denied = n.labels.find((l) => SENSITIVE_LABELS.has(l))
-    if (denied) throw new UnsafeCypherError(`label ${denied} is not readable by reports`)
-    if (!n.hasLabel && !(n.alias && labeledAliases.has(n.alias))) {
-      throw new UnsafeCypherError(`every node needs a label: (${n.alias ?? ''}) has none — write (${n.alias ?? 'x'}:Label)`)
+    for (const n of path) {
+      if (!n.hasLabel && !(n.alias && (inScope.has(n.alias) || labeled.has(n.alias)))) {
+        throw new UnsafeCypherError(`every node needs a label: (${n.alias ?? ''}) has none — write (${n.alias ?? 'x'}:Label)`)
+      }
+      if (n.alias) { anchored.add(n.alias); if (n.hasLabel) labeled.add(n.alias) }
     }
   }
-  SENSITIVE_PROPERTY_RE.lastIndex = 0
-  const prop = SENSITIVE_PROPERTY_RE.exec(text)
-  if (prop) throw new UnsafeCypherError(`property ${prop[1]} is not readable by reports`)
-  if (DYNAMIC_PROPERTY_RE.test(text)) throw new UnsafeCypherError('dynamic property access x[\'…\'] is not allowed: use x.property')
+  runCallsBefore(Number.POSITIVE_INFINITY)
+  return anchored
+}
 
+/**
+ * `x[k]` reads a property whose name the query computes, which the name checks
+ * cannot see. A list read by a literal position or slice (`xs[0]`, `xs[..3]`)
+ * is allowed, and so is a list literal after a keyword (`RETURN [a, b]`).
+ */
+function hasDynamicAccess(text: string): boolean {
+  const re = /([A-Za-z0-9_)\]])\s*\[\s*(\S)/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    if (/[A-Za-z0-9_]/.test(m[1]!)) {
+      const word = /[A-Za-z_][A-Za-z0-9_]*$/.exec(text.slice(0, m.index + 1))?.[0] ?? ''
+      if (PATTERN_KEYWORDS.has(word.toUpperCase())) continue
+    }
+    if (/[0-9.-]/.test(m[2]!)) continue
+    return true
+  }
+  return false
+}
+
+/**
+ * Second line behind the guard (review of 23 Sep 2026): true when a node the
+ * query returned belongs to another tenant. Shared shipped nodes
+ * (`tenant_id = 'system'`) are not another tenant.
+ */
+export function foreignTenantIn(value: unknown, tenantId: string): boolean {
+  if (value === null || typeof value !== 'object') return false
+  if (Array.isArray(value)) return value.some((v) => foreignTenantIn(v, tenantId))
+  const v = value as Record<string, unknown>
+  if ('toNumber' in v && typeof v['toNumber'] === 'function') return false
+  if (Array.isArray(v['labels']) && typeof v['properties'] === 'object' && v['properties'] !== null) {
+    const owner = (v['properties'] as Record<string, unknown>)['tenant_id']
+    if (typeof owner === 'string' && owner !== tenantId && owner !== 'system') return true
+  }
+  return Object.values(v).some((inner) => foreignTenantIn(inner, tenantId))
 }

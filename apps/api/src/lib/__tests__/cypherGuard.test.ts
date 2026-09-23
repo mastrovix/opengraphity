@@ -31,6 +31,11 @@ describe('assertSafeReadOnlyCypher — accepted read-only, tenant-anchored queri
     ['line comment stripped', 'MATCH (i:Incident {tenant_id: $tenantId}) // comment with DELETE\nRETURN i.title'],
     ['property named like keyword', 'MATCH (c:Change {tenant_id: $tenantId}) RETURN c.scheduled_start, c.start'],
     ['label-only anchor without alias', 'MATCH (:Incident {tenant_id: $tenantId})-[:AFFECTS]->(c:ConfigurationItem) RETURN c.name'],
+    ['name projected by WITH keeps its anchor', 'MATCH (i:Incident {tenant_id: $tenantId}) WITH i, count(*) AS n MATCH (i)-[:AFFECTS]->(c:ConfigurationItem) RETURN c.name, n'],
+    ['name renamed by WITH keeps its anchor', 'MATCH (i:Incident {tenant_id: $tenantId}) WITH i AS inc MATCH (inc)-[:AFFECTS]->(c:ConfigurationItem) RETURN c.name'],
+    ['WITH * keeps every anchor', 'MATCH (i:Incident {tenant_id: $tenantId}) WITH * MATCH (i)-[:AFFECTS]->(c:ConfigurationItem) RETURN c.name'],
+    ['STARTS WITH is not a WITH clause', "MATCH (i:Incident {tenant_id: $tenantId}) WHERE i.title STARTS WITH 'DB' RETURN i.title"],
+    ['list slice and index by position', 'MATCH (i:Incident {tenant_id: $tenantId}) RETURN collect(i.title)[..3] AS a, labels(i)[0] AS l'],
     ['shortestPath anchored', 'MATCH (a:Server {tenant_id: $tenantId}), (b:Server {tenant_id: $tenantId}) MATCH p = shortestPath((a)-[*..5]-(b)) RETURN length(p)'],
   ]
   it.each(ok)('accepts: %s', (_name, q) => {
@@ -56,6 +61,16 @@ describe('assertSafeReadOnlyCypher — rejected queries', () => {
     ['unanchored before anchor (textual order)', 'MATCH (c)-[:AFFECTS]-(x) MATCH (i:Incident {tenant_id: $tenantId})-[:AFFECTS]->(c) RETURN x', 'not bound to the tenant'],
     ['WHERE-form neutralised by OR', 'MATCH (u:User) WHERE u.tenant_id = $tenantId OR true RETURN u.email', 'OR/XOR/NOT'],
     ['WHERE-form neutralised by NOT', 'MATCH (u:User) WHERE NOT (u.tenant_id = $tenantId) RETURN u.email', 'OR/XOR/NOT'],
+    // Review of 23 Sep 2026: a name keeps its anchor only in its own scope.
+    ['name rebound after WITH (probe of the review)', 'MATCH (x:Incident {tenant_id: $tenantId}) WITH count(x) AS c MATCH (x:User) RETURN x.email, c', 'not bound to the tenant'],
+    ['name rebound across UNION', 'MATCH (x:Incident {tenant_id: $tenantId}) RETURN x.title AS t UNION MATCH (x:User) RETURN x.email AS t', 'not bound to the tenant'],
+    ['WHERE anchor on the other side of UNION', 'MATCH (x:User) RETURN x.email AS t UNION MATCH (x:Incident) WHERE x.tenant_id = $tenantId RETURN x.title AS t', 'not bound to the tenant'],
+    ['WHERE-form anchor then rebound after WITH', 'MATCH (x:Incident) WHERE x.tenant_id = $tenantId WITH count(x) AS c MATCH (x:User) RETURN x.email, c', 'not bound to the tenant'],
+    ['tenant predicate in RETURN is not a filter', 'MATCH (u:User) RETURN u.email, u.tenant_id = $tenantId', 'not bound to the tenant'],
+    ['tenant predicate of an OPTIONAL MATCH does not filter the rows', 'MATCH (u:User) OPTIONAL MATCH (i:Incident {tenant_id: $tenantId}) WHERE u.tenant_id = $tenantId RETURN u.email', 'not bound to the tenant'],
+    ['CALL body without import does not see the outer name', 'MATCH (x:Incident {tenant_id: $tenantId}) CALL { MATCH (x:User) RETURN x.email AS e } RETURN e', 'not bound to the tenant'],
+    ['WITH inside a subquery expression', 'MATCH (i:Incident {tenant_id: $tenantId}) WHERE EXISTS { MATCH (i) WITH count(*) AS c MATCH (u:User) RETURN u } RETURN i', 'WITH inside a subquery'],
+    ['keys computed by the query', 'MATCH (t:Team {tenant_id: $tenantId}) RETURN [k IN keys(t) | t[k]]', 'dynamic property access'],
     ['UNION second part unanchored', 'MATCH (i:Incident {tenant_id: $tenantId}) RETURN i.title AS t UNION MATCH (u:User) RETURN u.email AS t', 'not bound to the tenant'],
     ['CREATE', 'MATCH (i:Incident {tenant_id: $tenantId}) CREATE (x:Evil) RETURN x', 'CREATE'],
     ['MERGE', 'MERGE (u:User {tenant_id: $tenantId, email: "x"}) RETURN u', 'MERGE'],

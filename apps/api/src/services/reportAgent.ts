@@ -14,7 +14,7 @@ import { getAnthropic, registraRisposta } from '../lib/aiClient.js'
 import { getSession, toNumber } from '@opengraphity/neo4j'
 import { config } from '../lib/config.js'
 import { logger } from '../lib/logger.js'
-import { assertSafeReadOnlyCypher, redactSensitiveValue, UnsafeCypherError } from '../lib/cypherGuard.js'
+import { assertSafeReadOnlyCypher, redactSensitiveValue, UnsafeCypherError, foreignTenantIn } from '../lib/cypherGuard.js'
 
 // ── Model ─────────────────────────────────────────────────────────────────
 
@@ -291,6 +291,13 @@ export async function runGuardedCypherTool(
   const querySession = getSession(undefined, 'READ')
   try {
     const result = await querySession.executeRead((tx) => tx.run(query, { tenantId }))
+    // Second line behind the guard (review of 23 Sep 2026): a node of another
+    // tenant never reaches the model, whatever the guard missed.
+    if (result.records.some((r) => r.keys.some((k) => foreignTenantIn(r.get(String(k)), tenantId)))) {
+      logger.error({ query: query.slice(0, 500) }, `${logLabel}: a query passed the guard and returned another tenant's nodes`)
+      budget.recordRejection('the result crossed the tenant boundary')
+      return 'Query rejected: its result contains data outside this tenant. Anchor every MATCH pattern with {tenant_id: $tenantId}.'
+    }
     const rows = result.records.map((r) => {
       const obj: Record<string, unknown> = {}
       r.keys.forEach((k) => {

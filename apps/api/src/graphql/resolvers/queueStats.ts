@@ -37,6 +37,33 @@ const STATUS_TYPES: Record<string, JobType[]> = {
    */
 }
 
+/**
+ * THE QUEUES ARE THE PLATFORM'S, THE JOBS ARE A TENANT'S (review of 23 Sep 2026).
+ *
+ * Every tenant runs on the same BullMQ queues, and every tenant's admin holds
+ * `admin.system`. The page listed and retried the jobs of all tenants: webhook
+ * bodies with ticket data, alarm payloads. A tenant admin now sees and retries
+ * only the jobs whose data names their tenant; a job that names none is a
+ * platform job and belongs to the platform console. The counts stay the
+ * queue's: they say how busy it is, not what it holds.
+ */
+function jobTenant(data: unknown): string | null {
+  if (data === null || typeof data !== 'object') return null
+  const d = data as Record<string, unknown>
+  for (const key of ['tenantId', 'tenant_id']) if (typeof d[key] === 'string') return d[key] as string
+  for (const inner of Object.values(d)) {
+    if (inner !== null && typeof inner === 'object' && !Array.isArray(inner)) {
+      const t = (inner as Record<string, unknown>)['tenantId'] ?? (inner as Record<string, unknown>)['tenant_id']
+      if (typeof t === 'string') return t
+    }
+  }
+  return null
+}
+
+/** Pages read to fill one list: a busy queue of other tenants must not hide this tenant's jobs forever. */
+const SCAN_PAGE = 200
+const SCAN_MAX  = 5_000
+
 function requireSystemPermission(ctx: GraphQLContext): void {
   requirePermission(ctx, 'admin.system')
 }
@@ -55,11 +82,16 @@ export const queueStatsResolvers = {
       requireRegistered(queueName)
       const types = lookupOrError(STATUS_TYPES, status, 'STATUS_TYPES')
       const queue = getQueue(queueName)
-      const rawJobs = await queue.getJobs(types, 0, limit - 1)
-      // BullMQ returns undefined for job IDs whose hash data is gone from Redis
-      // (e.g. auto-cleaned completed/failed jobs whose IDs still linger in sorted sets).
-      // Filter them out so the resolver never crashes on undefined.id.
-      const jobs = rawJobs.filter((j): j is NonNullable<typeof j> => j != null)
+      type QueueJob = NonNullable<Awaited<ReturnType<typeof queue.getJobs>>[number]>
+      const jobs: QueueJob[] = []
+      for (let start = 0; start < SCAN_MAX && jobs.length < limit; start += SCAN_PAGE) {
+        const page = await queue.getJobs(types, start, start + SCAN_PAGE - 1)
+        // BullMQ returns undefined for job IDs whose hash data is gone from Redis
+        // (e.g. auto-cleaned completed/failed jobs whose IDs still linger in sorted sets).
+        // Filter them out so the resolver never crashes on undefined.id.
+        for (const j of page) if (j != null && jobTenant(j.data) === ctx.tenantId && jobs.length < limit) jobs.push(j)
+        if (page.length < SCAN_PAGE) break
+      }
       return jobs.map((job) => ({
         id:           job.id ?? '',
         name:         job.name,
@@ -116,7 +148,8 @@ export const queueStatsResolvers = {
         )
       }
       const job = await getQueue(queueName).getJob(jobId)
-      if (!job) throw new GraphQLError(`Job ${jobId} not found in queue ${queueName}`, { extensions: { code: 'NOT_FOUND' } })
+      // Another tenant's job, or a platform job, is not there for this tenant.
+      if (!job || jobTenant(job.data) !== ctx.tenantId) throw new GraphQLError(`Job ${jobId} not found in queue ${queueName}`, { extensions: { code: 'NOT_FOUND' } })
       await job.retry()
       return true
     },

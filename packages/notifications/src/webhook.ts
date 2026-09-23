@@ -43,6 +43,7 @@ export async function dispatchWebhook(
       headers,
       body,
       signal: controller.signal,
+      redirect: 'manual',
     })
     if (!res.ok) {
       throw new Error(

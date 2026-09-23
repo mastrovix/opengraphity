@@ -343,10 +343,15 @@ async function testOutboundWebhook(_: unknown, args: { id: string }, ctx: GraphQ
     try {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 10_000)
-      const res = await fetch(w['url'] as string, { method: (w['method'] as string) ?? 'POST', headers, body, signal: controller.signal })
+      const res = await fetch(w['url'] as string, { method: (w['method'] as string) ?? 'POST', headers, body, signal: controller.signal, redirect: 'manual' })
       const resBody = await readBodyPrefix(res, RESPONSE_PREVIEW_CHARS)
       clearTimeout(timer)
-      return { success: res.ok, statusCode: res.status, responseBody: resBody, error: null, duration: Date.now() - t0 }
+      // A redirect is not followed (review of 23 Sep 2026): its target was
+      // never checked, and following it read internal addresses for the caller.
+      const redirected = res.status >= 300 && res.status < 400
+        ? `The endpoint answered ${res.status} (a redirect to ${res.headers.get('location') ?? 'an unknown address'}): redirects are not followed. Configure the final URL.`
+        : null
+      return { success: res.ok, statusCode: res.status, responseBody: resBody, error: redirected, duration: Date.now() - t0 }
     } catch (err) {
       return { success: false, statusCode: null, responseBody: null, error: err instanceof Error ? err.message : String(err), duration: Date.now() - t0 }
     }

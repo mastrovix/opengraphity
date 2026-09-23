@@ -43,7 +43,9 @@ const h = vi.hoisted(() => {
   }
 })
 
-vi.mock('@kubernetes/client-node', () => ({
+vi.mock('@kubernetes/client-node', async (orig) => ({
+  // The real YAML reader: the connector checks the kubeconfig's fields with it.
+  loadYaml: (await orig<typeof import('@kubernetes/client-node')>()).loadYaml,
   KubeConfig: h.KubeConfig, CoreV1Api: h.CoreV1Api, AppsV1Api: h.AppsV1Api, NetworkingV1Api: h.NetworkingV1Api,
 }))
 
@@ -111,6 +113,27 @@ describe('kubernetesConnector.scan — credenziali e config', () => {
       contexts:       [{ name: 'ctx', cluster: 'cluster', user: 'user' }],
       currentContext: 'ctx',
     })
+  })
+
+  // Review of 23 Sep 2026: the library runs `exec` with spawn and reads
+  // token-file, client-certificate, client-key and certificate-authority from
+  // the disk. A tenant's kubeconfig carries inline credentials only.
+  it.each([
+    ['exec plugin', 'users:\n- name: u\n  user:\n    exec:\n      command: /bin/sh\n      args: ["-c", "env"]\n', 'exec'],
+    ['auth-provider', 'users:\n- name: u\n  user:\n    auth-provider:\n      name: gcp\n', 'auth-provider'],
+    ['token read from a local file', 'users:\n- name: u\n  user:\n    token-file: /proc/self/environ\n', 'token-file'],
+    ['client certificate read from a local file', 'users:\n- name: u\n  user:\n    client-certificate: /etc/passwd\n', 'client-certificate'],
+    ['CA read from a local file', 'clusters:\n- name: c\n  cluster:\n    server: https://k8s.example\n    certificate-authority: /etc/passwd\n', 'certificate-authority'],
+    ['cluster reached through a proxy', 'clusters:\n- name: c\n  cluster:\n    server: https://k8s.example\n    proxy-url: http://attacker.example\n', 'proxy-url'],
+  ])('a kubeconfig with %s is refused before the library loads it', async (_name, kubeconfig, field) => {
+    await expect(collect(kubernetesConnector.scan(source({}), { kubeconfig }))).rejects.toThrow(`${field} not accepted`)
+    expect(h.loadFromString).not.toHaveBeenCalled()
+  })
+
+  it('a kubeconfig with inline token and CA data is loaded', async () => {
+    const kubeconfig = 'clusters:\n- name: c\n  cluster:\n    server: https://k8s.example\n    certificate-authority-data: QUJD\nusers:\n- name: u\n  user:\n    token: abc\n'
+    await collect(kubernetesConnector.scan(source({}), { kubeconfig })).catch(() => undefined)
+    expect(h.loadFromString).toHaveBeenCalledWith(kubeconfig)
   })
 
   it('resource_types sconosciuti → errore esplicito prima di caricare la kubeconfig', async () => {

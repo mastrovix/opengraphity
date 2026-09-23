@@ -18,7 +18,7 @@ describe('getGraphQLMetrics', () => {
     m.graphqlResolverDurationSeconds.observe({ resolver: 'Mutation.createIncident' }, 0.200)
     m.graphqlResolverDurationSeconds.observe({ resolver: 'Mutation.createIncident' }, 0.100)
 
-    const g = m.getGraphQLMetrics()
+    const g = m.getGraphQLMetrics('t1')
     expect(g.totalOperations).toBe(4)
     expect(g.slowestResolvers[0]).toMatchObject({ name: 'Mutation.createIncident', count: 2 })
     expect(g.slowestResolvers[0]!.averageMs).toBeCloseTo(150)
@@ -29,15 +29,22 @@ describe('getGraphQLMetrics', () => {
   })
 
   it('espone errorsByResolver da recordResolverError', () => {
-    m.recordResolverError('Mutation.createChange', 'first')
-    m.recordResolverError('Mutation.createChange', 'second')
-    const g = m.getGraphQLMetrics()
+    m.recordResolverError('t1', 'Mutation.createChange', 'first')
+    m.recordResolverError('t1', 'Mutation.createChange', 'second')
+    const g = m.getGraphQLMetrics('t1')
     expect(g.errorsByResolver).toContainEqual({ name: 'Mutation.createChange', count: 2, lastError: 'second' })
+  })
+
+  it('a tenant sees its own resolver errors only: the messages carry tenant data (review of 23 Sep 2026)', () => {
+    m.recordResolverError('t2', 'Mutation.acknowledgeEvent', 'already acknowledged by Mario Rossi')
+    expect(m.getGraphQLMetrics('t1').errorsByResolver.map((e) => e.name)).not.toContain('Mutation.acknowledgeEvent')
+    expect(m.getGraphQLMetrics('t2').errorsByResolver).toEqual([{ name: 'Mutation.acknowledgeEvent', count: 1, lastError: 'already acknowledged by Mario Rossi' }])
   })
 
   it('il plugin attribuisce gli errori al root field e ignora UNAUTHORIZED/validation', async () => {
     const listeners = await m.graphqlMetricsPlugin.requestDidStart!({} as never)
     await listeners!.didEncounterErrors!({
+      contextValue: { tenantId: 't1' },
       operation: { operation: 'mutation' },
       errors: [
         { message: 'boom', path: ['executeChangeTransition', 'x'], extensions: { code: 'BAD_USER_INPUT' } },
@@ -45,7 +52,7 @@ describe('getGraphQLMetrics', () => {
         { message: 'bad', extensions: { code: 'GRAPHQL_VALIDATION_FAILED' } },
       ],
     } as never)
-    const g = m.getGraphQLMetrics()
+    const g = m.getGraphQLMetrics('t1')
     expect(g.errorsByResolver).toContainEqual({ name: 'Mutation.executeChangeTransition', count: 1, lastError: 'boom' })
     expect(g.errorsByResolver.map(e => e.name)).not.toContain('Mutation.whatever')
   })

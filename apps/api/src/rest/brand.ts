@@ -10,13 +10,13 @@
  * aperto da solo non può lanciare script) e con la risorsa aperta alle altre
  * origini, altrimenti una webmail non la mostrerebbe.
  */
-import fs from 'fs'
 import Busboy from 'busboy'
 import { Router, type Request, type Response, type Router as ExpressRouter } from 'express'
 import { BRAND_LOGO_MAX_BYTES } from '@opengraphity/types'
 import { authMiddleware } from '../middleware/auth.js'
 import { ValidationError } from '../lib/errors.js'
 import { logger } from '../lib/logger.js'
+import { runRoute, sendFile } from './routeSafety.js'
 import { audit } from '../lib/audit.js'
 import { removeTenantLogo, setTenantLogo, tenantLogoFile } from '../lib/brand.js'
 import type { GraphQLContext } from '../context.js'
@@ -58,7 +58,7 @@ router.post('/brand/logo', authMiddleware, (req, res) => {
   })
   busboy.on('error', () => { if (!res.headersSent) res.status(400).json({ error: 'Malformed multipart body' }) })
   busboy.on('finish', () => {
-    void (async () => {
+    runRoute(res, '[brand]', async () => {
       if (res.headersSent) return
       if (!received) { res.status(400).json({ error: 'No file uploaded' }); return }
       if (tooLarge) { res.status(400).json({ error: { code: 'VALIDATION_ERROR', key: 'errors.brand.logoSize', message: 'The logo is larger than 1 MB.' } }); return }
@@ -75,7 +75,7 @@ router.post('/brand/logo', authMiddleware, (req, res) => {
         logger.error({ err, tenantId: ctx.tenantId }, '[brand] logo upload failed')
         res.status(500).json({ error: 'Failed to store the logo' })
       }
-    })()
+    })
   })
   req.pipe(busboy)
 })
@@ -83,7 +83,7 @@ router.post('/brand/logo', authMiddleware, (req, res) => {
 router.delete('/brand/logo', authMiddleware, (req, res) => {
   const ctx = adminContext(req, res)
   if (!ctx) return
-  void (async () => {
+  runRoute(res, '[brand]', async () => {
     try {
       await removeTenantLogo(ctx.tenantId)
       void audit(ctx, 'tenant.brand.logo_removed', 'Tenant', ctx.tenantId)
@@ -92,11 +92,11 @@ router.delete('/brand/logo', authMiddleware, (req, res) => {
       logger.error({ err, tenantId: ctx.tenantId }, '[brand] logo removal failed')
       res.status(500).json({ error: 'Failed to remove the logo' })
     }
-  })()
+  })
 })
 
 router.get('/brand/:tenantId/logo', (req: Request, res: Response) => {
-  void (async () => {
+  runRoute(res, '[brand]', async () => {
     const tenantId = String(parametro(req, 'tenantId'))
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(tenantId)) { res.status(404).end(); return }
     try {
@@ -107,13 +107,13 @@ router.get('/brand/:tenantId/logo', (req: Request, res: Response) => {
       res.setHeader('X-Content-Type-Options', 'nosniff')
       res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
       res.setHeader('Cache-Control', 'public, max-age=86400')
-      fs.createReadStream(file.path).pipe(res)
+      sendFile(res, file.path, '[brand] logo')
     } catch (err) {
       // Un tenant inesistente non si distingue da uno senza logo.
       logger.debug({ err, tenantId }, '[brand] logo not served')
       if (!res.headersSent) res.status(404).end()
     }
-  })()
+  })
 })
 
 export { router as brandRouter }

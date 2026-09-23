@@ -40,6 +40,7 @@ import { clientLogRouter } from './rest/client-logs.js'
 import { platformTenantsRouter } from './rest/platform-tenants.js'
 import { platformServerLogsRouter } from './rest/platform-server-logs.js'
 import { handleSlackCommands, handleSlackActions, handleSlackOAuthCallback } from './rest/slack.js'
+import { runRoute } from './rest/routeSafety.js'
 import { attachmentRouter } from './rest/attachments.js'
 import { brandRouter } from './rest/brand.js'
 import { incidentPdfRouter } from './rest/incident-pdf.js'
@@ -201,12 +202,12 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 app.post('/api/slack/commands',
   express.raw({ type: '*/*' }),
-  (req: Request, res: Response) => void handleSlackCommands(req, res),
+  (req: Request, res: Response) => runRoute(res, '[slack] command', () => handleSlackCommands(req, res)),
 )
-app.get('/api/slack/oauth/callback', (req: Request, res: Response) => void handleSlackOAuthCallback(req, res))
+app.get('/api/slack/oauth/callback', (req: Request, res: Response) => runRoute(res, '[slack] oauth callback', () => handleSlackOAuthCallback(req, res)))
 app.post('/api/slack/actions',
   express.raw({ type: '*/*' }),
-  (req: Request, res: Response) => void handleSlackActions(req, res),
+  (req: Request, res: Response) => runRoute(res, '[slack] action', () => handleSlackActions(req, res)),
 )
 
 app.set('trust proxy', 1)
@@ -533,7 +534,7 @@ export async function startServer(): Promise<http.Server> {
       system.handler(req, res, next); return
     }
 
-    void (async () => {
+    runRoute(res, '[graphql] request', async () => {
       let ctx: GraphQLContext
       try {
         ctx = await buildContext(req)
@@ -560,7 +561,7 @@ export async function startServer(): Promise<http.Server> {
       } catch (err) {
         next(err)
       }
-    })()
+    })
   })
 
   return new Promise((resolve) => {

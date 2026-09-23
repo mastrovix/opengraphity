@@ -19,7 +19,7 @@ import { screen, waitFor } from '@testing-library/react'
 import { CreateIncidentPage } from './CreateIncidentPage'
 import { GET_TEAMS, GET_TICKET_CI_EXCLUSIONS, GET_ALL_CIS } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
-import { domainMatricesMock, itilTypesMock, teamChoicesMock } from '@/test/mocks/gql'
+import { priorityMatrixMock, itilTypesMock, teamChoicesMock } from '@/test/mocks/gql'
 
 const teamsMock = (): GqlMock => ({
   request: { query: GET_TEAMS },
@@ -53,13 +53,13 @@ function scaleButtons(label: string): string[] {
 
 describe('CreateIncidentPage — impatto, urgenza e priorità dalla matrice del cliente', () => {
   it('i bottoni sono i valori del vocabolario, nell\'ordine della matrice', async () => {
-    render(domainMatricesMock())
+    render(priorityMatrixMock())
     await waitFor(() => { expect(scaleButtons('Impact')).toEqual(['low', 'medium', 'high']) })
     expect(scaleButtons('Urgency')).toEqual(['low', 'medium', 'high'])
   })
 
   it('il cliente che ha RINOMINATO vede i suoi valori, non quelli di fabbrica', async () => {
-    render(domainMatricesMock({
+    render(priorityMatrixMock({
       impacts:    ['basso', 'medio', 'alto'],
       urgencies:  ['rilassata', 'normale', 'urgente'],
       priorities: ['p4', 'p3', 'p2', 'p1'],
@@ -74,7 +74,7 @@ describe('CreateIncidentPage — impatto, urgenza e priorità dalla matrice del 
   })
 
   it('una coppia che la matrice non copre lo DICE, invece di mostrare una priorità che il server rifiuta', async () => {
-    render(domainMatricesMock({ cells: { 'low|low': 'low' } }))
+    render(priorityMatrixMock({ cells: { 'low|low': 'low' } }))
     await waitFor(() => { expect(scaleButtons('Impact')).toHaveLength(3) })
     expect(screen.getByText('to be filled in, in the matrix')).toBeInTheDocument()
   })

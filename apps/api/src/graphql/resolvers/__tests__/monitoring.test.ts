@@ -149,6 +149,12 @@ describe('systemMetrics e traceInfo', () => {
     })
   })
 
+  it('the resolver errors are read for the caller\'s tenant only (review of 23 Sep 2026)', async () => {
+    const { getGraphQLMetrics } = await import('../../../middleware/metrics.js')
+    await R.Query.systemMetrics(null, null, ADMIN)
+    expect(getGraphQLMetrics).toHaveBeenLastCalledWith('t1')
+  })
+
   it('le tracce escono COPIATE: chi legge non tiene in mano il buffer vivo', async () => {
     const out = await R.Query.traceInfo(null, null, ADMIN) as Record<string, unknown>
     expect(out).toMatchObject({ enabled: true, endpoint: 'http://jaeger:4318' })

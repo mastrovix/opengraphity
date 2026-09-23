@@ -105,6 +105,10 @@ async function domainMatrices(_: unknown, __: unknown, ctx: GraphQLContext): Pro
   return out
 }
 
+async function priorityMatrix(_: unknown, __: unknown, ctx: GraphQLContext): Promise<DomainMatrixOut> {
+  return readMatrix(ctx.tenantId, 'priority')
+}
+
 async function updateDomainMatrix(
   _: unknown,
   args: { kind: string; entries: Array<{ key: string; value: string }> },
@@ -280,6 +284,7 @@ export const domainMatrixResolvers = {
   Query: {
     configurationIssues: configurationIssuesQuery,
     domainMatrices,
+    priorityMatrix,
     criticalServiceCriticalities: criticalServiceCriticalitiesQuery,
     preApprovedChangeTypes: preApprovedChangeTypesQuery,
     riskBandThresholds: riskBandThresholdsQuery,

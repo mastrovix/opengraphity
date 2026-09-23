@@ -59,7 +59,7 @@ describe('queueJobs', () => {
     const jobs = await queueStatsResolvers.Query.queueJobs(null, { queueName: 'events-ingest' }, admin)
     expect(jobs).toEqual([])
     const q = queues.get('events-ingest')!
-    expect(q.getJobs).toHaveBeenCalledWith(['failed'], 0, 49)
+    expect(q.getJobs).toHaveBeenCalledWith(['failed'], 0, 199)
 
     q.getJobs.mockResolvedValueOnce([
       undefined,
@@ -67,6 +67,31 @@ describe('queueJobs', () => {
     ])
     const [job] = await queueStatsResolvers.Query.queueJobs(null, { queueName: 'events-ingest', status: 'failed', limit: 10 }, admin)
     expect(job).toMatchObject({ id: 'ev-t1-fp-1', queueName: 'events-ingest', status: 'failed', failedReason: 'Neo4j down', attemptsMade: 5, maxAttempts: 5, data: '{"tenantId":"t1"}', finishedOn: null })
+  })
+
+  // Review of 23 Sep 2026: the queues are shared by every tenant, and every
+  // tenant's admin holds admin.system.
+  it('lists only the jobs of the caller\'s tenant: another tenant\'s and platform jobs stay out', async () => {
+    await queueStatsResolvers.Query.queueJobs(null, { queueName: 'events-ingest' }, admin)
+    const q = queues.get('events-ingest')!
+    const job = (id: string, data: unknown) => ({ id, name: 'x', data, timestamp: 0, processedOn: null, finishedOn: null, failedReason: null, stacktrace: [], attemptsMade: 1, opts: {}, returnvalue: null })
+    q.getJobs.mockResolvedValueOnce([
+      job('mine', { tenantId: 't1' }), job('theirs', { tenantId: 't2', body: 'ticket data' }),
+      job('event', { event: { tenant_id: 't1' } }), job('platform', { sweep: true }),
+    ])
+    const jobs = await queueStatsResolvers.Query.queueJobs(null, { queueName: 'events-ingest', limit: 10 }, admin)
+    expect(jobs.map((j) => j.id)).toEqual(['mine', 'event'])
+  })
+
+  it('reads further pages when the first holds only other tenants\' jobs', async () => {
+    await queueStatsResolvers.Query.queueJobs(null, { queueName: 'events-ingest' }, admin)
+    const q = queues.get('events-ingest')!
+    const job = (id: string, tenantId: string) => ({ id, name: 'x', data: { tenantId }, timestamp: 0, processedOn: null, finishedOn: null, failedReason: null, stacktrace: [], attemptsMade: 1, opts: {}, returnvalue: null })
+    q.getJobs.mockResolvedValueOnce(Array.from({ length: 200 }, (_, i) => job(`o${i}`, 't2')))
+    q.getJobs.mockResolvedValueOnce([job('mine', 't1')])
+    const jobs = await queueStatsResolvers.Query.queueJobs(null, { queueName: 'events-ingest', limit: 5 }, admin)
+    expect(jobs.map((j) => j.id)).toEqual(['mine'])
+    expect(q.getJobs).toHaveBeenLastCalledWith(['failed'], 200, 399)
   })
 
   it('coda sconosciuta → BAD_USER_INPUT; stato sconosciuto → errore (lookupOrError)', async () => {
@@ -79,9 +104,18 @@ describe('retryQueueJob', () => {
   it('rimette in coda un job fallito di una coda rigiocabile', async () => {
     const retry = vi.fn().mockResolvedValue(undefined)
     const q = queues.get('events-ingest') ?? (await queueStatsResolvers.Query.queueJobs(null, { queueName: 'events-ingest' }, admin), queues.get('events-ingest')!)
-    q.getJob.mockResolvedValueOnce({ id: 'j1', retry })
+    q.getJob.mockResolvedValueOnce({ id: 'j1', data: { tenantId: 't1' }, retry })
     await expect(queueStatsResolvers.Mutation.retryQueueJob(null, { queueName: 'events-ingest', jobId: 'j1' }, admin)).resolves.toBe(true)
     expect(retry).toHaveBeenCalled()
+  })
+
+  it('another tenant\'s job cannot be retried: it is not found', async () => {
+    const retry = vi.fn()
+    await queueStatsResolvers.Query.queueJobs(null, { queueName: 'events-ingest' }, admin)
+    const q = queues.get('events-ingest')!
+    q.getJob.mockResolvedValueOnce({ id: 'j2', data: { tenantId: 't2' }, retry })
+    await expect(queueStatsResolvers.Mutation.retryQueueJob(null, { queueName: 'events-ingest', jobId: 'j2' }, admin)).rejects.toThrow('Job j2 not found')
+    expect(retry).not.toHaveBeenCalled()
   })
 
   it('coda di un consumer di dominio → rifiuto esplicito (BAD_USER_INPUT), senza toccare la coda', async () => {

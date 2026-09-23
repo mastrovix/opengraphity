@@ -167,6 +167,7 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
           headers: { 'Content-Type': 'application/json', ...headers },
           body:    d.method !== 'GET' ? d.payload : undefined,
           signal:  controller.signal,
+          redirect: 'manual',   // its target was never checked (review of 23 Sep 2026)
         })
         // C-29: corpo della risposta scartato (connessione rilasciata subito).
         await res.body?.cancel().catch(() => undefined)

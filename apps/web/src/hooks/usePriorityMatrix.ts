@@ -12,10 +12,14 @@
  * `fetchPolicy: METAMODEL_FETCH_POLICY` come per gli altri metamodelli: la matrice
  * cambia raramente e la pagina delle Matrici di dominio la riscrive quando
  * serve.
+ *
+ * It reads `priorityMatrix`, open to all staff, not `domainMatrices`, which is
+ * admin-only: through that one an operator could not create an incident
+ * (review of 23 Sep 2026).
  */
 import { useMemo } from 'react'
 import { useQuery } from '@apollo/client/react'
-import { GET_DOMAIN_MATRICES } from '@/graphql/queries'
+import { GET_PRIORITY_MATRIX } from '@/graphql/queries'
 import type { PriorityMatrix } from '@/lib/priority'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
@@ -37,11 +41,10 @@ export function usePriorityMatrix(): { matrix: PriorityMatrix | null; loading: b
   // da `assertDomainValue`: cioe esattamente il difetto che questo hook esiste
   // per chiudere, riaperto dalla cache. La cache serve ancora il primo
   // fotogramma, la rete lo corregge.
-  const { data, loading, error } = useQuery(GET_DOMAIN_MATRICES, { fetchPolicy: METAMODEL_FETCH_POLICY })
+  const { data, loading, error } = useQuery(GET_PRIORITY_MATRIX, { fetchPolicy: METAMODEL_FETCH_POLICY })
 
   const matrix = useMemo<PriorityMatrix | null>(() => {
-    const all = (data as { domainMatrices?: MatrixOut[] } | undefined)?.domainMatrices
-    const m = all?.find((x) => x.kind === 'priority')
+    const m = (data as { priorityMatrix?: MatrixOut } | undefined)?.priorityMatrix
     if (!m) return null
     return {
       impacts:    m.inputValues[0] ?? [],
