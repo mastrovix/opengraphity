@@ -16,7 +16,13 @@ import { immettiEventiDaiLog } from '../lib/serverLogEvents.js'
 
 const maintenanceLogger = logger.child({ module: 'maintenance' })
 
-const BACKUP_DIR = config.backupDir   // absolute; required in production
+/**
+ * Read when the backup runs, never at import (review of 23 Sep 2026): this
+ * module is imported by worker.ts in every worker process, and `events-worker`
+ * has no BACKUP_DIR — reading it at import stopped that service at start.
+ * Absolute; required in production where the maintenance group runs.
+ */
+const backupDir = (): string => config.backupDir
 
 /**
  * Number of archives kept by the rotation (BACKUP_RETENTION, default 14 =
@@ -155,7 +161,7 @@ async function backupAndVerify(): Promise<void> {
   let archivePath: string
   try {
     const result = await runBackup({
-      outputDir:     BACKUP_DIR,
+      outputDir:     backupDir(),
       attachmentDir: config.attachmentDir,
       skipKeycloak,
       // Read lazily: keycloakAdminPassword throws when unset, and that must
@@ -200,7 +206,7 @@ async function processMaintenanceJob(job: Job): Promise<void> {
       } finally {
         // Rotation runs even after a failed/invalid backup: a broken night
         // must not stop the disk from being reclaimed.
-        const deleted = await pruneOldBackups(BACKUP_DIR, retention)
+        const deleted = await pruneOldBackups(backupDir(), retention)
         maintenanceLogger.info({ retention, deleted: deleted.length }, 'Old backups pruned')
       }
       break
@@ -303,10 +309,10 @@ export async function startMaintenanceWorker(): Promise<Worker> {
   // Stessa regola per la durata dei log: se è scritta male lo si scopre ora,
   // non alle cinque del mattino con il job che fallisce in silenzio.
   leggiGiorniDiRetention()
-  seedBackupMetrics(BACKUP_DIR)
+  seedBackupMetrics(backupDir())
   await scheduleRepeatableJobs()
 
   const worker = createWorker(MAINTENANCE_QUEUE, processMaintenanceJob, { concurrency: 1 })
-  maintenanceLogger.info({ backupDir: BACKUP_DIR, retention }, 'Maintenance worker started')
+  maintenanceLogger.info({ backupDir: backupDir(), retention }, 'Maintenance worker started')
   return worker
 }
