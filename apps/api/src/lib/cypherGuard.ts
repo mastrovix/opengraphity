@@ -61,6 +61,11 @@ export const SENSITIVE_LABELS: ReadonlySet<string> = new Set([
   'OutboundWebhook', 'InboundWebhook', 'ApiKey', 'NotificationChannel', 'SlackInstallation',
   'SyncSource', 'SyncConflict', 'SyncChangeRecord', 'MigrationLock', 'Migration', 'LoginProvider',
   'AuditEntry', 'LogEntry', 'ServerLogEntry',
+  // What belongs to one person (review of 23 Sep 2026): the conversations with
+  // the report AI are private per user (#83), dashboards and report templates
+  // have their own sharing rules. Through the AI anyone with report.ai read them all.
+  'ReportConversation', 'ReportMessage', 'DashboardConfig', 'DashboardWidget', 'CustomWidget',
+  'ReportTemplate', 'ReportSection', 'ReportNode',
 ])
 
 /** Property names that hold secrets on any node. */
@@ -214,7 +219,12 @@ function extractNodePatterns(text: string): NodePattern[] {
  * Throws UnsafeCypherError unless `query` is a read-only, tenant-anchored
  * Cypher statement. Never mutates or executes anything.
  */
-export function assertSafeReadOnlyCypher(query: string): void {
+/**
+ * `closedLabels`: the labels the asking person's role may not read
+ * (lib/labelReadAccess.ts) — a ticket type without its read permission, the
+ * CI without cmdb.read. Refused like the sensitive ones, with their own reason.
+ */
+export function assertSafeReadOnlyCypher(query: string, closedLabels: ReadonlySet<string> = new Set()): void {
   if (typeof query !== 'string' || !query.trim()) throw new UnsafeCypherError('empty query')
   if (query.length > MAX_CYPHER_LENGTH) throw new UnsafeCypherError(`query too long (> ${MAX_CYPHER_LENGTH} characters)`)
 
@@ -263,6 +273,8 @@ export function assertSafeReadOnlyCypher(query: string): void {
     if (/[!%]/.test(n.labelExpr)) throw new UnsafeCypherError('label expressions with ! or % are not allowed: name the labels')
     const denied = n.labels.find((l) => SENSITIVE_LABELS.has(l))
     if (denied) throw new UnsafeCypherError(`label ${denied} is not readable by reports`)
+    const closed = n.labels.find((l) => closedLabels.has(l))
+    if (closed) throw new UnsafeCypherError(`label ${closed} is not readable with the permissions of the person asking`)
   }
   SENSITIVE_PROPERTY_RE.lastIndex = 0
   const prop = SENSITIVE_PROPERTY_RE.exec(text)

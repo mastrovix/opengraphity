@@ -4,6 +4,8 @@ import { getReportWhitelist } from './reportWhitelist.js'
 import { reportFieldLabels } from './reportFieldLabels.js'
 import { identityLabeler, loadReportValueLabeler, type ReportValueLabeler, type ReportValueSource } from './reportValueLabels.js'
 import type { Lingua } from './enumValueLabels.js'
+import { labelsClosedTo } from './labelReadAccess.js'
+import { ForbiddenError } from './errors.js'
 
 export interface ReportSectionResult {
   sectionId: string
@@ -121,10 +123,24 @@ function chiaveI18n(err: unknown): string | null {
 export async function executeReportSection(
   section: ReportSectionDef,
   tenantId: string,
-  /** La lingua di chi guarda, per le etichette dei valori (V-20); assente = quella del cliente. */
-  opts: { language?: Lingua } = {},
+  /**
+   * La lingua di chi guarda, per le etichette dei valori (V-20); assente = quella del cliente.
+   * `permissions`: those of the person looking. When given, a section whose
+   * nodes include a label they may not read fails instead of reading it
+   * (review of 23 Sep 2026). Absent only where nobody looks: the scheduled
+   * run and the demo verification, which work as the product.
+   */
+  opts: { language?: Lingua; permissions?: ReadonlySet<string> } = {},
 ): Promise<ReportSectionResult> {
   try {
+    if (opts.permissions) {
+      const closed = await labelsClosedTo(tenantId, opts.permissions)
+      const denied = section.nodes.find((n) => closed.has(n.neo4jLabel))
+      if (denied) {
+        throw new ForbiddenError(`Your role cannot read ${denied.neo4jLabel}: this section is not available to you`,
+          { key: 'errors.report.labelNotReadable', params: { label: denied.neo4jLabel } })
+      }
+    }
     // Whitelist is tenant-scoped (metamodel CI types) — every execution path
     // (GraphQL, dashboard widgets, scheduler, export) goes through here, so a
     // section persisted with a rogue label/field never reaches Neo4j.

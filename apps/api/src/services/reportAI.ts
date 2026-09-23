@@ -36,6 +36,7 @@ async function answerLanguage(tenantId: string, userId: string): Promise<string>
 export async function streamReportAI(
   tenantId: string,
   userId: string,
+  permissions: ReadonlySet<string>,
   history: HistoryMessage[],
   question: string,
   onChunk: (text: string) => void,
@@ -44,6 +45,7 @@ export async function streamReportAI(
   await assertAIFeature(tenantId, 'reportAnalysis')
   return runReportAgent({
     tenantId,
+    permissions,
     language: await answerLanguage(tenantId, userId),
     messages: toAgentMessages(history, question),
     stream: (event) => {
@@ -56,9 +58,10 @@ export async function streamReportAI(
 export async function callReportAI(
   tenantId: string,
   userId: string,
+  permissions: ReadonlySet<string>,
   history: HistoryMessage[],
   question: string,
 ): Promise<string> {
   await assertAIFeature(tenantId, 'reportAnalysis')
-  return runReportAgent({ tenantId, language: await answerLanguage(tenantId, userId), messages: toAgentMessages(history, question) })
+  return runReportAgent({ tenantId, permissions, language: await answerLanguage(tenantId, userId), messages: toAgentMessages(history, question) })
 }

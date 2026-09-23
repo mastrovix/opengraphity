@@ -13,6 +13,9 @@ vi.mock('../../lib/logger.js', () => ({
 }))
 
 const { runReportAgent, REPORT_AI_LIMITS, DEFAULT_REPORT_AI_MODEL, resolveReportAIModel, CYPHER_TOOL } = await import('../reportAgent.js')
+
+// Every read permission: these tests are about the loop, not about what a role may read (labelReadAccess.test.ts).
+const ALL = new Set(['cmdb.read', 'incident.read', 'problem.read', 'change.read', 'request.read', 'kb.read'])
 const { streamReportAI, callReportAI, toAgentMessages } = await import('../reportAI.js')
 const { getSession } = await import('@opengraphity/neo4j')
 
@@ -93,8 +96,8 @@ describe('runReportAgent — stream vs non-stream', () => {
     const b = fakeClient([textMessage('ciao')])
     const messages = [{ role: 'user' as const, content: 'quanti incident?' }]
 
-    await runReportAgent({ tenantId: 't1', language: 'English', messages, client: a.client })
-    await runReportAgent({ tenantId: 't1', language: 'English', messages, client: b.client, stream: () => {} })
+    await runReportAgent({ permissions: ALL, tenantId: 't1', language: 'English', messages, client: a.client })
+    await runReportAgent({ permissions: ALL, tenantId: 't1', language: 'English', messages, client: b.client, stream: () => {} })
 
     expect(a.create).toHaveBeenCalledTimes(1)
     expect(a.stream).not.toHaveBeenCalled()
@@ -117,14 +120,14 @@ describe('runReportAgent — stream vs non-stream', () => {
     process.env['REPORT_AI_MODEL'] = 'claude-test-model'
     expect(resolveReportAIModel()).toBe('claude-test-model')
     const f = fakeClient([textMessage('ok')])
-    await runReportAgent({ tenantId: 't1', language: 'English', messages: [{ role: 'user', content: 'q' }], client: f.client })
+    await runReportAgent({ permissions: ALL, tenantId: 't1', language: 'English', messages: [{ role: 'user', content: 'q' }], client: f.client })
     expect((f.create.mock.calls[0]![0] as { model: string }).model).toBe('claude-test-model')
   })
 
   it('fails loud without ANTHROPIC_API_KEY', async () => {
     delete process.env['ANTHROPIC_API_KEY']
     const f = fakeClient([textMessage('ok')])
-    await expect(runReportAgent({ tenantId: 't1', language: 'English', messages: [{ role: 'user', content: 'q' }], client: f.client }))
+    await expect(runReportAgent({ permissions: ALL, tenantId: 't1', language: 'English', messages: [{ role: 'user', content: 'q' }], client: f.client }))
       .rejects.toThrow(/ANTHROPIC_API_KEY/)
     expect(f.create).not.toHaveBeenCalled()
   })
@@ -137,7 +140,7 @@ describe('runReportAgent — tool loop', () => {
       textMessage('Ci sono 3 incident.'),
     ])
     const events: unknown[] = []
-    const out = await runReportAgent({
+    const out = await runReportAgent({ permissions: ALL,
       tenantId: 't1',
       language: 'English',
       messages: [{ role: 'user', content: 'quanti incident?' }],
@@ -163,6 +166,23 @@ describe('runReportAgent — tool loop', () => {
     expect(JSON.parse(toolResult.content as string)).toEqual([{ n: 3 }])
   })
 
+  // Review of 23 Sep 2026: the model reads only what the asker's role reads.
+  it('a query on a ticket type the asker cannot read is not executed, and the model is told why', async () => {
+    const session = makeSession()
+    vi.mocked(getSession).mockReturnValue(session as never)
+    const f = fakeClient([
+      toolMessage('tu-1', 'MATCH (c:Change {tenant_id: $tenantId}) RETURN c.title'),
+      textMessage('Non posso.'),
+    ])
+    const noChanges = new Set([...ALL].filter((p) => p !== 'change.read'))
+    await runReportAgent({ permissions: noChanges, tenantId: 't1', language: 'English', messages: [{ role: 'user', content: 'q' }], client: f.client })
+
+    expect(session.run).not.toHaveBeenCalledWith(expect.stringContaining('c.title'), expect.anything())
+    const second = f.create.mock.calls[1]![0] as { messages: Anthropic.MessageParam[] }
+    const toolResult = (second.messages[2]!.content as Anthropic.ToolResultBlockParam[])[0]!
+    expect(toolResult.content).toContain('label Change is not readable with the permissions of the person asking')
+  })
+
   it('unsafe Cypher is not executed: the rejection goes back to the model as tool_result', async () => {
     const session = makeSession()
     vi.mocked(getSession).mockReturnValue(session as never)
@@ -170,7 +190,7 @@ describe('runReportAgent — tool loop', () => {
       toolMessage('tu-1', 'MATCH (u:User) RETURN u.email'),
       textMessage('Non posso.'),
     ])
-    await runReportAgent({ tenantId: 't1', language: 'English', messages: [{ role: 'user', content: 'q' }], client: f.client })
+    await runReportAgent({ permissions: ALL, tenantId: 't1', language: 'English', messages: [{ role: 'user', content: 'q' }], client: f.client })
 
     expect(session.run).not.toHaveBeenCalledWith(expect.stringContaining('u.email'), expect.anything())
     const second = f.create.mock.calls[1]![0] as { messages: Anthropic.MessageParam[] }
@@ -180,7 +200,7 @@ describe('runReportAgent — tool loop', () => {
 
   it(`stops after ${REPORT_AI_LIMITS.maxIterations} tool calls (budget)`, async () => {
     const f = fakeClient([toolMessage('tu', SAFE_Q)]) // always asks for another query
-    await expect(runReportAgent({ tenantId: 't1', language: 'English', messages: [{ role: 'user', content: 'q' }], client: f.client }))
+    await expect(runReportAgent({ permissions: ALL, tenantId: 't1', language: 'English', messages: [{ role: 'user', content: 'q' }], client: f.client }))
       .rejects.toThrow(new RegExp(`limit of ${REPORT_AI_LIMITS.maxIterations} queries`))
     expect(f.create).toHaveBeenCalledTimes(REPORT_AI_LIMITS.maxIterations + 1)
   })
@@ -189,7 +209,7 @@ describe('runReportAgent — tool loop', () => {
     const big = toolMessage('tu', SAFE_Q)
     big.usage.output_tokens = REPORT_AI_LIMITS.maxOutputTokens + 1
     const f = fakeClient([big])
-    await expect(runReportAgent({ tenantId: 't1', language: 'English', messages: [{ role: 'user', content: 'q' }], client: f.client }))
+    await expect(runReportAgent({ permissions: ALL, tenantId: 't1', language: 'English', messages: [{ role: 'user', content: 'q' }], client: f.client }))
       .rejects.toThrow(/token budget/)
     expect(f.create).toHaveBeenCalledTimes(1)
   })
@@ -197,13 +217,13 @@ describe('runReportAgent — tool loop', () => {
   it('a tool call without a query fails the request instead of running nothing', async () => {
     const m = toolMessage('tu-1', '')
     const f = fakeClient([m, textMessage('x')])
-    await expect(runReportAgent({ tenantId: 't1', language: 'English', messages: [{ role: 'user', content: 'q' }], client: f.client }))
+    await expect(runReportAgent({ permissions: ALL, tenantId: 't1', language: 'English', messages: [{ role: 'user', content: 'q' }], client: f.client }))
       .rejects.toThrow(/without a query/)
   })
 
   it('a refusal is an error, not an empty answer', async () => {
     const f = fakeClient([textMessage('', 'refusal')])
-    await expect(runReportAgent({ tenantId: 't1', language: 'English', messages: [{ role: 'user', content: 'q' }], client: f.client }))
+    await expect(runReportAgent({ permissions: ALL, tenantId: 't1', language: 'English', messages: [{ role: 'user', content: 'q' }], client: f.client }))
       .rejects.toThrow(/refused the request/)
   })
 })

@@ -336,6 +336,14 @@ describe('ServiceMap.openIncident / Incident.impactedServices / businessCapabili
     expect(await serviceResolvers.ServiceMap.openIncident({ id: 'map-1' }, null, viewer)).toBeNull()
   })
 
+  // Review of 23 Sep 2026: the incident is incident.read's to show, not service.read's.
+  it('openIncident: null for a role that reads services and not incidents, before any query', async () => {
+    const serviceOnly = { ...viewer, role: 'custom', permissions: new Set(['service.read', 'workspace.use']) } as unknown as GraphQLContext
+    onCypher([])
+    expect(await serviceResolvers.ServiceMap.openIncident({ id: 'map-1' }, null, serviceOnly)).toBeNull()
+    expect(callMatching(OPEN_RE)).toBeUndefined()
+  })
+
   it('Incident.impactedServices: le mappe collegate all\'incident, per gravità, con la stessa riga della lista', async () => {
     onCypher([[IMPACTED_RE, [mapRow()]]])
     const out = await serviceResolvers.Incident.impactedServices({ id: 'inc-1' }, null, viewer)

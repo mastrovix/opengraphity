@@ -7,6 +7,25 @@ import { loadFullTemplate, createSectionWithNodesEdges, type SectionInput } from
 import { loadTemplateSections } from '../../lib/reportTemplates.js'
 import { getReportWhitelist } from '../../lib/reportWhitelist.js'
 import { assertReportTemplateAccess } from './reportAccess.js'
+import { requirePermission } from '../../lib/permissions.js'
+
+/** The schedule a template runs on: off, or on with its cron and its Slack channel. */
+interface EffectiveSchedule { enabled: boolean; cron: string | null; channelId: string | null }
+
+const effective = (s: EffectiveSchedule): string =>
+  s.enabled ? JSON.stringify([s.cron, s.channelId]) : 'off'
+
+/**
+ * THE SCHEDULE IS report.schedule's (review of 23 Sep 2026). A template save
+ * may carry the schedule fields, and until then report.write alone turned it
+ * on: the scheduled run posts to Slack and notifies the whole tenant, which
+ * is exactly what `updateReportSchedule` keeps behind report.schedule. The
+ * web sends the schedule back with every save, so a save that leaves the
+ * EFFECTIVE schedule as it is needs nothing more; one that changes it does.
+ */
+function requireScheduleChangeRight(ctx: GraphQLContext, before: EffectiveSchedule, after: EffectiveSchedule): void {
+  if (effective(before) !== effective(after)) requirePermission(ctx, 'report.schedule')
+}
 
 export const Mutation = {
   /**
@@ -73,6 +92,9 @@ export const Mutation = {
     } },
     ctx: GraphQLContext,
   ) {
+    requireScheduleChangeRight(ctx, { enabled: false, cron: null, channelId: null }, {
+      enabled: args.input.scheduleEnabled ?? false, cron: args.input.scheduleCron ?? null, channelId: args.input.scheduleChannelId ?? null,
+    })
     const id = uuidv4()
     const now = new Date().toISOString()
     const session = getSession(undefined, 'WRITE')
@@ -154,6 +176,20 @@ export const Mutation = {
     const session = getSession(undefined, 'WRITE')
     try {
       await assertReportTemplateAccess(session, args.id, ctx, 'write')
+      const stored = await session.executeRead(tx => tx.run(`
+        MATCH (r:ReportTemplate {id: $id, tenant_id: $tenantId})
+        RETURN coalesce(r.schedule_enabled, false) AS enabled, r.schedule_cron AS cron, r.schedule_channel_id AS channelId
+      `, { id: args.id, tenantId: ctx.tenantId }))
+      const row = stored.records[0]
+      if (!row) throw new NotFoundError('ReportTemplate', args.id)
+      const before: EffectiveSchedule = {
+        enabled: row.get('enabled') === true, cron: (row.get('cron') as string | null) ?? null, channelId: (row.get('channelId') as string | null) ?? null,
+      }
+      requireScheduleChangeRight(ctx, before, {
+        enabled:   args.input.scheduleEnabled ?? before.enabled,
+        cron:      given('scheduleCron') ? args.input.scheduleCron ?? null : before.cron,
+        channelId: given('scheduleChannelId') ? args.input.scheduleChannelId ?? null : before.channelId,
+      })
       await session.executeWrite(tx =>
         tx.run(`
           MATCH (r:ReportTemplate {id: $id, tenant_id: $tenantId})

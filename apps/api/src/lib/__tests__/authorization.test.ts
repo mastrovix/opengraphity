@@ -315,3 +315,15 @@ describe('applyAuthorizationPolicy()', () => {
     expect(() => wrapped.Query!['incidents']!(null, {}, ctx('end_user'), info)).toThrow()
   })
 })
+
+// Review of 23 Sep 2026: the CI's tickets need their own type's read permission, all four alike.
+describe('the tickets of a CI need the read permission of their type', () => {
+  it.each([
+    ['ciIncidents', 'incident.read'],
+    ['ciProblems', 'problem.read'],
+    ['ciChanges', 'change.read'],
+    ['ciServiceRequests', 'request.read'],
+  ])('%s needs %s, not cmdb.read', (field, permission) => {
+    expect(requirementOf('Query', field)).toEqual([permission])
+  })
+})

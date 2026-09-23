@@ -226,7 +226,8 @@ function resolveWidgetResult(parent: WidgetParent, ctx: GraphQLContext, language
       const section = await loadReportSection(parent.reportSectionId, ctx.tenantId)
       if (!section) return { data: null, error: 'Report section not found' }
       // V-20: le etichette dei valori nella lingua di chi guarda.
-      const result = await executeReportSection(section, ctx.tenantId, { language: viewerLanguage(language) })
+      // The viewer's permissions (review of 23 Sep 2026): a widget on data their role cannot read says so.
+      const result = await executeReportSection(section, ctx.tenantId, { language: viewerLanguage(language), permissions: ctx.permissions })
       // Never discard the section error: an empty widget must say WHY.
       return { data: result.error ? null : result.data, error: result.error }
     } catch (err: unknown) {

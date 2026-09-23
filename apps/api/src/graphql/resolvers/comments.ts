@@ -7,7 +7,7 @@ import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
 import { parseMentions } from '../../lib/mentionParser.js'
 import { notifyMentions, notifyWatchers, autoWatch, getEntityTitle } from './collaboration.js'
-import { COMMENTABLE_LABELS, writeTicketComment } from '../../lib/ticketComments.js'
+import { COMMENTABLE_LABELS, requireCommentRead, writeTicketComment } from '../../lib/ticketComments.js'
 import { hasPermission, isPortalOnly } from '../../lib/permissions.js'
 
 interface EntityComment {
@@ -72,8 +72,8 @@ export async function comments(
   ctx: GraphQLContext,
 ): Promise<EntityComment[]> {
   const includeInternal = args.includeInternal ?? true
-  const label = COMMENTABLE_LABELS[args.entityType]
-  if (!label) throw new GraphQLError(`Entity type cannot be commented on: ${args.entityType}`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.comment.entityType', params: { entityType: args.entityType } } } })
+  requireCommentRead(ctx, args.entityType)
+  const label = COMMENTABLE_LABELS[args.entityType]!
 
   const session = getSession(undefined, 'READ')
   try {

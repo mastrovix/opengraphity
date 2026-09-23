@@ -7,6 +7,7 @@ import { authLogger } from '../lib/logger.js'
 import { config } from '../lib/config.js'
 import { USER_ROLES, type Permission } from '@opengraphity/types'
 import { rolePermissions, tenantRoles } from '../lib/roles.js'
+import { TENANT_SUSPENDED, tenantSospeso } from '../lib/tenantSuspension.js'
 
 /**
  * Single authentication resolver shared by GraphQL (`buildContext`) and the
@@ -64,7 +65,7 @@ function unauthorized(message: string): GraphQLError {
  * client possa riprovare, e la sola risposta giusta è una frase a chi guarda.
  * Lo stato resta 401 — l'accesso è negato — ma il codice dice PERCHÉ.
  */
-export const TENANT_SUSPENDED = 'TENANT_SUSPENDED'
+export { TENANT_SUSPENDED }
 
 function tenantSuspended(): GraphQLError {
   return new GraphQLError('Unauthorized: tenant suspended', { extensions: { code: TENANT_SUSPENDED } })
@@ -126,33 +127,6 @@ function hostHeaderOf(req: express.Request): string {
 // ── DB lookup ────────────────────────────────────────────────────────────────
 
 interface UserRecord { id: string; role: unknown; active: boolean }
-
-/**
- * Il tenant è sospeso? Letta a ogni richiesta autenticata, quindi va tenuta
- * ECONOMICA: una proprietà sul nodo `:Tenant`, che è indicizzato per `id`.
- *
- * Nessuna cache: una sospensione serve a chiudere la porta adesso, e un minuto
- * di cache vorrebbe dire un minuto in cui la porta è ancora aperta. Se questa
- * lettura diventasse un costo, la si mette in cache con un TTL di pochi
- * secondi — mai con uno che si misuri in minuti.
- *
- * Un errore di lettura NON apre la porta: si rifiuta. È la scelta severa, ed è
- * quella giusta su un controllo di accesso.
- */
-async function tenantSospeso(tenantId: string): Promise<boolean> {
-  const session = getSession(undefined, 'READ')
-  try {
-    const result = await session.executeRead((tx) =>
-      tx.run('MATCH (t:Tenant {id: $tenantId}) RETURN t.suspended_at AS suspendedAt', { tenantId }))
-    const row = result.records[0]
-    // Nessun nodo `:Tenant`: non è «non sospeso», è un tenant che non esiste —
-    // e `findUserInTenant` lo fermerà comunque un istante dopo.
-    if (!row) return false
-    return row.get('suspendedAt') != null
-  } finally {
-    await session.close()
-  }
-}
 
 async function findUserInTenant(email: string, tenantId: string): Promise<UserRecord | null> {
   const session = getSession(undefined, 'READ')

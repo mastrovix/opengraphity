@@ -91,12 +91,12 @@ interface SectionData {
   error: string | null
 }
 
-async function fetchSectionData(sections: ReportSectionDef[], tenantId: string, lingua: string): Promise<SectionData[]> {
+async function fetchSectionData(sections: ReportSectionDef[], tenantId: string, lingua: string, permissions?: ReadonlySet<string>): Promise<SectionData[]> {
   const sezioni = sections
   // La lingua serve anche QUI, non solo a schermo: le intestazioni delle
   // colonne le compone il server, e senza lingua il PDF e l'Excel uscivano in
   // inglese («TITLE», «NUMBER») mentre il costruttore diceva «Titolo».
-  const results = await Promise.all(sections.map(s => executeReportSection(s, tenantId, { language: isLingua(lingua) ? lingua : undefined })))
+  const results = await Promise.all(sections.map(s => executeReportSection(s, tenantId, { language: isLingua(lingua) ? lingua : undefined, permissions })))
   return results.map((r, i) => {
     // A failed section must appear AS FAILED in the exported document — an
     // empty page in a delivered audit PDF is a lie.
@@ -335,10 +335,12 @@ export async function generateExcel(templateName: string, data: SectionData[], f
  *
  * Il controllo dei permessi NON sta qui: lo fa chi chiama. Il resolver
  * verifica che l'utente possa leggere il template; lo scheduler esegue un
- * report che un amministratore ha già programmato.
+ * report che un amministratore ha già programmato. `permissions` (review of
+ * 23 Sep 2026): those of the person exporting, so a section on data their
+ * role cannot read comes out as a refused section, not as the data.
  */
 export async function generateReportFile(
-  format: 'pdf' | 'excel', templateId: string, tenantId: string,
+  format: 'pdf' | 'excel', templateId: string, tenantId: string, permissions?: ReadonlySet<string>,
 ): Promise<{ filename: string; filePath: string; templateName: string }> {
   const tpl = await loadTemplateForExport(templateId, tenantId)
   if (!tpl) throw new NotFoundError('ReportTemplate', templateId)
@@ -352,7 +354,7 @@ export async function generateReportFile(
    * italiano.
    */
   const locale = await loadNotificationLocale(tenantId)
-  const data = await fetchSectionData(tpl.sections, tenantId, locale.language)
+  const data = await fetchSectionData(tpl.sections, tenantId, locale.language, permissions)
   const ext  = format === 'pdf' ? 'pdf' : 'xlsx'
   const filename = `${uuidv4()}.${ext}`
   const dir      = tenantReportDir(tenantId)
@@ -377,7 +379,7 @@ async function exportReport(format: 'pdf' | 'excel', args: { templateId: string 
     await accessSession.close()
   }
 
-  const { filename } = await generateReportFile(format, args.templateId, ctx.tenantId)
+  const { filename } = await generateReportFile(format, args.templateId, ctx.tenantId, ctx.permissions)
   void audit(ctx, `report.export_${format === 'pdf' ? 'pdf' : 'xlsx'}`, 'ReportTemplate', args.templateId)
   return `/api/reports/${filename}`
 }

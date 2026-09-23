@@ -16,6 +16,9 @@
  * Keycloak and the outside providers are doubles; no network is reached.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+// The SSRF guard of the SAML metadata URL (review of 23 Sep 2026): accepts unless a test says otherwise.
+const assertSafeOutboundUrl = vi.hoisted(() => vi.fn(async (u: string) => new URL(u)))
+vi.mock('../safeUrl.js', () => ({ assertSafeOutboundUrl: (u: string) => assertSafeOutboundUrl(u) }))
 import type { KeycloakAdmin } from '../../scripts/lib/keycloakAdmin.js'
 
 const h = vi.hoisted(() => ({
@@ -274,6 +277,19 @@ describe('testLoginProvider', () => {
     expect((await tl.testLoginProvider('acme', { kind: 'saml', metadataUrl: 'https://idp/meta' })).checks[0]).toEqual({ key: 'samlMetadata', ok: false, detail: 'no singleSignOnServiceUrl' })
   })
 
+  // Review of 23 Sep 2026: Keycloak fetches the metadata from inside the stack; an internal address must never reach it.
+  it('SAML: a metadata URL the SSRF guard refuses is a failed check, and Keycloak is never asked', async () => {
+    const { kc } = fakeKeycloak()
+    tl.setKeycloakAdminForTests(kc)
+    const fetchMock = vi.fn(async () => json({ singleSignOnServiceUrl: 'x' }))
+    vi.stubGlobal('fetch', fetchMock)
+    assertSafeOutboundUrl.mockRejectedValueOnce(new Error('URL resolves to a private address'))
+    const r = await tl.testLoginProvider('acme', { kind: 'saml', metadataUrl: 'http://neo4j:7474/' })
+    expect(r.checks[0]).toEqual({ key: 'samlMetadata', ok: false, detail: 'URL resolves to a private address' })
+    expect(assertSafeOutboundUrl).toHaveBeenCalledWith('http://neo4j:7474/')
+    expect(fetchMock.mock.calls.some(([u]) => String(u).includes('import-config'))).toBe(false)
+  })
+
   it('SAML: Keycloak refusing the import is a failed check carrying the reason', async () => {
     const { kc } = fakeKeycloak()
     tl.setKeycloakAdminForTests(kc)
@@ -303,6 +319,18 @@ describe('saveLoginProvider', () => {
     // The existing provider is updated in place and keeps name and metadata URL.
     expect(state.puts.at(-1)!.path).toBe('/admin/realms/acme/identity-provider/instances/saml')
     expect(second.provider).toMatchObject({ displayName: 'Corporate SSO', metadataUrl: 'https://idp/meta' })
+  })
+
+  // Review of 23 Sep 2026: the saved URL goes through the same SSRF guard before Keycloak fetches it.
+  it('SAML: a metadata URL the SSRF guard refuses is refused, and nothing reaches Keycloak', async () => {
+    const { kc, state } = fakeKeycloak()
+    tl.setKeycloakAdminForTests(kc)
+    const fetchMock = vi.fn(async () => json({ singleSignOnServiceUrl: 'x' }))
+    vi.stubGlobal('fetch', fetchMock)
+    assertSafeOutboundUrl.mockRejectedValueOnce(new Error('URL resolves to a private address'))
+    await expect(tl.saveLoginProvider('acme', { kind: 'saml', metadataUrl: 'http://169.254.169.254/latest' }, false)).rejects.toThrow('private address')
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(state.idps).toHaveLength(0)
   })
 
   it('SAML without any metadata URL is refused', async () => {

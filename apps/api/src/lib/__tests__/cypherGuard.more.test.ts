@@ -76,3 +76,22 @@ describe('redactSensitiveValue', () => {
     expect(redactSensitiveValue(int)).toBe(int)
   })
 })
+
+/*
+ * Review of 23 Sep 2026: what belongs to one person is not a report's to read,
+ * and neither is a ticket type or the CMDB that the asker's role cannot open.
+ */
+describe('assertSafeReadOnlyCypher — private and closed labels', () => {
+  it.each(['ReportMessage', 'ReportConversation', 'DashboardConfig', 'ReportTemplate'])('%s is refused to everyone', (label) => {
+    expect(rejection(`MATCH (m:${label} {tenant_id: $tenantId}) RETURN m.id`)).toBe(`label ${label} is not readable by reports`)
+  })
+
+  it('a label closed to the asker is refused with its own reason; the others still pass', () => {
+    const closed = new Set(['Change'])
+    let reason = ''
+    try { assertSafeReadOnlyCypher('MATCH (c:Change {tenant_id: $tenantId}) RETURN c.title', closed) } catch (e) { reason = (e as Error).message }
+    expect(reason).toContain('label Change is not readable with the permissions of the person asking')
+    expect(() => assertSafeReadOnlyCypher('MATCH (i:Incident {tenant_id: $tenantId}) RETURN i.title', closed)).not.toThrow()
+  })
+})
+

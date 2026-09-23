@@ -45,14 +45,23 @@
 # dichiara che il testo della issue è DATO e non ordini, e l'agente può solo
 # aprire una PR.
 #
-# ## QUELLO CHE QUESTO WORKFLOW NON PUÒ GARANTIRE, e va detto
-# `contents: write` consente in teoria di scrivere su `main`. Di norma lo si
-# impedisce con la protezione del ramo — ma su un repository PRIVATO con
-# piano gratuito GitHub non la offre (verificato il 21 set 2026: HTTP 403
-# «Upgrade to GitHub Pro»). Quindi qui la garanzia non è di GitHub: è che
-# l'agente riceve l'ordine di lavorare su un ramo e aprire una PR, e che
-# nessuna PR entra in `main` senza che una persona la legga e la unisca.
-# Chi attiva questo workflow deve sapere che quella è la rete, e che è umana.
+# ## L'AGENTE NON HA IN MANO NIENTE CHE SCRIVA IL CODICE (23 set 2026)
+# Su un repository PRIVATO con piano gratuito GitHub non offre la protezione
+# del ramo (verificato il 21 set 2026: HTTP 403 «Upgrade to GitHub Pro»), e
+# fino al 23 set l'agente girava con un token `contents: write`, le
+# credenziali del checkout e `node:*`/`pnpm:*` fra i comandi ammessi: un testo
+# iniettato nel fascicolo poteva spingere su `main` («l'agente può solo aprire
+# una PR» era un ordine, non un limite). La revisione del 23 set lo ha
+# trovato, e il lavoro è diviso in due:
+#
+#  1. `proponi` — l'agente. Token in SOLA LETTURA sui contenuti (scrive solo i
+#     commenti della issue), checkout senza credenziali salvate, niente
+#     `id-token` (con OIDC si ottiene il token dell'app Claude, che scrive).
+#     Lascia la modifica come patch. Che con Edit e i test possa eseguire
+#     codice resta vero: non ha niente con cui spingerlo.
+#  2. `pubblica` — nessun codice dell'agente gira qui. Applica la patch su un
+#     ramo `autoanalisi/*`, rifiuta tutto ciò che tocca `.github/`, apre la
+#     PR. Nessuna PR entra in `main` senza che una persona la legga e la unisca.
 #
 # ## Il costo
 # Ogni avvio è una sessione di modello, e si paga (misurato: fino a ~10 $ per
@@ -107,15 +116,16 @@ jobs:
     # I permessi stanno sul JOB e non sul workflow: valgono per questo solo
     # lavoro. Niente `actions: write` (non deve poter cambiare i workflow) e
     # niente accesso ad altri segreti oltre alla chiave del modello.
+    # Contents in sola lettura e niente id-token (23 set 2026): vedi la testata.
+    # L'action riceve `github_token` qui sotto e non chiede più un token OIDC
+    # (il 21 set lo chiedeva perché non ne aveva uno: «Could not fetch an OIDC
+    # token») — un token OIDC si scambia con quello dell'app Claude, che scrive.
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
+      pull-requests: read
       issues: write
-      # Serve all'action per chiedere un token OIDC a GitHub e presentarsi ad
-      # Anthropic (primo giro del 21 set 2026: «Could not fetch an OIDC token»
-      # e il lavoro moriva in 15 secondi). NON dà nessun diritto in più sul
-      # repository: è solo l'identità con cui il lavoro si fa riconoscere.
-      id-token: write
+    outputs:
+      modifica: ${{ steps.raccogli.outputs.modifica }}
     steps:
       # ── La seconda sbarra ────────────────────────────────────────────────
       # Non si fida della configurazione delle etichette: chiede a GitHub che
@@ -140,6 +150,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          # Nessuna credenziale lasciata in .git/config per i comandi dell'agente.
+          persist-credentials: false
 
       # ── L'AMBIENTE, che al quinto giro non c'era ──────────────────────────
       # Il prompt chiede all'agente di far girare `pnpm lint`, `pnpm typecheck`
@@ -163,10 +175,12 @@ jobs:
         # `gh` è già installato sul runner: con questo token funziona, ed è
         # la cintura di sicurezza se gli strumenti GitHub non fossero
         # disponibili. Un'analisi che non arriva a nessuno è spesa buttata.
+        # Il token di questo lavoro: legge i contenuti, scrive solo i commenti.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           # Senza questo, il terzo giro vero (21 set 2026) ha lavorato per 26
           # turni e 0,79 $ e non ha pubblicato NIENTE: né PR, né commento. Il
           # lavoro c'era, il canale per raccontarlo no. `track_progress` apre
@@ -188,7 +202,7 @@ jobs:
           # persona mette l'etichetta.
           claude_args: |
             --max-turns 120
-            --allowedTools "Edit,Write,Bash(pnpm:*),Bash(node:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(gh issue comment:*),Bash(gh pr create:*)"
+            --allowedTools "Edit,Write,Bash(pnpm lint),Bash(pnpm typecheck),Bash(pnpm test),Bash(pnpm --filter @opengraphity/api test:*),Bash(pnpm --filter @opengraphity/web test:*),Bash(node scripts/check-i18n.mjs),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(gh issue comment:*)"
           prompt: |
             Sei nel repository di OpenGrafo. La issue #${{ github.event.issue.number || github.event.client_payload.issue || inputs.issue }}
             contiene un FASCICOLO D'INDAGINE prodotto dall'Autoanalisi della
@@ -217,9 +231,8 @@ jobs:
             DEVI riferire in ogni caso, anche quando la risposta è «niente da
             fare»: un'analisi che non arriva a nessuno è denaro buttato. Se
             gli strumenti GitHub non ti bastano, usa `gh` dal terminale, che
-            è già installato e autenticato:
+            è già installato e autenticato per i commenti:
               gh issue comment 25 --body "..."
-              gh pr create --title "..." --body "..." --base main
             4. Se c'è, fai la modifica minima, con i test che la reggono.
 
                Le regole di questo repository, che valgono anche per te (se
@@ -233,14 +246,90 @@ jobs:
                  in inglese (`scripts/check-i18n.mjs` lo verifica);
                - ogni query Cypher porta il `tenant_id`, e le eccezioni si
                  dichiarano con un commento `// tenant-ok:` che spiega perché.
-            5. Fai girare quello che serve (`pnpm lint`, `pnpm typecheck`, i
-               test dei pacchetti toccati) e NON aprire la PR se non passano.
+            5. Fai girare quello che serve (`pnpm lint`, `pnpm typecheck`,
+               `pnpm --filter @opengraphity/api test`, `pnpm --filter
+               @opengraphity/web test`, `node scripts/check-i18n.mjs`) e, se
+               non passano, NON proporre la modifica: togli le tue modifiche
+               e spiegalo con un commento sulla issue.
+            6. La PR NON la apri tu: non hai un token che possa farlo. Lascia
+               le modifiche nel repository e scrivi in `.autoanalisi/pr.md`
+               il titolo della PR sulla prima riga e la descrizione sotto.
+               Il workflow, dopo di te, le pubblica su un ramo e apre la PR.
 
             ## Limiti, e non sono negoziabili
-            - Lavora su un RAMO e apri una PULL REQUEST. Non scrivere mai
-              direttamente su `main`, e non unire niente: la PR la legge e la
-              unisce una persona.
+            - Non fare commit e non spingere niente: la modifica la raccoglie
+              il workflow, la PR la legge e la unisce una persona.
             - Non toccare i file dentro `.github/workflows/`, né segreti, né
               configurazione delle Actions.
             - Se la modifica giusta esce dal perimetro del fascicolo, non
               allargarti: dillo nella PR e lascia decidere.
+
+      # ── La modifica esce come patch: chi la pubblica è un altro lavoro ────
+      - name: Raccogli la modifica
+        id: raccogli
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/proposta"
+          if [ -f .autoanalisi/pr.md ]; then mv .autoanalisi/pr.md "$RUNNER_TEMP/proposta/pr.md"; fi
+          rm -rf .autoanalisi
+          git add -A
+          git diff --cached --binary > "$RUNNER_TEMP/proposta/modifica.patch"
+          if [ -s "$RUNNER_TEMP/proposta/modifica.patch" ]; then
+            echo "modifica=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "modifica=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: steps.raccogli.outputs.modifica == 'true'
+        with:
+          name: proposta
+          path: ${{ runner.temp }}/proposta/
+          retention-days: 7
+
+  # Nessun codice dell'agente gira qui: si applica la sua patch e si apre la PR.
+  pubblica:
+    needs: proponi
+    if: needs.proponi.outputs.modifica == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      ISSUE: ${{ github.event.issue.number || github.event.client_payload.issue || inputs.issue }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: proposta
+          path: ${{ runner.temp }}/proposta
+      - name: Applica la modifica su un ramo autoanalisi/*
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          P="$RUNNER_TEMP/proposta"
+          # Niente che tocchi le Actions: la patch viene da un agente che ha
+          # letto testo scritto da chiunque.
+          if git apply --numstat "$P/modifica.patch" | awk '{print $3}' | grep -E '^\.github/'; then
+            echo "::error::la modifica tocca .github/: non si pubblica"
+            exit 1
+          fi
+          RAMO="autoanalisi/issue-${ISSUE}-${GITHUB_RUN_ID}"
+          git checkout -b "$RAMO"
+          git apply --index "$P/modifica.patch"
+          git -c user.name="autoanalisi[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "Autoanalisi: proposta per la issue #${ISSUE}"
+          git push origin "$RAMO"
+          TITOLO="Autoanalisi: proposta per la issue #${ISSUE}"
+          CORPO="$RUNNER_TEMP/corpo.md"
+          : > "$CORPO"
+          if [ -s "$P/pr.md" ]; then
+            TITOLO=$(head -n 1 "$P/pr.md" | cut -c1-200)
+            tail -n +2 "$P/pr.md" > "$CORPO"
+          fi
+          printf '\n\n---\nProposta dell%sAutoanalisi per la issue #%s (run %s): da rileggere prima di unirla.\n' "'" "$ISSUE" "$GITHUB_RUN_ID" >> "$CORPO"
+          gh pr create --base main --head "$RAMO" --title "$TITOLO" --body-file "$CORPO"

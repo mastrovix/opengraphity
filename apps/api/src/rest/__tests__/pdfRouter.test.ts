@@ -32,7 +32,8 @@ const getSession = vi.fn(() => ({ close }))
 vi.mock('@opengraphity/neo4j', () => ({ getSession: (...a: unknown[]) => getSession(...(a as [])) }))
 vi.mock('../../middleware/auth.js', () => ({
   authMiddleware: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-    req.user = { tenantId: 'tenant-1', userId: 'user-1', email: 'u@example.com', role: 'admin', permissions: perms('admin') }
+    const role = String(req.headers['x-test-role'] ?? 'admin')
+    req.user = { tenantId: 'tenant-1', userId: 'user-1', email: 'u@example.com', role, permissions: perms(role) }
     next()
   },
 }))
@@ -89,6 +90,16 @@ beforeEach(() => {
 })
 
 describe('makePdfRouter', () => {
+  // Review of 23 Sep 2026: the dossier carries the internal comments; a portal user got it by id.
+  it('only who reads the ticket type as staff gets the dossier: a portal end user is refused before anything is loaded', async () => {
+    const res = await fetch(`${base}/incidents/inc-1/pdf`, { headers: { 'x-test-role': 'end_user' } })
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual({ error: 'Forbidden: reading incidents is required' })
+    expect(loader).not.toHaveBeenCalled()
+    expect(getSession).not.toHaveBeenCalled()
+    expect(audit).not.toHaveBeenCalled()
+  })
+
   it('serves the PDF as a download named after the ticket number, loaded for the session tenant', async () => {
     const res = await fetch(`${base}/incidents/inc-1/pdf`)
     expect(res.status).toBe(200)

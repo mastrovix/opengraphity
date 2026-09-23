@@ -107,6 +107,16 @@ describe('comments (query)', () => {
     expect(await code(() => C.comments(null, { entityType: 'User', entityId: 'x' }, ctx('operator')))).toBe('BAD_USER_INPUT')
     expect(h.readCalls).toHaveLength(0)
   })
+
+  // Review of 23 Sep 2026: roles are per ticket type; the policy let any ticket read through.
+  it('reads the comments of a ticket type only with that type\'s read permission, before any query', async () => {
+    const requestsOnly = { tenantId: 't1', userId: 'u9', userEmail: 'u9@x', role: 'custom', permissions: new Set(['request.read', 'workspace.use']) } as unknown as GraphQLContext
+    expect(await code(() => C.comments(null, { entityType: 'incident', entityId: 'i1' }, requestsOnly))).toBe('FORBIDDEN')
+    expect(await code(() => C.comments(null, { entityType: 'change', entityId: 'c1' }, requestsOnly))).toBe('FORBIDDEN')
+    expect(h.readCalls).toHaveLength(0)
+    await C.comments(null, { entityType: 'service_request', entityId: 'r1' }, requestsOnly)
+    expect(h.readCalls).toHaveLength(1)
+  })
 })
 
 describe('addComment', () => {

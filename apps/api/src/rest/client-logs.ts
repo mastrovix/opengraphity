@@ -161,7 +161,8 @@ async function handleClientLog(req: Request, res: Response): Promise<void> {
      * non li leggeva nessun analista — e dentro c'era «SSE notification
      * channel down», 1.074 volte, che nessuna pagina diceva.
      */
-    registraErroreDelBrowser(body.message, body.level, timestamp, body.stack)
+    // The reporter (tenant and person) only caps how often one person counts: it is not stored.
+    registraErroreDelBrowser(body.message, body.level, timestamp, body.stack, `${user.tenantId}/${user.userId}`)
     res.status(204).end()
   } finally {
     await session.close()

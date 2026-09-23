@@ -10,7 +10,7 @@ import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
 import { sseManager } from '@opengraphity/notifications'
 import { GraphQLError } from 'graphql'
-import { COMMENTABLE_LABELS } from '../../lib/ticketComments.js'
+import { COMMENTABLE_LABELS, requireCommentRead } from '../../lib/ticketComments.js'
 import { hasPermission, requirePermission } from '../../lib/permissions.js'
 import { roleHasPermission, tenantRoles } from '../../lib/roles.js'
 import { TICKET_WORKER_PERMISSION, isPermission } from '@opengraphity/types'
@@ -281,6 +281,7 @@ async function internalMessages(
   ctx: GraphQLContext,
 ) {
   requireInternalChat(ctx)
+  requireCommentRead(ctx, args.entityType)
   const limit = Math.min(args.limit ?? 50, 100)
   return withSession(async (s) => {
     const beforeFilter = args.before ? 'AND m.created_at < $before' : ''

@@ -332,15 +332,47 @@ export const SERVIZIO_DEL_BROWSER = 'opengrafo-web'
  * scrubbing del server: nell'archivio senza tenant non entra un messaggio
  * grezzo, mai, da nessuna sorgente.
  */
+/**
+ * ONE PERSON IS NOT AN OUTAGE (review of 23 Sep 2026). A browser signature
+ * turns acute at 20 occurrences in a day, and any logged-in user can post the
+ * same error 60 times a minute: twenty POSTs opened a critical event on the
+ * platform. Each reporter counts at most this many times per signature per
+ * day, so an acute browser signature takes several people. The count lives in
+ * memory only: the archive keeps no person and no tenant, and keeps not doing so.
+ */
+export const BROWSER_REPORTS_PER_PERSON_PER_DAY = 3
+const MAX_REPORTER_KEYS = 20_000
+const reportsByPerson = new Map<string, number>()
+let reportsDay = ''
+
+/** Whether this person's report of this signature still counts today (and counts it). */
+function counts(reporter: string, fingerprint: string, day: string): boolean {
+  if (day !== reportsDay) { reportsByPerson.clear(); reportsDay = day }
+  // Full: the oldest count goes, never the whole map — emptying it would give everyone their three back.
+  if (reportsByPerson.size >= MAX_REPORTER_KEYS) reportsByPerson.delete(reportsByPerson.keys().next().value!)
+  const key = `${reporter}\u0000${fingerprint}`
+  const n = (reportsByPerson.get(key) ?? 0) + 1
+  reportsByPerson.set(key, n)
+  return n <= BROWSER_REPORTS_PER_PERSON_PER_DAY
+}
+
+/** Test hook. */
+export function azzeraConteggiDelBrowser(): void {
+  reportsByPerson.clear()
+  reportsDay = ''
+}
+
 export function registraErroreDelBrowser(
-  messaggio: string, livello: string, quando: string, stack?: unknown,
+  messaggio: string, livello: string, quando: string, stack: unknown, reporter: string,
 ): void {
   try {
     if (!LIVELLI_PERSISTITI.has(livello)) return
     const { template, sostituzioni, mascherate } = normalizzaMessaggio(messaggio)
     if (template === '') return
+    const fingerprint = firmaDi({ service: SERVIZIO_DEL_BROWSER, module: 'frontend', level: livello, template })
+    if (!counts(reporter, fingerprint, quando.slice(0, 10))) return
     accoda(stato.inAttesa, {
-      fingerprint: firmaDi({ service: SERVIZIO_DEL_BROWSER, module: 'frontend', level: livello, template }),
+      fingerprint,
       day:       quando.slice(0, 10),
       timestamp: quando,
       service:   SERVIZIO_DEL_BROWSER,

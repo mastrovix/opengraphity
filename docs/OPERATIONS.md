@@ -496,6 +496,12 @@ la piattaforma sono `maintenance` (backup, purghe) e `autoanalisi`
 - un tenant **sospeso** ha le code **in pausa** (BullMQ tiene la pausa in
   Redis, vale per tutti i processi): niente timer SLA, webhook, notifiche,
   allarmi elaborati; quello che scade intanto parte alla riattivazione;
+- e **non lascia entrare nessuno**: oltre al login (`TENANT_SUSPENDED`), dal
+  23 set 2026 rifiutano con 401 `TENANT_SUSPENDED` anche le API key, i webhook
+  in ingresso (detto solo a chi presenta il token giusto) e Slack. Scelta del
+  proprietario: gli allarmi del monitoraggio NON si tengono da parte, si
+  rifiutano — gli strumenti rimandano da soli quelli ancora accesi alla
+  riattivazione;
 - un tenant **cancellato** perde le code (`obliterate`): la risposta della
   cancellazione lo dice con `queuesRemoved`;
 - un job deve portare il tenant della sua coda (`tenantId`/`tenant_id`): uno

@@ -31,6 +31,11 @@ vi.mock('@opengraphity/notifications', () => ({
 }))
 vi.mock('../../services/incidentService.js', () => ({ createIncident: vi.fn(), resolveIncident: vi.fn(), escalateIncident: vi.fn(), assignIncidentToUser: vi.fn() }))
 vi.mock('../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }))
+// The linked user's role may act on incidents unless a test says otherwise (review of 23 Sep 2026).
+const roleHasPermission = vi.hoisted(() => vi.fn(async (_t: string, _r: string, _p: string) => true))
+vi.mock('../../lib/roles.js', () => ({ roleHasPermission: (t: string, r: string, p: string) => roleHasPermission(t, r, p) }))
+const tenantSospeso = vi.hoisted(() => vi.fn(async (_t: string) => false))
+vi.mock('../../lib/tenantSuspension.js', () => ({ tenantSospeso: (t: string) => tenantSospeso(t) }))
 vi.mock('../../lib/domainMatrix.js', () => ({ domainVocabulary: vi.fn(async () => ['critical', 'high', 'medium', 'low']) }))
 
 const { getSession } = await import('@opengraphity/neo4j')
@@ -79,7 +84,7 @@ function fakeRes() {
 const asRes = (r: ReturnType<typeof fakeRes>) => r as unknown as Response
 
 const rec = (map: Record<string, unknown>) => ({ get: (k: string) => map[k] })
-const userRow = rec({ u: { properties: { id: 'user-1', tenant_id: 'tenant-1' } } })
+const userRow = rec({ u: { properties: { id: 'user-1', tenant_id: 'tenant-1', role: 'operator' } } })
 
 function sessionWith(reads: unknown[][]) {
   let i = 0

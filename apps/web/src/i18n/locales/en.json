@@ -4721,7 +4721,8 @@
     },
     "report": {
       "tableWithoutColumns": "A table needs at least one column: choose the fields to show.",
-      "granularityNeedsDate": "Grouping by period needs a date field, and the field chosen is not one. Pick a date field, or remove the period."
+      "granularityNeedsDate": "Grouping by period needs a date field, and the field chosen is not one. Pick a date field, or remove the period.",
+      "labelNotReadable": "Your role cannot read the data of this section."
     },
     "proposal": {
       "actionUnknown": "\"{{action}}\" is not an action of the catalogue: this proposal cannot be executed.",

@@ -398,7 +398,7 @@ const Query = {
     if (!template) throw new NotFoundError('ReportTemplate', args.templateId)
 
     const results = await Promise.all(
-      template.sections.map(sec => executeReportSection(sec, ctx.tenantId, { language })),
+      template.sections.map(sec => executeReportSection(sec, ctx.tenantId, { language, permissions: ctx.permissions })),
     )
     return { sections: results }
   },
@@ -410,7 +410,7 @@ const Query = {
   ) {
     // Identifiers are validated inside executeReportSection (buildReportQuery)
     // against the tenant whitelist; a rejected preview surfaces as section error.
-    return executeReportSection(sectionInputToDef(args.input, 'preview'), ctx.tenantId, { language: viewerLanguage(args.language) })
+    return executeReportSection(sectionInputToDef(args.input, 'preview'), ctx.tenantId, { language: viewerLanguage(args.language), permissions: ctx.permissions })
   },
 }
 

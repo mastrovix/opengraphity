@@ -28,6 +28,11 @@ vi.mock('@opengraphity/notifications', () => ({
 }))
 vi.mock('../../services/incidentService.js', () => ({ createIncident: vi.fn() }))
 vi.mock('../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }))
+// The linked user's role may act on incidents unless a test says otherwise (review of 23 Sep 2026).
+const roleHasPermission = vi.hoisted(() => vi.fn(async (_t: string, _r: string, _p: string) => true))
+vi.mock('../../lib/roles.js', () => ({ roleHasPermission: (t: string, r: string, p: string) => roleHasPermission(t, r, p) }))
+const tenantSospeso = vi.hoisted(() => vi.fn(async (_t: string) => false))
+vi.mock('../../lib/tenantSuspension.js', () => ({ tenantSospeso: (t: string) => tenantSospeso(t) }))
 // Verifica «Cosa resta cablato», ondata 1: le severità sono il vocabolario del cliente (qui con `blocker`, un valore suo).
 vi.mock('../../lib/domainMatrix.js', () => ({ domainVocabulary: vi.fn(async () => ['blocker', 'critical', 'high', 'medium', 'low']) }))
 
@@ -53,7 +58,7 @@ function fakeRes() {
 }
 
 const rec = (map: Record<string, unknown>) => ({ get: (k: string) => map[k] })
-const userRow = rec({ u: { properties: { id: 'user-1', tenant_id: 'tenant-1' } } })
+const userRow = rec({ u: { properties: { id: 'user-1', tenant_id: 'tenant-1', role: 'operator' } } })
 
 /** Cypher delle letture eseguite, per asserire i predicati (A-9). */
 const reads: string[] = []
@@ -110,6 +115,18 @@ describe('/og incident open', () => {
     expect(createIncident).not.toHaveBeenCalled()
     expect(getSession).not.toHaveBeenCalled()
     expect((res.body as { text: string }).text).toMatch(/Impacted CI missing/)
+  })
+
+  // Review of 23 Sep 2026: `/og incident open` needs what createIncident needs in the app.
+  it('a linked user whose role cannot write incidents is refused before anything is resolved or created', async () => {
+    const { session } = sessionWith([[userRow]])
+    vi.mocked(getSession).mockReturnValue(session as never)
+    roleHasPermission.mockResolvedValueOnce(false)
+    const res = fakeRes()
+    await handleSlackCommands(slackRequest('incident open Sito giù ci=web-01 high'), res as unknown as Response)
+    expect(res.body).toEqual({ response_type: 'ephemeral', text: '⚠️ Your role cannot do this (it needs incident.write).' })
+    expect(createIncident).not.toHaveBeenCalled()
+    expect(session.executeRead).toHaveBeenCalledTimes(1)
   })
 
   it('invalid severity → usage with THE TENANT\'S severities, nothing created', async () => {

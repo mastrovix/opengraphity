@@ -23,6 +23,7 @@ const loadReportValueLabeler = vi.fn(async () => labeler)
  * le intestazioni ripiegano sul nome interno, come prima.
  */
 vi.mock('../reportFieldLabels.js', () => ({ reportFieldLabels: vi.fn(async () => new Map<string, string>()) }))
+vi.mock('../ciLabelsForTenant.js', () => ({ ciLabelsForTenant: vi.fn(async () => ['Server', 'DatabaseInstance']) }))
 vi.mock('../reportValueLabels.js', () => ({
   identityLabeler: (_s: unknown, v: unknown) => v,
   loadReportValueLabeler: (...args: unknown[]) => loadReportValueLabeler(...(args as [])),
@@ -104,6 +105,30 @@ describe('executeReportSection', () => {
     const [query] = s.run.mock.calls[0]! as [string]
     expect(query).toContain('AS label, count(n0) AS value')
     expect(query).toContain('LIMIT toInteger($limit)')
+  })
+
+  // Review of 23 Sep 2026: roles are per ticket type; a section rooted at a type the role cannot read read it anyway.
+  it('with the viewer\'s permissions, a section on a label their role cannot read is refused and nothing is queried', async () => {
+    const s = sessionReturning([{ value: int(3) }])
+    const requestsOnly = new Set(['report.read', 'request.read'])
+    const res = await executeReportSection(section(), 't1', { permissions: requestsOnly })
+    expect(res.error).toBe('Your role cannot read Incident: this section is not available to you')
+    expect(res.errorKey).toBe('errors.report.labelNotReadable')
+    expect(getSession).not.toHaveBeenCalled()
+    expect(s.run).not.toHaveBeenCalled()
+  })
+
+  it('a CI label (the tenant\'s own types included) needs cmdb.read', async () => {
+    sessionReturning([{ value: int(3) }])
+    const ciSection = section({ nodes: [{ ...section().nodes[0]!, entityType: 'Server', neo4jLabel: 'Server', label: 'Server' }] })
+    expect((await executeReportSection(ciSection, 't1', { permissions: new Set(['report.read', 'incident.read']) })).errorKey).toBe('errors.report.labelNotReadable')
+    // With cmdb.read the permission no longer stops it (here the fake whitelist does, which is not this test's business).
+    expect((await executeReportSection(ciSection, 't1', { permissions: new Set(['report.read', 'cmdb.read']) })).errorKey).not.toBe('errors.report.labelNotReadable')
+  })
+
+  it('with the permission of the type, the section runs', async () => {
+    sessionReturning([{ value: int(3) }])
+    expect((await executeReportSection(section(), 't1', { permissions: new Set(['report.read', 'incident.read']) })).error).toBeNull()
   })
 
   it('table without selected fields: clear validation error, no query executed', async () => {

@@ -25,7 +25,7 @@ import type { GraphQLContext } from '../../context.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
-import { requirePermission } from '../../lib/permissions.js'
+import { hasPermission, requirePermission } from '../../lib/permissions.js'
 import { mapIncident, mapTeam } from '../../lib/mappers.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
 import { serviceRelationshipTypesForTenant } from '../../lib/ciMetamodelForTenant.js'
@@ -571,6 +571,8 @@ async function serviceMapHistory(parent: { id: string }, args: { limit?: number 
  * (`incidentStepInfo`), mai da una lista scritta a mano.
  */
 async function serviceMapOpenIncident(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+  // The incident is incident.read's to show (review of 23 Sep 2026): null for a role with service.read alone.
+  if (!hasPermission(ctx, 'incident.read')) return null
   const session = getSession()
   try {
     const info = await incidentStepInfo(session, ctx.tenantId)

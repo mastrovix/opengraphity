@@ -7,6 +7,32 @@ import { logger } from '../lib/logger.js'
 import { ciLabelPredicateForTenant } from '../lib/ciLabelsForTenant.js'
 import { domainVocabulary } from '../lib/domainMatrix.js'
 import { loadSlackInstallationByTeam, type SlackInstallationWithSecrets } from '@opengraphity/notifications'
+import { roleHasPermission } from '../lib/roles.js'
+import { tenantSospeso } from '../lib/tenantSuspension.js'
+
+/**
+ * What the linked person may do from Slack is what the app lets them do.
+ * Every command and button acts on incidents, so it takes incident.write, read
+ * from the person's role — until 23 Sep 2026 nobody asked, and a viewer
+ * resolved incidents from a card posted in a channel. A deactivated person
+ * does nothing.
+ */
+const SLACK_PERMISSION = 'incident.write'
+const REFUSED = `⚠️ Your role cannot do this (it needs ${SLACK_PERMISSION}).`
+
+async function mayActOnIncidents(tenantId: string, user: Record<string, unknown>): Promise<boolean> {
+  if (user['active'] === false) return false
+  const role = user['role']
+  return typeof role === 'string' && roleHasPermission(tenantId, role, SLACK_PERMISSION)
+}
+
+/** A command of a person who may not act is answered with the reason; true when it was. */
+async function refusedCommand(res: Response, tenantId: string, user: Record<string, unknown>): Promise<boolean> {
+  if (await mayActOnIncidents(tenantId, user)) return false
+  logger.warn({ tenantId, userId: user['id'] }, '[slack] command refused: the linked user cannot write incidents')
+  res.json({ response_type: 'ephemeral', text: REFUSED })
+  return true
+}
 
 /**
  * La sintassi del comando. Le severità sono quelle del vocabolario `severity`
@@ -40,7 +66,13 @@ async function authenticateSlackRequest(req: Request, teamId: string | undefined
     logger.error({ teamId, mode: installation.mode }, '[slack] no signing secret for this installation — rejecting request')
     return null
   }
-  return verifySlackSignature(req, signingSecret) ? installation : null
+  if (!verifySlackSignature(req, signingSecret)) return null
+  // A suspended organization lets nobody in, from Slack either (review of 23 Sep 2026).
+  if (await tenantSospeso(installation.tenantId)) {
+    logger.warn({ teamId, tenantId: installation.tenantId }, '[slack] request for a suspended tenant: refused')
+    return null
+  }
+  return installation
 }
 
 export function verifySlackSignature(req: Request, signingSecret: string): boolean {
@@ -109,6 +141,7 @@ export async function handleSlackCommands(req: Request, res: Response): Promise<
       const u  = userResult.records[0]!.get('u').properties as Record<string, unknown>
       tenantId = installation.tenantId
       userId   = u['id']        as string
+      if (await refusedCommand(res, tenantId, u)) return
 
       // La severità è un valore del vocabolario del cliente.
       const severities = await domainVocabulary(tenantId, 'severity')
@@ -225,7 +258,10 @@ export async function handleSlackActions(req: Request, res: Response): Promise<v
       // un 200 muto.
       let outcome = `✅ Action *${actionType}* done on incident \`${incidentId}\`.`
       try {
-        if (actionType === 'assign_me') {
+        if (!(await mayActOnIncidents(tenantId, u))) {
+          logger.warn({ tenantId, userId, actionType }, '[slack] action refused: the linked user cannot write incidents')
+          outcome = REFUSED
+        } else if (actionType === 'assign_me') {
           const { assignIncidentToUser } = await import('../services/incidentService.js')
           await assignIncidentToUser(incidentId, userId, { tenantId, userId })
         } else if (actionType === 'resolve') {

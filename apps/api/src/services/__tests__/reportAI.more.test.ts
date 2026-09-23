@@ -28,6 +28,9 @@ vi.mock('../../lib/aiSettings.js', () => ({
 }))
 
 const { toAgentMessages, streamReportAI, callReportAI } = await import('../reportAI.js')
+
+// Every read permission: these tests are about the loop, not about what a role may read (labelReadAccess.test.ts).
+const ALL = new Set(['cmdb.read', 'incident.read', 'problem.read', 'change.read', 'request.read', 'kb.read'])
 const { runReportAgent } = await import('../reportAgent.js')
 const { assertAIFeature } = await import('../../lib/aiSettings.js')
 
@@ -59,14 +62,15 @@ describe('toAgentMessages', () => {
 describe('callReportAI', () => {
   it('checks the tenant switch, then runs the agent with the tenant and the messages', async () => {
     vi.mocked(runReportAgent).mockResolvedValue('answer')
-    await expect(callReportAI('t1', 'u1', [], 'how many incidents?')).resolves.toBe('answer')
+    await expect(callReportAI('t1', 'u1', ALL, [], 'how many incidents?')).resolves.toBe('answer')
     expect(assertAIFeature).toHaveBeenCalledWith('t1', 'reportAnalysis')
-    expect(runReportAgent).toHaveBeenCalledWith({ tenantId: 't1', language: 'English', messages: [{ role: 'user', content: 'how many incidents?' }] })
+    // The asker's permissions go with the question: the model reads only what their role reads (review of 23 Sep 2026).
+    expect(runReportAgent).toHaveBeenCalledWith({ tenantId: 't1', permissions: ALL, language: 'English', messages: [{ role: 'user', content: 'how many incidents?' }] })
   })
 
   it('with the feature disabled the agent never runs', async () => {
     vi.mocked(assertAIFeature).mockRejectedValue(new Error('AI disabled'))
-    await expect(callReportAI('t1', 'u1', [], 'q')).rejects.toThrow('AI disabled')
+    await expect(callReportAI('t1', 'u1', ALL, [], 'q')).rejects.toThrow('AI disabled')
     expect(runReportAgent).not.toHaveBeenCalled()
   })
 })
@@ -81,7 +85,7 @@ describe('streamReportAI', () => {
     })
     const chunks: string[] = []
     const tools: string[] = []
-    const out = await streamReportAI('t2', 'u2', [{ role: 'assistant', content: 'hi' }], 'q', c => chunks.push(c), d => tools.push(d))
+    const out = await streamReportAI('t2', 'u2', ALL, [{ role: 'assistant', content: 'hi' }], 'q', c => chunks.push(c), d => tools.push(d))
     expect(out).toBe('Hello')
     expect(chunks).toEqual(['Hel', 'lo'])
     expect(tools).toEqual(['Counting incidents'])
@@ -91,7 +95,7 @@ describe('streamReportAI', () => {
   it('with the feature disabled nothing is streamed', async () => {
     vi.mocked(assertAIFeature).mockRejectedValue(new Error('AI disabled'))
     const onChunk = vi.fn()
-    await expect(streamReportAI('t1', 'u1', [], 'q', onChunk, vi.fn())).rejects.toThrow('AI disabled')
+    await expect(streamReportAI('t1', 'u1', ALL, [], 'q', onChunk, vi.fn())).rejects.toThrow('AI disabled')
     expect(runReportAgent).not.toHaveBeenCalled()
     expect(onChunk).not.toHaveBeenCalled()
   })

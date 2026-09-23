@@ -190,7 +190,7 @@ describe('DashboardWidget field resolvers', () => {
     await expect(Q.widgetData(parent, { language: 'it' }, ctx)).resolves.toBe('{"n":3}')
     await expect(Q.widgetError(parent, { language: 'it' }, ctx)).resolves.toBeNull()
     expect(executeReportSection).toHaveBeenCalledTimes(1)
-    expect(executeReportSection).toHaveBeenCalledWith({ id: 'rs' }, 't1', { language: 'it' })
+    expect(executeReportSection).toHaveBeenCalledWith({ id: 'rs' }, 't1', { language: 'it', permissions: ctx.permissions })
   })
 
   it('a failing section: no data, and the error says why (never an empty widget without reason)', async () => {
@@ -199,7 +199,7 @@ describe('DashboardWidget field resolvers', () => {
     const parent = { reportSectionId: 'rs' }
     await expect(Q.widgetData(parent, {}, ctx)).resolves.toBeNull()
     await expect(Q.widgetError(parent, {}, ctx)).resolves.toBe('Field "x" unknown')
-    expect(executeReportSection).toHaveBeenCalledWith({ id: 'rs' }, 't1', { language: undefined })
+    expect(executeReportSection).toHaveBeenCalledWith({ id: 'rs' }, 't1', { language: undefined, permissions: ctx.permissions })
   })
 
   it('a deleted section → "Report section not found"', async () => {

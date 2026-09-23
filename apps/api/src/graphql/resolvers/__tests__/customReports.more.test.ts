@@ -214,7 +214,8 @@ describe('Query.executeReport', () => {
     const out = await customReportResolvers.Query.executeReport(null, { templateId: 'tpl-1', language: 'en' }, ctx)
     expect(out).toEqual({ sections: [{ sectionId: 's1' }, { sectionId: 's2' }] })
     expect(assertReportTemplateAccess).toHaveBeenCalledWith(access, 'tpl-1', ctx, 'read')
-    expect(executeReportSection).toHaveBeenCalledWith(sections[0], 'tenant-1', { language: 'en' })
+    // With the viewer's permissions: a section on data their role cannot read is refused (review of 23 Sep 2026).
+    expect(executeReportSection).toHaveBeenCalledWith(sections[0], 'tenant-1', { language: 'en', permissions: ctx.permissions })
   })
 
   it('an unknown language is refused before touching the template', async () => {
@@ -237,7 +238,7 @@ describe('Query.previewReportSection', () => {
     vi.mocked(executeReportSection).mockResolvedValueOnce({ sectionId: 'preview' } as never)
     const input: SectionInput = { title: 'T', chartType: 'kpi', metric: 'count', nodes: [], edges: [] }
     await expect(customReportResolvers.Query.previewReportSection(null, { input }, ctx)).resolves.toEqual({ sectionId: 'preview' })
-    expect(executeReportSection).toHaveBeenCalledWith(sectionInputToDef(input, 'preview'), 'tenant-1', { language: undefined })
+    expect(executeReportSection).toHaveBeenCalledWith(sectionInputToDef(input, 'preview'), 'tenant-1', { language: undefined, permissions: ctx.permissions })
   })
 })
 

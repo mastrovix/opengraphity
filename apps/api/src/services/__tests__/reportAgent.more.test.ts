@@ -38,6 +38,9 @@ vi.mock('../../lib/cypherGuard.js', async (importOriginal) => {
 })
 
 const { runReportAgent, runGuardedCypherTool, ToolLoopBudget, REPORT_AI_LIMITS, CYPHER_TOOL } = await import('../reportAgent.js')
+
+// Every read permission: these tests are about the loop, not about what a role may read (labelReadAccess.test.ts).
+const ALL = new Set(['cmdb.read', 'incident.read', 'problem.read', 'change.read', 'request.read', 'kb.read'])
 const { getSession } = await import('@opengraphity/neo4j')
 
 const SAFE_Q = 'MATCH (i:Incident {tenant_id: $tenantId}) RETURN i.title AS title'
@@ -101,7 +104,7 @@ describe('schema context', () => {
     })
     vi.mocked(getSession).mockReturnValue(session as never)
     const { client, create } = clientReturning(text('ok'))
-    await runReportAgent({ tenantId, language: 'English', messages: [{ role: 'user', content: 'q' }], client })
+    await runReportAgent({ permissions: ALL, tenantId, language: 'English', messages: [{ role: 'user', content: 'q' }], client })
 
     const system = (create.mock.calls[0]![0] as { system: Array<{ text: string }> }).system[0]!.text
     expect(system).toContain('- **Incident** (42 nodes): title, status')
@@ -184,20 +187,20 @@ describe('the tool the model reads (D62)', () => {
 describe('runReportAgent — input and loop edges', () => {
   it('refuses an empty conversation before calling the model', async () => {
     const { client, create } = clientReturning(text('x'))
-    await expect(runReportAgent({ tenantId: freshTenant(), messages: [], client })).rejects.toThrow('no messages to send')
+    await expect(runReportAgent({ permissions: ALL, tenantId: freshTenant(), messages: [], client })).rejects.toThrow('no messages to send')
     expect(create).not.toHaveBeenCalled()
   })
 
   it('an answer cut by max_tokens is returned (partial) and logged', async () => {
     const tenantId = freshTenant()
     const { client } = clientReturning(text('partial', 'max_tokens'))
-    await expect(runReportAgent({ tenantId, language: 'English', messages: [{ role: 'user', content: 'q' }], client })).resolves.toBe('partial')
+    await expect(runReportAgent({ permissions: ALL, tenantId, language: 'English', messages: [{ role: 'user', content: 'q' }], client })).resolves.toBe('partial')
     expect(warn).toHaveBeenCalledWith(expect.objectContaining({ tenantId }), expect.stringContaining('truncated by max_tokens'))
   })
 
   it('a call to a tool the agent does not offer fails the request', async () => {
     const { client } = clientReturning(message([{ type: 'tool_use', id: 'tu', name: 'delete_everything', input: {} }], 'tool_use'))
-    await expect(runReportAgent({ tenantId: freshTenant(), messages: [{ role: 'user', content: 'q' }], client }))
+    await expect(runReportAgent({ permissions: ALL, tenantId: freshTenant(), messages: [{ role: 'user', content: 'q' }], client }))
       .rejects.toThrow('unknown tool "delete_everything"')
   })
 
@@ -214,7 +217,7 @@ describe('runReportAgent — input and loop edges', () => {
         },
       },
     } as unknown as Anthropic
-    await runReportAgent({ tenantId: freshTenant(), messages: [{ role: 'user', content: 'q' }], client, stream: (e) => events.push(e) })
+    await runReportAgent({ permissions: ALL, tenantId: freshTenant(), messages: [{ role: 'user', content: 'q' }], client, stream: (e) => events.push(e) })
     expect(events).toContainEqual({ type: 'tool', description: '' })
   })
 })

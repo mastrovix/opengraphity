@@ -132,6 +132,22 @@ describe('authentication', () => {
     expect(createIncident).not.toHaveBeenCalled()
   })
 
+  // Review of 23 Sep 2026: a suspended tenant lets nobody in, its monitoring included (owner's choice: refused).
+  it('a suspended tenant: 401 TENANT_SUSPENDED once the token is right, and nothing is created or queued', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ ...hook(), suspended: true } as never)
+    const res = await post('hook-1', {})
+    expect(res.status).toBe(401)
+    expect(await err(res)).toEqual({ code: 'TENANT_SUSPENDED', message: 'Tenant suspended' })
+    expect(createIncident).not.toHaveBeenCalled()
+    expect(runQuery).not.toHaveBeenCalled()
+  })
+
+  it('a suspended tenant with a wrong token still reads "Invalid token": suspension is said only to who holds the token', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ ...hook(), suspended: true } as never)
+    const res = await post('hook-1', { token: 'nope' })
+    expect((await err(res)).message).toBe('Invalid token')
+  })
+
   it('non-Bearer scheme → 401', async () => {
     const res = await fetch(`${base}/hook-1`, {
       method: 'POST', headers: { 'content-type': 'application/json', authorization: `Basic ${TOKEN}` }, body: '{}',

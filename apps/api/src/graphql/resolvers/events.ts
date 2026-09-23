@@ -39,7 +39,7 @@ import { getSession, runQuery, runQueryOne, toNumber } from '@opengraphity/neo4j
 import type { GraphQLContext } from '../../context.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { audit } from '../../lib/audit.js'
-import { requirePermission } from '../../lib/permissions.js'
+import { hasPermission, requirePermission } from '../../lib/permissions.js'
 import { publishEvent } from '../../lib/publishEvent.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
 import { ciLabelForTypeName, ciTypeNamesForTenant } from '../../lib/ciTypeNameToLabel.js'
@@ -1261,7 +1261,15 @@ async function eventSource(parent: EventParent, _: unknown, ctx: GraphQLContext)
  */
 export const CORRELATIONS_WITHOUT_INCIDENT: readonly string[] = ['delayed']
 
+/*
+ * CROSS-AREA LINKS ARE THE OTHER AREA'S TO SHOW (review of 23 Sep 2026). Only
+ * the top-level Query and Mutation fields are guarded by the operation policy:
+ * a field of an Event that hands back a whole Change or Incident gave them to
+ * a role with event.read and without change.read or incident.read. Such a
+ * link is null for who cannot read its area, as if there were none to show.
+ */
 async function eventIncident(parent: EventParent, _: unknown, ctx: GraphQLContext) {
+  if (!hasPermission(ctx, 'incident.read')) return null
   if (parent.incident !== undefined) return parent.incident
   if (parent.correlation !== undefined && CORRELATIONS_WITHOUT_INCIDENT.includes(parent.correlation)) return null
   const session = getSession()
@@ -1277,7 +1285,7 @@ async function eventIncident(parent: EventParent, _: unknown, ctx: GraphQLContex
 
 /** La change che silenzia l'evento (solo finché `suppressed_by_change_id` è valorizzato). */
 async function eventSuppressedBy(parent: EventParent, _: unknown, ctx: GraphQLContext) {
-  if (!parent.suppressedByChangeId) return null
+  if (!parent.suppressedByChangeId || !hasPermission(ctx, 'change.read')) return null
   return loadChange(null, { id: parent.suppressedByChangeId }, ctx)
 }
 
@@ -1392,7 +1400,7 @@ async function historyActor(parent: EventHistoryEntryOut, _: unknown, ctx: Graph
 }
 
 async function historyIncident(parent: EventHistoryEntryOut, _: unknown, ctx: GraphQLContext) {
-  if (!parent.incidentId) return null
+  if (!parent.incidentId || !hasPermission(ctx, 'incident.read')) return null
   const session = getSession()
   try {
     const row = await runQueryOne<{ props: Props }>(session, `
@@ -1405,7 +1413,7 @@ async function historyIncident(parent: EventHistoryEntryOut, _: unknown, ctx: Gr
 
 /** `change`: la query `change` del tenant (null se eliminata), come Event.suppressedBy. */
 async function historyChange(parent: EventHistoryEntryOut, _: unknown, ctx: GraphQLContext) {
-  if (!parent.changeId) return null
+  if (!parent.changeId || !hasPermission(ctx, 'change.read')) return null
   return loadChange(null, { id: parent.changeId }, ctx)
 }
 

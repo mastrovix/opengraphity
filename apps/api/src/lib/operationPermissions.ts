@@ -89,7 +89,10 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   // ── Ticket ─────────────────────────────────────────────────────────────────
   {
     anyOf: ['incident.read'],
-    query: ['incidents', 'incident', 'incidentAvailableTransitions', 'incidentWorkflow', 'incidentWorkflowHistory', 'similarIncidents', 'suggestedArticles'],
+    // `ciIncidents` too, like ciChanges/ciProblems/ciServiceRequests with their types (review of
+    // 23 Sep 2026): it returns whole incidents, and sat in the cmdb.read row.
+    query: ['incidents', 'incident', 'incidentAvailableTransitions', 'incidentWorkflow', 'incidentWorkflowHistory', 'similarIncidents', 'suggestedArticles',
+      'ciIncidents'],
   },
   {
     anyOf: ['incident.write'],
@@ -168,7 +171,7 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   { anyOf: ['kb.rate'], mutation: ['rateKBArticle'] },
 
   // ── CMDB e monitoraggio ────────────────────────────────────────────────────
-  { anyOf: ['cmdb.read'], query: ['allCIs', 'ciById', 'ciGroupMembers', 'ciIncidents', 'topology', 'blastRadius'] },
+  { anyOf: ['cmdb.read'], query: ['allCIs', 'ciById', 'ciGroupMembers', 'topology', 'blastRadius'] },
   { anyOf: ['cmdb.write'], mutation: ['updateCIFields', 'addCIRelationship', 'removeCIRelationship', 'assignCIOwner', 'assignCISupportGroup'] },
   {
     anyOf: ['event.read'],

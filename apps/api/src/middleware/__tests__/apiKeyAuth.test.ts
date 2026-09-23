@@ -148,6 +148,19 @@ describe('apiKeyAuth — chiave valida', () => {
     expect(query).toMatch(/k\.expires_at IS NULL OR k\.expires_at > \$now/)
   })
 
+  // Review of 23 Sep 2026: a suspended tenant lets nobody in, its integrations included.
+  it('the key of a suspended tenant → 401 TENANT_SUSPENDED, nothing written, the request goes no further', async () => {
+    runQueryOne.mockResolvedValueOnce({ ...keyRow(), suspended: true })
+    const req = makeReq({ 'x-api-key': 'k' }); const res = makeRes(); const next = vi.fn()
+    await apiKeyAuth(req, asRes(res), next as NextFunction)
+    expect(res.statusCode).toBe(401)
+    expect(errBody(res).error).toEqual({ code: 'TENANT_SUSPENDED', message: 'Tenant suspended' })
+    expect(next).not.toHaveBeenCalled()
+    expect(req.apiKey).toBeUndefined()
+    expect(runQueryOne).toHaveBeenCalledTimes(1)
+    expect(runQueryOne.mock.calls[0]![1] as string).toMatch(/OPTIONAL MATCH \(t:Tenant \{id: k\.tenant_id\}\)/)
+  })
+
   it('chiave scaduta/disabilitata/sconosciuta (lookup senza riga) → 401 Invalid API key, nessuna scrittura', async () => {
     runQueryOne.mockResolvedValueOnce(null)
     const req = makeReq({ 'x-api-key': 'expired' }); const res = makeRes(); const next = vi.fn()

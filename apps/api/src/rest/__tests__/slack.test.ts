@@ -29,6 +29,11 @@ const svc = vi.hoisted(() => ({ createIncident: vi.fn(), resolveIncident: vi.fn(
 vi.mock('../../services/incidentService.js', () => svc)
 const log = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }))
 vi.mock('../../lib/logger.js', () => ({ logger: log }))
+// The linked user's role may act on incidents unless a test says otherwise (review of 23 Sep 2026).
+const roleHasPermission = vi.hoisted(() => vi.fn(async (_t: string, _r: string, _p: string) => true))
+vi.mock('../../lib/roles.js', () => ({ roleHasPermission: (t: string, r: string, p: string) => roleHasPermission(t, r, p) }))
+const tenantSospeso = vi.hoisted(() => vi.fn(async (_t: string) => false))
+vi.mock('../../lib/tenantSuspension.js', () => ({ tenantSospeso: (t: string) => tenantSospeso(t) }))
 vi.mock('../../lib/domainMatrix.js', () => ({ domainVocabulary: vi.fn(async () => ['high', 'low']) }))
 vi.mock('../../lib/ciLabelsForTenant.js', () => ({ ciLabelPredicateForTenant: vi.fn(async () => '(ci:Server)') }))
 const oauth = vi.hoisted(() => ({ verifyInstallState: vi.fn(), completeSlackOAuth: vi.fn() }))
@@ -68,7 +73,7 @@ function fakeRes() {
 }
 const asRes = (r: ReturnType<typeof fakeRes>) => r as unknown as Response
 
-const userRow = { get: (k: string) => (k === 'u' ? { properties: { id: 'user-1' } } : null) }
+const userRow = { get: (k: string) => (k === 'u' ? { properties: { id: 'user-1', role: 'operator' } } : null) }
 function sessionReturning(userRecords: unknown[], closeImpl?: () => Promise<void>) {
   const runs: Array<{ q: string; p: Record<string, unknown> }> = []
   const session = {
@@ -138,6 +143,17 @@ describe('handleSlackActions — edges', () => {
   })
   const posted = () => JSON.parse((fetchMock.mock.calls[0]![1] as { body: string }).body) as { text: string }
 
+  // Review of 23 Sep 2026: a suspended organization lets nobody in, from Slack either.
+  it('a signed request for a suspended tenant is a 401, and no user is looked up', async () => {
+    tenantSospeso.mockResolvedValueOnce(true)
+    const res = fakeRes()
+    await handleSlackActions(actionReq({ action: 'resolve', incidentId: 'inc-1' }), asRes(res))
+    expect(res.statusCode).toBe(401)
+    expect(tenantSospeso).toHaveBeenCalledWith('tenant-1')
+    expect(getSession).not.toHaveBeenCalled()
+    expect(svc.resolveIncident).not.toHaveBeenCalled()
+  })
+
   it('no payload at all is a 401: there is no workspace to verify against', async () => {
     const res = fakeRes()
     await handleSlackActions(signed({}), asRes(res))
@@ -162,6 +178,27 @@ describe('handleSlackActions — edges', () => {
     await handleSlackActions(actionReq(undefined, { response_url: 'https://hooks.slack.test/r' }), asRes(res))
     expect(posted().text).toContain('is not one this app performs')
     expect(res.sent).toBe(200)
+  })
+
+  // Review of 23 Sep 2026: a viewer resolved incidents from a card in a channel.
+  it('a linked user whose role cannot write incidents is refused, and nothing is done', async () => {
+    sessionReturning([userRow])
+    roleHasPermission.mockResolvedValueOnce(false)
+    const res = fakeRes()
+    await handleSlackActions(actionReq({ action: 'resolve', incidentId: 'inc-1' }, { response_url: 'https://hooks.slack.test/r' }), asRes(res))
+    expect(roleHasPermission).toHaveBeenCalledWith('tenant-1', 'operator', 'incident.write')
+    expect(posted().text).toBe('⚠️ Your role cannot do this (it needs incident.write).')
+    expect(svc.resolveIncident).not.toHaveBeenCalled()
+    expect(res.sent).toBe(200)
+  })
+
+  it('a deactivated user is refused without even asking the role', async () => {
+    sessionReturning([{ get: (k: string) => (k === 'u' ? { properties: { id: 'user-1', role: 'admin', active: false } } : null) }])
+    const res = fakeRes()
+    await handleSlackActions(actionReq({ action: 'assign_me', incidentId: 'inc-1' }, { response_url: 'https://hooks.slack.test/r' }), asRes(res))
+    expect(posted().text).toContain('Your role cannot do this')
+    expect(roleHasPermission).not.toHaveBeenCalled()
+    expect(svc.assignIncidentToUser).not.toHaveBeenCalled()
   })
 
   it('a refusal that is not an Error still reaches the user as text', async () => {

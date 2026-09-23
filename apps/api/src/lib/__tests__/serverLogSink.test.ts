@@ -17,6 +17,7 @@ import {
   LIVELLI_PERSISTITI, MODULI_ESCLUSI, MAX_IN_ATTESA, LOTTO_CYPHER,
   rigaDelCliente, LOTTO_CLIENTE_CYPHER, MAX_MESSAGGIO,
   registraErroreDelBrowser, SERVIZIO_DEL_BROWSER, type RigaDaScrivere,
+  azzeraConteggiDelBrowser, BROWSER_REPORTS_PER_PERSON_PER_DAY,
 } from '../serverLogSink.js'
 
 const ORA = Date.parse('2026-09-20T11:34:23.632Z')
@@ -257,6 +258,31 @@ describe('un errore del browser entra scrubbato, o non entra', () => {
     await fermaSink()
     expect(scritte[0]!.service).toBe(SERVIZIO_DEL_BROWSER)
     expect(scritte[0]!.module).toBe('frontend')
+  })
+
+  /*
+   * Review of 23 Sep 2026: twenty POSTs of one person opened a critical event
+   * on the platform. One person counts at most three times a day per signature.
+   */
+  it('one person counts at most three times a day for the same error; another person counts again', () => {
+    azzeraConteggiDelBrowser()
+    avviaSink(async (righe) => righe.length, ACCESO)
+    for (let i = 0; i < 10; i++) registraErroreDelBrowser('SSE channel down', 'error', '2026-09-20T19:00:00.000Z', undefined, 't1/u1')
+    expect(BROWSER_REPORTS_PER_PERSON_PER_DAY).toBe(3)
+    expect(statoDelSink().inAttesa).toBe(3)
+    registraErroreDelBrowser('SSE channel down', 'error', '2026-09-20T19:00:00.000Z', undefined, 't1/u2')
+    expect(statoDelSink().inAttesa).toBe(4)
+    // A different error of the same person is its own count.
+    registraErroreDelBrowser('Export failed', 'error', '2026-09-20T19:00:00.000Z', undefined, 't1/u1')
+    expect(statoDelSink().inAttesa).toBe(5)
+  })
+
+  it('the next day the person counts again', () => {
+    azzeraConteggiDelBrowser()
+    avviaSink(async (righe) => righe.length, ACCESO)
+    for (let i = 0; i < 4; i++) registraErroreDelBrowser('boom', 'error', '2026-09-20T23:00:00.000Z', undefined, 't1/u1')
+    registraErroreDelBrowser('boom', 'error', '2026-09-21T00:01:00.000Z', undefined, 't1/u1')
+    expect(statoDelSink().inAttesa).toBe(4)
   })
 
   it('solo gli errori: un `info` del browser non riempie la diagnostica', () => {

@@ -24,6 +24,7 @@ import { assertInboundTicketTargets } from '../lib/inboundTicketTargets.js'
 import { INBOUND_AFFECTED_CI_FIELD } from '@opengraphity/types'
 import { ciLabelPredicateForTenant } from '../lib/ciLabelsForTenant.js'
 import { parametro } from './parametroDiRotta.js'
+import { TENANT_SUSPENDED_BODY } from '../lib/tenantSuspension.js'
 
 const log = logger.child({ module: 'webhook-inbound' })
 const router: ExpressRouter = Router()
@@ -102,11 +103,11 @@ router.post('/webhooks/inbound/:hookId', json({ limit: WEBHOOK_BODY_LIMIT }), as
   try {
     // 1. Load webhook config (+ il fuso del tenant: serve alla normalizzazione
     //    di Zabbix, che manda l'ora locale del server senza offset — M4).
-    const row = await runQueryOne<{ props: Record<string, unknown>; timezone: string | null }>(session, `
+    const row = await runQueryOne<{ props: Record<string, unknown>; timezone: string | null; suspended: boolean }>(session, `
       // tenant-ok(pre-auth): lookup pre-auth, il tenant è quello del webhook (verificato dal token); il Tenant è il suo
       MATCH (w:InboundWebhook {id: $hookId, enabled: true})
       OPTIONAL MATCH (t:Tenant {id: w.tenant_id})
-      RETURN properties(w) AS props, t.timezone AS timezone
+      RETURN properties(w) AS props, t.timezone AS timezone, t.suspended_at IS NOT NULL AS suspended
     `, { hookId })
 
     if (!row) { res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Webhook not found or disabled' } }); return }
@@ -123,6 +124,13 @@ router.post('/webhooks/inbound/:hookId', json({ limit: WEBHOOK_BODY_LIMIT }), as
     if (!token) { res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Missing Bearer token' } }); return }
     if (typeof secret !== 'string' || !tokenMatches(token, secret)) {
       res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Invalid token' } }); return
+    }
+    // A suspended tenant lets nobody in, its monitoring included (review of 23 Sep 2026; owner's
+    // choice: refused, not held — the tools send the alarms still firing again on resume).
+    // Said only after the token: without it, nobody learns the tenant is suspended.
+    if (row.suspended === true) {
+      logger.warn({ hookId, tenantId }, '[webhook-in] webhook of a suspended tenant: refused')
+      res.status(401).json(TENANT_SUSPENDED_BODY); return
     }
 
     authenticatedTenantId = tenantId

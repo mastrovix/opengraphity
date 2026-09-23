@@ -96,7 +96,7 @@ describe('POST /api/report/stream — SSE for admin/operator', () => {
       const content = await args.ask([], args.question)
       return { conversationId: 'conv-1', message: { id: 'msg-2', role: 'assistant', content, createdAt: '2026-09-08T10:00:00.000Z' } }
     })
-    vi.mocked(streamReportAI).mockImplementation(async (_tenantId, _userId, _history, _q, onChunk, onTool) => {
+    vi.mocked(streamReportAI).mockImplementation(async (_tenantId, _userId, _permissions, _history, _q, onChunk, onTool) => {
       onTool('Querying incidents by severity')
       onChunk('There are ')
       onChunk('12 incidents.')
@@ -121,7 +121,8 @@ describe('POST /api/report/stream — SSE for admin/operator', () => {
     expect(runReportConversation).toHaveBeenCalledWith(expect.objectContaining({
       session, tenantId: 'tenant-1', userId: 'user-1', question: 'How many incidents?', conversationId: null,
     }))
-    expect(streamReportAI).toHaveBeenCalledWith('tenant-1', expect.any(String), [], 'How many incidents?', expect.any(Function), expect.any(Function))
+    // With the asker's permissions: the model reads only what their role reads (review of 23 Sep 2026).
+    expect(streamReportAI).toHaveBeenCalledWith('tenant-1', expect.any(String), expect.any(Set), [], 'How many incidents?', expect.any(Function), expect.any(Function))
     expect(getSession).toHaveBeenCalledWith(undefined, 'WRITE')
     expect(session.close).toHaveBeenCalled()
   })

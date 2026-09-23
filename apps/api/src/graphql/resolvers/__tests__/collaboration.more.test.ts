@@ -165,6 +165,13 @@ describe('watch / unwatch / add / remove', () => {
 })
 
 describe('internalMessages', () => {
+  // Review of 23 Sep 2026: the internal chat of a ticket type is for who reads that type.
+  it('a role with the internal chat but without the ticket type\'s read permission is refused, before any query', async () => {
+    const chatNoIncidents = { ...base, role: 'custom', permissions: new Set(['ticket.internalChat', 'request.read']) } as unknown as GraphQLContext
+    await expect(Q.internalMessages(null, { entityType: 'incident', entityId: 'inc-1' }, chatNoIncidents)).rejects.toThrow(/incident\.read/)
+    expect(runQuery).not.toHaveBeenCalled()
+  })
+
   it('returns the latest page in chronological order, reading legacy mention formats', async () => {
     // The query sorts newest first (for LIMIT); the chat shows oldest first.
     vi.mocked(runQuery).mockResolvedValueOnce([

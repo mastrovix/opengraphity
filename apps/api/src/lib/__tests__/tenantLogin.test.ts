@@ -3,6 +3,9 @@
  * nel realm Keycloak dell'organizzazione.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+// The SSRF guard of the SAML metadata URL (review of 23 Sep 2026): accepts unless a test says otherwise.
+const assertSafeOutboundUrl = vi.hoisted(() => vi.fn(async (u: string) => new URL(u)))
+vi.mock('../safeUrl.js', () => ({ assertSafeOutboundUrl: (u: string) => assertSafeOutboundUrl(u) }))
 import type { KeycloakAdmin } from '../../scripts/lib/keycloakAdmin.js'
 
 const {

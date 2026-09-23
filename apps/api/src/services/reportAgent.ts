@@ -15,6 +15,7 @@ import { getSession, toNumber } from '@opengraphity/neo4j'
 import { config } from '../lib/config.js'
 import { logger } from '../lib/logger.js'
 import { assertSafeReadOnlyCypher, redactSensitiveValue, UnsafeCypherError, foreignTenantIn } from '../lib/cypherGuard.js'
+import { labelsClosedTo } from '../lib/labelReadAccess.js'
 
 // ── Model ─────────────────────────────────────────────────────────────────
 
@@ -278,9 +279,11 @@ export async function runGuardedCypherTool(
   tenantId: string,
   budget: ToolLoopBudget,
   logLabel: string,
+  /** The labels the asking person's role may not read (lib/labelReadAccess.ts). */
+  closedLabels: ReadonlySet<string> = new Set(),
 ): Promise<string> {
   try {
-    assertSafeReadOnlyCypher(query)
+    assertSafeReadOnlyCypher(query, closedLabels)
   } catch (err) {
     if (!(err instanceof UnsafeCypherError)) throw err
     logger.warn({ reason: err.message, query: query.slice(0, 500) }, `${logLabel}: Cypher rejected by guard`)
@@ -329,6 +332,12 @@ export type ReportAgentEvent =
 
 export interface RunReportAgentOptions {
   tenantId: string
+  /**
+   * The permissions of the person asking (review of 23 Sep 2026): the model
+   * reads only what their role reads elsewhere — no ticket type without its
+   * read permission, no CI without cmdb.read.
+   */
+  permissions: ReadonlySet<string>
   /** The language the answer is written in, as named for the model ("English", "Italian"). */
   language: string
   /** Conversation so far, ending with the user's question. */
@@ -351,6 +360,7 @@ export async function runReportAgent(opts: RunReportAgentOptions): Promise<strin
   if (!opts.messages.length) throw new Error(`${LOG_LABEL} no messages to send`)
 
   const client = opts.client ?? getAnthropic()
+  const closedLabels = await labelsClosedTo(opts.tenantId, opts.permissions)
   const system = buildSystemPrompt(await getCachedSchema(opts.tenantId), opts.language)
   const budget = new ToolLoopBudget()
   const messages: Anthropic.MessageParam[] = [...opts.messages]
@@ -425,7 +435,7 @@ export async function runReportAgent(opts: RunReportAgentOptions): Promise<strin
         throw new Error(`${LOG_LABEL} tool input without a query (tool_use ${toolUse.id})`)
       }
       opts.stream?.({ type: 'tool', description: typeof input.description === 'string' ? input.description : '' })
-      const content = await runGuardedCypherTool(input.query, opts.tenantId, budget, LOG_LABEL)
+      const content = await runGuardedCypherTool(input.query, opts.tenantId, budget, LOG_LABEL, closedLabels)
       results.push({ type: 'tool_result', tool_use_id: toolUse.id, content })
     }
     messages.push({ role: 'user', content: results })

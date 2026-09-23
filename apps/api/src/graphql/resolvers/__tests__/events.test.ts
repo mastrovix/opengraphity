@@ -520,6 +520,18 @@ describe('campi di correlazione', () => {
     expect(loadChange).toHaveBeenCalledWith(null, { id: 'chg-1' }, operator)
   })
 
+  // Review of 23 Sep 2026: only the top-level operations are guarded; a link to another area is that area's to show.
+  it('a role with event.read and without change.read or incident.read gets null for the links, and nothing is loaded', async () => {
+    const noc = { ...operator, role: 'custom', permissions: new Set(['event.read', 'workspace.use']) } as unknown as GraphQLContext
+    const ev = { id: 'ev-1', acknowledgedById: null, sourceId: null, suppressedByChangeId: 'chg-1', incident: { id: 'inc-1' } }
+    await expect(eventResolvers.Event.suppressedBy(ev, null, noc)).resolves.toBeNull()
+    await expect(eventResolvers.Event.incident(ev as never, null, noc)).resolves.toBeNull()
+    const entry = { changeId: 'chg-1', incidentId: 'inc-1' }
+    await expect(eventResolvers.EventHistoryEntry.change(entry as never, null, noc)).resolves.toBeNull()
+    await expect(eventResolvers.EventHistoryEntry.incident(entry as never, null, noc)).resolves.toBeNull()
+    expect(loadChange).not.toHaveBeenCalled()
+  })
+
   it('Incident.correlatedEvents e Change.suppressedEvents → query scoped per tenant, ordinate per last_seen_at DESC, paginate (P-5: default 100, cap 500) con la riga completa (P-1)', async () => {
     onCypher([[/CORRELATED_INTO\]->\(i:Incident \{id: \$id, tenant_id: \$tenantId\}\)/, [eventRow({ correlation: 'opened' }, { ciId: 'ci-1', ciLabels: ['Server'] })]]])
     const ev = await eventResolvers.Incident.correlatedEvents({ id: 'inc-1' }, {}, operator)

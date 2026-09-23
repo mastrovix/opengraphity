@@ -26,6 +26,10 @@
  */
 import type { Session } from 'neo4j-driver'
 import { runQuery } from '@opengraphity/neo4j'
+import type { Permission } from '@opengraphity/types'
+import { GraphQLError } from 'graphql'
+import type { GraphQLContext } from '../context.js'
+import { requirePermission } from './permissions.js'
 
 /** Ticket commentabili: entity_type → etichetta Neo4j (allowlist: l'etichetta finisce nel Cypher). */
 export const COMMENTABLE_LABELS: Readonly<Record<string, 'Incident' | 'Problem' | 'Change' | 'ServiceRequest' | 'KBArticle'>> = {
@@ -34,6 +38,30 @@ export const COMMENTABLE_LABELS: Readonly<Record<string, 'Incident' | 'Problem' 
   change:          'Change',
   service_request: 'ServiceRequest',
   kb_article:      'KBArticle',
+}
+
+/**
+ * Who reads the comments and the internal chat of a ticket: who reads THAT
+ * ticket type. The operation policy opens `comments` to any ticket read
+ * permission, and until 23 Sep 2026 nothing looked at the type asked: a role
+ * with request.read alone read the internal notes of every incident and
+ * change by id (the same gap H-14 closed for attachments).
+ */
+const COMMENT_READ_PERMISSION: Readonly<Record<keyof typeof COMMENTABLE_LABELS, Permission>> = {
+  incident:        'incident.read',
+  problem:         'problem.read',
+  change:          'change.read',
+  service_request: 'request.read',
+  kb_article:      'kb.read',
+}
+
+export function requireCommentRead(ctx: Pick<GraphQLContext, 'role' | 'permissions'>, entityType: string): void {
+  const permission = (COMMENT_READ_PERMISSION as Readonly<Record<string, Permission>>)[entityType]
+  if (!permission) {
+    throw new GraphQLError(`Entity type cannot be commented on: ${entityType}`,
+      { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.comment.entityType', params: { entityType } } } })
+  }
+  requirePermission(ctx, permission)
 }
 
 type Props = Record<string, unknown>

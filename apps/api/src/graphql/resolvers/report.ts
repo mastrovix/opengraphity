@@ -81,7 +81,7 @@ async function askReport(
       userId:         ctx.userId,
       question:       args.question,
       conversationId: args.conversationId,
-      ask: (history, question) => callReportAI(ctx.tenantId, ctx.userId, history, question),
+      ask: (history, question) => callReportAI(ctx.tenantId, ctx.userId, ctx.permissions, history, question),
     })
     return { message, conversationId }
   } finally {

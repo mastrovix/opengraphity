@@ -4721,7 +4721,8 @@
     },
     "report": {
       "tableWithoutColumns": "Una tabella ha bisogno di almeno una colonna: scegli i campi da mostrare.",
-      "granularityNeedsDate": "Per raggruppare per periodo serve un campo data, e quello scelto non lo è. Scegli un campo data, oppure togli il periodo."
+      "granularityNeedsDate": "Per raggruppare per periodo serve un campo data, e quello scelto non lo è. Scegli un campo data, oppure togli il periodo.",
+      "labelNotReadable": "Il tuo ruolo non può leggere i dati di questa sezione."
     },
     "proposal": {
       "actionUnknown": "«{{action}}» non è un'azione del catalogo: la proposta non si può eseguire.",

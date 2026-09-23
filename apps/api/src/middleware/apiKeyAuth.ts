@@ -8,6 +8,7 @@ import { getSession, runQueryOne } from '@opengraphity/neo4j'
 import { logger } from '../lib/logger.js'
 import { consumeMinuteRate } from '../lib/webhookRateLimit.js'
 import { API_KEY_RATE_LIMIT_MAX, API_KEY_RATE_LIMIT_MIN } from '../lib/apiKeyInput.js'
+import { TENANT_SUSPENDED_BODY } from '../lib/tenantSuspension.js'
 
 export interface ApiKeyContext {
   keyId:       string
@@ -49,15 +50,22 @@ export async function apiKeyAuth(req: Request, res: Response, next: NextFunction
   // 1. Read-only: find and validate the key
   const readSession = getSession()
   try {
-    const row = await runQueryOne<{ props: Record<string, unknown> }>(readSession, `
+    const row = await runQueryOne<{ props: Record<string, unknown>; suspended: boolean }>(readSession, `
       // tenant-ok(pre-auth): lookup pre-auth, il tenant è derivato dalla chiave stessa
       MATCH (k:ApiKey {key_hash: $keyHash, enabled: true})
       WHERE k.expires_at IS NULL OR k.expires_at > $now
-      RETURN properties(k) AS props
+      OPTIONAL MATCH (t:Tenant {id: k.tenant_id})
+      RETURN properties(k) AS props, t.suspended_at IS NOT NULL AS suspended
     `, { keyHash, now })
 
     if (!row) {
       res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Invalid API key' } })
+      return
+    }
+    // A suspended tenant lets nobody in, its integrations included (review of 23 Sep 2026).
+    if (row.suspended === true) {
+      logger.warn({ keyId: row.props['id'], tenantId: row.props['tenant_id'] }, '[apiKeyAuth] API key of a suspended tenant: refused')
+      res.status(401).json(TENANT_SUSPENDED_BODY)
       return
     }
 

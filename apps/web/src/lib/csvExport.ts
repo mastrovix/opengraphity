@@ -8,6 +8,19 @@ export interface CsvColumn<T> {
   label: string
 }
 
+/**
+ * A cell a spreadsheet would run as a formula (review of 23 Sep 2026): ticket
+ * titles and request answers are written by portal users and opened in Excel
+ * by staff, and `=HYPERLINK(…&A2)` sends the next cells away. OWASP: a single
+ * quote in front. A plain number keeps its sign — `-5` is a value, not a formula.
+ */
+const FORMULA_START = /^[=+\-@\t\r]/
+const PLAIN_NUMBER = /^[+-]?\d+([.,]\d+)?$/
+
+function neutralised(s: string): string {
+  return FORMULA_START.test(s) && !PLAIN_NUMBER.test(s) ? `'${s}` : s
+}
+
 function escapeCell(value: unknown): string {
   if (value === null || value === undefined) return ''
   let s: string
@@ -18,6 +31,7 @@ function escapeCell(value: unknown): string {
   } else {
     s = String(value)
   }
+  s = neutralised(s)
   if (/[",\n\r;]/.test(s)) s = `"${s.replaceAll('"', '""')}"`
   return s
 }

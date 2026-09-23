@@ -39,14 +39,16 @@ function sseRoute() {
   return layer!.route!
 }
 
-function fakeReqRes() {
-  const req = Object.assign(new EventEmitter(), { user: { tenantId: 'tenant-a', userId: 'user-1' } })
+function fakeReqRes(permissions: readonly string[] = ['workspace.use']) {
+  const req = Object.assign(new EventEmitter(), { user: { tenantId: 'tenant-a', userId: 'user-1', permissions: new Set(permissions) } })
   const written: string[] = []
   const headers: Record<string, string> = {}
   const res = {
     setHeader: vi.fn((k: string, v: string) => { headers[k] = v }),
     flushHeaders: vi.fn(),
     write: vi.fn((data: string) => { written.push(data); return true }),
+    status: vi.fn(function (this: unknown) { return this }),
+    json: vi.fn(),
   }
   return { req, res, written, headers }
 }
@@ -115,3 +117,17 @@ describe('GET /sse', () => {
     expect(written).toHaveLength(before)
   })
 })
+
+// Review of 23 Sep 2026: the stream carries the tenant's broadcasts, with ticket titles.
+describe('who may open the stream', () => {
+  it('a portal end user (no workspace.use) is refused, and nothing is registered or written', () => {
+    const ctx = fakeReqRes(['portal.read', 'portal.submit'])
+    const handler = sseRoute().stack.at(-1)!.handle
+    handler(ctx.req as unknown as Request, ctx.res as unknown as Response, vi.fn())
+    expect(ctx.res.status).toHaveBeenCalledWith(403)
+    expect(ctx.res.json).toHaveBeenCalledWith({ error: 'Forbidden: workspace.use is required' })
+    expect(ctx.res.flushHeaders).not.toHaveBeenCalled()
+    expect(connect).not.toHaveBeenCalled()
+  })
+})
+

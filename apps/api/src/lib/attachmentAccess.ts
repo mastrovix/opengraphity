@@ -51,6 +51,15 @@ const STAFF_WRITE: Readonly<Record<string, readonly Permission[]>> = {
 /** I tipi che un utente del portale apre e quindi possiede. */
 export const PORTAL_OWNED_ENTITY_TYPES: ReadonlySet<string> = new Set(['incident', 'service_request'])
 
+/**
+ * Whether these permissions read an entity type as STAFF — the same table the
+ * attachments use. For what only staff may see whole: the PDF dossier carries
+ * the internal comments (review of 23 Sep 2026).
+ */
+export function readsAsStaff(permissions: ReadonlySet<string>, entityType: string): boolean {
+  return (STAFF_READ[entityType] ?? []).some((p) => permissions.has(p))
+}
+
 /** Che accesso ha chi ha questi permessi, per quel tipo di entità. Pura, per i test. */
 export function attachmentAccess(permissions: ReadonlySet<string>, entityType: string, mode: AttachmentMode): AttachmentAccess {
   const staff = (mode === 'read' ? STAFF_READ : STAFF_WRITE)[entityType] ?? []

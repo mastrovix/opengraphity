@@ -17,6 +17,7 @@ import { languageFor } from '../lib/tenantLanguage.js'
 import { tenantTimezone } from '../lib/tenantTimezone.js'
 import type { GraphQLContext } from '../context.js'
 import { parametro } from './parametroDiRotta.js'
+import { readsAsStaff } from '../lib/attachmentAccess.js'
 
 export interface PdfRouteSpec<D> {
   /** Express path, e.g. `/incidents/:id/pdf`. */
@@ -45,6 +46,17 @@ export function makePdfRouter<D>(spec: PdfRouteSpec<D>): ExpressRouter {
     runRoute(res, `${logTag} export`, async () => {
       const { tenantId, userId, email, role } = req.user!
       const id = parametro(req, 'id')
+
+      /*
+       * The dossier is the whole ticket — internal comments, watchers, history
+       * — so only who reads that ticket type as staff gets it, as in GraphQL.
+       * Until 23 Sep 2026 any logged-in user did, a portal end user included.
+       */
+      if (!readsAsStaff(req.user!.permissions, kind)) {
+        logger.warn({ id, tenantId, userId }, `${logTag} refused: the caller does not read ${kind}s as staff`)
+        res.status(403).json({ error: `Forbidden: reading ${kind}s is required` })
+        return
+      }
 
       const session = getSession(undefined, 'READ')
       try {

@@ -23,6 +23,7 @@
 import { PASSWORD_RULE_RANGES } from '@opengraphity/types'
 import { config } from './config.js'
 import { ValidationError } from './errors.js'
+import { assertSafeOutboundUrl } from './safeUrl.js'
 import { createKeycloakAdmin, type KeycloakAdmin } from '../scripts/lib/keycloakAdmin.js'
 
 export const LOGIN_PROVIDER_KINDS = ['microsoft', 'google', 'saml'] as const
@@ -326,7 +327,8 @@ async function fetchJson(url: string, init?: RequestInit): Promise<{ status: num
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 10_000)
   try {
-    const res = await fetch(url, { ...init, signal: controller.signal })
+    // No redirect followed: this file checks an outbound URL (the SAML metadata), and the guard's rule is one per file.
+    const res = await fetch(url, { ...init, signal: controller.signal, redirect: 'manual' })
     let body: Record<string, unknown> | null = null
     try { body = await res.json() as Record<string, unknown> } catch { body = null }
     return { status: res.status, body }
@@ -378,6 +380,8 @@ export async function testLoginProvider(tenantId: string, raw: LoginProviderInpu
     } else {
       const { kc, token } = await admin()
       try {
+        // Keycloak fetches it from inside the stack's network: the same SSRF guard as webhooks and channels (review of 23 Sep 2026).
+        await assertSafeOutboundUrl(clean(input.metadataUrl)!)
         const cfg = await kcPostJson<Record<string, string>>(kc, token, `${realmPath(tenantId)}/identity-provider/import-config`, { providerId: 'saml', fromUrl: clean(input.metadataUrl) })
         const ok = Boolean(cfg['singleSignOnServiceUrl'])
         checks.push({ key: 'samlMetadata', ok, detail: ok ? null : 'no singleSignOnServiceUrl' })
@@ -393,7 +397,7 @@ export async function testLoginProvider(tenantId: string, raw: LoginProviderInpu
 
 /** POST che restituisce un corpo JSON (il client condiviso restituisce solo l'id creato). */
 async function kcPostJson<T>(kc: KeycloakAdmin, token: string, path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${kc.baseUrl}${path}`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const res = await fetch(`${kc.baseUrl}${path}`, { method: 'POST', redirect: 'manual', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   if (!res.ok) throw new Error(`POST ${path} → ${String(res.status)}: ${(await res.text()).slice(0, 200)}`)
   return await res.json() as T
 }
@@ -443,6 +447,8 @@ export async function saveLoginProvider(tenantId: string, raw: LoginProviderInpu
   if (input.kind === 'saml') {
     const url = clean(input.metadataUrl) ?? config['opengrafoMetadataUrl']
     if (!url) throw new ValidationError('Missing fields: metadataUrl', { key: 'errors.login.missingFields', params: { fields: 'metadataUrl' } })
+    // Keycloak fetches it from inside the stack's network, where Neo4j, Redis and the API answer (review of 23 Sep 2026).
+    await assertSafeOutboundUrl(url)
     const imported = await kcPostJson<Record<string, string>>(kc, token, `${realmPath(tenantId)}/identity-provider/import-config`, { providerId: 'saml', fromUrl: url })
     Object.assign(config, imported, {
       opengrafoMetadataUrl: url,

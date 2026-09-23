@@ -48,6 +48,9 @@ type Responder = (q: string, p: Record<string, unknown>) => Array<Record<string,
  * statement. getSession may be called more than once (the sharing sub-session):
  * all sessions share the same call log.
  */
+/** What the template's stored schedule is, when a save reads it (off unless a test says otherwise). */
+let storedSchedule: Record<string, unknown> = { enabled: false, cron: null, channelId: null }
+
 function fakeSessions(respond: Responder = () => []) {
   const calls: Call[] = []
   const sessions: Array<{ close: ReturnType<typeof vi.fn> }> = []
@@ -55,6 +58,8 @@ function fakeSessions(respond: Responder = () => []) {
     const make = (mode: Call['mode']) => vi.fn(async (fn: (tx: { run: (q: string, p: Record<string, unknown>) => unknown }) => unknown) =>
       fn({
         run: async (q: string, p: Record<string, unknown>) => {
+          // The read of the stored schedule is answered here and not logged: the tests below count the writes.
+          if (q.includes('r.schedule_channel_id AS channelId')) return { records: [{ get: (k: string) => storedSchedule[k] }] }
           calls.push({ q, p, mode })
           return { records: respond(q, p).map((row) => ({ get: (k: string) => row[k] })) }
         },
@@ -71,7 +76,11 @@ const SECTION: SectionInput = { title: 'By team', chartType: 'bar', nodes: [], e
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(assertReportTemplateAccess).mockResolvedValue({} as never)
+  storedSchedule = { enabled: false, cron: null, channelId: null }
 })
+
+/** Who may change a schedule: report.schedule, as updateReportSchedule asks. */
+const scheduler: GraphQLContext = { ...ctx, permissions: new Set([...ctx.permissions, 'report.schedule']) as GraphQLContext['permissions'] }
 
 describe('duplicateReportTemplate — failure paths', () => {
   it('a source that vanished inside the tx → NotFound, nothing audited, session closed', async () => {
@@ -125,7 +134,7 @@ describe('createReportTemplate', () => {
     await Mutation.createReportTemplate(null, { input: {
       name: 'Shared', visibility: 'team', sharedWithTeamIds: ['team-a', 'team-b'],
       description: 'd', icon: 'chart', scheduleEnabled: true, scheduleCron: '0 8 * * 1', scheduleChannelId: 'ch-1',
-    } }, ctx)
+    } }, scheduler)
 
     expect(calls[0]!.p).toMatchObject({ description: 'd', icon: 'chart', scheduleEnabled: true, scheduleCron: '0 8 * * 1', scheduleChannelId: 'ch-1' })
     const share = calls[1]!
@@ -374,3 +383,49 @@ describe('reorderReportSections', () => {
     expect(calls).toEqual([])
   })
 })
+
+/*
+ * Review of 23 Sep 2026: the scheduled run posts to Slack and notifies the
+ * whole tenant, and updateReportSchedule keeps it behind report.schedule —
+ * but a template save with report.write alone used to turn it on.
+ */
+describe('the schedule is report.schedule\'s, whichever mutation carries it', () => {
+  const operatorWithout = { ...ctx, permissions: new Set([...ctx.permissions].filter((p) => p !== 'report.schedule')) } as GraphQLContext
+
+  it('creating a template that is already scheduled needs report.schedule; nothing is written', async () => {
+    const { calls } = fakeSessions()
+    await expect(Mutation.createReportTemplate(null, { input: {
+      name: 'Nightly', visibility: 'private', scheduleEnabled: true, scheduleCron: '0 8 * * *',
+    } }, operatorWithout)).rejects.toThrow(/report\.schedule/)
+    expect(calls).toHaveLength(0)
+  })
+
+  it('a save that turns the schedule on, or changes its cron, needs report.schedule; nothing is written', async () => {
+    const { calls } = fakeSessions()
+    await expect(Mutation.updateReportTemplate(null, { id: 'tpl-1', input: { scheduleEnabled: true, scheduleCron: '0 8 * * *' } }, operatorWithout))
+      .rejects.toThrow(/report\.schedule/)
+    storedSchedule = { enabled: true, cron: '0 8 * * *', channelId: null }
+    await expect(Mutation.updateReportTemplate(null, { id: 'tpl-1', input: { scheduleEnabled: true, scheduleCron: '0 9 * * *' } }, operatorWithout))
+      .rejects.toThrow(/report\.schedule/)
+    expect(calls).toHaveLength(0)
+  })
+
+  it('a save that sends the schedule back as it is (the web always does) needs nothing more', async () => {
+    storedSchedule = { enabled: true, cron: '0 8 * * *', channelId: 'ch-1' }
+    const { calls } = fakeSessions()
+    await Mutation.updateReportTemplate(null, { id: 'tpl-1', input: { name: 'Renamed', scheduleEnabled: true, scheduleCron: '0 8 * * *', scheduleChannelId: 'ch-1' } }, operatorWithout)
+    expect(calls).toHaveLength(1)
+  })
+
+  it('a template that does not exist is NOT_FOUND before anything is written', async () => {
+    const { calls, sessions } = fakeSessions()
+    storedSchedule = undefined as never
+    vi.mocked(getSession).mockImplementationOnce(() => ({
+      executeRead: vi.fn(async () => ({ records: [] })), executeWrite: vi.fn(), close: vi.fn().mockResolvedValue(undefined),
+    }) as never)
+    await expect(Mutation.updateReportTemplate(null, { id: 'gone', input: { name: 'x' } }, scheduler)).rejects.toMatchObject({ extensions: { code: 'NOT_FOUND' } })
+    expect(calls).toHaveLength(0)
+    expect(sessions).toHaveLength(0)
+  })
+})
+

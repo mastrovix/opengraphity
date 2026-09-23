@@ -63,6 +63,7 @@ async function handleReportStream(req: Request, res: Response): Promise<void> {
       ask: (history, q) => streamReportAI(
         tenantId,
         userId,
+        permissions,
         history,
         q,
         (chunk) => send('chunk', { text: chunk }),

