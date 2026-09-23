@@ -11,6 +11,8 @@ vi.mock('../ci-utils.js', async (importOriginal) => ({
   withSession: vi.fn(async (fn: (s: unknown) => Promise<unknown>) => fn({ executeRead: async (f: (tx: unknown) => unknown) => f({ run: async () => ({ records: [{ get: () => 'wi-1' }] }) }) })),
 }))
 vi.mock('@opengraphity/workflow', () => ({ workflowEngine: { getAvailableTransitions: vi.fn(async () => [{ toStep: 'approval' }, { toStep: 'in_progress' }]) } }))
+// The named-approval gate is tested on its own (lib/__tests__/ticketApprovalGate.test.ts): here it is open.
+vi.mock('../../../lib/ticketApprovalGate.js', () => ({ transitionsOpenToApproval: vi.fn(async (_s: unknown, _t: string, _i: string, trs: unknown[]) => trs) }))
 vi.mock('../../../lib/requestApproval.js', () => ({ requestApprovalWouldBeSkipped: vi.fn(async (_s: unknown, _t: string, _i: string, to: string) => to === 'in_progress') }))
 
 const { serviceRequestAvailableTransitionsField } = await import('../workflowQueries.js')

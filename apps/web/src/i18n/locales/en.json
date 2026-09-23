@@ -4308,7 +4308,9 @@
       "incomplete_one": "The approval is incomplete: {{count}} requirement is still pending.",
       "incomplete_other": "The approval is incomplete: {{count}} requirements are still pending.",
       "noPublishedStep": "The knowledge base workflow has no arrow from here to a published step: the approval cannot publish the article. Add it in the workflow designer.",
-      "transitionRefused": "The knowledge base workflow refused the transition: the article was not moved."
+      "transitionRefused": "The knowledge base workflow refused the transition: the article was not moved.",
+      "pendingOnStep": "The ticket is waiting for an approval in step \"{{step}}\": the approvers decide, from the Approvals page.",
+      "rejectedOnStep": "The approval in step \"{{step}}\" was rejected: the ticket can only be closed or cancelled."
     },
     "fieldRule": {
       "sameField": "The field that triggers the rule and the field it acts on cannot be the same.",

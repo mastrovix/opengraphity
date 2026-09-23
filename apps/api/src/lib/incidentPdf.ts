@@ -78,8 +78,9 @@ export async function loadIncidentDossier(
 
   const watcherRows = await runQuery<{ name: string | null; email: string | null }>(session, `
     MATCH (u:User)-[w:WATCHES]->(e:Incident {id: $id, tenant_id: $tenantId})
+    WITH u, min(w.watched_at) AS watchedAt
     RETURN u.name AS name, u.email AS email
-    ORDER BY w.watched_at DESC
+    ORDER BY watchedAt DESC
   `, { id, tenantId })
 
   const s = slaRow?.sProps

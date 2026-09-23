@@ -17,6 +17,8 @@
  *    the conditions see it.
  *  - tables are not answers: their rows travel separately, because a row is
  *    not a value.
+ *  - read-only items are shown, not sent: the server refuses them, and a
+ *    prefilled read-only field made the whole form unsubmittable.
  */
 import { describe, it, expect } from 'vitest'
 import type { CatalogFormDefinition } from '@opengraphity/types'
@@ -74,6 +76,12 @@ describe('catalogFormAnswersToSend', () => {
   it('sends a plain answer as a value, and a multi-valued one as values', () => {
     const out = catalogFormAnswersToSend(form([{ field: 'titolo' }, { field: 'tag' }]), fields, { titolo: 'Nuovo PC', tag: ['a', 'b'] })
     expect(out).toEqual([{ name: 'titolo', value: 'Nuovo PC' }, { name: 'tag', values: ['a', 'b'] }])
+  })
+
+  // Review of 23 Sep 2026: errors.catalogForm.answerReadOnly on every submit of a form with a read-only item.
+  it('a READ-ONLY item is shown but not sent, even with a value in the answers', () => {
+    const out = catalogFormAnswersToSend(form([{ field: 'titolo', readOnly: true }, { field: 'quantita' }]), fields, { titolo: 'prefilled', quantita: 3 })
+    expect(out).toEqual([{ name: 'quantita', value: '3' }])
   })
 
   it('a note is never sent: it carries no answer', () => {
@@ -142,6 +150,11 @@ describe('catalogFormTableAnswers', () => {
   it('sends the rows of a visible table, by column name', () => {
     expect(catalogFormTableAnswers(def, fields, {}, { righe: [{ modello: 'X1', quantita: '2' }] }))
       .toEqual([{ name: 'righe', rows: [{ modello: 'X1', quantita: '2' }] }])
+  })
+
+  it('a READ-ONLY table sends no rows', () => {
+    const ro = form([{ field: 'titolo' }, { field: 'righe', readOnly: true }])
+    expect(catalogFormTableAnswers(ro, fields, {}, { righe: [{ modello: 'X1' }] })).toEqual([])
   })
 
   it('copies the rows instead of passing the caller\'s own objects', () => {

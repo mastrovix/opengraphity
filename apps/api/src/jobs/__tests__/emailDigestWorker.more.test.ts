@@ -1,8 +1,8 @@
 /**
  * Daily email digest — the failure and fallback paths the main suite skips.
  *
- *  - When the send fails AND the idempotency marker cannot be removed, the
- *    tenant gets no digest today: that must be logged as such (an operator
+ *  - When the send fails AND the recipient's marker cannot be removed, that
+ *    address gets no digest today: that must be logged as such (an operator
  *    must be able to tell "sent" from "lost"), and the tick must still fail.
  *  - "Resolved today" must count incidents in the terminal steps when the
  *    workflow has no step of category `resolved`, not silently count zero.
@@ -14,6 +14,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const redis = {
   set: vi.fn(async (): Promise<'OK' | null> => 'OK'),
   del: vi.fn(async (): Promise<number> => 1),
+  exists: vi.fn(async (): Promise<number> => 0),
+  incr: vi.fn(async (): Promise<number> => 1),
+  expire: vi.fn(async (): Promise<number> => 1),
 }
 vi.mock('../../lib/bullmq.js', () => ({
   getSharedRedis: () => redis,
@@ -76,7 +79,7 @@ describe('marker removal that fails after a failed send', () => {
     redis.del.mockRejectedValueOnce(new Error('redis gone'))
     await expect(processDigestTick('t1', AT_ROME_8)).rejects.toThrow(/digest failed for 1 tenant/)
     expect(logError).toHaveBeenCalledWith(
-      expect.objectContaining({ tenantId: 'rome', date: '2026-09-08', err: expect.objectContaining({ message: 'redis gone' }) }),
+      expect.objectContaining({ tenantId: 'rome', date: '2026-09-08', email: 'a@rome.io', err: expect.objectContaining({ message: 'redis gone' }) }),
       expect.stringContaining('marker could not be removed'),
     )
   })

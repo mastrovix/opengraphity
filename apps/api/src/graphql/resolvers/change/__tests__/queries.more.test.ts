@@ -89,6 +89,15 @@ describe('changes — filters and priority', () => {
       .rejects.toThrow(/not allowed/)
   })
 
+  // Review of 23 Sep 2026: the list filters its phase as `status`, which holds the step's name; Change has no such GraphQL field.
+  it('the step filters as `status`, with several values, even with the schema', async () => {
+    const schema = buildSchema('type Query { x: Int } type Change { code: String }')
+    const info = { schema } as GraphQLResolveInfo
+    await q.changes(null, { filters: JSON.stringify({ rules: [{ field: 'status', operator: 'in', value: ['implementation', 'closed'] }] }) }, ctx, info)
+    expect(calls[0]!.cypher).toMatch(/AND \(.*c\.status/s)
+    expect(Object.values(calls[0]!.params)).toContainEqual(['implementation', 'closed'])
+  })
+
   it('an empty filter group adds nothing, and a missing count reads as zero', async () => {
     const out = await q.changes(null, { filters: JSON.stringify({ rules: [] }) }, ctx) as { total: number; items: unknown[] }
     expect(calls[0]!.cypher).toContain('WHERE coalesce(c.deleted, false) = false\n')

@@ -107,6 +107,28 @@ describe('GenericMapper — tabella dei valori', () => {
   })
 })
 
+// Review of 23 Sep 2026: the tables were rebuilt from {} on every keystroke in the path.
+describe('GenericMapper — changing a path keeps the translations', () => {
+  it('editing the severity path of an existing source keeps the values already translated', async () => {
+    const saved: GenericMapping = { ...EMPTY_MAPPING, fields: { ...EMPTY_MAPPING.fields, severity: 'alert.level' }, severityValues: { major: 'warning', sev9: 'info' } }
+    const { user } = renderWithProviders(<Harness initial={saved} initialPayload={SAMPLE_A} />, { mocks: [keysMock, previewMock()] })
+    const path = screen.getByLabelText('Severity *')
+    await user.type(path, '{Backspace}')
+    await user.type(path, 'l')
+    // «major» would be suggested as critical: the administrator's «warning» wins, and a value typed by hand stays.
+    expect(screen.getByLabelText('"major" becomes')).toHaveValue('warning')
+    expect(screen.getByLabelText('"sev9" becomes')).toHaveValue('info')
+  })
+
+  it('emptying the path empties the table', async () => {
+    const saved: GenericMapping = { ...EMPTY_MAPPING, fields: { ...EMPTY_MAPPING.fields, severity: 'alert.level' }, severityValues: { major: 'warning' } }
+    const onMapping = vi.fn()
+    const { user } = renderWithProviders(<Harness initial={saved} initialPayload={SAMPLE_A} onMapping={onMapping} />, { mocks: [keysMock, previewMock()] })
+    await user.clear(screen.getByLabelText('Severity *'))
+    expect(onMapping).toHaveBeenLastCalledWith(expect.objectContaining({ severityValues: {} }))
+  })
+})
+
 describe('GenericMapper — errori visibili', () => {
   it('JSON non valido → avviso; payloadKeys in errore → avviso con il messaggio (nessun elenco vuoto silenzioso)', async () => {
     const failingKeys: GqlMock = { request: { query: GET_PAYLOAD_KEYS, variables: () => true }, error: new Error('payload too large'), maxUsageCount: Number.POSITIVE_INFINITY }

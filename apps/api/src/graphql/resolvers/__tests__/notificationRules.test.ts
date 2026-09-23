@@ -40,7 +40,7 @@ vi.mock('@opengraphity/notifications', async (importOriginal) => {
   return { ...orig, invalidateRuleCache: vi.fn() }
 })
 
-const { notificationRuleResolvers } = await import('../notificationRules.js')
+const { notificationRuleResolvers, normalizeDigestRecipients } = await import('../notificationRules.js')
 import { isTargetApplicable } from '@opengraphity/types'
 import { perms } from '../../../lib/__tests__/testPermissions.js'
 
@@ -263,5 +263,16 @@ describe('campi speciali delle regole', () => {
   })
   it('digestTime deve essere HH:MM', async () => {
     await expectBadInput(notificationRuleResolvers.Mutation.updateNotificationRule(null, { id: 'r1', input: { digestTime: '8' } }, ctx), /HH:MM/)
+  })
+  // Review of 23 Sep 2026: saved as typed, a typo failed only at digest time and a repeated address got two digests.
+  it('digestRecipients: un indirizzo non valido si rifiuta prima di scrivere', async () => {
+    await expect(notificationRuleResolvers.Mutation.updateNotificationRule(null, { id: 'r1', input: { digestRecipients: ['ok@x.io', 'not-an-address'] } }, ctx))
+      .rejects.toThrow(/not a valid email address/)
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+  it('digestRecipients si salva ripulito: spazi, maiuscole, vuoti e ripetuti', () => {
+    expect(normalizeDigestRecipients([' A@X.io ', '', 'a@x.io', 'b@x.io'])).toEqual(['a@x.io', 'b@x.io'])
+    expect(normalizeDigestRecipients(null)).toBeNull()
+    expect(normalizeDigestRecipients([])).toEqual([])
   })
 })

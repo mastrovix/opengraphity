@@ -143,6 +143,7 @@ import { eventPolicyNonProduction } from './20261007_1040_event_policy_non_produ
 import { isolatedClusterEveryRelation } from './20261007_1050_isolated_cluster_every_relation.js'
 import { requestRejectedFailed } from './20261007_1060_request_rejected_failed.js'
 import { incidentConfirmResolution } from './20261008_1010_incident_confirm_resolution.js'
+import { watchesCollapseDuplicates } from './20261008_1020_watches_collapse_duplicates.js'
 import { ticketTeamSegments } from './20260930_1030_ticket_team_segments.js'
 import { changeTaskTeamSegments } from './20260930_1040_change_task_team_segments.js'
 
@@ -271,4 +272,5 @@ export const MIGRATIONS: readonly Migration[] = [
   isolatedClusterEveryRelation,
   requestRejectedFailed,
   incidentConfirmResolution,
+  watchesCollapseDuplicates,
 ]

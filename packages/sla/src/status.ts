@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
-import { calculateDeadline, type SLATier, type SLAPolicy } from './policy.js'
+import { businessMinutesBetween, calculateDeadline, type SLATier, type SLAPolicy } from './policy.js'
+import { calendarFor, type ServiceCalendar } from './calendar.js'
 
 export interface SLAStatus {
   id: string
@@ -31,7 +32,9 @@ export interface SLAStatus {
   policy_id?: string
   policy_name?: string
   /**
-   * I millisecondi TOTALI di pausa accumulati (revisione totale · E-2). La
+   * I millisecondi TOTALI di pausa accumulati (revisione totale · E-2),
+   * contati con l'orologio dello SLA: su un tier in orario di servizio sono
+   * ore di servizio, non di calendario (revisione del 23 set 2026). La
    * ripresa sposta le scadenze di quanto la pausa è durata; questo campo tiene
    * il totale, così un cambio di policy può riportare lo stesso spostamento
    * senza ricalcolare la scadenza «vecchia senza pause» — ricalcolo che usava
@@ -385,6 +388,61 @@ export async function markResponseMet(tenantId: string, entityId: string): Promi
 }
 
 /**
+ * THE CLOCK AN SLA COUNTS ON (review of 23 Sep 2026).
+ *
+ * A pause, and the time a ticket stays resolved before it is reopened, move
+ * the deadlines forward by the time the clock did not count. The shift was
+ * wall-clock milliseconds on every SLA: on a tier in service hours a pause
+ * from Friday 17:00 to Monday 09:00 moved the deadline by 64 hours — six and
+ * a half business days — where the clock had missed two business hours.
+ * The shift is now measured on the SLA's own clock: 24×7, or the service
+ * calendar and time zone of the policy it came from.
+ */
+interface SLAClock { businessHours: boolean; timezone: string; calendar: ServiceCalendar | null }
+
+const TWENTY_FOUR_SEVEN: SLAClock = { businessHours: false, timezone: 'UTC', calendar: null }
+
+async function clockOf(status: SLAStatus): Promise<SLAClock> {
+  if (!status.tier.business_hours) return TWENTY_FOUR_SEVEN
+  if (!status.policy_id) {
+    throw new Error(`[sla:status] SLAStatus ${status.id} counts service hours but names no policy: its service calendar cannot be found`)
+  }
+  const session = readSession()
+  let row: { name: string | null; timezone: string | null; tenantTimezone: string | null; calendarId: string | null } | null
+  try {
+    row = await runQueryOne(session, `
+      MATCH (p:SLAPolicyNode {id: $policyId, tenant_id: $tenantId})
+      OPTIONAL MATCH (t:Tenant {id: $tenantId})
+      RETURN p.name AS name, p.timezone AS timezone, t.timezone AS tenantTimezone, p.calendar_id AS calendarId
+    `, { policyId: status.policy_id, tenantId: status.tenant_id })
+  } finally {
+    await session.close()
+  }
+  if (!row) {
+    throw new Error(`[sla:status] SLAStatus ${status.id} counts service hours on policy ${status.policy_id}, which no longer exists: its service calendar cannot be found`)
+  }
+  // The same time zone rule as the selector: the policy's own, else the tenant's.
+  const timezone = row.timezone || row.tenantTimezone
+  if (!timezone) throw new Error(`[sla:status] SLA policy "${String(row.name)}" has no time zone and neither has tenant ${status.tenant_id}`)
+  const calendar = await calendarFor(status.tenant_id, { name: row.name ?? status.policy_id, businessHours: true, calendarId: row.calendarId })
+  return { businessHours: true, timezone, calendar }
+}
+
+/** The time between `from` and `to` that the clock counts, in milliseconds. */
+function countedMs(from: Date, to: Date, clock: SLAClock): number {
+  if (to.getTime() <= from.getTime()) return 0
+  if (!clock.businessHours) return to.getTime() - from.getTime()
+  return businessMinutesBetween(from, to, true, clock.timezone, clock.calendar) * 60_000
+}
+
+/** `deadline` moved forward by `ms` of the clock's time. */
+function extendDeadline(deadline: Date, ms: number, clock: SLAClock): Date {
+  if (ms <= 0) return deadline
+  if (!clock.businessHours) return new Date(deadline.getTime() + ms)
+  return calculateDeadline(deadline, ms / 60_000, true, clock.timezone, clock.calendar)
+}
+
+/**
  * Records the resolution of the entity at `resolvedAt` and decides the SLA
  * outcome (D-02):
  *   - `resolve_met = true`  only if `resolvedAt <= resolve_deadline` (the
@@ -407,13 +465,14 @@ export async function markResolveMet(
   }
 
   const deadline = parseInstant(current.resolve_deadline, `resolve_deadline of SLAStatus ${current.id}`)
-  // A pause still open at resolution time extends the deadline by its duration,
-  // exactly as resumeSLA would have done.
+  // A pause still open at resolution time extends the deadline by its duration
+  // on the SLA's clock, exactly as resumeSLA would have done.
   const pausedResolve = current.paused_at && (current.paused_type ?? 'both') !== 'response'
+  const clock = pausedResolve ? await clockOf(current) : TWENTY_FOUR_SEVEN
   const pauseShiftMs = pausedResolve
-    ? Math.max(0, resolvedAt.getTime() - parseInstant(current.paused_at, `paused_at of SLAStatus ${current.id}`).getTime())
+    ? countedMs(parseInstant(current.paused_at, `paused_at of SLAStatus ${current.id}`), resolvedAt, clock)
     : 0
-  const effectiveDeadlineMs = deadline.getTime() + pauseShiftMs
+  const effectiveDeadlineMs = extendDeadline(deadline, pauseShiftMs, clock).getTime()
   const met = resolvedAt.getTime() <= effectiveDeadlineMs
 
   /**
@@ -502,16 +561,16 @@ export async function resumeSLA(
   if (!current || !current.paused_at) return null
 
   const pausedType = (current.paused_type ?? 'both') as SLAPauseType
-  const pausedMs = resumedAt.getTime() - new Date(current.paused_at).getTime()
-  // Guard against a corrupt/future paused_at producing a negative shift.
-  const shiftMs = Math.max(0, pausedMs)
+  const clock = await clockOf(current)
+  // A corrupt/future paused_at counts nothing: no negative shift.
+  const shiftMs = countedMs(parseInstant(current.paused_at, `paused_at of SLAStatus ${current.id}`), resumedAt, clock)
   const shiftResponse = pausedType === 'response' || pausedType === 'both'
   const shiftResolve  = pausedType === 'resolve'  || pausedType === 'both'
   const newResponse = shiftResponse
-    ? new Date(new Date(current.response_deadline).getTime() + shiftMs).toISOString()
+    ? extendDeadline(parseInstant(current.response_deadline, `response_deadline of SLAStatus ${current.id}`), shiftMs, clock).toISOString()
     : current.response_deadline
   const newResolve = shiftResolve
-    ? new Date(new Date(current.resolve_deadline).getTime() + shiftMs).toISOString()
+    ? extendDeadline(parseInstant(current.resolve_deadline, `resolve_deadline of SLAStatus ${current.id}`), shiftMs, clock).toISOString()
     : current.resolve_deadline
 
   const cypher = `
@@ -553,11 +612,15 @@ export async function reopenSLA(tenantId: string, entityId: string, reopenedAt: 
   const current = await getSLAStatus(tenantId, entityId)
   if (!current || !current.resolved_at) return null
   const resolvedAt = parseInstant(current.resolved_at, `resolved_at of SLAStatus ${current.id}`)
-  const shiftMs = Math.max(0, reopenedAt.getTime() - resolvedAt.getTime())
-  const newResolve = new Date(parseInstant(current.resolve_deadline, `resolve_deadline of SLAStatus ${current.id}`).getTime() + shiftMs).toISOString()
+  const clock = await clockOf(current)
+  const shiftMs = countedMs(resolvedAt, reopenedAt, clock)
+  const newResolve = extendDeadline(parseInstant(current.resolve_deadline, `resolve_deadline of SLAStatus ${current.id}`), shiftMs, clock).toISOString()
+  // The time spent resolved is not counted, like a pause: it joins the pause
+  // total, so a later change of policy carries it too.
   const cypher = `
     MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
     SET s.resolve_deadline = $newResolve,
+        s.paused_total_ms  = coalesce(s.paused_total_ms, 0) + $shiftMs,
         s.resolved_at      = null,
         s.resolve_met      = false,
         s.reopened_at      = $reopenedAt
@@ -565,7 +628,7 @@ export async function reopenSLA(tenantId: string, entityId: string, reopenedAt: 
   `
   const session = writeSession()
   try {
-    const row = await runQueryOne<Record<string, unknown>>(session, cypher, { tenantId, entityId, newResolve, reopenedAt: reopenedAt.toISOString() })
+    const row = await runQueryOne<Record<string, unknown>>(session, cypher, { tenantId, entityId, newResolve, shiftMs, reopenedAt: reopenedAt.toISOString() })
     if (!row) throw new Error(`[sla:status] reopenSLA(${entityId}): SLAStatus vanished during update`)
     return mapToSLAStatus(row)
   } finally {
@@ -603,8 +666,13 @@ export async function repolicySLA(tenantId: string, entityId: string, policy: SL
    * che lo stato non ha mai conservato.
    */
   const pausedShift = Math.max(0, current.paused_total_ms ?? 0)
-  const newResponse = new Date(calculateDeadline(started, tier.response_minutes, tier.business_hours, policy.timezone, policy.calendar).getTime() + pausedShift).toISOString()
-  const newResolve  = new Date(calculateDeadline(started, tier.resolve_minutes,  tier.business_hours, policy.timezone, policy.calendar).getTime() + pausedShift).toISOString()
+  // The pause total is time the clock did not count: on a tier in service
+  // hours it is added as service time, not as wall-clock time (review of
+  // 23 Sep 2026). A total measured on a different clock (the old policy's)
+  // is carried as it is — the same declared approximation as above.
+  const clock: SLAClock = { businessHours: tier.business_hours, timezone: policy.timezone, calendar: policy.calendar }
+  const newResponse = extendDeadline(calculateDeadline(started, tier.response_minutes, tier.business_hours, policy.timezone, policy.calendar), pausedShift, clock).toISOString()
+  const newResolve  = extendDeadline(calculateDeadline(started, tier.resolve_minutes,  tier.business_hours, policy.timezone, policy.calendar), pausedShift, clock).toISOString()
   const cypher = `
     MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
     SET s.response_deadline     = $newResponse,

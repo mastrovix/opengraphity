@@ -11,7 +11,11 @@ vi.mock('@opengraphity/workflow', () => ({ workflowEngine: { onStepEntered: (l: 
 const publishEvent = vi.fn(async () => {})
 vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: (...a: unknown[]) => publishEvent(...a) }))
 const closeIncident = vi.fn(async () => {})
-vi.mock('../../services/incidentService.js', () => ({ closeIncident: (...a: unknown[]) => closeIncident(...a) }))
+const publishIncidentResolved = vi.fn(async () => {})
+vi.mock('../../services/incidentService.js', () => ({
+  closeIncident: (...a: unknown[]) => closeIncident(...a),
+  publishIncidentResolved: (...a: unknown[]) => publishIncidentResolved(...a),
+}))
 /*
  * QUESTO TEST APRIVA UNA CONNESSIONE A NEO4J VERA (21 set 2026).
  *
@@ -45,6 +49,19 @@ vi.mock('../../lib/ticketTasks.js', () => ({
 }))
 vi.mock('../../lib/systemText.js', () => ({ systemText: async () => 'Ticket concluso' }))
 
+/*
+ * And a third, added with the named-approval gate (review of 23 Sep 2026):
+ * leaving a step withdraws the requests still pending there, which needs a
+ * session. Declared here, so it is not a database this test quietly needs.
+ */
+const withdrawApprovalsOfStep = vi.fn(async () => 0)
+vi.mock('../../lib/ticketApprovalGate.js', () => ({
+  APPROVAL_GATED_TICKETS: ['incident', 'problem', 'service_request'],
+  withdrawApprovalsOfStep: (...a: unknown[]) => withdrawApprovalsOfStep(...a),
+}))
+const sessionClose = vi.fn(async () => {})
+vi.mock('@opengraphity/neo4j', () => ({ getSession: () => ({ close: sessionClose }) }))
+
 await import('../stepEnteredEvents.js')
 
 const info = (over: Partial<StepEnteredInfo>): StepEnteredInfo => ({
@@ -68,10 +85,42 @@ describe('stepEnteredEvents', () => {
     expect(annullaCompitiDelTicketConcluso).toHaveBeenCalledWith('c-test', 'inc-1', 'Ticket concluso')
   })
 
-  it('un altro passo, o un altro tipo di ticket, no', async () => {
+  // Review of 23 Sep 2026: a step named after its category already publishes that event as its alias.
+  it('un passo che si chiama come la sua categoria non pubblica l\'evento una seconda volta', async () => {
+    await listener!(info({ toStep: 'closed', category: 'closed' }))
     await listener!(info({ toStep: 'resolved', category: 'resolved' }))
-    await listener!(info({ entityType: 'problem', entityId: 'prb-1' }))
     expect(closeIncident).not.toHaveBeenCalled()
+    expect(publishIncidentResolved).not.toHaveBeenCalled()
+  })
+
+  it('un passo «resolved» con un nome del cliente pubblica incident.resolved, all\'istante dell\'ingresso', async () => {
+    await listener!(info({ toStep: 'risolto_l2', category: 'resolved' }))
+    expect(publishIncidentResolved).toHaveBeenCalledWith('inc-1', { tenantId: 'c-test', userId: 'automation' }, '2026-09-20T10:00:00Z')
+    expect(closeIncident).not.toHaveBeenCalled()
+  })
+
+  it('leaving a step withdraws the approvals still pending there, and closes the session', async () => {
+    await listener!(info({ fromStep: 'budget_approval', toStep: 'rejected', category: 'failed' }))
+    expect(withdrawApprovalsOfStep).toHaveBeenCalledWith(expect.anything(), 'c-test', 'inc-1', 'budget_approval', '2026-09-20T10:00:00Z')
+    expect(sessionClose).toHaveBeenCalled()
+  })
+
+  it('a withdrawal that fails does not fail the step: it is logged', async () => {
+    withdrawApprovalsOfStep.mockRejectedValueOnce(new Error('neo4j down'))
+    await expect(listener!(info({ fromStep: 'budget_approval', toStep: 'in_progress', category: 'active', terminal: false }))).resolves.toBeUndefined()
+    expect(sessionClose).toHaveBeenCalled()
+  })
+
+  it('a change is not touched: its approvals are its own', async () => {
+    await listener!(info({ entityType: 'change', entityId: 'chg-1', fromStep: 'approval', toStep: 'scheduled', category: 'active', terminal: false }))
+    expect(withdrawApprovalsOfStep).not.toHaveBeenCalled()
+  })
+
+  it('un altro passo, o un altro tipo di ticket, no', async () => {
+    await listener!(info({ toStep: 'in_progress', category: 'active', terminal: false }))
+    await listener!(info({ entityType: 'problem', entityId: 'prb-1', toStep: 'chiuso_definitivo' }))
+    expect(closeIncident).not.toHaveBeenCalled()
+    expect(publishIncidentResolved).not.toHaveBeenCalled()
     expect(publishEvent).toHaveBeenCalledTimes(2)
   })
 })

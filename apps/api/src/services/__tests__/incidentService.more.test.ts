@@ -363,9 +363,8 @@ describe('resolveIncident', () => {
     await svc.resolveIncident('inc-1', ctx, 'bad cable')
     expect(vi.mocked(workflowEngine.transition).mock.calls[0]![1]).toMatchObject({ instanceId: 'wi-1', toStepName: 'resolved', notes: 'bad cable', tenantId: 't-1' })
     expect(vi.mocked(runQuery).mock.calls[0]![2]).toMatchObject({ rootCause: 'bad cable', tenantId: 't-1' })
-    const ev = vi.mocked(publishEvent).mock.calls[0]!
-    expect(ev[0]).toBe('incident.resolved')
-    expect(ev[3]).toHaveProperty('resolved_at')
+    // incident.resolved comes from the step hook, not from here (review of 23 Sep 2026).
+    expect(vi.mocked(publishEvent).mock.calls.map((c) => c[0])).not.toContain('incident.resolved')
   })
 
   it('without a "resolved" category it falls back to the first terminal step; no notes keep the old root cause', async () => {

@@ -28,6 +28,16 @@ class FakeRedis {
    * inviato».
    */
   del = vi.fn(async (key: string): Promise<number> => (this.store.delete(key) ? 1 : 0))
+  exists = vi.fn(async (key: string): Promise<number> => {
+    if (this.failNext) { const e = this.failNext; this.failNext = null; throw e }
+    return this.store.has(key) ? 1 : 0
+  })
+  incr = vi.fn(async (key: string): Promise<number> => {
+    const n = Number(this.store.get(key) ?? 0) + 1
+    this.store.set(key, String(n))
+    return n
+  })
+  expire = vi.fn(async (): Promise<number> => 1)
 }
 const redis = new FakeRedis()
 
@@ -142,11 +152,13 @@ describe('processDigestTick — fuso del tenant', () => {
 })
 
 describe('processDigestTick — marker di idempotenza (SET NX)', () => {
-  it('reclama digest:<tenant>:<data locale> con EX 36h NX prima di inviare', async () => {
+  // Review of 23 Sep 2026: each recipient is claimed (NX) before its send; the tenant's marker comes after, when all went out.
+  it('reclama ogni destinatario con EX 36h NX prima di inviargli, e scrive digest:<tenant>:<data locale> dopo', async () => {
     await processDigestTick('t1', AT_ROME_8)
 
-    expect(redis.set).toHaveBeenCalledOnce()             // solo Roma è in finestra
-    expect(redis.set).toHaveBeenCalledWith('digest:rome:2026-09-08', '2026-09-08T06:00:00.000Z', 'EX', 36 * 3600, 'NX')
+    expect(redis.set).toHaveBeenCalledWith('digest:rome:2026-09-08:to:a@rome.io', 'sent', 'EX', 36 * 3600, 'NX')
+    expect(redis.set).toHaveBeenCalledWith('digest:rome:2026-09-08:to:b@rome.io', 'sent', 'EX', 36 * 3600, 'NX')
+    expect(redis.set).toHaveBeenLastCalledWith('digest:rome:2026-09-08', '2026-09-08T06:00:00.000Z', 'EX', 36 * 3600)
     expect(redis.store.get('digest:rome:2026-09-08')).toBe('2026-09-08T06:00:00.000Z')
   })
 
@@ -221,7 +233,7 @@ describe('processDigestTick — destinatari', () => {
     sendEmail.mockRejectedValueOnce(new Error('smtp 550'))
     await expect(processDigestTick('t1', AT_ROME_8)).rejects.toThrow(/digest failed for 1 tenant/)
     expect(sendEmail).toHaveBeenCalledTimes(2)
-    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ email: 'a@rome.io', tenantId: 'rome' }), 'Failed to send digest email')
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ email: 'a@rome.io', tenantId: 'rome', attempts: 1 }), 'Failed to send digest email — retried at the next tick')
     expect(logError).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 'rome', err: expect.objectContaining({ message: '[email-digest] 1/2 digest emails failed for tenant rome' }) }),
       'Digest failed for tenant',
@@ -303,14 +315,36 @@ describe('marcatore di idempotenza e invii falliti (C-9)', () => {
     expect(redis.del).not.toHaveBeenCalled()
   })
 
-  it('invio fallito: il marcatore viene rimosso, il tick successivo riprova', async () => {
+  it('invio fallito: il marcatore del tenant non si scrive, il tick successivo riprova', async () => {
     sendEmail.mockRejectedValue(new Error('smtp giù'))
     await processDigestTick('t1', AT_ROME_8).catch(() => undefined)
-    expect(redis.del).toHaveBeenCalled()
+    expect(redis.store.has('digest:rome:2026-09-08')).toBe(false)
 
     sendEmail.mockReset()
     sendEmail.mockResolvedValue(undefined)
     const out = await processDigestTick('t1', AT_ROME_8)
     expect(out.sent).toContain('rome')
+  })
+
+  // Review of 23 Sep 2026: one failed address made EVERYONE receive the digest again every five minutes.
+  it('dopo un invio fallito su due, il tick successivo manda SOLO a chi è fallito', async () => {
+    sendEmail.mockImplementation(async (m: { to: string }) => { if (m.to === 'a@rome.io') throw new Error('smtp 550') })
+    await processDigestTick('t1', AT_ROME_8).catch(() => undefined)
+    sendEmail.mockReset()
+    sendEmail.mockResolvedValue(undefined)
+    await processDigestTick('t1', new Date('2026-09-08T06:05:00.000Z'))
+    expect(sendEmail.mock.calls.map((c) => (c[0] as { to: string }).to)).toEqual(['a@rome.io'])
+    expect(redis.store.has('digest:rome:2026-09-08')).toBe(true)
+  })
+
+  it('un indirizzo che fallisce tre volte si lascia perdere per la giornata, e il digest del tenant si chiude', async () => {
+    sendEmail.mockImplementation(async (m: { to: string }) => { if (m.to === 'a@rome.io') throw new Error('smtp 550') })
+    for (let i = 0; i < 3; i++) await processDigestTick('t1', new Date(`2026-09-08T06:${String(i * 5).padStart(2, '0')}:00.000Z`)).catch(() => undefined)
+    expect(sendEmail.mock.calls.filter((c) => (c[0] as { to: string }).to === 'a@rome.io')).toHaveLength(3)
+    expect(sendEmail.mock.calls.filter((c) => (c[0] as { to: string }).to === 'b@rome.io')).toHaveLength(1)
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ email: 'a@rome.io', attempts: 3 }), expect.stringContaining('given up for today'))
+    await processDigestTick('t1', new Date('2026-09-08T06:15:00.000Z'))
+    expect(sendEmail.mock.calls.filter((c) => (c[0] as { to: string }).to === 'a@rome.io')).toHaveLength(3)
+    expect(redis.store.has('digest:rome:2026-09-08')).toBe(true)
   })
 })

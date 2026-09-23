@@ -170,6 +170,11 @@ export async function changes(
       tenantId: ctx.tenantId, currentStep: args.currentStep ?? null, priority: args.priority ?? null, limit, offset,
     }
     const allowedFields = new Set(info ? getScalarFields(info.schema, 'Change') : ['code', 'title', 'status', 'priority', 'change_type'])
+    // The list filters by step as `status`: not a GraphQL field of Change, but
+    // the engine writes the step's name there on every transition (and the
+    // creation writes the first one). Through here an OR group and «is one of»
+    // with several steps work like any other rule (review of 23 Sep 2026).
+    allowedFields.add('status')
     const advWhere = args.filters ? buildAdvancedWhere(args.filters, params, allowedFields, 'c') : ''
     if (advWhere) conds.push(`(${advWhere})`)
     const priorityWhere = `WHERE ${conds.join(' AND ')}`

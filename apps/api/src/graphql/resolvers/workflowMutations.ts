@@ -17,10 +17,12 @@ import { publish } from '@opengraphity/events'
 import { sseManager, unroutableChannels, routableChannels, WORKFLOW_STEP_NOTIFY_EVENT } from '@opengraphity/notifications'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
+import type { Session } from 'neo4j-driver'
 import { loadTransitionRows, mapWorkflowDefinition } from './workflowMapping.js'
 import { workflowLogger } from '../../lib/logger.js'
 import { audit } from '../../lib/audit.js'
-import { requirePermission } from '../../lib/permissions.js'
+import { hasPermission, requirePermission } from '../../lib/permissions.js'
+import { APPROVAL_GATED_TICKETS, ticketApprovalRefusal } from '../../lib/ticketApprovalGate.js'
 import { validateRequiredFields } from '../../lib/validateRequiredFields.js'
 import { invalidateWorkflowCache } from '../../lib/workflowHelpers.js'
 import { auditStepEntered} from '../../lib/stepEvent.js'
@@ -955,6 +957,32 @@ async function preflightStepMetadata(
   }
 }
 
+/**
+ * The approval gates of a ticket moved by a person: a request that needs an
+ * approval does not skip it, and the approver named by the step decides
+ * (lib/ticketApprovalGate.ts), unless the person holds `approval.override`.
+ */
+async function assertTicketApprovalsAllow(
+  session: Session, ctx: GraphQLContext, entityType: string, instanceId: string, toStep: string,
+): Promise<void> {
+  if (entityType === 'service_request'
+      && await requestApprovalWouldBeSkipped(session, ctx.tenantId, instanceId, toStep, { byPerson: true })) {
+    throw new GraphQLError(
+      'This request needs an approval: send it to approval first',
+      { extensions: { code: 'CONFLICT', i18n: { key: 'errors.request.approvalRequired' } } },
+    )
+  }
+  if (!APPROVAL_GATED_TICKETS.includes(entityType) || hasPermission(ctx, 'approval.override')) return
+  const held = await ticketApprovalRefusal(session, ctx.tenantId, instanceId, toStep)
+  if (!held) return
+  throw new GraphQLError(
+    held.status === 'pending'
+      ? `The ticket is waiting for an approval in step "${held.stepName}": the approvers decide, from the Approvals page`
+      : `The approval in step "${held.stepName}" was rejected: the ticket can only be closed or cancelled`,
+    { extensions: { code: 'CONFLICT', approvalId: held.approvalId, i18n: { key: held.status === 'pending' ? 'errors.approval.pendingOnStep' : 'errors.approval.rejectedOnStep', params: { step: held.stepName } } } },
+  )
+}
+
 export async function executeWorkflowTransition(
   _: unknown,
   { instanceId, toStep, notes }: { instanceId: string; toStep: string; notes?: string },
@@ -986,13 +1014,7 @@ export async function executeWorkflowTransition(
     if (entityDataResult.records[0].get('entityType') === 'change') {
       throw new GraphQLError('Changes are transitioned with executeChangeTransition (approval gate and phase side effects)', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.workflow.changeUsesChangeTransition' } } })
     }
-    if (entityDataResult.records[0].get('entityType') === 'service_request'
-        && await requestApprovalWouldBeSkipped(session, ctx.tenantId, instanceId, toStep, { byPerson: true })) {
-      throw new GraphQLError(
-        'This request needs an approval: send it to approval first',
-        { extensions: { code: 'CONFLICT', i18n: { key: 'errors.request.approvalRequired' } } },
-      )
-    }
+    await assertTicketApprovalsAllow(session, ctx, entityDataResult.records[0].get('entityType') as string, instanceId, toStep)
     const entityData: Record<string, unknown> = {
       ...((entityDataResult.records[0].get('entityData') as Record<string, unknown> | null) ?? {}),
       assigned_to:   entityDataResult.records[0].get('assigned_to') ?? null,
@@ -1142,10 +1164,13 @@ export async function executeWorkflowTransition(
               approval_type:   $approvalType,
               due_date:        null,
               resolved_at:     null,
-              resolution_note: null
+              resolution_note: null,
+              step_name:       $stepName
             })
           `, {
             id:           approvalId,
+            // The step it holds: the one being entered (lib/ticketApprovalGate.ts).
+            stepName:     toStep,
             tenantId:     ctx.tenantId,
             entityType,
             entityId,

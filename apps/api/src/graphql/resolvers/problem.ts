@@ -14,7 +14,7 @@ import { audit } from '../../lib/audit.js'
 import { ValidationError } from '../../lib/errors.js'
 import {} from '../../lib/stepEvent.js'
 import { logger } from '../../lib/logger.js'
-import { requirePermission } from '../../lib/permissions.js'
+import { hasPermission, requirePermission } from '../../lib/permissions.js'
 import { publishEvent } from '../../lib/publishEvent.js'
 import { TICKET_TEAM_ASSIGNED_EVENT } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
@@ -648,7 +648,8 @@ async function problemAvailableTransitions(
     `, { id: parent.id, tenantId: ctx.tenantId }))
     if (!wiResult.records.length) return []
     const instanceId = wiResult.records[0]!.get('instanceId') as string
-    return workflowEngine.getAvailableTransitions(session, instanceId)
+    const { transitionsOpenToApproval } = await import('../../lib/ticketApprovalGate.js')
+    return transitionsOpenToApproval(session, ctx.tenantId, instanceId, await workflowEngine.getAvailableTransitions(session, instanceId), hasPermission(ctx, 'approval.override'))
   })
 }
 

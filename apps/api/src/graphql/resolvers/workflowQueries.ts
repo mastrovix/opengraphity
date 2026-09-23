@@ -5,6 +5,8 @@ import { withSession } from './ci-utils.js'
 import { loadTransitionRows, mapWorkflowDefinition } from './workflowMapping.js'
 import { parseLocalizedLabels } from '@opengraphity/types'
 import { requestApprovalWouldBeSkipped } from '../../lib/requestApproval.js'
+import { transitionsOpenToApproval } from '../../lib/ticketApprovalGate.js'
+import { hasPermission } from '../../lib/permissions.js'
 
 // ── WorkflowStep.currentInstances ─────────────────────────────────────────────
 
@@ -120,7 +122,8 @@ export async function incidentAvailableTransitions(
     )
     if (!wiResult.records.length) return []
     const instanceId = wiResult.records[0].get('instanceId') as string
-    return workflowEngine.getAvailableTransitions(session, instanceId)
+    // What the approval holds is not offered (lib/ticketApprovalGate.ts).
+    return transitionsOpenToApproval(session, ctx.tenantId, instanceId, await workflowEngine.getAvailableTransitions(session, instanceId), hasPermission(ctx, 'approval.override'))
   })
 }
 
@@ -319,7 +322,7 @@ export async function incidentAvailableTransitionsField(
     )
     if (!wiResult.records.length) return []
     const instanceId = wiResult.records[0].get('instanceId') as string
-    return workflowEngine.getAvailableTransitions(session, instanceId)
+    return transitionsOpenToApproval(session, ctx.tenantId, instanceId, await workflowEngine.getAvailableTransitions(session, instanceId), hasPermission(ctx, 'approval.override'))
   })
 }
 
@@ -445,6 +448,6 @@ export async function serviceRequestAvailableTransitionsField(
     for (const tr of transitions) {
       if (!(await requestApprovalWouldBeSkipped(session, ctx.tenantId, instanceId, tr.toStep, { byPerson: true }))) allowed.push(tr)
     }
-    return allowed
+    return transitionsOpenToApproval(session, ctx.tenantId, instanceId, allowed, hasPermission(ctx, 'approval.override'))
   })
 }

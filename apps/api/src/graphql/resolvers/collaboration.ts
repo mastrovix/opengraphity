@@ -119,7 +119,7 @@ async function notifyWatchers(
   const watchers = await withSession(async (s) => {
     const rows = await runQuery<{ userId: string; role: string | null }>(s, `
       MATCH (u:User)-[:WATCHES]->(e {id: $entityId, tenant_id: $tenantId})
-      RETURN u.id AS userId, u.role AS role
+      RETURN DISTINCT u.id AS userId, u.role AS role
     `, { entityId, tenantId })
     if (!internal) return rows.map(r => r.userId)
     const allowed: string[] = []
@@ -173,7 +173,9 @@ async function autoWatch(tenantId: string, userId: string, entityId: string): Pr
     await runQuery(s, `
       MATCH (u:User {id: $userId, tenant_id: $tenantId})
       ${matchById('e', { labels: 'entities', id: '$entityId' })}
-      MERGE (u)-[:WATCHES {watched_at: $now}]->(e)
+      // The timestamp is not part of the match: with it, every comment added one more WATCHES edge (review of 23 Sep 2026).
+      MERGE (u)-[w:WATCHES]->(e)
+        ON CREATE SET w.watched_at = $now
     `, { userId, tenantId, entityId, now: new Date().toISOString() })
   }, true)
 }
@@ -223,8 +225,9 @@ async function watchers(_: unknown, args: { entityType: string; entityId: string
   return withSession(async (s) => {
     const rows = await runQuery<Props>(s, `
       MATCH (u:User)-[w:WATCHES]->(e {id: $entityId, tenant_id: $tenantId})
-      RETURN u.id AS id, u.name AS name, u.email AS email, w.watched_at AS watchedAt
-      ORDER BY w.watched_at DESC
+      WITH u, min(w.watched_at) AS watchedAt
+      RETURN u.id AS id, u.name AS name, u.email AS email, watchedAt
+      ORDER BY watchedAt DESC
     `, { entityId: args.entityId, tenantId: ctx.tenantId })
     return rows.map(r => ({ id: r['id'], name: r['name'], email: r['email'], watchedAt: r['watchedAt'] ?? '' }))
   })

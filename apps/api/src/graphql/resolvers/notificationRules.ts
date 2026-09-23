@@ -11,7 +11,7 @@ import {
 } from '@opengraphity/types'
 import { SEEDED_EVENT_TYPES } from '../../lib/seedNotificationRules.js'
 import { workflowEventTypeRows } from '../../lib/stepEvent.js'
-import { validateEnum } from '../../lib/validation.js'
+import { validateEmail, validateEnum } from '../../lib/validation.js'
 import { audit } from '../../lib/audit.js'
 import { assertRolesExist, tenantRoles } from '../../lib/roles.js'
 
@@ -65,6 +65,24 @@ function assertSpecialFields(input: { digestTime?: string | null; escalationTarg
       )
     }
   }
+}
+
+/**
+ * The digest's explicit addresses, as the worker will use them: trimmed,
+ * lower-cased, without blanks or repeats, each a valid address. Saved as
+ * typed, a typo failed only at 08:00 and a repeated address got two digests
+ * (review of 23 Sep 2026). null stays null: the field is not being changed.
+ */
+export function normalizeDigestRecipients(list: readonly string[] | null | undefined): string[] | null {
+  if (list == null) return null
+  const out: string[] = []
+  for (const raw of list) {
+    const email = raw.trim().toLowerCase()
+    if (!email) continue
+    validateEmail(email)
+    if (!out.includes(email)) out.push(email)
+  }
+  return out
 }
 
 /**
@@ -271,6 +289,7 @@ async function updateNotificationRule(
   if (input.severityOverride != null) assertSeverityKnown(input.severityOverride)
   assertSpecialFields(input)
   if (input.target != null) assertTargetKnown(input.target)
+  const digestRecipients = normalizeDigestRecipients(input.digestRecipients)
   if (input.target != null) await assertRolesExist(ctx.tenantId, [notificationTargetRole(input.target)].filter((k): k is string => k !== null))
   return withSession(async (session) => {
     const now = new Date().toISOString()
@@ -327,7 +346,7 @@ async function updateNotificationRule(
           slaWarningThresholdPercent: input.slaWarningThresholdPercent ?? null,
           slaWarningTarget:           input.slaWarningTarget           ?? null,
           digestTime:                 input.digestTime                 ?? null,
-          digestRecipients:           input.digestRecipients           ?? null,
+          digestRecipients:           digestRecipients,
         },
       ),
     )
@@ -368,6 +387,7 @@ async function createNotificationRule(
   if (input.severityOverride != null) assertSeverityKnown(input.severityOverride)
   assertSpecialFields(input)
   assertTargetKnown(input.target)
+  const digestRecipients = normalizeDigestRecipients(input.digestRecipients)
   assertTargetApplicable(input.eventType, input.target)
   await assertRolesExist(ctx.tenantId, [notificationTargetRole(input.target)].filter((k): k is string => k !== null))
   const stepPurpose  = normalizeStepNarrowing(input.eventType, input.stepPurpose,  'stepPurpose')
@@ -443,7 +463,7 @@ async function createNotificationRule(
           slaWarningThresholdPercent: input.slaWarningThresholdPercent ?? null,
           slaWarningTarget:           input.slaWarningTarget           ?? null,
           digestTime:                 input.digestTime                 ?? null,
-          digestRecipients:           input.digestRecipients           ?? null,
+          digestRecipients:           digestRecipients,
           now,
         },
       ),

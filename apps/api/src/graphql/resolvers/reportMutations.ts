@@ -285,7 +285,8 @@ export const Mutation = {
       )
       const order = Math.round(Number(orderRes.records[0]?.get('nextOrder') ?? 0))
 
-      await createSectionWithNodesEdges(session, args.templateId, sectionId, order, args.input, ctx.tenantId)
+      // One transaction: a node or edge that fails leaves no half section behind.
+      await session.executeWrite((tx) => createSectionWithNodesEdges(tx, args.templateId, sectionId, order, args.input, ctx.tenantId))
     } finally {
       await session.close()
     }
@@ -311,21 +312,18 @@ export const Mutation = {
       await assertReportTemplateAccess(session, templateId, ctx, 'write')
       const order = Math.round(Number(res.records[0].get('order') ?? 0))
 
-      // Delete old section nodes (DETACH DELETE cascades REPORT_EDGE relationships)
-      await session.executeWrite(tx =>
-        tx.run(`
-          MATCH (:ReportTemplate {tenant_id: $tenantId})-[:HAS_SECTION]->(s:ReportSection {id: $sectionId})-[:HAS_NODE]->(n:ReportNode)
-          DETACH DELETE n
-        `, { sectionId: args.sectionId, tenantId: ctx.tenantId }),
-      )
-      await session.executeWrite(tx =>
-        tx.run(`
+      // Old section out and new one in, in ONE transaction: the new one is
+      // validated inside it, so a section that would not build rolls the
+      // delete back. Before, the old section was deleted first and an invalid
+      // edit left the report without it (review of 23 Sep 2026).
+      await session.executeWrite(async (tx) => {
+        await tx.run(`
           MATCH (:ReportTemplate {tenant_id: $tenantId})-[:HAS_SECTION]->(s:ReportSection {id: $sectionId})
-          DETACH DELETE s
-        `, { sectionId: args.sectionId, tenantId: ctx.tenantId }),
-      )
-
-      await createSectionWithNodesEdges(session, templateId, args.sectionId, order, args.input, ctx.tenantId)
+          OPTIONAL MATCH (s)-[:HAS_NODE]->(n:ReportNode)
+          DETACH DELETE s, n
+        `, { sectionId: args.sectionId, tenantId: ctx.tenantId })
+        await createSectionWithNodesEdges(tx, templateId, args.sectionId, order, args.input, ctx.tenantId)
+      })
     } finally {
       await session.close()
     }

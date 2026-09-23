@@ -96,6 +96,11 @@ vi.mock('../../../lib/workflowHelpers.js', () => ({ invalidateWorkflowCache: vi.
 vi.mock('../../../lib/stepEvent.js', () => ({ auditStepEntered: vi.fn(async () => undefined) }))
 vi.mock('../../../lib/systemText.js', () => ({ systemText: vi.fn(async () => 'Approval requested') }))
 vi.mock('../../../lib/requestApproval.js', () => ({ requestApprovalWouldBeSkipped: vi.fn(async () => false) }))
+// The named-approval gate (lib/__tests__/ticketApprovalGate.test.ts): open unless a test closes it.
+vi.mock('../../../lib/ticketApprovalGate.js', () => ({
+  APPROVAL_GATED_TICKETS: ['incident', 'problem', 'service_request'],
+  ticketApprovalRefusal: vi.fn(async () => null),
+}))
 vi.mock('../../../lib/roles.js', async (orig) => ({
   ...(await orig<object>()),
   assertRolesExist: vi.fn(async () => undefined),
@@ -131,6 +136,7 @@ const { validateRequiredFields } = await import('../../../lib/validateRequiredFi
 const { invalidateWorkflowCache } = await import('../../../lib/workflowHelpers.js')
 const { audit } = await import('../../../lib/audit.js')
 const { requestApprovalWouldBeSkipped } = await import('../../../lib/requestApproval.js')
+const { ticketApprovalRefusal } = await import('../../../lib/ticketApprovalGate.js')
 const { assertDefinitionDeadlines } = await import('../../../lib/stepDeadlineWrite.js')
 const { createEntityFromStepAction } = await import('../../../lib/stepActionCreateEntity.js')
 const { assertAssignablePerson } = await import('../../../services/ticketAssignment.js')
@@ -468,6 +474,31 @@ describe('executeWorkflowTransition — gates before the engine moves the ticket
     expect(e.extensions['i18n']).toMatchObject({ key: 'errors.request.approvalRequired' })
     expect(requestApprovalWouldBeSkipped).toHaveBeenCalledWith(mockSession, 't-1', 'wi-1', 'fulfilled', { byPerson: true })
     expect(workflowEngine.transition).not.toHaveBeenCalled()
+  })
+
+  // Owner's decision, review of 23 Sep 2026: the approver named by the step decides.
+  it('a ticket held by a pending named approval is refused, naming the step', async () => {
+    primeInstance('incident')
+    vi.mocked(ticketApprovalRefusal).mockResolvedValueOnce({ status: 'pending', approvalId: 'ap-1', stepName: 'budget_approval' })
+    const e = await caught(run('in_progress'))
+    expect(e.extensions['code']).toBe('CONFLICT')
+    expect(e.extensions['i18n']).toEqual({ key: 'errors.approval.pendingOnStep', params: { step: 'budget_approval' } })
+    expect(ticketApprovalRefusal).toHaveBeenCalledWith(mockSession, 't-1', 'wi-1', 'in_progress')
+    expect(workflowEngine.transition).not.toHaveBeenCalled()
+  })
+
+  it('a rejected one says so', async () => {
+    primeInstance('problem')
+    vi.mocked(ticketApprovalRefusal).mockResolvedValueOnce({ status: 'rejected', approvalId: 'ap-1', stepName: 'review' })
+    const e = await caught(run('in_progress'))
+    expect(e.extensions['i18n']).toMatchObject({ key: 'errors.approval.rejectedOnStep' })
+  })
+
+  it('approval.override is not held, and is not even asked', async () => {
+    primeInstance('incident')
+    const admin = { ...ctx, permissions: new Set([...(ctx.permissions ?? []), 'approval.override']) } as GraphQLContext
+    await expect(M.executeWorkflowTransition(null, { instanceId: 'wi-1', toStep: 'in_progress' }, admin)).resolves.toMatchObject({ success: true })
+    expect(ticketApprovalRefusal).not.toHaveBeenCalled()
   })
 
   it('a service request whose approval is not skipped goes on', async () => {

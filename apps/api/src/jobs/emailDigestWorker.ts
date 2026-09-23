@@ -86,6 +86,20 @@ export function digestMarkerKey(tenantId: string, localDate: string): string {
   return `digest:${tenantId}:${localDate}`
 }
 
+/**
+ * ONE RECIPIENT'S FAILURE IS THAT RECIPIENT'S (review of 23 Sep 2026). The
+ * digest went out to everyone and failed if one address failed; the tenant's
+ * marker was then removed so the next tick retried — to EVERYONE, every five
+ * minutes until midnight, because the digest stays due all day. Now each
+ * recipient has its own marker: a failed address is retried alone, at most
+ * DIGEST_ATTEMPTS times in the day, then given up loudly.
+ */
+export const DIGEST_ATTEMPTS = 3
+
+export function digestRecipientKey(tenantId: string, localDate: string, email: string): string {
+  return `digest:${tenantId}:${localDate}:to:${email.toLowerCase()}`
+}
+
 async function loadTenants(tenantId: string): Promise<TenantRow[]> {
   const session = getSession()
   try {
@@ -120,28 +134,17 @@ export async function processDigestTick(tenantId: string, now: Date = new Date()
       if (!tenant.digestTime) throw new Error(`digest.daily rule of tenant ${tenant.id} has no digest_time: set the time on the rule`)
       if (!digestDue(local, tenant.digestTime)) { skipped.push(tenant.id); continue }
 
+      // The tenant's marker says «everyone who could get it got it»: it is
+      // written only then. Until it is, each tick sends to the recipients
+      // that have no marker of their own (C-9: a failed tick is retried).
       const marker = digestMarkerKey(tenant.id, date)
-      const claimed = await getSharedRedis().set(marker, now.toISOString(), 'EX', MARKER_TTL_SECONDS, 'NX')
-      if (claimed !== 'OK') {
+      if (await getSharedRedis().exists(marker)) {
         log.info({ tenantId: tenant.id, date }, 'Daily digest already sent for this date — skipped (idempotency marker)')
         skipped.push(tenant.id)
         continue
       }
-
-      // Il marcatore serve a non mandarlo DUE volte, non a cancellare il
-      // tentativo fallito: se l'invio non riesce (SMTP giù, Neo4j in affanno)
-      // il marcatore va rimosso, altrimenti il digest di quel giorno è perso
-      // e i tick successivi lo saltano come «già inviato» (revisione totale ·
-      // C-9). Il prossimo tick riprova.
-      try {
-        await sendDigestForTenant(tenant)
-      } catch (err) {
-        await getSharedRedis().del(marker).catch((delErr: unknown) => {
-          log.error({ tenantId: tenant.id, date, err: delErr },
-            'Digest failed AND the idempotency marker could not be removed: no digest for this tenant today')
-        })
-        throw err
-      }
+      await sendDigestForTenant(tenant, date)
+      await getSharedRedis().set(marker, now.toISOString(), 'EX', MARKER_TTL_SECONDS)
       sent.push(tenant.id)
     } catch (err) {
       failures++
@@ -157,7 +160,44 @@ export async function processDigestTick(tenantId: string, now: Date = new Date()
   return { sent, skipped }
 }
 
-async function sendDigestForTenant(tenant: TenantRow): Promise<void> {
+/**
+ * One send to one recipient, claimed by its own marker. A failure frees the
+ * marker for the next tick until DIGEST_ATTEMPTS is reached; then the marker
+ * stays and the address is given up for the day, with an error in the log.
+ * Returns whether this call failed.
+ */
+async function sendToRecipient(tenantId: string, localDate: string, email: string, send: () => Promise<void>): Promise<'sent' | 'skipped' | 'failed'> {
+  const redis = getSharedRedis()
+  const key = digestRecipientKey(tenantId, localDate, email)
+  if (await redis.set(key, 'sent', 'EX', MARKER_TTL_SECONDS, 'NX') !== 'OK') return 'skipped'
+  try {
+    await send()
+    return 'sent'
+  } catch (err) {
+    const attempts = await redis.incr(`${key}:attempts`)
+    await redis.expire(`${key}:attempts`, MARKER_TTL_SECONDS)
+    if (attempts < DIGEST_ATTEMPTS) {
+      await freeRecipientMarker(key, { tenantId, date: localDate, email })
+      log.error({ err, email, tenantId, attempts }, 'Failed to send digest email — retried at the next tick')
+    } else {
+      await redis.set(key, 'given-up', 'EX', MARKER_TTL_SECONDS)
+      log.error({ err, email, tenantId, attempts }, 'Failed to send digest email — given up for today: check this address')
+    }
+    return 'failed'
+  }
+}
+
+/** Frees a recipient's marker; when Redis refuses, that address gets no digest today and the log says so. */
+async function freeRecipientMarker(key: string, who: { tenantId: string; date: string; email: string }): Promise<void> {
+  try {
+    await getSharedRedis().del(key)
+  } catch (err) {
+    log.error({ ...who, err }, 'Digest lost for this address today: the send failed and its marker could not be removed')
+    throw err
+  }
+}
+
+async function sendDigestForTenant(tenant: TenantRow, localDate: string): Promise<void> {
   const tenantId = tenant.id
   const session = getSession()
   const now = new Date()
@@ -236,12 +276,8 @@ async function sendDigestForTenant(tenant: TenantRow): Promise<void> {
 
     let sendFailures = 0
     for (const { email } of users) {
-      try {
-        await sendTenantEmail(tenantId, { to: email, ...tpl })
-      } catch (err) {
-        sendFailures++
-        log.error({ err, email, tenantId }, 'Failed to send digest email')
-      }
+      const outcome = await sendToRecipient(tenantId, localDate, email, () => sendTenantEmail(tenantId, { to: email, ...tpl }))
+      if (outcome === 'failed') sendFailures++
     }
     if (sendFailures > 0) {
       throw new Error(`[email-digest] ${sendFailures}/${users.length} digest emails failed for tenant ${tenantId}`)

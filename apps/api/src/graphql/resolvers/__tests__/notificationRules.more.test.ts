@@ -98,12 +98,12 @@ describe('Query.notificationRules', () => {
   it('converts stored numbers and keeps digest recipients only when they are a list', async () => {
     answer(mockSession.executeRead, nodes(
       { id: 'x', event_type: 'digest.daily', escalation_delay_minutes: '15', sla_warning_threshold_percent: 80,
-        digest_time: '08:30', digest_recipients: ['a@x'], is_seed: true, step_purpose: 'approval', step_category: 'waiting' },
+        digest_time: '08:30', digest_recipients: ['a@x.io'], is_seed: true, step_purpose: 'approval', step_category: 'waiting' },
       { id: 'y', event_type: 'digest.daily', digest_recipients: 'not-a-list' },
     ))
     const [x, y] = await Query.notificationRules(null, null, ctx)
     expect(x).toMatchObject({ escalationDelayMinutes: 15, slaWarningThresholdPercent: 80, digestTime: '08:30',
-      digestRecipients: ['a@x'], isSeed: true, stepPurpose: 'approval', stepCategory: 'waiting' })
+      digestRecipients: ['a@x.io'], isSeed: true, stepPurpose: 'approval', stepCategory: 'waiting' })
     expect(y!.digestRecipients).toBeNull()
   })
 })
@@ -188,9 +188,9 @@ describe('createNotificationRule', () => {
     const write = answer(mockSession.executeWrite, nodes({ id: 'n', event_type: 'digest.daily', digest_time: '23:59', escalation_delay_minutes: 30 }))
     const out = await Mutation.createNotificationRule(null, {
       input: { eventType: 'digest.daily', titleKey: 'k', channels: ['email'], target: 'all', enabled: false, severityOverride: 'warning',
-        digestTime: '23:59', digestRecipients: ['ops@x'], escalationDelayMinutes: 30, escalationMessage: 'm' },
+        digestTime: '23:59', digestRecipients: ['ops@x.io'], escalationDelayMinutes: 30, escalationMessage: 'm' },
     }, ctx)
-    expect(write.mock.calls[0]![1]).toMatchObject({ enabled: false, severityOverride: 'warning', digestTime: '23:59', digestRecipients: ['ops@x'], escalationDelayMinutes: 30, escalationMessage: 'm' })
+    expect(write.mock.calls[0]![1]).toMatchObject({ enabled: false, severityOverride: 'warning', digestTime: '23:59', digestRecipients: ['ops@x.io'], escalationDelayMinutes: 30, escalationMessage: 'm' })
     expect(out.digestTime).toBe('23:59')
   })
 })
@@ -230,9 +230,9 @@ describe('updateNotificationRule', () => {
 
   it('passes the still-valid special fields and null for the ones not sent', async () => {
     const write = answer(mockSession.executeWrite, nodes({ id: 'r1', event_type: 'digest.daily' }))
-    await Mutation.updateNotificationRule(null, { id: 'r1', input: { digestTime: '07:05', escalationDelayMinutes: 10, escalationMessage: 'hurry', digestRecipients: ['a@x'] } }, ctx)
+    await Mutation.updateNotificationRule(null, { id: 'r1', input: { digestTime: '07:05', escalationDelayMinutes: 10, escalationMessage: 'hurry', digestRecipients: ['a@x.io'] } }, ctx)
     expect(write.mock.calls[0]![1]).toMatchObject({
-      digestTime: '07:05', escalationDelayMinutes: 10, escalationMessage: 'hurry', digestRecipients: ['a@x'],
+      digestTime: '07:05', escalationDelayMinutes: 10, escalationMessage: 'hurry', digestRecipients: ['a@x.io'],
       enabled: null, severityOverride: null, channels: null, target: null,
     })
   })

@@ -34,6 +34,7 @@ import { FIELD_SCOPE, mapFieldRows, mapITILField, loadITILTypes } from '../../li
 import { assertCustomFieldName } from '../../lib/customFieldName.js'
 import { assertStepsExist, parseStepEditability, parseStepVisibility, workflowStepNames } from '../../lib/customFieldSteps.js'
 import { removeTicketFieldValues, ticketFieldValues } from '../../lib/ticketCustomFields.js'
+import { deleteFieldRulesOf } from '../../lib/fieldRulesOfField.js'
 import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
 
@@ -535,7 +536,7 @@ export function buildITILMutations(requireMetamodelPermission: (ctx: GraphQLCont
       ctx: GraphQLContext,
     ) => {
       requireMetamodelPermission(ctx)
-      let outcome: { name: string; typeName: string; removed: number; sample: Record<string, string> } | null = null
+      let outcome: { name: string; typeName: string; removed: number; rulesRemoved: number; sample: Record<string, string> } | null = null
       await withSession(async session => {
         // A-4: `f.is_system` non basta — i campi custom di un altro cliente
         // hanno `is_system = false` ed erano quindi cancellabili da qui.
@@ -545,7 +546,7 @@ export function buildITILMutations(requireMetamodelPermission: (ctx: GraphQLCont
         // i CI): i valori se ne vanno con il campo, nella stessa transazione, e
         // un campione dei valori di prima resta nell'Audit Log.
         const before = await ticketFieldValues(session, ctx.tenantId, typeName, field.name)
-        const removed = await session.executeWrite(async tx => {
+        const { removed, rulesRemoved } = await session.executeWrite(async tx => {
           const r = await tx.run(`
             MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId, tenant_id: $tenantId})
             WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, '${SYSTEM_TENANT}']
@@ -553,16 +554,19 @@ export function buildITILMutations(requireMetamodelPermission: (ctx: GraphQLCont
             RETURN count(*) AS deleted
           `, { typeId: args.typeId, fieldId: args.fieldId, tenantId: ctx.tenantId })
           if (Number(r.records[0]?.get('deleted') ?? 0) === 0) throw new NotFoundError('Field', args.fieldId)
-          return removeTicketFieldValues(tx, ctx.tenantId, typeName, field.name)
+          return {
+            removed:      await removeTicketFieldValues(tx, ctx.tenantId, typeName, field.name),
+            rulesRemoved: await deleteFieldRulesOf(tx, ctx.tenantId, typeName, field.name),
+          }
         })
         if (removed !== before.count) {
           log.warn({ tenantId: ctx.tenantId, field: field.name, counted: before.count, removed }, 'Custom field values changed while deleting the field')
         }
-        outcome = { name: field.name, typeName, removed, sample: before.sample }
+        outcome = { name: field.name, typeName, removed, rulesRemoved, sample: before.sample }
       }, true)
 
-      const done = outcome as { name: string; typeName: string; removed: number; sample: Record<string, string> } | null
-      if (done) void audit(ctx, 'itil_type.field_removed', 'CITypeDefinition', args.typeId, { entityType: done.typeName, field: done.name, valuesRemoved: done.removed, previousValues: done.sample })
+      const done = outcome as { name: string; typeName: string; removed: number; rulesRemoved: number; sample: Record<string, string> } | null
+      if (done) void audit(ctx, 'itil_type.field_removed', 'CITypeDefinition', args.typeId, { entityType: done.typeName, field: done.name, valuesRemoved: done.removed, rulesRemoved: done.rulesRemoved, previousValues: done.sample })
       invalidateSchema(ctx.tenantId)
       return fetchITILTypeById(args.typeId, ctx.tenantId)
     },

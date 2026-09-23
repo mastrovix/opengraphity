@@ -27,6 +27,14 @@ const state = vi.hoisted(() => ({
   /** Makes the write come back empty: the node vanished between read and write. */
   writeVanishes: false,
   closed: 0,
+  /** What the SLA policy read answers (the clock of a service-hours SLA); undefined = no such read expected. */
+  policyRow: undefined as Record<string, unknown> | null | undefined,
+}))
+
+// The policy's service calendar: Monday to Friday, 08:00-18:00 (review of 23 Sep 2026).
+vi.mock('../calendar.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../calendar.js')>(),
+  calendarFor: vi.fn(async () => ({ days: [1, 2, 3, 4, 5], start: '08:00', end: '18:00', holidays: [] })),
 }))
 
 vi.mock('@opengraphity/neo4j', () => ({
@@ -39,6 +47,10 @@ vi.mock('@opengraphity/neo4j', () => ({
   runQueryOne: async (_s: unknown, cypher: string, params: Record<string, unknown>) => {
     const isWrite = cypher.includes('SET ') || cypher.includes('MERGE ')
     ;(isWrite ? state.writes : state.reads).push({ cypher, params })
+    if (cypher.includes('SLAPolicyNode')) {
+      if (state.policyRow === undefined) throw new Error('unexpected read of the SLA policy')
+      return state.policyRow
+    }
     if (isWrite && state.writeVanishes) return null
     if (state.readRow !== undefined && !isWrite) return state.readRow
     return state.current
@@ -47,7 +59,7 @@ vi.mock('@opengraphity/neo4j', () => ({
 
 const {
   getEntityScope, getEntityPriority, createSLAStatus, ticketReference,
-  markResponseBreachNotified, markResponseMet, markBreached, pauseSLA, resumeSLA, reopenSLA,
+  markResponseBreachNotified, markResponseMet, markBreached, pauseSLA, resumeSLA, reopenSLA, markResolveMet,
 } = await import('../status.js')
 
 const status = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
@@ -73,6 +85,7 @@ beforeEach(() => {
   state.writes = []; state.reads = []
   state.current = null; state.readRow = undefined
   state.writeVanishes = false; state.closed = 0
+  state.policyRow = undefined
 })
 
 describe('getEntityScope — what a policy can be scoped to', () => {
@@ -281,6 +294,83 @@ describe('resumeSLA — which deadline moves depends on what was paused', () => 
     state.current = status()
     expect(await resumeSLA('c-one', 'inc-1', resumeAt)).toBeNull()
     expect(state.writes).toHaveLength(0)
+  })
+})
+
+/**
+ * A pause on a tier in SERVICE HOURS (review of 23 Sep 2026): the deadline
+ * moved by the wall-clock length of the pause. Paused Friday 17:00 and
+ * resumed Monday 09:00 (Rome), the clock missed two service hours, and the
+ * deadline jumped 64 hours — from Tuesday noon to Friday 04:00.
+ */
+describe('the shift counts on the SLA\'s own clock', () => {
+  const ROME_POLICY = { name: 'Office hours', timezone: null, tenantTimezone: 'Europe/Rome', calendarId: 'cal-1' }
+  const FRI_17 = '2026-09-25T15:00:00.000Z'     // Friday 17:00 in Rome
+  const MON_09 = new Date('2026-09-28T07:00:00.000Z')   // Monday 09:00 in Rome
+  const inServiceHours = (over: Record<string, unknown> = {}) => status({
+    tier_business_hours: true,
+    response_deadline: '2026-09-29T08:00:00.000Z',   // Tuesday 10:00
+    resolve_deadline:  '2026-09-29T10:00:00.000Z',   // Tuesday 12:00
+    ...over,
+  })
+
+  it('resume: two service hours missed → the deadlines move by two service hours', async () => {
+    state.current = inServiceHours({ paused_at: FRI_17, paused_type: 'both' })
+    state.policyRow = ROME_POLICY
+    await resumeSLA('c-one', 'inc-1', MON_09)
+    expect(lastWrite().params['newResponse']).toBe('2026-09-29T10:00:00.000Z')   // Tuesday 12:00
+    expect(lastWrite().params['newResolve']).toBe('2026-09-29T12:00:00.000Z')    // Tuesday 14:00
+    expect(lastWrite().params['shiftMs']).toBe(2 * 3_600_000)
+    // The policy the SLA came from, in its tenant.
+    expect(state.reads.find((r) => r.cypher.includes('SLAPolicyNode'))!.params).toEqual({ policyId: 'pol-1', tenantId: 'c-one' })
+  })
+
+  it('a pause entirely outside service hours moves nothing', async () => {
+    state.current = inServiceHours({ paused_at: '2026-09-26T08:00:00.000Z', paused_type: 'both' })   // Saturday
+    state.policyRow = ROME_POLICY
+    await resumeSLA('c-one', 'inc-1', new Date('2026-09-27T16:00:00.000Z'))                          // Sunday
+    expect(lastWrite().params['newResolve']).toBe('2026-09-29T10:00:00.000Z')
+    expect(lastWrite().params['shiftMs']).toBe(0)
+  })
+
+  it('reopen: the service time spent resolved moves the deadline, and joins the pause total', async () => {
+    state.current = inServiceHours({ resolved_at: FRI_17, resolve_met: true })
+    state.policyRow = ROME_POLICY
+    await reopenSLA('c-one', 'inc-1', MON_09)
+    expect(lastWrite().params['newResolve']).toBe('2026-09-29T12:00:00.000Z')
+    expect(lastWrite().params['shiftMs']).toBe(2 * 3_600_000)
+    expect(lastWrite().cypher).toContain('s.paused_total_ms  = coalesce(s.paused_total_ms, 0) + $shiftMs')
+  })
+
+  it('resolved during a pause: the pause is written into the deadline in service time', async () => {
+    // Paused Friday 17:00, resolved Tuesday 13:00: the clock stood still for 16 service hours
+    // (1 on Friday, 10 on Monday, 5 on Tuesday), so Tuesday 12:00 becomes Wednesday 18:00.
+    // On the wall clock it became Saturday 08:00 — and a reopened ticket would have started from there.
+    state.current = inServiceHours({ paused_at: FRI_17, paused_type: 'resolve' })
+    state.policyRow = ROME_POLICY
+    await markResolveMet('c-one', 'inc-1', new Date('2026-09-29T11:00:00.000Z'))
+    expect(lastWrite().params['met']).toBe(true)
+    expect(lastWrite().params['effectiveDeadline']).toBe('2026-09-30T16:00:00.000Z')
+    expect(lastWrite().params['pauseShiftMs']).toBe(16 * 3_600_000)
+  })
+
+  it('a 24×7 SLA never reads the policy: the wall clock is its clock', async () => {
+    state.current = status({ paused_at: FRI_17, paused_type: 'resolve', resolve_deadline: '2026-09-29T10:00:00.000Z' })
+    await resumeSLA('c-one', 'inc-1', MON_09)
+    expect(lastWrite().params['newResolve']).toBe('2026-10-02T02:00:00.000Z')   // + 64 hours
+  })
+
+  it('a service-hours SLA whose policy is gone fails loud, naming both', async () => {
+    state.current = inServiceHours({ paused_at: FRI_17, paused_type: 'both' })
+    state.policyRow = null
+    await expect(resumeSLA('c-one', 'inc-1', MON_09)).rejects.toThrow(/sla-1 counts service hours on policy pol-1, which no longer exists/)
+    expect(state.writes).toHaveLength(0)
+  })
+
+  it('a policy without a time zone, in a tenant without one, fails loud', async () => {
+    state.current = inServiceHours({ paused_at: FRI_17, paused_type: 'both' })
+    state.policyRow = { ...ROME_POLICY, tenantTimezone: null }
+    await expect(resumeSLA('c-one', 'inc-1', MON_09)).rejects.toThrow(/"Office hours" has no time zone/)
   })
 })
 

@@ -4308,7 +4308,9 @@
       "incomplete_one": "L'approvazione non è completa: {{count}} requisito è ancora in attesa.",
       "incomplete_other": "L'approvazione non è completa: {{count}} requisiti sono ancora in attesa.",
       "noPublishedStep": "Il workflow della knowledge base non ha un arco da qui a un passo pubblicato: l'approvazione non può pubblicare l'articolo. Aggiungilo nel disegnatore.",
-      "transitionRefused": "Il workflow della Knowledge Base ha rifiutato il passaggio: l'articolo non è stato spostato."
+      "transitionRefused": "Il workflow della Knowledge Base ha rifiutato il passaggio: l'articolo non è stato spostato.",
+      "pendingOnStep": "Il ticket aspetta un'approvazione nel passo \"{{step}}\": decidono gli approvatori, dalla pagina Approvazioni.",
+      "rejectedOnStep": "L'approvazione nel passo \"{{step}}\" è stata rifiutata: il ticket si può solo chiudere o annullare."
     },
     "fieldRule": {
       "sameField": "Il campo che innesca la regola e quello su cui agisce non possono essere lo stesso.",

@@ -137,7 +137,8 @@ export async function createChangeRFC(
       OPTIONAL MATCH (req:User {id: $requesterId, tenant_id: $tenantId})
       FOREACH (_ IN CASE WHEN req IS NULL THEN [] ELSE [1] END |
         CREATE (c)-[:REQUESTED_BY]->(req)
-        MERGE (req)-[:WATCHES {watched_at: $now}]->(c)
+        MERGE (req)-[w:WATCHES]->(c)
+          ON CREATE SET w.watched_at = $now
       )
       WITH c
       OPTIONAL MATCH (owner:User {id: $ownerId, tenant_id: $tenantId})

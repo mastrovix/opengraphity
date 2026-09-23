@@ -21,10 +21,11 @@ import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import {
   SYSTEM_TENANT, enumScopeClause, loadTenantEnumOverrides, applyEnumOverrides, assertEnumLinkable,
 } from '../../lib/enumScope.js'
-import type { Session } from 'neo4j-driver'
+import type { ManagedTransaction, Session } from 'neo4j-driver'
 import { toNumber } from '@opengraphity/neo4j'
 import { config } from '../../lib/config.js'
 import { requirePermission } from '../../lib/permissions.js'
+import { deleteFieldRulesOf } from '../../lib/fieldRulesOfField.js'
 
 type Props = Record<string, unknown>
 
@@ -556,7 +557,7 @@ async function ciFieldTarget(session: Session, typeId: string, fieldId: string, 
       MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId})
       WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId
         AND f.scope = 'tenant' AND f.tenant_id = $tenantId
-      RETURN f.name AS name, t.neo4j_label AS label
+      RETURN f.name AS name, t.neo4j_label AS label, t.name AS typeName
     `, { typeId, fieldId, tenantId }),
   )
   if (!found.records.length) {
@@ -571,7 +572,32 @@ async function ciFieldTarget(session: Session, typeId: string, fieldId: string, 
   const snake = assertFieldName(toSnakeCase(name), `removeCIField(${name})`)
   // La lettura (`mapCI`) guarda anche la chiave camelCase.
   const camelIsProperty = name !== snake && /^[a-z][A-Za-z0-9]*$/.test(name)
-  return { name, label, snake, camelIsProperty }
+  const typeName = found.records[0]!.get('typeName') as string | null
+  return { name, label, snake, camelIsProperty, typeName }
+}
+
+/**
+ * The field, its values on the CIs of the type and the rules that name it
+ * (review of 23 Sep 2026), in the caller's transaction: all go, or none.
+ */
+async function deleteCIFieldTx(
+  tx: ManagedTransaction,
+  f: { typeId: string; fieldId: string; tenantId: string; label: string; snake: string; name: string; camelIsProperty: boolean; typeName: string | null },
+): Promise<{ values: number; rulesRemoved: number }> {
+  if (!f.typeName) throw new Error(`removeCIField(${f.fieldId}): type ${f.typeId} has no name — its field rules could not be found`)
+  const cleared = await tx.run(`
+    MATCH (n:${f.label} {tenant_id: $tenantId})
+    WHERE n.${f.snake} IS NOT NULL${f.camelIsProperty ? ` OR n.${f.name} IS NOT NULL` : ''}
+    REMOVE n.${f.snake}${f.camelIsProperty ? `, n.${f.name}` : ''}
+    RETURN count(n) AS n
+  `, { tenantId: f.tenantId })
+  await tx.run(`
+    MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId})
+    WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId
+      AND f.scope = 'tenant' AND f.tenant_id = $tenantId
+    DETACH DELETE f
+  `, { typeId: f.typeId, fieldId: f.fieldId, tenantId: f.tenantId })
+  return { values: toNumber(cleared.records[0]?.get('n')), rulesRemoved: await deleteFieldRulesOf(tx, f.tenantId, f.typeName, f.name) }
 }
 
 /** I CI del tipo che hanno un valore nel campo: quanti, e i primi valori per nome del CI. */
@@ -1251,36 +1277,22 @@ export function buildMetamodelMutations() {
       ctx: GraphQLContext,
     ) => {
       requireMetamodelPermission(ctx)
-      let removed: { name: string; values: number; previousValues: Record<string, string> } | null = null
+      let removed: { name: string; values: number; rulesRemoved: number; previousValues: Record<string, string> } | null = null
       await withSession(async session => {
         // A-5: sui tipi spediti il `WHERE t.scope = 'tenant'` rendeva questa
         // mutation un no-op silenzioso — l'interfaccia diceva «fatto» e il
         // campo restava. Ora si ferma e dice perché.
-        const { name, label, snake, camelIsProperty } = await ciFieldTarget(session, args.typeId, args.fieldId, ctx.tenantId)
+        const { name, label, snake, camelIsProperty, typeName } = await ciFieldTarget(session, args.typeId, args.fieldId, ctx.tenantId)
         // Secondo giro UI · V-15: i valori di prima nell'Audit Log, come per i campi ITIL (U-28).
         const before = await ciFieldValues(session, ctx.tenantId, { label, snake, name, camelIsProperty })
-        const r = await session.executeWrite(async tx => {
-          const cleared = await tx.run(`
-            MATCH (n:${label} {tenant_id: $tenantId})
-            WHERE n.${snake} IS NOT NULL${camelIsProperty ? ` OR n.${name} IS NOT NULL` : ''}
-            REMOVE n.${snake}${camelIsProperty ? `, n.${name}` : ''}
-            RETURN count(n) AS n
-          `, { tenantId: ctx.tenantId })
-          await tx.run(`
-            MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId})
-            WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId
-              AND f.scope = 'tenant' AND f.tenant_id = $tenantId
-            DETACH DELETE f
-          `, { typeId: args.typeId, fieldId: args.fieldId, tenantId: ctx.tenantId })
-          return toNumber(cleared.records[0]?.get('n'))
-        })
-        removed = { name, values: r, previousValues: before.sample }
+        const r = await session.executeWrite((tx) => deleteCIFieldTx(tx, { typeId: args.typeId, fieldId: args.fieldId, tenantId: ctx.tenantId, label, snake, name, camelIsProperty, typeName }))
+        removed = { name, values: r.values, rulesRemoved: r.rulesRemoved, previousValues: before.sample }
         cache.invalidate(`ci:${ctx.tenantId}:${label}:`)
       }, true)
       invalidateSchema(ctx.tenantId)
       if (removed) {
-        const done = removed as { name: string; values: number; previousValues: Record<string, string> }
-        void audit(ctx, 'ci_type.field_removed', 'CITypeDefinition', args.typeId, { field: done.name, valuesRemoved: done.values, previousValues: done.previousValues })
+        const done = removed as { name: string; values: number; rulesRemoved: number; previousValues: Record<string, string> }
+        void audit(ctx, 'ci_type.field_removed', 'CITypeDefinition', args.typeId, { field: done.name, valuesRemoved: done.values, rulesRemoved: done.rulesRemoved, previousValues: done.previousValues })
       }
       return fetchCITypeById(args.typeId, ctx.tenantId)
     },

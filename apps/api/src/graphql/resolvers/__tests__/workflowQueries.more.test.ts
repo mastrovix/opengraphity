@@ -31,6 +31,11 @@ vi.mock('../workflowMapping.js', () => ({
   mapWorkflowDefinition: (...a: unknown[]) => mapWorkflowDefinition(...(a as [Record<string, unknown>, unknown[], unknown[]])),
 }))
 const requestApprovalWouldBeSkipped = vi.fn()
+// The named-approval gate (lib/ticketApprovalGate.test.ts): here it lets everything through, and says who asked.
+const transitionsOpenToApproval = vi.fn(async (_s: unknown, _t: string, _i: string, trs: unknown[], _o: boolean) => trs)
+vi.mock('../../../lib/ticketApprovalGate.js', () => ({
+  transitionsOpenToApproval: (...a: unknown[]) => (transitionsOpenToApproval as (...x: unknown[]) => unknown)(...a),
+}))
 vi.mock('../../../lib/requestApproval.js', () => ({
   requestApprovalWouldBeSkipped: (...a: unknown[]) => requestApprovalWouldBeSkipped(...a),
 }))

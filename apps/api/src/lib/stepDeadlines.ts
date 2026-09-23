@@ -159,6 +159,23 @@ export async function runStepDeadlineSweep(tenantId: string, now = new Date()): 
   return summary
 }
 
+/**
+ * A deadline is not a person, nor an approver: it never counts as the
+ * approval decision of a request, and a named approval holds the ticket
+ * (lib/ticketApprovalGate.ts). The reason it is refused, or null.
+ */
+async function approvalHoldsDeadline(
+  session: Session, c: StepDeadlineCandidate, toStep: string,
+): Promise<'request_approval' | 'approval_request' | null> {
+  if (c.entityType === 'service_request') {
+    const { requestApprovalWouldBeSkipped } = await import('./requestApproval.js')
+    if (await requestApprovalWouldBeSkipped(session, c.tenantId, c.instanceId, toStep, { byPerson: false })) return 'request_approval'
+  }
+  const { APPROVAL_GATED_TICKETS, ticketApprovalRefusal } = await import('./ticketApprovalGate.js')
+  if (APPROVAL_GATED_TICKETS.includes(c.entityType) && await ticketApprovalRefusal(session, c.tenantId, c.instanceId, toStep)) return 'approval_request'
+  return null
+}
+
 /** Scrive l'esito sull'esecuzione del passo, lo conta e lo dice (a voce alta solo la prima volta). */
 async function recordOutcome(
   c: StepDeadlineCandidate, outcome: Exclude<StepDeadlineOutcome, 'skipped'>, reason: string, detail: string | null,
@@ -251,13 +268,10 @@ export async function fireStepDeadline(c: StepDeadlineCandidate, now: Date): Pro
         return 'refused'
       }
     }
-    if (c.entityType === 'service_request') {
-      const { requestApprovalWouldBeSkipped } = await import('./requestApproval.js')
-      // A deadline is not a person: it never counts as the approval decision.
-      if (await requestApprovalWouldBeSkipped(session, c.tenantId, c.instanceId, toStep, { byPerson: false })) {
-        await recordOutcome(c, 'refused', 'request_approval', null, toStep, now)
-        return 'refused'
-      }
+    const approvalReason = await approvalHoldsDeadline(session, c, toStep)
+    if (approvalReason) {
+      await recordOutcome(c, 'refused', approvalReason, null, toStep, now)
+      return 'refused'
     }
 
     // I campi si validano PRIMA di spostare: un valore uscito dal vocabolario

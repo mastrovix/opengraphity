@@ -9,10 +9,12 @@
  *    workflow, the priority label of the Dictionary, the customer's fields),
  *    and a missing value is a dash, not an empty cell;
  *  - the phase and priority filters offer the customer's values and reach the
- *    query, and any new filter or sort restarts from the first page;
- *  - the CSV export carries the same filters as the screen (it did not: with
- *    "only critical" on, the file had every priority) and one column per
- *    customer field;
+ *    query WHOLE, as on incidents and problems (the page used to keep one
+ *    step and one priority and drop every other rule), and any new filter or
+ *    sort restarts from the first page;
+ *  - the CSV export carries the same filters and the same order as the screen
+ *    (it did not: with "only critical" on, the file had every priority) and
+ *    one column per customer field;
  *  - empty, failed and "just created" states each say what they are.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -144,7 +146,7 @@ describe('ChangeListPage — what each row says', () => {
 
   it('asks the server for the first page, newest first, with no filter', () => {
     mount()
-    expect(lastQuery()).toEqual({ currentStep: null, priority: null, limit: 50, offset: 0, sortField: null, sortDirection: 'desc' })
+    expect(lastQuery()).toEqual({ filters: null, limit: 50, offset: 0, sortField: null, sortDirection: 'desc' })
   })
 
   it('a click on a row opens that change', async () => {
@@ -209,29 +211,27 @@ describe('ChangeListPage — filter, sort and pages go to the server', () => {
     const { user } = mount()
     await user.click(screen.getByRole('button', { name: 'Next →' }))
     expect(lastQuery()).toMatchObject({ offset: 50 })
-    hoisted.nextFilter = { rules: [rule('currentStep', 'in', ['implementation', 'closed']), rule('priority', 'equals', 'high')] }
+    const group = { rules: [rule('status', 'in', ['implementation', 'closed']), rule('priority', 'equals', 'high')] }
+    hoisted.nextFilter = group
     await user.click(screen.getByRole('button', { name: 'apply filter' }))
-    // A list of phases filters on the first one: the query takes one phase.
-    expect(lastQuery()).toMatchObject({ currentStep: 'implementation', priority: 'high', offset: 0 })
+    // Both phases, not the first one only: the whole group goes to the server.
+    expect(lastQuery()).toMatchObject({ filters: JSON.stringify(group), offset: 0 })
   })
 
-  it('only "equals" and "in" filter on the server; empty lists, blanks and a removed filter mean no filter', async () => {
+  // Review of 23 Sep 2026: «not equals», a second value and an OR group were dropped here, and the list was not filtered.
+  it('every operator and an OR group reach the server; no rule or a removed filter mean no filter', async () => {
     const { user } = mount()
     const apply = async (group: FilterGroup | null) => {
       hoisted.nextFilter = group
       await user.click(screen.getByRole('button', { name: 'apply filter' }))
       return lastQuery()
     }
-    expect(await apply({ rules: [rule('currentStep', 'equals', 'closed'), rule('priority', 'in', ['emergency'])] }))
-      .toMatchObject({ currentStep: 'closed', priority: 'emergency' })
-    expect(await apply({ rules: [rule('currentStep', 'not_equals', 'closed')] }))
-      .toMatchObject({ currentStep: null, priority: null })
-    expect(await apply({ rules: [rule('currentStep', 'in', []), rule('priority', 'in', [])] }))
-      .toMatchObject({ currentStep: null, priority: null })
-    expect(await apply({ rules: [rule('currentStep', 'equals', null), rule('priority', 'equals', null)] }))
-      .toMatchObject({ currentStep: null, priority: null })
-    expect(await apply({ rules: [] })).toMatchObject({ currentStep: null, priority: null })
-    expect(await apply(null)).toMatchObject({ currentStep: null, priority: null })
+    const notClosed = { rules: [rule('status', 'not_equals', 'closed')] }
+    expect(await apply(notClosed)).toMatchObject({ filters: JSON.stringify(notClosed) })
+    const either = { logic: 'OR', rules: [rule('status', 'equals', 'closed'), rule('priority', 'in', ['emergency'])] } as unknown as FilterGroup
+    expect(await apply(either)).toMatchObject({ filters: JSON.stringify(either) })
+    expect(await apply({ rules: [] })).toMatchObject({ filters: null })
+    expect(await apply(null)).toMatchObject({ filters: null })
   })
 
   it('sorting a column asks the server for that order, first ascending then descending, from the first page', async () => {
@@ -279,13 +279,16 @@ describe('ChangeListPage — reloading and exporting', () => {
       change({ id: 'c3', code: 'CHG00000003', workflowInstance: { id: 'wi-3', currentStep: 'retired_step', status: 'running' }, customFields: null }),
     ] } } })
     const { user } = mount()
-    hoisted.nextFilter = { rules: [rule('currentStep', 'equals', 'implementation'), rule('priority', 'equals', 'high')] }
+    const group = { rules: [rule('status', 'equals', 'implementation'), rule('priority', 'equals', 'high')] }
+    hoisted.nextFilter = group
     await user.click(screen.getByRole('button', { name: 'apply filter' }))
+    // The order on screen goes into the file too.
+    await user.click(screen.getByRole('button', { name: 'Code' }))
     await user.click(screen.getByRole('button', { name: 'Export CSV' }))
     await waitFor(() => expect(hoisted.exportToCsv).toHaveBeenCalledTimes(1))
     expect(hoisted.exportQuery).toHaveBeenCalledWith({
       query: GET_CHANGES,
-      variables: { currentStep: 'implementation', priority: 'high', limit: 10000, offset: 0 },
+      variables: { filters: JSON.stringify(group), limit: 10000, offset: 0, sortField: 'code', sortDirection: 'asc' },
       fetchPolicy: 'network-only',
     })
     const [name, columns, rows] = hoisted.exportToCsv.mock.calls[0]!

@@ -37,6 +37,9 @@ vi.mock('../ci-utils.js', () => ({
 }))
 vi.mock('../../../lib/schemaInvalidator.js', () => ({ invalidateSchema: vi.fn() }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
+// Review of 23 Sep 2026: the field's rules go in the same transaction (lib/__tests__/fieldRulesOfField.test.ts).
+const deleteFieldRulesOf = vi.fn(async (..._a: unknown[]) => 2)
+vi.mock('../../../lib/fieldRulesOfField.js', () => ({ deleteFieldRulesOf: (...a: unknown[]) => deleteFieldRulesOf(...a) }))
 // Il nome di un campo dei ticket ha il suo test (customFieldName.test.ts).
 const assertCustomFieldName = vi.fn(async () => {})
 vi.mock('../../../lib/customFieldName.js', () => ({ assertCustomFieldName: (...a: unknown[]) => assertCustomFieldName(...a) }))
@@ -340,7 +343,8 @@ describe('updateITILField / deleteITILField — solo i campi del tenant (A1-2 / 
     expect(remove.cypher).toContain('REMOVE e.`origine`')
     expect(remove.params).toEqual({ tenantId: 'tenant-1', name: 'origine' })
     expect(mockSession.executeWrite).toHaveBeenCalledTimes(1)
-    expect(audit).toHaveBeenCalledWith(admin, 'itil_type.field_removed', 'CITypeDefinition', 'it-1', { entityType: 'incident', field: 'origine', valuesRemoved: 2, previousValues: { INC1: 'a', INC2: 'b' } })
+    expect(audit).toHaveBeenCalledWith(admin, 'itil_type.field_removed', 'CITypeDefinition', 'it-1', { entityType: 'incident', field: 'origine', valuesRemoved: 2, rulesRemoved: 2, previousValues: { INC1: 'a', INC2: 'b' } })
+    expect(deleteFieldRulesOf).toHaveBeenCalledWith(expect.anything(), 'tenant-1', 'incident', 'origine')
   })
 
   it('U-28: un nome di campo fuori forma non finisce mai in una REMOVE', async () => {

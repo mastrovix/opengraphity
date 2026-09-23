@@ -45,6 +45,9 @@ vi.mock('../ci-utils.js', () => ({
 }))
 vi.mock('../../../lib/schemaInvalidator.js', () => ({ invalidateSchema: vi.fn(), registerMetamodelCacheClearer: vi.fn() }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
+// Review of 23 Sep 2026: the field's rules go in the same transaction (lib/__tests__/fieldRulesOfField.test.ts).
+const deleteFieldRulesOf = vi.fn(async (..._a: unknown[]) => 2)
+vi.mock('../../../lib/fieldRulesOfField.js', () => ({ deleteFieldRulesOf: (...a: unknown[]) => deleteFieldRulesOf(...a) }))
 // SV-6: la domanda «una mappa di servizio segue questa relazione?» ha il suo test
 // (serviceMapRelationUsage.test.ts); qui si pretende solo che venga fatta.
 // Regola del 15 set 2026: cosa blocca e cosa porta via la cancellazione di un
@@ -127,7 +130,7 @@ function defaultResponse(cypher: string): { records: unknown[] } {
   }
   if (cypher.includes('RETURN count(*) AS n') && cypher.includes('startNode(e)')) return res([row({ n: EDGES_ONLY_THIS.value })])
   // CM-4 bis: il campo da togliere e i valori che se ne vanno con lui.
-  if (cypher.includes('RETURN f.name AS name, t.neo4j_label AS label')) return res([row({ name: 'stato', label: 'Firewall' })])
+  if (cypher.includes('RETURN f.name AS name, t.neo4j_label AS label')) return res([row({ name: 'stato', label: 'Firewall', typeName: 'firewall' })])
   if (cypher.includes('REMOVE n.')) return res([row({ n: VALUES_CLEARED.value })])
   // V-15: i valori prima della cancellazione (quanti e i primi, per nome del CI).
   if (cypher.includes('RETURN size(rows) AS count, rows[0..$limit] AS sample')) return res([row({ count: VALUES_CLEARED.value, sample: VALUES_CLEARED.value ? [{ name: 'FW-01', value: 'up' }] : [] })])
@@ -1028,7 +1031,9 @@ describe('togliere una relazione o un campo non lascia dati invisibili (CM-4)', 
     expect(clear.cypher).toContain('REMOVE n.stato')
     expect(mockSession.executeWrite).toHaveBeenCalledTimes(1)
     // Secondo giro UI · V-15: i valori di prima nell'Audit Log, come per i campi ITIL.
-    expect(audit).toHaveBeenCalledWith(admin, 'ci_type.field_removed', 'CITypeDefinition', 'ct-1', { field: 'stato', valuesRemoved: 12, previousValues: { 'FW-01': 'up' } })
+    expect(audit).toHaveBeenCalledWith(admin, 'ci_type.field_removed', 'CITypeDefinition', 'ct-1', { field: 'stato', valuesRemoved: 12, rulesRemoved: 2, previousValues: { 'FW-01': 'up' } })
+    // The rules that name the field, by the TYPE's name (what the rules panel stores as entityType), in the same transaction.
+    expect(deleteFieldRulesOf).toHaveBeenCalledWith(expect.objectContaining({ run: expect.any(Function) }), 'tenant-1', 'firewall', 'stato')
   })
 
   it('V-15: ciFieldValueCount conta i CI con un valore nel campo, senza scrivere', async () => {

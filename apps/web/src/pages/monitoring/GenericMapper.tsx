@@ -39,6 +39,13 @@ import { showError } from '@/lib/showError'
 
 const DEBOUNCE_MS = 300
 
+/** The value table for a new path: what was translated stays, a new value gets a suggestion. */
+function keptValueTable<T extends string>(current: Record<string, T | ''>, found: string[], path: string, suggest: (v: string) => T | ''): Record<string, T | ''> {
+  const table = syncValueTable<T>(current, found, path)
+  for (const v of found) if (table[v] === '') table[v] = suggest(v)
+  return table
+}
+
 /** Stato dell'anteprima riferito al genitore (D·1.10). */
 export interface PreviewState {
   /** C'è un esempio incollato (anche non ancora valido). */
@@ -105,20 +112,15 @@ export function GenericMapper({ mapping, onChange, payload, onPayloadChange, onP
   }
 
   // ── Modifiche al mapping ────────────────────────────────────────────────────
+  // The value tables start from what is already there (review of 23 Sep
+  // 2026): they were rebuilt from {} on every keystroke in the path, so
+  // editing the path of an existing source — or just retyping one letter —
+  // wiped the translations the administrator had chosen. Only a value with no
+  // translation yet gets a suggestion; emptying the path empties the table.
   const setField = (field: MapperField, path: string) => {
     const next: GenericMapping = { ...mapping, fields: { ...mapping.fields, [field]: path } }
-    if (field === 'severity') {
-      const found = distinctValuesAtPath(parsed.value, path)
-      const table = syncValueTable<EventSeverity>({}, found, path)
-      for (const v of found) table[v] = suggestSeverity(v)
-      next.severityValues = table
-    }
-    if (field === 'status') {
-      const found = distinctValuesAtPath(parsed.value, path)
-      const table = syncValueTable<EventInputStatus>({}, found, path)
-      for (const v of found) table[v] = suggestStatus(v)
-      next.statusValues = table
-    }
+    if (field === 'severity') next.severityValues = keptValueTable(mapping.severityValues, distinctValuesAtPath(parsed.value, path), path, suggestSeverity)
+    if (field === 'status')   next.statusValues   = keptValueTable(mapping.statusValues,   distinctValuesAtPath(parsed.value, path), path, suggestStatus)
     onChange(next)
   }
 

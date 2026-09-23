@@ -41,23 +41,15 @@ interface ChangeRow {
 const PAGE_SIZE = 50
 
 
-function extractStepFromFilter(group: FilterGroup | null): string | null {
-  if (!group || group.rules.length === 0) return null
-  const rule = group.rules.find(r => r.field === 'currentStep' && (r.operator === 'equals' || r.operator === 'in'))
-  if (!rule) return null
-  if (typeof rule.value === 'string') return rule.value
-  if (Array.isArray(rule.value) && rule.value.length > 0) return rule.value[0] ?? null
-  return null
-}
-
-function extractFieldFromFilter(group: FilterGroup | null, field: string): string | null {
-  if (!group || group.rules.length === 0) return null
-  const rule = group.rules.find(r => r.field === field && (r.operator === 'equals' || r.operator === 'in'))
-  if (!rule) return null
-  if (typeof rule.value === 'string') return rule.value
-  if (Array.isArray(rule.value) && rule.value.length > 0) return rule.value[0] ?? null
-  return null
-}
+/**
+ * The filters go to the server whole, as JSON, like on incidents and problems
+ * (review of 23 Sep 2026). The page used to pull out one step and one priority
+ * — only «equals» or «is one of», and only the FIRST value — and drop every
+ * other rule: «not equals», a second value and an OR group filtered nothing,
+ * while the builder showed them applied.
+ */
+const filtersVariable = (group: FilterGroup | null): string | null =>
+  group && group.rules.length > 0 ? JSON.stringify(group) : null
 
 export function ChangeListPage() {
   const { t } = useTranslation()
@@ -66,8 +58,7 @@ export function ChangeListPage() {
 
   const [page, setPage]             = useState(0)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
-  const currentStep = extractStepFromFilter(filterGroup)
-  const priorityFilter = extractFieldFromFilter(filterGroup, 'priority')
+  const filters = filtersVariable(filterGroup)
 
   const { steps: wfSteps, byName: stepByName, labelFor } = useWorkflowSteps('change')
   // I valori del filtro sono quelli del CLIENTE (revisione totale · F-6): la
@@ -76,7 +67,8 @@ export function ChangeListPage() {
   // filtro sui passi era il letterale «Step» col nome tecnico del passo.
   const { valuesOf, labelOf } = useDomainVocabularies()
   const filterFields: FieldConfig[] = [
-    { key: 'currentStep', label: t('pages.changes.phase'), type: 'enum',
+    // `status` holds the step's name (the engine writes it on every transition).
+    { key: 'status', label: t('pages.changes.phase'), type: 'enum',
       options: wfSteps.map((s) => ({ value: s.name, label: labelFor(s.name) })) },
     { key: 'priority', label: t('admin.sla.priority'), type: 'enum',
       // `valuesOf` è null finché i vocabolari non si conoscono: nessun valore
@@ -93,7 +85,7 @@ export function ChangeListPage() {
   const handleSort = (field: string, dir: 'asc' | 'desc') => { setSortField(field); setSortDir(dir); setPage(0) }
 
   const { data, loading, error, refetch } = useQuery<{ changes: { items: ChangeRow[]; total: number } }>(GET_CHANGES, {
-    variables: { currentStep, priority: priorityFilter, limit: PAGE_SIZE, offset: page * PAGE_SIZE, sortField, sortDirection: sortDir },
+    variables: { filters, limit: PAGE_SIZE, offset: page * PAGE_SIZE, sortField, sortDirection: sortDir },
     fetchPolicy: 'cache-and-network',
     // F-21: il polling si ferma quando la scheda è in background.
     ...pausedWhenHidden(30_000),
@@ -201,10 +193,9 @@ export function ChangeListPage() {
             const res = await apolloClient.query<{ changes: { items: ChangeRow[] } }>({
               query: GET_CHANGES,
               // L'export porta gli STESSI filtri dello schermo (revisione
-              // totale · F-25): la priorità non veniva passata, quindi con
-              // «solo critical» attivo il file conteneva tutte le priorità,
-              // col nome del filtro nel titolo.
-              variables: { currentStep, priority: priorityFilter, limit: 10000, offset: 0 },
+              // totale · F-25), e lo stesso ordinamento: il file usciva
+              // ordinato per data qualunque colonna si fosse scelta.
+              variables: { filters, limit: 10000, offset: 0, sortField, sortDirection: sortDir },
               fetchPolicy: 'network-only',
             })
             const rows = (res.data?.changes?.items ?? []).map((r) => ({

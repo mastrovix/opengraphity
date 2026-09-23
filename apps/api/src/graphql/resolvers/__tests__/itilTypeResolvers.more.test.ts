@@ -29,6 +29,9 @@ vi.mock('../ci-utils.js', () => ({
 }))
 vi.mock('../../../lib/schemaInvalidator.js', () => ({ invalidateSchema: vi.fn() }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
+// Review of 23 Sep 2026: the field's rules go in the same transaction (lib/__tests__/fieldRulesOfField.test.ts).
+const deleteFieldRulesOf = vi.fn(async (..._a: unknown[]) => 2)
+vi.mock('../../../lib/fieldRulesOfField.js', () => ({ deleteFieldRulesOf: (...a: unknown[]) => deleteFieldRulesOf(...a) }))
 vi.mock('../../../lib/customFieldName.js', () => ({ assertCustomFieldName: vi.fn(async () => {}) }))
 vi.mock('../../../lib/logger.js', () => {
   const l = { info: vi.fn(), warn, error: vi.fn(), debug: vi.fn(), child: () => l }

@@ -51,6 +51,10 @@ vi.mock('../../../lib/workflowHelpers.js', async (importOriginal) => ({
   getWorkflowSteps: (...a: unknown[]) => getWorkflowSteps(...a),
 }))
 
+// The mutation a person uses: a decided request moves its ticket through it (review of 23 Sep 2026).
+const executeWorkflowTransition = vi.fn()
+vi.mock('../workflowMutations.js', () => ({ executeWorkflowTransition: (...a: unknown[]) => executeWorkflowTransition(...a) }))
+
 const { approveRequest, rejectRequest, cancelApprovalRequest, createApprovalRequest, approvalRequests } =
   await import('../approval.js')
 
@@ -172,6 +176,60 @@ describe('approveRequest — quando la richiesta è soddisfatta', () => {
     const [tenant, dest, notifica] = sendToUser.mock.calls[0] as [string, string, Record<string, unknown>]
     expect([tenant, dest]).toEqual(['t1', 'u9'])
     expect(notifica['type']).toBe('approval.approved')
+  })
+})
+
+// Owner's decision, review of 23 Sep 2026: the approver named by the step decides, and the ticket follows.
+describe('a decided request moves its ticket', () => {
+  const STEPS = [
+    { name: 'budget_approval', isTerminal: false, category: 'waiting', purpose: 'approval' },
+    { name: 'in_progress',     isTerminal: false, category: 'active',  purpose: null },
+    { name: 'rejected',        isTerminal: true,  category: 'failed',  purpose: null },
+  ]
+  /** The request of a service request, and where its ticket stands. */
+  function richiesta(over: Record<string, unknown>, ticket: Record<string, unknown> | null = { instanceId: 'wi1', current: 'budget_approval', stepName: 'budget_approval' }) {
+    statoDiPartenza({ entityType: 'service_request', entityId: 'sr1', approvalType: 'any', approvers: '["u1"]', approvedBy: '[]', ...over })
+    read.mockResolvedValueOnce({ records: ticket ? [rec(ticket)] : [] })
+    getWorkflowSteps.mockResolvedValue(STEPS)
+    getAvailableTransitions.mockResolvedValue([{ toStep: 'in_progress' }, { toStep: 'rejected' }])
+    executeWorkflowTransition.mockResolvedValue({})
+  }
+
+  it('approved → the one way forward, through the mutation a person uses, as the approver', async () => {
+    richiesta({})
+    await approveRequest(null, { id: 'a1', note: 'budget ok' }, ctx('u1'))
+    expect(executeWorkflowTransition).toHaveBeenCalledWith(null, { instanceId: 'wi1', toStep: 'in_progress', notes: 'budget ok' }, expect.objectContaining({ userId: 'u1', tenantId: 't1' }))
+  })
+
+  it('rejected → the step of category failed', async () => {
+    read.mockResolvedValueOnce({ records: [rec({ status: 'pending', approvers: '["u1"]', requestedBy: 'u9', entityType: 'service_request', entityId: 'sr1' })] })
+    read.mockResolvedValueOnce({ records: [rec({ instanceId: 'wi1', current: 'budget_approval', stepName: 'budget_approval' })] })
+    getWorkflowSteps.mockResolvedValue(STEPS)
+    getAvailableTransitions.mockResolvedValue([{ toStep: 'in_progress' }, { toStep: 'rejected' }])
+    executeWorkflowTransition.mockResolvedValue({})
+    await rejectRequest(null, { id: 'a1', note: 'no budget' }, ctx('u1'))
+    expect(executeWorkflowTransition).toHaveBeenCalledWith(null, { instanceId: 'wi1', toStep: 'rejected', notes: 'no budget' }, expect.anything())
+  })
+
+  it('a ticket that already left the step, or a request with no step, moves nothing', async () => {
+    richiesta({}, { instanceId: 'wi1', current: 'in_progress', stepName: 'budget_approval' })
+    await approveRequest(null, { id: 'a1' }, ctx('u1'))
+    richiesta({}, { instanceId: 'wi1', current: 'budget_approval', stepName: null })
+    await approveRequest(null, { id: 'a1' }, ctx('u1'))
+    expect(executeWorkflowTransition).not.toHaveBeenCalled()
+  })
+
+  it('a refused move does not undo the decision: the approval stands and a person moves the ticket', async () => {
+    richiesta({})
+    executeWorkflowTransition.mockRejectedValue(new Error('field "cost_center" is required'))
+    await expect(approveRequest(null, { id: 'a1' }, ctx('u1'))).resolves.toBeTruthy()
+    expect(write.mock.calls[0]![1]).toMatchObject({ status: 'approved' })
+  })
+
+  it('a change is not moved from here: it has its own approvals', async () => {
+    statoDiPartenza({ approvalType: 'any', approvers: '["u1"]', approvedBy: '[]' })
+    await approveRequest(null, { id: 'a1' }, ctx('u1'))
+    expect(executeWorkflowTransition).not.toHaveBeenCalled()
   })
 })
 

@@ -8,6 +8,7 @@
  * change o di una richiesta chiusa dal workflow restava aperto per sempre.
  */
 import { workflowEngine } from '@opengraphity/workflow'
+import { getSession } from '@opengraphity/neo4j'
 import { WORKFLOW_STEP_ENTERED_EVENT, type WorkflowStepEnteredPayload } from '@opengraphity/types'
 import { publishEvent } from '../lib/publishEvent.js'
 import { publishStepEnteredForEntity } from '../lib/stepEnteredPublisher.js'
@@ -55,9 +56,32 @@ export function registerStepEnteredEvents(): void {
     // Ora si chiude con una scadenza qualunque o con un arco del cliente: lo
     // dice l'ingresso nel passo di categoria «closed», da qualunque cammino
     // (verifica «Cosa resta cablato», ondata 3).
-    if (info.entityType === 'incident' && info.category === 'closed') {
-      const { closeIncident } = await import('../services/incidentService.js')
-      await closeIncident(info.entityId, { tenantId: info.tenantId, userId: info.actorId })
+    //
+    // The same for `incident.resolved`, which resolveIncident published on its
+    // own. Either event goes out ONCE (review of 23 Sep 2026): when the step
+    // is named after its category the alias above already was that event, and
+    // a second one sent every notification and webhook twice.
+    if (info.entityType === 'incident' && (info.category === 'closed' || info.category === 'resolved') && info.toStep !== info.category) {
+      const { closeIncident, publishIncidentResolved } = await import('../services/incidentService.js')
+      const ctx = { tenantId: info.tenantId, userId: info.actorId }
+      if (info.category === 'closed') await closeIncident(info.entityId, ctx)
+      else await publishIncidentResolved(info.entityId, ctx, info.enteredAt)
+    }
+
+    // A request still pending in the step just left no longer decides
+    // anything: it is withdrawn, from every path (lib/ticketApprovalGate.ts).
+    if (info.fromStep && info.fromStep !== info.toStep) {
+      const { APPROVAL_GATED_TICKETS, withdrawApprovalsOfStep } = await import('../lib/ticketApprovalGate.js')
+      if (APPROVAL_GATED_TICKETS.includes(info.entityType)) {
+        const session = getSession(undefined, 'WRITE')
+        try {
+          await withdrawApprovalsOfStep(session, info.tenantId, info.entityId, info.fromStep, info.enteredAt)
+        } catch (err) {
+          logger.error({ err, tenantId: info.tenantId, entityId: info.entityId, step: info.fromStep }, 'Pending approval requests of the step left were NOT withdrawn: they stay on the Approvals page')
+        } finally {
+          await session.close()
+        }
+      }
     }
 
     /**

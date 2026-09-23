@@ -44,6 +44,11 @@ vi.mock('../workflowMapping.js', () => ({
 }))
 
 const requestApprovalWouldBeSkipped = vi.fn()
+// The named-approval gate (lib/ticketApprovalGate.test.ts): here it lets everything through, and says who asked.
+const transitionsOpenToApproval = vi.fn(async (_s: unknown, _t: string, _i: string, trs: unknown[], _o: boolean) => trs)
+vi.mock('../../../lib/ticketApprovalGate.js', () => ({
+  transitionsOpenToApproval: (...a: unknown[]) => (transitionsOpenToApproval as (...x: unknown[]) => unknown)(...a),
+}))
 vi.mock('../../../lib/requestApproval.js', () => ({
   requestApprovalWouldBeSkipped: (...a: unknown[]) => requestApprovalWouldBeSkipped(...a),
 }))
@@ -224,6 +229,8 @@ describe('una richiesta che richiede approvazione non offre le mosse che la salt
     const out = await q.incidentAvailableTransitionsField({ id: 'i1' }, null, ctx) as unknown[]
     expect(out).toHaveLength(2)
     expect(requestApprovalWouldBeSkipped).not.toHaveBeenCalled()
+    // The gate of a NAMED approval is on incidents too (review of 23 Sep 2026).
+    expect(transitionsOpenToApproval).toHaveBeenCalledWith(expect.anything(), ctx.tenantId, expect.any(String), expect.any(Array), expect.any(Boolean))
   })
 })
 

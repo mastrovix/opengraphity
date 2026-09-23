@@ -207,7 +207,7 @@ describe('createChangeRFC', () => {
     mockQueries({ ciRows: [{ id: 'ci-1', name: 'App Portale', ownerTeamId: 'team-a', supportTeamId: 'team-b' }] })
     await createChangeRFC({ changeType: 'normal', title: 'Upgrade DB', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1'] }, ctx)
     const [cypher, params] = mockTx.run.mock.calls[0]! as [string, Record<string, unknown>]
-    expect(cypher).toMatch(/MERGE \(req\)-\[:WATCHES \{watched_at: \$now\}\]->\(c\)/)
+    expect(cypher).toMatch(/MERGE \(req\)-\[w:WATCHES\]->\(c\)\s+ON CREATE SET w.watched_at = \$now/)
     expect(params).toMatchObject({ requesterId: 'user-1', tenantId: 'tenant-1' })
   })
 

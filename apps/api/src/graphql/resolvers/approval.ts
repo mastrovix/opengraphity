@@ -11,6 +11,9 @@ import { logger } from '../../lib/logger.js'
 import { pendingTicketApprovals } from './pendingTicketApprovals.js'
 import { systemText } from '../../lib/systemText.js'
 import { hasPermission } from '../../lib/permissions.js'
+import type { Session } from 'neo4j-driver'
+
+const approvalLog = logger.child({ module: 'approval' })
 
 interface ApprovalRequest {
   id:             string
@@ -294,6 +297,47 @@ export async function createApprovalRequest(
   }
 }
 
+/**
+ * A decided request moves its ticket (owner's decision, review of 23 Sep
+ * 2026): approved → the one way forward, rejected → the one step of category
+ * `failed`. Through the same mutation a person uses, so required fields and
+ * every other gate still apply. When there is no single way, or the move is
+ * refused, the decision stands and a person moves the ticket — the gate is
+ * open for an approval, and a rejection still lets it be closed. That is
+ * written in the log, never swallowed.
+ */
+async function moveTicketAfterDecision(
+  session: Session, ctx: GraphQLContext, approvalId: string, entityType: string, entityId: string,
+  decision: 'approved' | 'rejected', note: string | undefined,
+): Promise<void> {
+  const { APPROVAL_GATED_TICKETS, decidedTarget } = await import('../../lib/ticketApprovalGate.js')
+  if (!APPROVAL_GATED_TICKETS.includes(entityType)) return
+  const res = await session.executeRead((tx) => tx.run(`
+    MATCH (a:ApprovalRequest {id: $approvalId, tenant_id: $tenantId})
+    MATCH (wi:WorkflowInstance {tenant_id: $tenantId, entity_id: $entityId})-[:CURRENT_STEP]->(cur:WorkflowStep)
+    WHERE wi.status = 'active'
+    RETURN wi.id AS instanceId, cur.name AS current, a.step_name AS stepName
+  `, { approvalId, tenantId: ctx.tenantId, entityId }))
+  const row = res.records[0]
+  // A request without a step (written before the gate) or whose ticket has already left the step moves nothing.
+  if (!row || !row.get('stepName') || row.get('stepName') !== row.get('current')) return
+  const instanceId = row.get('instanceId') as string
+  const { getWorkflowSteps } = await import('../../lib/workflowHelpers.js')
+  const steps = await getWorkflowSteps(session, ctx.tenantId, entityType)
+  const available = (await workflowEngine.getAvailableTransitions(session, instanceId, ctx.tenantId)).map((t) => t.toStep)
+  const target = decidedTarget(decision, available, steps)
+  if (!target) {
+    approvalLog.info({ tenantId: ctx.tenantId, entityId, approvalId, decision, available }, 'Approval decided: no single way out of the step, a person moves the ticket')
+    return
+  }
+  try {
+    const { executeWorkflowTransition } = await import('./workflowMutations.js')
+    await executeWorkflowTransition(null, { instanceId, toStep: target, notes: note }, ctx)
+  } catch (err) {
+    approvalLog.error({ err, tenantId: ctx.tenantId, entityId, approvalId, decision, target }, 'Approval decided, but the ticket could not be moved: a person moves it')
+  }
+}
+
 export async function approveRequest(
   _: unknown,
   args: { id: string; note?: string },
@@ -443,6 +487,8 @@ export async function approveRequest(
           read:        false,
         })
       } else {
+        // The approver decides: the ticket leaves the step (lib/ticketApprovalGate.ts).
+        await moveTicketAfterDecision(session, ctx, args.id, entityType, entityId, 'approved', args.note)
         sseManager.sendToUser(ctx.tenantId, requestedBy, {
           id:          uuidv4(),
           type:        'approval.approved',
@@ -546,6 +592,8 @@ export async function rejectRequest(
         assertTransitionApplied(applied, 'The publication was rejected but the article could not go back to draft')
       }
       void audit(ctx, 'kb_article.publication_rejected', 'KBArticle', entityId)
+    } else {
+      await moveTicketAfterDecision(session, ctx, args.id, entityType, entityId, 'rejected', args.note)
     }
 
     sseManager.sendToUser(ctx.tenantId, requestedBy, {

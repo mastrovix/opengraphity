@@ -37,6 +37,12 @@ const automaticTransitionAllowed = vi.fn(async () => true)
 vi.mock('../../graphql/resolvers/change/windowGate.js', () => ({ automaticTransitionAllowed: (...a: unknown[]) => automaticTransitionAllowed(...a) }))
 const requestApprovalWouldBeSkipped = vi.fn(async () => false)
 vi.mock('../requestApproval.js', () => ({ requestApprovalWouldBeSkipped: (...a: unknown[]) => requestApprovalWouldBeSkipped(...a) }))
+// The named-approval gate (ticketApprovalGate.test.ts): open unless a test closes it.
+const ticketApprovalRefusal = vi.fn(async (..._a: unknown[]): Promise<unknown> => null)
+vi.mock('../ticketApprovalGate.js', () => ({
+  APPROVAL_GATED_TICKETS: ['incident', 'problem', 'service_request'],
+  ticketApprovalRefusal: (...a: unknown[]) => ticketApprovalRefusal(...a),
+}))
 
 vi.mock('../stepFieldWrites.js', async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -87,6 +93,7 @@ beforeEach(() => {
   transition.mockResolvedValue({ success: true })
   automaticTransitionAllowed.mockResolvedValue(true)
   requestApprovalWouldBeSkipped.mockResolvedValue(false)
+  ticketApprovalRefusal.mockResolvedValue(null)
 })
 
 describe('stepDeadlineDueAt', () => {
@@ -177,6 +184,15 @@ describe('fireStepDeadline', () => {
     expect(lastOutcome()).toMatchObject({ reason: 'request_approval' })
     // A deadline is not a person: it never counts as the approval decision.
     expect((requestApprovalWouldBeSkipped.mock.calls[0] as unknown[]).at(-1)).toEqual({ byPerson: false })
+  })
+
+  // Owner's decision, review of 23 Sep 2026: a deadline is not the approver either.
+  it('a ticket held by a named approval → refused, and the engine is not called', async () => {
+    scriptReads()
+    ticketApprovalRefusal.mockResolvedValue({ status: 'pending', approvalId: 'ap-1', stepName: 'review' })
+    await expect(fireStepDeadline(candidate({ entityType: 'incident' }), NOW)).resolves.toBe('refused')
+    expect(lastOutcome()).toMatchObject({ outcome: 'refused', reason: 'approval_request' })
+    expect(transition).not.toHaveBeenCalled()
   })
 
   it('un valore uscito dal vocabolario → failed PRIMA di spostare', async () => {

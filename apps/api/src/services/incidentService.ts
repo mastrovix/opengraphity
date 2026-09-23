@@ -393,7 +393,8 @@ export async function createIncident(
     await session.executeWrite(tx => tx.run(`
       MATCH (u:User {id: $userId, tenant_id: $tenantId})
       MATCH (i:Incident {id: $entityId, tenant_id: $tenantId})
-      MERGE (u)-[:WATCHES {watched_at: $now}]->(i)
+      MERGE (u)-[w:WATCHES]->(i)
+        ON CREATE SET w.watched_at = $now
     `, { userId: ctx.userId, tenantId: ctx.tenantId, entityId: id, now }))
   }, true)
 
@@ -469,13 +470,22 @@ export async function resolveIncident(
     return mapIncident(rows[0].props)
   }, true)
 
+  // `incident.resolved` goes out from the engine's step hook, for every path
+  // (workflow/stepEnteredEvents.ts): publishing it here too sent it twice.
+  return resolved
+}
+
+/**
+ * `incident.resolved` for an incident whose resolved step has a name of the
+ * customer's: the step hook calls it when the step's alias is not already
+ * that event (workflow/stepEnteredEvents.ts).
+ */
+export async function publishIncidentResolved(id: string, ctx: ServiceCtx, resolvedAt: string): Promise<void> {
   const payload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))
   await publishEvent('incident.resolved', ctx.tenantId, ctx.userId, {
     ...requirePayload(payload, id),
-    resolved_at: now,
-  } satisfies IncidentEventPayload, now)
-
-  return resolved
+    resolved_at: resolvedAt,
+  } satisfies IncidentEventPayload, resolvedAt)
 }
 
 export async function assignIncidentToTeam(

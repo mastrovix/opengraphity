@@ -93,7 +93,7 @@ vi.mock('../../lib/stepEnteredPublisher.js', () => ({ publishStepEnteredForEntit
 
 // ── Import after mocks ────────────────────────────────────────────────────────
 
-const { createIncident, resolveIncident, escalateIncident, publishIncidentTransition } = await import('../incidentService.js')
+const { createIncident, resolveIncident, escalateIncident, publishIncidentTransition, publishIncidentResolved } = await import('../incidentService.js')
 const { publish } = await import('@opengraphity/events')
 const { publishStepEnteredForEntity } = await import('../../lib/stepEnteredPublisher.js')
 const { workflowEngine } = await import('@opengraphity/workflow')
@@ -282,19 +282,26 @@ describe('resolveIncident', () => {
     mockSession.executeRead.mockResolvedValue({ records: [payloadRow] })
   })
 
-  it('chiama publish con type incident.resolved', async () => {
+  // Review of 23 Sep 2026: the step hook publishes it, for every path; here it went out a second time.
+  it('non pubblica incident.resolved: lo pubblica il gancio del passo', async () => {
     await resolveIncident('inc-1', ctx, 'Root cause identificata')
+    expect(publish).not.toHaveBeenCalled()
+  })
+})
 
-    expect(publish).toHaveBeenCalledOnce()
-    const event = vi.mocked(publish).mock.calls[0]![0] as { type: string }
-    expect(event.type).toBe('incident.resolved')
+describe('publishIncidentResolved', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    const payloadRow = { get: (k: string) => (({ id: 'inc-1', title: 'Test incident', severity: 'high', status: 'resolved', ciName: 'srv-1', assignedTo: 'Mario' }) as Record<string, string>)[k] }
+    mockSession.executeRead.mockResolvedValue({ records: [payloadRow] })
   })
 
-  it('include resolved_at nel payload', async () => {
-    await resolveIncident('inc-1', ctx)
-
-    const event = vi.mocked(publish).mock.calls[0]![0] as { payload: { resolved_at?: string } }
-    expect(event.payload.resolved_at).toBeDefined()
+  it('pubblica incident.resolved con resolved_at all\'istante dato', async () => {
+    await publishIncidentResolved('inc-1', ctx, '2026-09-23T10:00:00.000Z')
+    expect(publish).toHaveBeenCalledOnce()
+    const event = vi.mocked(publish).mock.calls[0]![0] as { type: string; payload: { resolved_at?: string } }
+    expect(event.type).toBe('incident.resolved')
+    expect(event.payload.resolved_at).toBe('2026-09-23T10:00:00.000Z')
   })
 })
 

@@ -53,6 +53,12 @@ const automaticTransitionAllowed = vi.fn(async () => true)
 vi.mock('../../graphql/resolvers/change/windowGate.js', () => ({ automaticTransitionAllowed: (...a: unknown[]) => automaticTransitionAllowed(...(a as [])) }))
 const requestApprovalWouldBeSkipped = vi.fn(async () => false)
 vi.mock('../requestApproval.js', () => ({ requestApprovalWouldBeSkipped: (...a: unknown[]) => requestApprovalWouldBeSkipped(...(a as [])) }))
+// The named-approval gate (ticketApprovalGate.test.ts): open unless a test closes it.
+const ticketApprovalRefusal = vi.fn(async (..._a: unknown[]): Promise<unknown> => null)
+vi.mock('../ticketApprovalGate.js', () => ({
+  APPROVAL_GATED_TICKETS: ['incident', 'problem', 'service_request'],
+  ticketApprovalRefusal: (...a: unknown[]) => ticketApprovalRefusal(...a),
+}))
 
 vi.mock('../stepFieldWrites.js', async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -98,6 +104,7 @@ beforeEach(() => {
   transition.mockResolvedValue({ success: true })
   automaticTransitionAllowed.mockResolvedValue(true)
   requestApprovalWouldBeSkipped.mockResolvedValue(false)
+  ticketApprovalRefusal.mockResolvedValue(null)
   for (const k of Object.keys(calendarsById)) delete calendarsById[k]
 })
 

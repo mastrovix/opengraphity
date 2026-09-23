@@ -209,7 +209,7 @@ export interface CatalogFormAnswerToSend {
  * portale: due copie divergono, e la divergenza si scopre con un errore del
  * server in faccia a chi compila.
  *
- * Due regole, entrambe imparate dal server:
+ * Le regole, tutte imparate dal server:
  *  - si inviano SOLO i campi visibili adesso. Un campo nascosto da una
  *    condizione che arriva comunque viene rifiutato (è un varco), quindi
  *    mandarlo sarebbe un errore garantito.
@@ -232,6 +232,10 @@ export function catalogFormAnswersToSend(
   return visibleCatalogFormItems(definition, answers, endUser)
     .filter((item) => !senzaRisposta.includes(tipoDi.get(item.field) ?? ''))
     .filter((item) => !calcolato.has(item.field))
+    // READ-ONLY items are shown, never sent: the server refuses them
+    // (errors.catalogForm.answerReadOnly), and a form with a prefilled
+    // read-only field could not be submitted at all (review of 23 Sep 2026).
+    .filter((item) => item.readOnly !== true)
     // Le TABELLE non stanno nelle risposte: le righe viaggiano a parte
     // (`catalogFormTableAnswers`), perché una riga non è un valore.
     .filter((item) => !isFormTableType(tipoDi.get(item.field) ?? ''))
@@ -260,6 +264,7 @@ export function catalogFormTableAnswers(
   const out: Array<{ name: string; rows: CatalogFormTableRow[] }> = []
   for (const item of visibleCatalogFormItems(definition, answers, endUser)) {
     if (!isFormTableType(tipoDi.get(item.field) ?? '')) continue
+    if (item.readOnly === true) continue
     const righe = (tables[item.field] ?? []).filter((r) => Object.values(r).some((v) => v != null && String(v).trim() !== ''))
     if (righe.length > 0) out.push({ name: item.field, rows: righe.map((r) => ({ ...r })) })
   }

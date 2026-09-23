@@ -271,8 +271,10 @@ describe('addReportSection', () => {
     expect(assertReportTemplateAccess).toHaveBeenCalledWith(expect.anything(), 'tpl-1', ctx, 'write')
     expect(calls[0]!.q).toContain('MATCH (r:ReportTemplate {id: $templateId, tenant_id: $tenantId})')
     expect(calls[0]!.p).toEqual({ templateId: 'tpl-1', tenantId: 't1' })
-    const [, templateId, sectionId, order, input, tenantId] = vi.mocked(createSectionWithNodesEdges).mock.calls[0]!
+    const [runner, templateId, sectionId, order, input, tenantId] = vi.mocked(createSectionWithNodesEdges).mock.calls[0]!
     expect([templateId, order, input, tenantId]).toEqual(['tpl-1', 3, SECTION, 't1'])
+    // One transaction for section, nodes and edges.
+    expect(runner).not.toHaveProperty('executeWrite')
     expect(sectionId).toMatch(/^[0-9a-f-]{36}$/)
     expect(out).toEqual({ id: 'tpl-1', loaded: true })
   })
@@ -308,17 +310,28 @@ describe('updateReportSection', () => {
     expect(assertReportTemplateAccess).toHaveBeenCalledWith(expect.anything(), 'tpl-9', ctx, 'write')
 
     const writes = calls.filter((c) => c.mode === 'write')
-    expect(writes).toHaveLength(2)
-    expect(writes[0]!.q).toContain('DETACH DELETE n')
-    expect(writes[1]!.q).toContain('DETACH DELETE s')
-    for (const w of writes) {
-      expect(w.q).toContain('(:ReportTemplate {tenant_id: $tenantId})')
-      expect(w.p).toEqual({ sectionId: 'sec-1', tenantId: 't1' })
-    }
-    // Same id and same position after the edit.
-    expect(vi.mocked(createSectionWithNodesEdges).mock.calls[0]!.slice(1)).toEqual(['tpl-9', 'sec-1', 4, SECTION, 't1'])
+    expect(writes).toHaveLength(1)
+    expect(writes[0]!.q).toContain('DETACH DELETE s, n')
+    expect(writes[0]!.q).toContain('(:ReportTemplate {tenant_id: $tenantId})')
+    expect(writes[0]!.p).toEqual({ sectionId: 'sec-1', tenantId: 't1' })
+    // Same id and same position after the edit, written by the SAME transaction as the delete.
+    const [runner, ...rest] = vi.mocked(createSectionWithNodesEdges).mock.calls[0]!
+    expect(rest).toEqual(['tpl-9', 'sec-1', 4, SECTION, 't1'])
+    expect(runner).toHaveProperty('run')
+    expect(runner).not.toHaveProperty('executeWrite')
     expect(out).toEqual({ id: 'tpl-9', loaded: true })
     expect(sessions[0]!.close).toHaveBeenCalledOnce()
+  })
+
+  // Review of 23 Sep 2026: the old section was deleted in its own transaction, then an invalid edit failed and left nothing.
+  it('a section that does not build fails the transaction that deleted the old one', async () => {
+    fakeSessions((q) => (q.includes('RETURN r.id AS templateId') ? [{ templateId: 'tpl-9', order: 4 }] : []))
+    vi.mocked(createSectionWithNodesEdges).mockRejectedValueOnce(new Error('not a valid section'))
+    await expect(Mutation.updateReportSection(null, { sectionId: 'sec-1', input: SECTION }, ctx)).rejects.toThrow('not a valid section')
+    // The fake executeWrite runs the callback: the rejection comes out of it, so the driver rolls the delete back.
+    const s = vi.mocked(getSession).mock.results[0]!.value as { executeWrite: ReturnType<typeof vi.fn> }
+    expect(s.executeWrite).toHaveBeenCalledOnce()
+    await expect(s.executeWrite.mock.results[0]!.value).rejects.toThrow('not a valid section')
   })
 
   it('a missing stored order becomes 0', async () => {
