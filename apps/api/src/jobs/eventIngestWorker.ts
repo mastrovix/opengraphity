@@ -31,10 +31,11 @@
  * webhook NON azzera più `last_error` al 202.
  */
 export const INGEST_ERROR_PREFIX = 'ingest: '
-import type { Worker, Job } from 'bullmq'
+import type { Job } from 'bullmq'
+import type { TenantWorkerPool } from '@opengraphity/events'
 import { getSession, runQueryOne } from '@opengraphity/neo4j'
 import { logger } from '../lib/logger.js'
-import { createWorker, getQueue } from '../lib/bullmq.js'
+import { createTenantWorkers, getTenantQueue } from '../lib/bullmq.js'
 import { eventIngestLagSeconds, eventsIngestFailedTotal } from '../middleware/metrics.js'
 import { fingerprintOf, ingestEvent, type NormalizedEvent } from '../services/eventService.js'
 import { invalidateSourceCache } from '../services/events/sourceCache.js'
@@ -130,9 +131,9 @@ export async function recordIngestFailure(data: EventIngestJobData, err: Error):
   }
 }
 
-export function startEventIngestWorker(): Worker<EventIngestJobData> {
-  getQueue<EventIngestJobData>(EVENT_INGEST_QUEUE)  // producer singleton (metriche)
-  return createWorker<EventIngestJobData>(EVENT_INGEST_QUEUE, processEvent, {
+/** One worker per tenant on `events-ingest@<tenant>` (23 Sep 2026). */
+export function startEventIngestWorker(): TenantWorkerPool<EventIngestJobData> {
+  return createTenantWorkers<EventIngestJobData>(EVENT_INGEST_QUEUE, processEvent, {
     concurrency: 4,
     settings: { backoffStrategy: (attemptsMade: number) => eventIngestBackoffMs(attemptsMade) },
     onFailed: (job, err) => {
@@ -157,7 +158,7 @@ export async function enqueueEvents(
   receivedAt: string = new Date().toISOString(),
 ): Promise<number> {
   if (events.length === 0) return 0
-  const queue = getQueue<EventIngestJobData>(EVENT_INGEST_QUEUE)
+  const queue = getTenantQueue<EventIngestJobData>(EVENT_INGEST_QUEUE, tenantId)
   /**
    * Due allarmi dello STESSO batch con la stessa impronta sono due allarmi
    * (revisione totale · D-28): l'id del job era

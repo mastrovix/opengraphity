@@ -43,6 +43,7 @@ import { DEFAULT_EVENT_POLICY_JSON } from './eventPolicy.js'
 import { INITIAL_PASSWORD_RULES, realmPasswordSettings } from './tenantLogin.js'
 import { PLAN_SETTINGS } from './tenantPlans.js'
 import { CATALOG_FORM_LIMIT_DEFAULTS } from './catalogFormLimits.js'
+import { assertSlugValido, configuredReservedSlugs } from './tenantLifecycle.js'
 import type { KeycloakAdmin } from '../scripts/lib/keycloakAdmin.js'
 import { findUserIdByEmail } from '../scripts/lib/keycloakAdmin.js'
 
@@ -89,6 +90,18 @@ export interface OnboardResult {
   steps:          string[]
 }
 
+/**
+ * The Keycloak admin token, once the slug has been checked. Checked here too,
+ * not only by the console's route: the script (scripts/onboard-tenant.ts)
+ * arrives with whatever it was given, and a reserved name must never reach
+ * Keycloak — `master`, or the platform realm, where the new administrator
+ * would become a platform identity (23 Sep 2026).
+ */
+async function adminTokenForSlug(kc: KeycloakAdmin, slug: string): Promise<string> {
+  assertSlugValido(slug, configuredReservedSlugs())
+  return kc.getAdminToken()
+}
+
 export async function onboardTenant(
   kc: KeycloakAdmin,
   spec: TenantSpec,
@@ -98,7 +111,7 @@ export async function onboardTenant(
   const steps: string[] = []
   const passo = (linea: string): void => { steps.push(linea); cb.onStep?.(linea) }
 
-  const token = await kc.getAdminToken()
+  const token = await adminTokenForSlug(kc, spec.slug)
 
   // ── Keycloak: realm ────────────────────────────────────────────────────────
   const realm = await kc.post(token, '/admin/realms', {

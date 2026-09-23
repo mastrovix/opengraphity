@@ -234,3 +234,12 @@ td.urls a.portale {
   border: 1px solid var(--border); border-radius: 20px; padding: 1px 8px;
 }
 td.urls a.portale:hover { background: var(--slate-bg); text-decoration: none; }
+
+/* ── Code (23 set 2026): la piattaforma e i totali dei tenant ─────────────── */
+.sezione { margin-top: 48px; }
+.sezione .riga h1 { margin: 0; }
+.lede code { font-family: var(--mono); font-size: 13px; }
+.lavori { list-style: none; margin: 12px 0 0; padding: 0; border: 1px solid var(--border); border-radius: var(--radius); }
+.lavori li { padding: 10px 14px; border-top: 1px solid var(--border-light); font-size: 13px; }
+.lavori li:first-child { border-top: none; }
+.lavori .motivo { margin-top: 4px; color: var(--danger-text); font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap; }

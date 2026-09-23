@@ -1,7 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
-import { Queue } from 'bullmq'
 import pino from 'pino'
-import { publish, assertSafeOutboundUrl, loggableUrl, getRedisConnection } from '@opengraphity/events'
+import { publish, assertSafeOutboundUrl, loggableUrl, tenantQueue } from '@opengraphity/events'
 import type { DomainEvent } from '@opengraphity/types'
 import type {
   WorkflowActionConfig,
@@ -19,9 +18,6 @@ import { stepFieldRejection } from '@opengraphity/types'
 import { currentTaskCreator } from './taskCreator.js'
 
 const log = pino({ level: process.env['LOG_LEVEL'] ?? 'info' }).child({ module: 'workflow:actions' })
-
-// Connessione Redis unica del monorepo (packages/events): REDIS_URL/HOST/PASSWORD, fail-fast in prod.
-const redisConnection = getRedisConnection()
 
 // ── Webhook retry job data ────────────────────────────────────────────────────
 
@@ -436,32 +432,28 @@ export async function runAction(
           // Solo se non è già un retry (evita loop). Se anche lo scheduling del
           // retry fallisce, l'errore propaga: il payload andrebbe perso per sempre.
           if (!ctx.isWebhookRetry) {
-            const retryQueue = new Queue('workflow-jobs', { connection: redisConnection })
-            try {
-              await retryQueue.add(
-                'webhook_retry',
-                {
-                  type:     'webhook_retry',
-                  url:      p.url,
-                  method:   p.method ?? 'POST',
-                  payload:  rawPayload,
-                  ...(ctx.stepId ? { stepId: ctx.stepId } : {}),
-                  ...(typeof ctx.actionIndex === 'number' ? { actionIndex: ctx.actionIndex } : {}),
-                  attempt:  1,
-                  tenantId: instance.tenantId,
-                  entityId: instance.entityId,
-                } satisfies WebhookRetryJobData,
-                {
-                  attempts:  3,
-                  backoff: { type: 'exponential', delay: 30_000 },
-                  removeOnComplete: true,
-                  // Sette giorni, non «per sempre»: il payload di un webhook non resta in Redis a vita (E-11).
-                  removeOnFail:     { age: 7 * 24 * 3600 },
-                },
-              )
-            } finally {
-              await retryQueue.close()
-            }
+            // The tenant's own queue (23 Sep 2026): a producer singleton, never closed here.
+            await tenantQueue('workflow-jobs', instance.tenantId).add(
+              'webhook_retry',
+              {
+                type:     'webhook_retry',
+                url:      p.url,
+                method:   p.method ?? 'POST',
+                payload:  rawPayload,
+                ...(ctx.stepId ? { stepId: ctx.stepId } : {}),
+                ...(typeof ctx.actionIndex === 'number' ? { actionIndex: ctx.actionIndex } : {}),
+                attempt:  1,
+                tenantId: instance.tenantId,
+                entityId: instance.entityId,
+              } satisfies WebhookRetryJobData,
+              {
+                attempts:  3,
+                backoff: { type: 'exponential', delay: 30_000 },
+                removeOnComplete: true,
+                // Sette giorni, non «per sempre»: il payload di un webhook non resta in Redis a vita (E-11).
+                removeOnFail:     { age: 7 * 24 * 3600 },
+              },
+            )
           }
           throw new Error(`call_webhook failed (${failure}) — ${ctx.isWebhookRetry ? 'retry attempt failed' : 'retry scheduled'}`)
         }

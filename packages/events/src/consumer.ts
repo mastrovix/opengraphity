@@ -1,7 +1,8 @@
-import { Worker, type Job } from 'bullmq'
+import type { Job } from 'bullmq'
 import { Redis } from 'ioredis'
 import type { DomainEvent } from '@opengraphity/types'
 import { getRedisConnection } from './redis.js'
+import { TenantWorkerPool } from './tenantQueues.js'
 
 /** Days to remember a processed event id for idempotency. */
 const PROCESSED_TTL_SECONDS = 24 * 60 * 60
@@ -67,8 +68,15 @@ function recordExhaustedEvent(info: FailedEventInfo): void {
   }
 }
 
+/**
+ * A domain-event consumer: one queue per tenant (`<consumer>@<tenant>`, 23
+ * Sep 2026), one worker per tenant in the consumer's pool. `start()`
+ * registers the pool; the tenants join it when the host reconciles the pools
+ * (`reconcileTenantPools`), at boot and whenever a tenant is created or
+ * deleted.
+ */
 export abstract class BaseConsumer<T> {
-  private worker: Worker | null = null
+  private pool: TenantWorkerPool | null = null
   private redis: Redis | null = null
 
   constructor(protected readonly queueName: string) {}
@@ -93,81 +101,82 @@ export abstract class BaseConsumer<T> {
 
   async start(): Promise<void> {
     this.redis = new Redis(getRedisConnection())
-    this.worker = new Worker(
+    this.pool = new TenantWorkerPool(
       this.queueName,
-      async (job: Job) => {
-        const event = job.data as DomainEvent<T>
-        console.log(`[consumer:${this.queueName}] Received: ${event.type} (id: ${event.id})`)
-        // Idempotency: BullMQ is at-least-once. A stalled/redelivered job whose
-        // first attempt already succeeded must not fire the side effects again
-        // (double notification / double SLAStatus). Mark processed only AFTER
-        // success, so a genuine failure still retries.
-        // E-33: quello che non riguarda questo consumatore non costa niente.
-        if (!this.handles(event.type)) return
-        if (!event.id) throw new Error(`[consumer:${this.queueName}] event without id cannot be deduplicated (type=${event.type})`)
-        const dedupKey = `evt:processed:${this.queueName}:${event.id}`
-        if (this.redis && (await this.redis.exists(dedupKey))) {
-          console.log(`[consumer:${this.queueName}] Already processed, skipping: ${event.id}`)
-          return
-        }
-        try {
-          await this.process(event)
-          /**
-           * Il marcatore si scrive DOPO il successo, e se la scrittura non
-           * riesce l'evento NON si ripete (revisione totale · E-32):
-           * l'errore della SET propagava, BullMQ ritentava e il collaterale
-           * — una notifica, una e-mail — partiva due volte. Il lavoro è
-           * fatto: un marcatore mancato è un rischio di doppione al prossimo
-           * rilancio del job, non una ragione per rifarlo adesso. Si dice a
-           * voce alta.
-           */
-          if (this.redis) {
-            try {
-              await this.redis.set(dedupKey, '1', 'EX', PROCESSED_TTL_SECONDS)
-            } catch (err) {
-              console.error(`[consumer:${this.queueName}] processed ${event.id} but the dedup marker was NOT written:`, err)
-            }
-          }
-          console.log(`[consumer:${this.queueName}] Processed successfully: ${event.id}`)
-        } catch (err) {
-          console.error(`[consumer:${this.queueName}] process() threw:`, err)
-          throw err
-        }
-      },
+      (job: Job) => this.handleJob(job),
       {
-        connection: getRedisConnection(),
         concurrency: CONSUMER_CONCURRENCY,
         settings: { backoffStrategy },
+        onFailed: (job, err) => { this.handleFailure(job, err) },
       },
     )
+    console.log(`[consumer:${this.queueName}] Started — concurrency: ${CONSUMER_CONCURRENCY} per tenant`)
+  }
 
-    this.worker.on('failed', (job: Job | undefined, err: Error) => {
-      const event = job?.data as DomainEvent<T> | undefined
-      const attemptsMade = job?.attemptsMade ?? 0
-      const maxAttempts  = job?.opts.attempts ?? 1
-      const exhausted    = !job || attemptsMade >= maxAttempts
-      console.error(
-        `[consumer:${this.queueName}] Job failed: ${job?.name ?? '?'} ` +
-          `(attempt ${attemptsMade}/${maxAttempts}${exhausted ? ', EXHAUSTED — event lost' : ''}) — ${err.message}`,
-      )
-      if (exhausted) {
-        recordExhaustedEvent({
-          queue:     this.queueName,
-          eventType: event?.type ?? job?.name ?? 'unknown',
-          eventId:   event?.id,
-          attempts:  attemptsMade,
-          error:     err,
-        })
+  private async handleJob(job: Job): Promise<void> {
+    const event = job.data as DomainEvent<T>
+    console.log(`[consumer:${this.queueName}] Received: ${event.type} (id: ${event.id})`)
+    // Idempotency: BullMQ is at-least-once. A stalled/redelivered job whose
+    // first attempt already succeeded must not fire the side effects again
+    // (double notification / double SLAStatus). Mark processed only AFTER
+    // success, so a genuine failure still retries.
+    // E-33: quello che non riguarda questo consumatore non costa niente.
+    if (!this.handles(event.type)) return
+    if (!event.id) throw new Error(`[consumer:${this.queueName}] event without id cannot be deduplicated (type=${event.type})`)
+    const dedupKey = `evt:processed:${this.queueName}:${event.id}`
+    if (this.redis && (await this.redis.exists(dedupKey))) {
+      console.log(`[consumer:${this.queueName}] Already processed, skipping: ${event.id}`)
+      return
+    }
+    try {
+      await this.process(event)
+      /**
+       * Il marcatore si scrive DOPO il successo, e se la scrittura non
+       * riesce l'evento NON si ripete (revisione totale · E-32):
+       * l'errore della SET propagava, BullMQ ritentava e il collaterale
+       * — una notifica, una e-mail — partiva due volte. Il lavoro è
+       * fatto: un marcatore mancato è un rischio di doppione al prossimo
+       * rilancio del job, non una ragione per rifarlo adesso. Si dice a
+       * voce alta.
+       */
+      if (this.redis) {
+        try {
+          await this.redis.set(dedupKey, '1', 'EX', PROCESSED_TTL_SECONDS)
+        } catch (err) {
+          console.error(`[consumer:${this.queueName}] processed ${event.id} but the dedup marker was NOT written:`, err)
+        }
       }
-    })
+      console.log(`[consumer:${this.queueName}] Processed successfully: ${event.id}`)
+    } catch (err) {
+      console.error(`[consumer:${this.queueName}] process() threw:`, err)
+      throw err
+    }
+  }
 
-    console.log(`[consumer:${this.queueName}] Started — concurrency: ${CONSUMER_CONCURRENCY}`)
+  private handleFailure(job: Job | undefined, err: Error): void {
+    const event = job?.data as DomainEvent<T> | undefined
+    const attemptsMade = job?.attemptsMade ?? 0
+    const maxAttempts  = job?.opts.attempts ?? 1
+    const exhausted    = !job || attemptsMade >= maxAttempts
+    console.error(
+      `[consumer:${this.queueName}] Job failed: ${job?.name ?? '?'} ` +
+        `(attempt ${attemptsMade}/${maxAttempts}${exhausted ? ', EXHAUSTED — event lost' : ''}) — ${err.message}`,
+    )
+    if (exhausted) {
+      recordExhaustedEvent({
+        queue:     this.queueName,
+        eventType: event?.type ?? job?.name ?? 'unknown',
+        eventId:   event?.id,
+        attempts:  attemptsMade,
+        error:     err,
+      })
+    }
   }
 
   async stop(): Promise<void> {
-    if (this.worker) {
-      await this.worker.close()
-      this.worker = null
+    if (this.pool) {
+      await this.pool.close()
+      this.pool = null
       console.log(`[consumer:${this.queueName}] Stopped`)
     }
     if (this.redis) {

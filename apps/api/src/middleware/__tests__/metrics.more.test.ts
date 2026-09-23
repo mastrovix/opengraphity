@@ -211,12 +211,23 @@ describe('getProcessMetrics', () => {
 
 describe('getQueueMetricsSnapshot', () => {
   it('skips samples without a queue or status label and fills every status', () => {
-    m.bullmqQueueDepth.set({ queue: 'q' }, 9)
-    m.bullmqQueueDepth.set({ status: 'waiting' }, 9)
+    m.bullmqQueueDepth.set({ queue: 'q', tenant: 't1' }, 9)
+    m.bullmqQueueDepth.set({ tenant: 't1', status: 'waiting' }, 9)
     for (const [status, v] of [['active', 1], ['completed', 2], ['delayed', 3], ['waiting', 4], ['failed', 5]] as const) {
-      m.bullmqQueueDepth.set({ queue: 'q', status }, v)
+      m.bullmqQueueDepth.set({ queue: 'q', tenant: 't1', status }, v)
     }
-    expect(m.getQueueMetricsSnapshot()).toEqual([{ name: 'q', active: 1, completed: 2, delayed: 3, waiting: 4, failed: 5 }])
+    expect(m.getQueueMetricsSnapshot('t1')).toEqual([{ name: 'q', active: 1, completed: 2, delayed: 3, waiting: 4, failed: 5 }])
+  })
+
+  // Since 23 Sep 2026 every tenant has its own queues (`<base>@<tenant>`): a tenant sees its own, by base name.
+  it('a tenant reads its own queues only: not another tenant\'s, not the platform\'s', () => {
+    m.bullmqQueueDepth.replace([
+      { labels: { queue: 'sla-jobs', tenant: 't1', status: 'waiting' }, value: 2 },
+      { labels: { queue: 'sla-jobs', tenant: 't2', status: 'waiting' }, value: 50 },
+      { labels: { queue: 'maintenance', status: 'waiting' }, value: 1 },
+    ])
+    expect(m.getQueueMetricsSnapshot('t1')).toEqual([{ name: 'sla-jobs', waiting: 2, active: 0, completed: 0, failed: 0, delayed: 0 }])
+    expect(m.getQueueMetricsSnapshot('t3')).toEqual([])
   })
 })
 
@@ -228,13 +239,13 @@ describe('startBullMQMetricsCollector', () => {
 
   it('samples every queue at start and on each interval, and survives a queue that cannot be read', async () => {
     vi.useFakeTimers()
-    const good = queue('good', { active: 2 })
-    const bad = queue('bad', new Error('redis gone'))
+    const good = queue('good@t1', { active: 2 })
+    const bad = queue('bad@t1', new Error('redis gone'))
     const timer = m.startBullMQMetricsCollector([good, bad] as never, 1000)
     await vi.advanceTimersByTimeAsync(0)
     // Missing statuses read as 0, not as absent series.
-    expect(m.getQueueMetricsSnapshot()).toEqual([{ name: 'good', active: 2, waiting: 0, delayed: 0, failed: 0, completed: 0 }])
-    expect(warn).toHaveBeenCalledWith(expect.objectContaining({ queue: 'bad' }), 'Failed to collect BullMQ metrics')
+    expect(m.getQueueMetricsSnapshot('t1')).toEqual([{ name: 'good', active: 2, waiting: 0, delayed: 0, failed: 0, completed: 0 }])
+    expect(warn).toHaveBeenCalledWith(expect.objectContaining({ queue: 'bad@t1' }), 'Failed to collect BullMQ metrics')
 
     await vi.advanceTimersByTimeAsync(1000)
     expect(good.getJobCounts).toHaveBeenCalledTimes(2)
@@ -248,10 +259,38 @@ describe('startBullMQMetricsCollector', () => {
     const list: ReturnType<typeof queue>[] = []
     const timer = m.startBullMQMetricsCollector(() => list as never, 1000)
     await vi.advanceTimersByTimeAsync(0)
-    expect(m.getQueueMetricsSnapshot()).toEqual([])
-    list.push(queue('late', { waiting: 7 }))
+    expect(m.getQueueMetricsSnapshot('t1')).toEqual([])
+    list.push(queue('late@t1', { waiting: 7 }))
     await vi.advanceTimersByTimeAsync(1000)
-    expect(m.getQueueMetricsSnapshot()).toContainEqual(expect.objectContaining({ name: 'late', waiting: 7 }))
+    expect(m.getQueueMetricsSnapshot('t1')).toContainEqual(expect.objectContaining({ name: 'late', waiting: 7 }))
+    clearInterval(timer)
+  })
+
+  it('a tenant queue is labelled by its base and its tenant, a platform queue by its name', async () => {
+    vi.useFakeTimers()
+    const timer = m.startBullMQMetricsCollector([queue('sla-jobs@acme', { failed: 1 }), queue('maintenance', { waiting: 3 })] as never, 1000)
+    await vi.advanceTimersByTimeAsync(0)
+    const failed = m.bullmqQueueDepth.snapshot().filter((s) => s.labels['status'] === 'failed')
+    expect(failed.map((s) => s.labels)).toEqual([
+      { queue: 'sla-jobs', tenant: 'acme', status: 'failed' },
+      { queue: 'maintenance', status: 'failed' },
+    ])
+    clearInterval(timer)
+  })
+
+  it('each pass replaces the series: a queue that is gone (a deleted tenant) or unreadable has none, not its last value', async () => {
+    vi.useFakeTimers()
+    const list = [queue('sla-jobs@gone', { waiting: 5 }), queue('sla-jobs@acme', { waiting: 1 })]
+    const timer = m.startBullMQMetricsCollector(() => list as never, 1000)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(m.getQueueMetricsSnapshot('gone')).toHaveLength(1)
+    list.shift()
+    list[0]!.getJobCounts.mockRejectedValueOnce(new Error('redis gone'))
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(m.getQueueMetricsSnapshot('gone')).toEqual([])
+    expect(m.getQueueMetricsSnapshot('acme')).toEqual([])
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(m.getQueueMetricsSnapshot('acme')).toEqual([expect.objectContaining({ name: 'sla-jobs', waiting: 1 })])
     clearInterval(timer)
   })
 })

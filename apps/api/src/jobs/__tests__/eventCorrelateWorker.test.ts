@@ -33,12 +33,15 @@ const removeScheduler = vi.fn().mockResolvedValue(true)
 /** Job già in coda con quell'id (revisione 2 · B2-02): null = nessuno. */
 const queueGetJob = vi.fn().mockResolvedValue(null)
 
+const poolOpts = new Map<string, { schedule?: (queue: unknown, tenantId: string) => Promise<void> }>()
+const fakeQueue = { add: queueAdd, upsertJobScheduler: upsertScheduler, removeJobScheduler: removeScheduler, getJob: queueGetJob }
 vi.mock('../../lib/bullmq.js', () => ({
-  createWorker: vi.fn((name: string, processor: AnyProcessor, opts?: unknown) => {
+  createTenantWorkers: vi.fn((name: string, processor: AnyProcessor, opts?: { schedule?: (queue: unknown, tenantId: string) => Promise<void> }) => {
     processors.set(name, processor)
-    return { name, opts, on: vi.fn(), close: vi.fn() }
+    poolOpts.set(name, opts ?? {})
+    return { name, opts, close: vi.fn() }
   }),
-  getQueue: vi.fn(() => ({ add: queueAdd, upsertJobScheduler: upsertScheduler, removeJobScheduler: removeScheduler, getJob: queueGetJob })),
+  getTenantQueue: vi.fn(() => fakeQueue),
 }))
 vi.mock('../../lib/logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
@@ -65,9 +68,9 @@ const worker = await import('../eventCorrelateWorker.js')
 const {
   enqueueCorrelation, correlationJobId, enqueueChangeWindowReevaluation, changeWindowJobId, runPeriodicPasses,
   startEventCorrelateWorker, startEventMaintenanceWorker,
-  EVENT_CORRELATE_QUEUE, EVENT_MAINTENANCE_QUEUE, CHANGE_WINDOW_JOB, EVENT_MAINTENANCE_JOB, EVENT_MAINTENANCE_EVERY_MS, EVENT_MAINTENANCE_LOCK_MS, LEGACY_REEVALUATE_WINDOWS_JOB,
+  EVENT_CORRELATE_QUEUE, EVENT_MAINTENANCE_QUEUE, CHANGE_WINDOW_JOB, EVENT_MAINTENANCE_JOB, EVENT_MAINTENANCE_EVERY_MS, EVENT_MAINTENANCE_LOCK_MS,
 } = worker
-const { createWorker, getQueue } = await import('../../lib/bullmq.js')
+const { createTenantWorkers, getTenantQueue } = await import('../../lib/bullmq.js')
 const { notifyChangeWindowChanged } = await import('../../services/serviceImpact/sync.js')
 const { runEventPipeline, reevaluateSuppressedEvents, reevaluateClosedWindows, reevaluatePendingEvents, reevaluateFlappingEvents, refreshEventGauges } = await import('../../services/eventCorrelation.js')
 const { endCooledStorms } = await import('../../services/eventStorm.js')
@@ -79,6 +82,7 @@ const NOW = '2026-09-09T10:00:00.000Z'
 beforeEach(() => {
   vi.clearAllMocks()
   processors.clear()
+  poolOpts.clear()
   removeScheduler.mockResolvedValue(false)
   queueGetJob.mockResolvedValue(null)
   vi.mocked(reevaluateClosedWindows).mockResolvedValue({ evaluated: 2, failed: 0, truncated: false })
@@ -93,7 +97,7 @@ describe('enqueueCorrelation', () => {
     try {
       await enqueueCorrelation('t1', 'ev-1', '2026-09-09T10:00:30.000Z')
     } finally { vi.useRealTimers() }
-    expect(getQueue).toHaveBeenCalledWith(EVENT_CORRELATE_QUEUE)
+    expect(getTenantQueue).toHaveBeenCalledWith(EVENT_CORRELATE_QUEUE, 't1')
     expect(queueAdd).toHaveBeenCalledWith('correlate', { tenantId: 't1', eventId: 'ev-1', dueAt: '2026-09-09T10:00:30.000Z' }, expect.objectContaining({
       jobId: `corr-t1-ev-1-${Date.parse('2026-09-09T10:00:30.000Z')}`, delay: 30_000, attempts: 3, backoff: { type: 'exponential', delay: 5_000 },
     }))
@@ -130,7 +134,7 @@ describe('enqueueCorrelation', () => {
 describe('enqueueChangeWindowReevaluation (fine finestra come job)', () => {
   it('accoda `reevaluate-change-window` sulla coda events-correlate con id win-<tenant>-<change>-<epoca> (senza ":"), tentativi con backoff; epoca non valida → errore', async () => {
     await enqueueChangeWindowReevaluation('t1', 'chg-1', 1_757_412_000_000)
-    expect(getQueue).toHaveBeenCalledWith(EVENT_CORRELATE_QUEUE)
+    expect(getTenantQueue).toHaveBeenCalledWith(EVENT_CORRELATE_QUEUE, 't1')
     expect(queueAdd).toHaveBeenCalledWith(CHANGE_WINDOW_JOB, { tenantId: 't1', changeId: 'chg-1', stepEpoch: 1_757_412_000_000 }, expect.objectContaining({
       jobId: 'win-t1-chg-1-1757412000000', attempts: 3, backoff: { type: 'exponential', delay: 5_000 },
     }))
@@ -146,13 +150,12 @@ describe('enqueueChangeWindowReevaluation (fine finestra come job)', () => {
 })
 
 describe('worker events-correlate', () => {
-  it('startEventCorrelateWorker: rimuove il repeat job legacy `reevaluate-windows` e avvia il worker (concurrency 2) senza registrare job ripetuti', async () => {
-    removeScheduler.mockResolvedValueOnce(true)
-    const w = await startEventCorrelateWorker()
+  it('startEventCorrelateWorker: un worker per tenant (concurrency 2), senza job ripetuti', () => {
+    const w = startEventCorrelateWorker()
     expect(w.name).toBe(EVENT_CORRELATE_QUEUE)
-    expect(removeScheduler).toHaveBeenCalledWith(LEGACY_REEVALUATE_WINDOWS_JOB)
     expect(queueAdd).not.toHaveBeenCalled()
-    expect(createWorker).toHaveBeenCalledWith(EVENT_CORRELATE_QUEUE, expect.any(Function), expect.objectContaining({ concurrency: 2 }))
+    expect(createTenantWorkers).toHaveBeenCalledWith(EVENT_CORRELATE_QUEUE, expect.any(Function), expect.objectContaining({ concurrency: 2 }))
+    expect(poolOpts.get(EVENT_CORRELATE_QUEUE)!.schedule).toBeUndefined()
   })
 
   it('`correlate` → pipeline in modalità resume per (tenant, evento) con il job id nei log; ritardo dalla scadenza misurato (mai negativo); un errore della pipeline fa fallire il job', async () => {
@@ -183,35 +186,36 @@ describe('worker events-correlate', () => {
     vi.mocked(reevaluateSuppressedEvents).mockRejectedValueOnce(new Error('1/3 events suppressed by change chg-1 failed'))
     await expect(proc(job(CHANGE_WINDOW_JOB, { tenantId: 't1', changeId: 'chg-1', stepEpoch: 1 }))).rejects.toThrow(/1\/3 events/)
     await expect(proc(job('nope'))).rejects.toThrow(/\[events-correlate\] unknown job "nope"/)
-    await expect(proc(job(LEGACY_REEVALUATE_WINDOWS_JOB))).rejects.toThrow(/unknown job "reevaluate-windows"/)
+    await expect(proc(job('reevaluate-windows'))).rejects.toThrow(/unknown job "reevaluate-windows"/)
   })
 })
 
 describe('worker events-maintenance (periodico)', () => {
-  it('startEventMaintenanceWorker: registra lo scheduler ogni 5 minuti sulla coda dedicata e avvia il worker con concurrency 1 e lockDuration 10 min', async () => {
-    const w = await startEventMaintenanceWorker()
+  it('startEventMaintenanceWorker: un worker per tenant con concurrency 1 e lockDuration 10 min; ogni tenant ha la sua ricorrenza ogni 5 minuti, nella sua coda, che porta il tenant', async () => {
+    const w = startEventMaintenanceWorker()
     expect(w.name).toBe(EVENT_MAINTENANCE_QUEUE)
-    expect(getQueue).toHaveBeenCalledWith(EVENT_MAINTENANCE_QUEUE)
-    expect(upsertScheduler).toHaveBeenCalledWith(EVENT_MAINTENANCE_JOB, { every: EVENT_MAINTENANCE_EVERY_MS }, expect.objectContaining({ name: EVENT_MAINTENANCE_JOB }))
     expect(EVENT_MAINTENANCE_EVERY_MS).toBe(5 * 60 * 1000)
     expect(EVENT_MAINTENANCE_LOCK_MS).toBe(10 * 60 * 1000)
-    expect(createWorker).toHaveBeenCalledWith(EVENT_MAINTENANCE_QUEUE, expect.any(Function), expect.objectContaining({ concurrency: 1, lockDuration: EVENT_MAINTENANCE_LOCK_MS }))
+    expect(createTenantWorkers).toHaveBeenCalledWith(EVENT_MAINTENANCE_QUEUE, expect.any(Function), expect.objectContaining({ concurrency: 1, lockDuration: EVENT_MAINTENANCE_LOCK_MS }))
+    await poolOpts.get(EVENT_MAINTENANCE_QUEUE)!.schedule!(fakeQueue, 't1')
+    expect(upsertScheduler).toHaveBeenCalledWith(EVENT_MAINTENANCE_JOB, { every: EVENT_MAINTENANCE_EVERY_MS }, expect.objectContaining({ name: EVENT_MAINTENANCE_JOB, data: { tenantId: 't1' } }))
   })
 
-  it('`events-maintenance` → finestre chiuse + pending + sfarfallio + tempeste raffreddate + gauge, con lo stesso istante, ogni passata contata ok e misurata; job sconosciuto → errore', async () => {
-    await startEventMaintenanceWorker()
+  it('`events-maintenance` → finestre chiuse + pending + sfarfallio + tempeste raffreddate del TENANT del job + gauge, con lo stesso istante, ogni passata contata ok e misurata; job sconosciuto → errore', async () => {
+    startEventMaintenanceWorker()
     const proc = processors.get(EVENT_MAINTENANCE_QUEUE)!
-    await proc(job(EVENT_MAINTENANCE_JOB))
+    await proc(job(EVENT_MAINTENANCE_JOB, { tenantId: 't1' }))
     expect(reevaluateClosedWindows).toHaveBeenCalledTimes(1)
     expect(reevaluatePendingEvents).toHaveBeenCalledTimes(1)
     expect(reevaluateFlappingEvents).toHaveBeenCalledTimes(1)
     expect(endCooledStorms).toHaveBeenCalledTimes(1)
     expect(refreshEventGauges).toHaveBeenCalledTimes(1)
-    const now = vi.mocked(reevaluateClosedWindows).mock.calls[0]![0]
+    const [tenant, now] = vi.mocked(reevaluateClosedWindows).mock.calls[0]!
+    expect(tenant).toBe('t1')
     expect(now).toMatch(/^\d{4}-\d{2}-\d{2}T/)
-    expect(vi.mocked(reevaluatePendingEvents).mock.calls[0]![0]).toBe(now)
-    expect(vi.mocked(reevaluateFlappingEvents).mock.calls[0]![0]).toBe(now)
-    expect(vi.mocked(endCooledStorms).mock.calls[0]![0]).toBe(now)
+    expect(vi.mocked(reevaluatePendingEvents).mock.calls[0]).toEqual(['t1', now])
+    expect(vi.mocked(reevaluateFlappingEvents).mock.calls[0]).toEqual(['t1', now])
+    expect(vi.mocked(endCooledStorms).mock.calls[0]).toEqual(['t1', now])
     expect(vi.mocked(refreshEventGauges).mock.calls[0]![0]).toBe(now)
     expect(vi.mocked(metrics.eventPassTotal.inc).mock.calls.map((c) => c[0])).toEqual(
       ['closed_windows', 'pending', 'flapping', 'storms', 'gauges'].map((pass) => ({ pass, result: 'ok' })))
@@ -224,9 +228,9 @@ describe('worker events-maintenance (periodico)', () => {
     vi.mocked(reevaluateClosedWindows).mockRejectedValueOnce(new Error('1/3 suppressed events failed'))
     vi.mocked(reevaluatePendingEvents).mockRejectedValueOnce(new Error('2/2 pending events failed'))
     vi.mocked(endCooledStorms).mockRejectedValueOnce(new Error('redis down'))
-    await expect(runPeriodicPasses(NOW)).rejects.toThrow(/closed_windows: 1\/3 suppressed events failed; pending: 2\/2 pending events failed; storms: redis down/)
-    expect(reevaluateFlappingEvents).toHaveBeenCalledWith(NOW)
-    expect(endCooledStorms).toHaveBeenCalledWith(NOW)
+    await expect(runPeriodicPasses('t1', NOW)).rejects.toThrow(/closed_windows: 1\/3 suppressed events failed; pending: 2\/2 pending events failed; storms: redis down/)
+    expect(reevaluateFlappingEvents).toHaveBeenCalledWith('t1', NOW)
+    expect(endCooledStorms).toHaveBeenCalledWith('t1', NOW)
     expect(refreshEventGauges).toHaveBeenCalledWith(NOW)
     expect(vi.mocked(metrics.eventPassTotal.inc).mock.calls.map((c) => c[0])).toEqual([
       { pass: 'closed_windows', result: 'failed' }, { pass: 'pending', result: 'failed' }, { pass: 'flapping', result: 'ok' }, { pass: 'storms', result: 'failed' }, { pass: 'gauges', result: 'ok' },
@@ -243,7 +247,7 @@ describe('worker events-maintenance (periodico)', () => {
     vi.mocked(reevaluateFlappingEvents).mockRejectedValueOnce(giu())
     vi.mocked(endCooledStorms).mockRejectedValueOnce(giu())
     vi.mocked(refreshEventGauges).mockRejectedValueOnce(giu())
-    const err = await runPeriodicPasses(NOW).catch((e: Error) => e)
+    const err = await runPeriodicPasses('t1', NOW).catch((e: Error) => e)
     expect(err).toBeInstanceOf(Error)
     const message = (err as Error).message
     expect(message).toBe('[events-maintenance] events-maintenance: closed_windows, pending, flapping, storms, gauges: Failed to connect to server. Caused by: connect ECONNREFUSED 172.19.0.15:7687')
@@ -257,7 +261,7 @@ describe('worker events-maintenance (periodico)', () => {
     vi.mocked(reevaluateClosedWindows).mockRejectedValueOnce(new Error('connect ECONNREFUSED'))
     vi.mocked(reevaluatePendingEvents).mockRejectedValueOnce(new Error('2/2 pending events failed'))
     vi.mocked(refreshEventGauges).mockRejectedValueOnce(new Error('connect ECONNREFUSED'))
-    await expect(runPeriodicPasses(NOW)).rejects.toThrow(
+    await expect(runPeriodicPasses('t1', NOW)).rejects.toThrow(
       'closed_windows, gauges: connect ECONNREFUSED; pending: 2/2 pending events failed')
   })
 })

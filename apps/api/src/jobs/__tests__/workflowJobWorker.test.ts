@@ -4,7 +4,7 @@
  *  - webhook_retry goes through the SSRF guard (private/loopback → throw, no fetch);
  *  - trigger_timer: a failed action fails the job (no "green job, zero actions");
  *  - timer_wait: a failed transition fails the job.
- * BullMQ is mocked through lib/bullmq.ts, the processor is captured from createWorker.
+ * BullMQ is mocked through lib/bullmq.ts, the processor is captured from createTenantWorkers.
  */
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
 import type { Job } from 'bullmq'
@@ -15,12 +15,13 @@ const queueAdd = vi.fn().mockResolvedValue(undefined)
 const upsertScheduler = vi.fn().mockResolvedValue(undefined)
 const removeScheduler = vi.fn().mockResolvedValue(true)
 
+const fakeQueue = { add: queueAdd, upsertJobScheduler: upsertScheduler, removeJobScheduler: removeScheduler }
 vi.mock('../../lib/bullmq.js', () => ({
-  createWorker: vi.fn((name: string, processor: AnyProcessor, opts?: unknown) => {
+  createTenantWorkers: vi.fn((name: string, processor: AnyProcessor, opts?: unknown) => {
     processors.set(name, processor)
-    return { name, opts, on: vi.fn(), close: vi.fn() }
+    return { name, opts, close: vi.fn() }
   }),
-  getQueue: vi.fn(() => ({ add: queueAdd, upsertJobScheduler: upsertScheduler, removeJobScheduler: removeScheduler })),
+  getTenantQueue: vi.fn(() => fakeQueue),
 }))
 
 interface Rec { get(k: string): unknown }
@@ -97,7 +98,7 @@ const fetchMock = vi.fn()
 vi.stubGlobal('fetch', fetchMock)
 afterAll(() => { vi.unstubAllGlobals() })
 
-const { startWorkflowJobWorker, startNotificationJobWorker, scheduleEscalationCheck, scheduleStepDeadlineSweep, WORKFLOW_JOBS_QUEUE, NOTIFICATION_JOBS_QUEUE, STEP_DEADLINES_JOB } = await import('../workflowJobWorker.js')
+const { startWorkflowJobWorker, startNotificationJobWorker, scheduleEscalationCheck, scheduleWorkflowSweeps, WORKFLOW_JOBS_QUEUE, NOTIFICATION_JOBS_QUEUE, STEP_DEADLINES_JOB } = await import('../workflowJobWorker.js')
 const { ValidationError } = await import('../../lib/errors.js')
 
 startWorkflowJobWorker()
@@ -133,14 +134,15 @@ beforeEach(() => {
 describe('workflow-jobs: scadenze dei passi', () => {
   it('step_deadlines → una passata, con il riepilogo nel log se ha fatto qualcosa', async () => {
     runStepDeadlineSweep.mockResolvedValue({ candidates: 3, moved: 1, refused: 0, failed: 0, notDue: 2 })
-    await expect(workflowProcessor(job(STEP_DEADLINES_JOB, { instanceId: '', entityId: '', tenantId: '', job: STEP_DEADLINES_JOB }))).resolves.toBeUndefined()
-    expect(runStepDeadlineSweep).toHaveBeenCalledOnce()
+    await expect(workflowProcessor(job(STEP_DEADLINES_JOB, { instanceId: '', entityId: '', tenantId: 't1', job: STEP_DEADLINES_JOB }))).resolves.toBeUndefined()
+    // The sweep of the job's tenant: it runs in that tenant's own queue.
+    expect(runStepDeadlineSweep).toHaveBeenCalledWith('t1')
     expect(transition).not.toHaveBeenCalled()
   })
 
-  it('la passata si registra ripetuta ogni minuto, con un id fisso', async () => {
-    await scheduleStepDeadlineSweep()
-    expect(upsertScheduler).toHaveBeenCalledWith('workflow-step-deadlines', { every: 60_000 }, expect.objectContaining({ name: STEP_DEADLINES_JOB }))
+  it('la passata si registra ripetuta ogni minuto, con un id fisso, nella coda del tenant e con il tenant nel job', async () => {
+    await scheduleWorkflowSweeps(fakeQueue as never, 't1')
+    expect(upsertScheduler).toHaveBeenCalledWith('workflow-step-deadlines', { every: 60_000 }, expect.objectContaining({ name: STEP_DEADLINES_JOB, data: expect.objectContaining({ tenantId: 't1' }) }))
   })
 
   it('un auto_close di prima dell\'ondata 3 non transisce e non chiude niente', async () => {
@@ -152,7 +154,7 @@ describe('workflow-jobs: scadenze dei passi', () => {
 
   it('una passata che lancia fa fallire il job, invece di sparire', async () => {
     runStepDeadlineSweep.mockRejectedValue(new Error('neo4j giù'))
-    await expect(workflowProcessor(job(STEP_DEADLINES_JOB, { instanceId: '', entityId: '', tenantId: '', job: STEP_DEADLINES_JOB }))).rejects.toThrow('neo4j giù')
+    await expect(workflowProcessor(job(STEP_DEADLINES_JOB, { instanceId: '', entityId: '', tenantId: 't1', job: STEP_DEADLINES_JOB }))).rejects.toThrow('neo4j giù')
   })
 })
 

@@ -104,7 +104,7 @@ beforeEach(() => {
 describe('runStepDeadlineSweep', () => {
   it('a step whose deadline was cleared is ignored: no outcome written, nothing moved', async () => {
     runQuery.mockResolvedValueOnce([{ ...candidate({ deadline: '' }) }])
-    const summary = await runStepDeadlineSweep(NOW)
+    const summary = await runStepDeadlineSweep('t1', NOW)
     expect(summary).toEqual({ candidates: 1, moved: 0, refused: 0, failed: 0, notDue: 0 })
     expect(outcomeWrites()).toEqual([])
     expect(runQueryOne).not.toHaveBeenCalled()
@@ -119,7 +119,7 @@ describe('runStepDeadlineSweep', () => {
       candidate({ deadline: withCal, enteredAt: '2026-09-18T14:00:00Z' }),
       candidate({ deadline: withCal, enteredAt: '2026-09-18T14:00:00Z', execId: 'ex-2', entityId: 'chg-2' }),
     ])
-    const summary = await runStepDeadlineSweep(NOW)
+    const summary = await runStepDeadlineSweep('t1', NOW)
     expect(summary).toMatchObject({ candidates: 2, notDue: 2, moved: 0, failed: 0 })
     expect(getServiceCalendarById).toHaveBeenCalledTimes(1)
     expect(getServiceCalendarById).toHaveBeenCalledWith('c-test', 'cal-1')
@@ -136,13 +136,13 @@ describe('runStepDeadlineSweep', () => {
     runQueryOne
       .mockResolvedValueOnce({ id: 'ex-1' }).mockResolvedValueOnce({ currentStep: 'review', deadline: JSON.stringify(REVIEW), entity: {} }).mockResolvedValueOnce({ name: 'closed' })
       .mockResolvedValueOnce({ id: 'ex-2' }).mockResolvedValueOnce({ currentStep: 'review', deadline: JSON.stringify(REVIEW), entity: {} }).mockResolvedValueOnce(null)
-    const summary = await runStepDeadlineSweep(NOW)
+    const summary = await runStepDeadlineSweep('t1', NOW)
     expect(summary).toEqual({ candidates: 2, moved: 0, refused: 1, failed: 1, notDue: 0 })
   })
 
   it('a stored deadline that is not valid JSON → failed (config), reported with the parser message', async () => {
     runQuery.mockResolvedValueOnce([candidate({ deadline: '{not json' })])
-    const summary = await runStepDeadlineSweep(NOW)
+    const summary = await runStepDeadlineSweep('t1', NOW)
     expect(summary.failed).toBe(1)
     expect(outcomeWrites()[0]).toMatchObject({ outcome: 'failed', reason: 'config', detail: expect.stringContaining('not valid JSON') })
   })
@@ -150,7 +150,7 @@ describe('runStepDeadlineSweep', () => {
   it('a non-Error rejection while reading the calendar is still recorded as text', async () => {
     runQuery.mockResolvedValueOnce([candidate({ deadline: JSON.stringify({ ...REVIEW, calendar_id: 'cal-x' }) })])
     getServiceCalendarById.mockRejectedValueOnce('calendar store offline')
-    await runStepDeadlineSweep(NOW)
+    await runStepDeadlineSweep('t1', NOW)
     expect(outcomeWrites()[0]).toMatchObject({ reason: 'config', detail: 'calendar store offline' })
   })
 })

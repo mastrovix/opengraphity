@@ -11,6 +11,8 @@ const callOrder: string[] = []
 
 vi.mock('@opengraphity/events', () => ({
   publish: (...args: unknown[]) => { callOrder.push('publish'); return publish(...(args as [])) },
+  tenantQueue: vi.fn(),
+  TenantWorkerPool: class {},
 }))
 vi.mock('../status.js', () => ({
   ticketReference: vi.fn(async () => ({ number: 'INC00000012', title: 'Rete giù' })),

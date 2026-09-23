@@ -38,6 +38,7 @@ import { startEventCorrelateWorker, startEventMaintenanceWorker } from './jobs/e
 import { startServiceImpactWorker } from './jobs/serviceImpactWorker.js'
 import { ServiceImpactConsumer } from './consumers/serviceImpactConsumer.js'
 import { closeAllQueues } from './lib/bullmq.js'
+import { startTenantQueueLifecycle, stopTenantQueueLifecycle } from './lib/tenantQueueLifecycle.js'
 import { wireDomainEventFailureMetric } from './lib/domainEventFailures.js'
 import { startMetricsServer } from './lib/metricsServer.js'
 import { runGracefulShutdown, type Closable } from './lib/shutdown.js'
@@ -52,7 +53,6 @@ import './lib/notificationRuleCache.js'
 import { logger } from './lib/logger.js'
 import { assertMigrationsAppliedAtBoot } from './lib/migrationState.js'
 import { startInAppBus, stopInAppBus } from './lib/inAppBus.js'
-import type { Worker } from 'bullmq'
 
 registerSessionTracker((durationMs, query) => {
   neo4jQueryDurationSeconds.observe({ operation: 'QUERY' }, durationMs / 1000)
@@ -66,7 +66,7 @@ async function main() {
   // F10: anche il worker consegna notifiche (servizi, allarmi): si salvano e si pubblicano.
   startInAppBus()
 
-  const workers: Worker[] = []
+  const workers: Closable[] = []
   const consumers: Closable[] = []
 
   if (workGroups.includes('embedding')) {
@@ -80,15 +80,19 @@ async function main() {
     consumers.push({ name: 'service-impact-consumer', close: () => serviceImpactConsumer.stop() })
     workers.push(
       startEventIngestWorker(),
-      await startEventCorrelateWorker(),
-      await startEventMaintenanceWorker(),
-      await startServiceImpactWorker(),
+      startEventCorrelateWorker(),
+      startEventMaintenanceWorker(),
+      startServiceImpactWorker(),
     )
   }
   if (workers.length === 0) {
     // The table cannot produce this today; if it ever does, an idle process must not look healthy.
     throw new Error(`WORKER_PROFILE=${config.workerProfile} starts no work group in the worker process`)
   }
+
+  // Every pool is registered: each tenant gets its workers here, and the
+  // process follows the tenants from now on (lib/tenantQueueLifecycle.ts).
+  await startTenantQueueLifecycle()
 
   const metricsServer = await startMetricsServer(config.port)
 
@@ -111,6 +115,7 @@ async function main() {
       signal,
       httpServer: metricsServer,
       workers: [
+        { name: 'tenant-queue-lifecycle', close: () => stopTenantQueueLifecycle() },
         ...workers.map((w) => ({ name: w.name, close: () => w.close() })),
         ...consumers,
       ],

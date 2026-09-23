@@ -46,7 +46,7 @@ vi.mock('@opengraphity/neo4j', () => ({
 vi.mock('../logger.js', () => ({ logger: { child: () => ({ warn: vi.fn(), info: vi.fn(), error: vi.fn() }) } }))
 
 const {
-  assertSlugValido, listTenants, renameTenant, suspendTenant, resumeTenant, purgeTenant,
+  assertSlugValido, configuredReservedSlugs, listTenants, renameTenant, suspendTenant, resumeTenant, purgeTenant,
   resetAdminPassword,
 } = await import('../tenantLifecycle.js')
 
@@ -87,9 +87,38 @@ describe('lo slug è l\'identità: le sue regole', () => {
     }
   })
 
+  // 23 Sep 2026: `system` is the tenant_id of the rows every tenant shares;
+  // `master` is Keycloak's own realm, where onboarding would add its administrator.
+  it('rifiuta anche `system` (le righe condivise) e `master` (il realm di Keycloak)', () => {
+    for (const riservato of ['system', 'master']) {
+      expect(() => assertSlugValido(riservato), riservato).toThrow(/reserved/)
+    }
+  })
+
   it('l\'host della console si passa da fuori, non è cablato qui', () => {
     expect(() => assertSlugValido('opengrafo-admin')).not.toThrow()
     expect(() => assertSlugValido('opengrafo-admin', ['opengrafo-admin'])).toThrow(/reserved/)
+  })
+
+  it('dalla configurazione vengono il sottodominio della console e il realm di piattaforma', () => {
+    vi.stubEnv('PLATFORM_CONSOLE_HOST', 'OpenGrafo-Admin.example.io')
+    vi.stubEnv('PLATFORM_REALM', 'opengrafo-platform')
+    resetConfigCache()
+    try {
+      expect(configuredReservedSlugs()).toEqual(['opengrafo-admin', 'opengrafo-platform'])
+    } finally {
+      vi.unstubAllEnvs()
+      resetConfigCache()
+    }
+    vi.stubEnv('PLATFORM_CONSOLE_HOST', '')
+    vi.stubEnv('PLATFORM_REALM', '')
+    resetConfigCache()
+    try {
+      expect(configuredReservedSlugs()).toEqual([])
+    } finally {
+      vi.unstubAllEnvs()
+      resetConfigCache()
+    }
   })
 })
 

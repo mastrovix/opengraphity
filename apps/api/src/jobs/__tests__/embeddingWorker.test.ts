@@ -2,20 +2,22 @@
  * Embedding worker processor (jobs/embeddingWorker.ts): text built per entity
  * type, provider `embed` called, vector written with tenant scoping; provider
  * or Neo4j failures fail the job (no fallback). `embeddingJobId` is covered in
- * schedulerHelpers.test.ts.
+ * schedulerHelpers.test.ts. Since 23 Sep 2026 every tenant has its own queue
+ * `embeddings@<tenant>`.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Job } from 'bullmq'
 
 type AnyProcessor = (job: Job) => Promise<unknown>
 const processors = new Map<string, AnyProcessor>()
-const createWorker = vi.fn((name: string, processor: AnyProcessor, opts?: unknown) => { processors.set(name, processor); return { name, opts } })
+const createTenantWorkers = vi.fn((name: string, processor: AnyProcessor, opts?: unknown) => { processors.set(name, processor); return { name, opts } })
 const queueAdd = vi.fn().mockResolvedValue(undefined)
+const getTenantQueue = vi.fn((_base: string, _tenantId: string) => ({ add: queueAdd }))
 // Ondata 6 di «Nulla cablato»: le funzioni AI sono dell'organizzazione; qui tutte accese.
 vi.mock('../../lib/aiSettings.js', () => import('../../lib/__tests__/aiSettingsFake.js'))
 vi.mock('../../lib/bullmq.js', () => ({
-  createWorker: (...a: unknown[]) => createWorker(...(a as [string, AnyProcessor, unknown])),
-  getQueue: vi.fn(() => ({ add: queueAdd })),
+  createTenantWorkers: (...a: unknown[]) => createTenantWorkers(...(a as [string, AnyProcessor, unknown])),
+  getTenantQueue: (base: string, tenantId: string) => getTenantQueue(base, tenantId),
 }))
 
 interface Rec { get(k: string): unknown }
@@ -74,14 +76,15 @@ describe('startEmbeddingWorker / ensureVectorIndexes', () => {
     expect(writes[0]!.q).toContain('FOR (n:Incident) ON n.embedding')
     expect(writes[0]!.q).toContain('`vector.dimensions`: 3')
     expect(writes[1]!.q).toContain('FOR (n:KBArticle) ON n.embedding')
-    expect(createWorker).toHaveBeenCalledWith(EMBEDDINGS_QUEUE, expect.any(Function), expect.objectContaining({ concurrency: 1 }))
+    // One inference at a time in the process, whatever the tenant: the model is CPU-bound (23 Sep 2026).
+    expect(createTenantWorkers).toHaveBeenCalledWith(EMBEDDINGS_QUEUE, expect.any(Function), expect.objectContaining({ concurrency: 1, processLimit: 1 }))
     expect(close).toHaveBeenCalledOnce()
   })
 
   it('creazione indici fallita → startup rigetta, nessun worker avviato', async () => {
     writeError = new Error('vector indexes unsupported')
     await expect(startEmbeddingWorker()).rejects.toThrow('vector indexes unsupported')
-    expect(createWorker).not.toHaveBeenCalled()
+    expect(createTenantWorkers).not.toHaveBeenCalled()
     expect(close).toHaveBeenCalledOnce()
   })
 
@@ -180,8 +183,9 @@ describe('processEmbedding', () => {
 })
 
 describe('enqueueEmbedding', () => {
-  it('accoda con jobId versionato per updated_at, 3 tentativi con backoff esponenziale', async () => {
+  it('accoda nella coda del tenant, con jobId versionato per updated_at, 3 tentativi con backoff esponenziale', async () => {
     await enqueueEmbedding({ entityType: 'incident', entityId: 'inc-1', tenantId: 't1', updatedAt: '2026-09-08T10:00:00.000Z' })
+    expect(getTenantQueue).toHaveBeenCalledWith('embeddings', 't1')
     expect(queueAdd).toHaveBeenCalledWith(
       'embed',
       { entityType: 'incident', entityId: 'inc-1', tenantId: 't1', updatedAt: '2026-09-08T10:00:00.000Z' },

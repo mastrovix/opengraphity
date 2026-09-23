@@ -10,9 +10,15 @@ const HERE = __dirname
  * localStorage) so every test starts authenticated.
  */
 export default async function globalSetup(_config: FullConfig) {
-  const baseURL  = process.env['E2E_BASE_URL'] ?? 'http://c-one.localhost'
-  const user     = process.env['E2E_USER'] ?? 'admin'
-  const password = process.env['E2E_PASSWORD'] ?? 'opengrafo_local'
+  const baseURL  = process.env['E2E_BASE_URL'] ?? 'http://demo-opengrafo.localhost'
+  const user     = process.env['E2E_USER']
+  const password = process.env['E2E_PASSWORD']
+  // No default user: the one the tests used to assume (admin/opengrafo_local)
+  // belonged to c-one, deleted on 23 Sep 2026, and a login with a user that
+  // does not exist fails as a 15-second timeout on the Keycloak form.
+  if (!user || !password) {
+    throw new Error(`E2E_USER and E2E_PASSWORD are required: a user of the tenant at ${baseURL}`)
+  }
 
   const statePath = resolve(HERE, '.auth/state.json')
   mkdirSync(dirname(statePath), { recursive: true })

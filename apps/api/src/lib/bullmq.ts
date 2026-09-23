@@ -19,8 +19,9 @@
  */
 import { Queue, Worker, type Job, type Processor, type WorkerOptions, type QueueOptions } from 'bullmq'
 import { Redis } from 'ioredis'
-import { getRedisConnection } from '@opengraphity/events'
+import { getRedisConnection, setTenantQueueHooks, tenantQueue, TenantWorkerPool, type TenantPoolOptions } from '@opengraphity/events'
 import { logger } from './logger.js'
+import { isTenantQueueBase } from './queueRegistry.js'
 
 import { guastoDi, ripresaDi } from './dipendenzaGiu.js'
 
@@ -30,8 +31,16 @@ const log = logger.child({ module: 'bullmq' })
 
 const queues = new Map<string, Queue>()
 
-/** Per-name Queue singleton (producer side). Never `close()` the returned object: use closeAllQueues(). */
+/**
+ * Per-name Queue singleton (producer side) of a PLATFORM queue. Never
+ * `close()` the returned object: use closeAllQueues(). A queue that holds a
+ * tenant's work is that tenant's (`getTenantQueue`): asking for its shared
+ * name is refused, because nothing would ever work a job put there.
+ */
 export function getQueue<D = unknown>(name: string, opts?: Omit<QueueOptions, 'connection'>): Queue<D> {
+  if (isTenantQueueBase(name)) {
+    throw new Error(`[bullmq] queue "${name}" is per tenant since 23 Sep 2026: use getTenantQueue("${name}", tenantId)`)
+  }
   let q = queues.get(name)
   if (!q) {
     q = new Queue(name, { ...opts, connection: getRedisConnection() })
@@ -77,10 +86,80 @@ export function getQueue<D = unknown>(name: string, opts?: Omit<QueueOptions, 'c
   return q as Queue<D>
 }
 
-/** All queues opened so far (metrics collector). */
+/** All platform queues opened so far (metrics collector). */
 export function getAllQueues(): Queue[] {
   return [...queues.values()]
 }
+
+// ── Tenant queues (one per tenant, 23 Sep 2026) ──────────────────────────────
+
+/**
+ * The tenant's own queue for a base (`<base>@<tenant>`), from
+ * @opengraphity/events. Refuses a base that is not a tenant queue: a platform
+ * queue has no tenant.
+ */
+export function getTenantQueue<D = unknown>(base: string, tenantId: string): Queue<D> {
+  if (!isTenantQueueBase(base)) throw new Error(`[bullmq] "${base}" is not a tenant queue (lib/queueRegistry.ts)`)
+  return tenantQueue<D>(base, tenantId)
+}
+
+/**
+ * The queue a tenant base was while the tenants shared it (before 23 Sep
+ * 2026), opened only to be emptied by scripts/drop-shared-queues.ts: nothing
+ * works it any more. Not a singleton, not in getAllQueues(): the caller
+ * closes it.
+ */
+export function openRetiredSharedQueue(base: string): Queue {
+  if (!isTenantQueueBase(base)) throw new Error(`[bullmq] "${base}" is not a tenant queue base: it was never shared by the tenants`)
+  // skipMetasUpdate: opening it writes nothing, so looking at it (the dry run) leaves Redis as it was.
+  const q = new Queue(base, { connection: getRedisConnection(), skipMetasUpdate: true })
+  q.on('error', (err: Error) => { log.error({ err, queue: base }, '[bullmq] retired shared queue error') })
+  return q
+}
+
+export interface CreateTenantWorkersOptions extends TenantPoolOptions {
+  /** Called on every failed attempt, after the structured log line (the tenant is in the job). */
+  onFailed?: (job: Job | undefined, err: Error, tenantId: string) => void
+}
+
+/**
+ * The pool of workers of a tenant queue base: one Worker per tenant, created
+ * and closed with the tenants by lib/tenantQueueLifecycle.ts. Same contract as
+ * `createWorker`: every worker logs its Redis faults and every failed job.
+ */
+export function createTenantWorkers<D = unknown, R = unknown>(
+  base: string,
+  processor: Processor<D, R>,
+  opts: CreateTenantWorkersOptions = {},
+): TenantWorkerPool<D, R> {
+  if (!isTenantQueueBase(base)) throw new Error(`[bullmq] "${base}" is not a tenant queue (lib/queueRegistry.ts)`)
+  const pool = new TenantWorkerPool<D, R>(base, processor, opts)
+  log.info({ queue: base, concurrency: opts.concurrency ?? 1, processLimit: opts.processLimit ?? null }, '[bullmq] tenant worker pool registered')
+  return pool
+}
+
+/*
+ * The faults of the tenant queues are reported like the platform ones: a fault
+ * is a change of state (lib/dipendenzaGiu.ts), keyed by BASE, not by tenant —
+ * a Redis outage hits every tenant's worker at once, and a hundred lines that
+ * say the same thing hide the one that matters.
+ */
+setTenantQueueHooks({
+  queueError: (name, err) => { guastoDi(log, 'bullmq:tenant-queues', err, { queue: name }) },
+  workerError: (base, tenantId, err) => { guastoDi(log, `bullmq:worker:${base}`, err, { worker: base, tenantId }) },
+  workerReady: (base, tenantId) => { ripresaDi(log, `bullmq:worker:${base}`, { worker: base, tenantId }) },
+  jobFailed: (base, tenantId, job, err) => {
+    log.error({
+      worker:       base,
+      tenantId,
+      jobId:        job?.id,
+      jobName:      job?.name,
+      attemptsMade: job?.attemptsMade,
+      attempts:     job?.opts?.attempts ?? 1,
+      err:          err.message,
+    }, '[bullmq] job failed')
+  },
+})
 
 // ── Shared plain Redis client (idempotency markers, SET NX, …) ───────────────
 
@@ -143,6 +222,9 @@ export function createWorker<D = unknown, R = unknown, N extends string = string
   processor: Processor<D, R, N>,
   opts: CreateWorkerOptions = {},
 ): Worker<D, R, N> {
+  if (isTenantQueueBase(name)) {
+    throw new Error(`[bullmq] queue "${name}" is per tenant since 23 Sep 2026: use createTenantWorkers("${name}", …)`)
+  }
   const { onFailed, ...workerOpts } = opts
   const worker = new Worker<D, R, N>(name, processor, { ...workerOpts, connection: getRedisConnection() })
 

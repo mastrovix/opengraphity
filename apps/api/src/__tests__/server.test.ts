@@ -108,6 +108,7 @@ vi.mock('../rest/assistant.js', async () => ({ assistantRouter: (await import('e
 vi.mock('../rest/client-logs.js', async () => ({ clientLogRouter: (await import('express')).Router() }))
 vi.mock('../rest/platform-tenants.js', async () => ({ platformTenantsRouter: (await import('express')).Router() }))
 vi.mock('../rest/platform-server-logs.js', async () => ({ platformServerLogsRouter: (await import('express')).Router() }))
+vi.mock('../rest/platform-queues.js', async () => ({ platformQueuesRouter: (await import('express')).Router() }))
 vi.mock('../rest/attachments.js', async () => ({ attachmentRouter: (await import('express')).Router() }))
 vi.mock('../rest/brand.js', async () => ({ brandRouter: (await import('express')).Router() }))
 vi.mock('../rest/incident-pdf.js', async () => ({ incidentPdfRouter: (await import('express')).Router() }))

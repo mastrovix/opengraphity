@@ -42,7 +42,7 @@ vi.mock('../logger.js', () => ({
   logger: { child: () => ({ error: logError, info: vi.fn(), warn: logWarn }) },
 }))
 
-const { createWorker, getQueue, getAllQueues, closeAllQueues, getSharedRedis } = await import('../bullmq.js')
+const { createWorker, getQueue, getAllQueues, closeAllQueues, getSharedRedis, getTenantQueue, createTenantWorkers } = await import('../bullmq.js')
 
 describe('createWorker', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -114,5 +114,58 @@ describe('getQueue / closeAllQueues', () => {
     expect(quit).toHaveBeenCalled()
     expect(getAllQueues()).toEqual([])
     expect(getQueue('to-close')).not.toBe(q)
+  })
+})
+
+/*
+ * THE TENANT QUEUES (23 Sep 2026): a queue that holds a tenant's work is that
+ * tenant's, `<base>@<tenant>`. Each queue is opened through the API of its
+ * scope, and a tenant worker reports its faults like a platform one does.
+ */
+describe('tenant queues', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('getQueue and createWorker refuse a tenant base: nothing would ever work a job put in a shared queue', () => {
+    expect(() => getQueue('sla-jobs')).toThrow('queue "sla-jobs" is per tenant since 23 Sep 2026: use getTenantQueue("sla-jobs", tenantId)')
+    expect(() => createWorker('sla-jobs', async () => undefined)).toThrow(/is per tenant/)
+  })
+
+  it('getTenantQueue opens <base>@<tenant>, once per name, apart from the platform queues; a platform queue has no tenant', () => {
+    const a = getTenantQueue('sla-jobs', 't1') as unknown as FakeQueue
+    expect(a.name).toBe('sla-jobs@t1')
+    expect(getTenantQueue('sla-jobs', 't1')).toBe(a)
+    expect((getTenantQueue('sla-jobs', 't2') as unknown as FakeQueue).name).toBe('sla-jobs@t2')
+    expect(getAllQueues()).not.toContain(a)
+    expect(() => getTenantQueue('maintenance', 't1')).toThrow('[bullmq] "maintenance" is not a tenant queue (lib/queueRegistry.ts)')
+  })
+
+  it('createTenantWorkers registers the pool of a tenant base; a platform base is refused', async () => {
+    const pool = createTenantWorkers('webhook-delivery', async () => undefined, { concurrency: 3 })
+    expect(pool.base).toBe('webhook-delivery')
+    await pool.add('t1')
+    expect((pool.workerOf('t1') as unknown as FakeWorker).opts).toEqual(expect.objectContaining({ concurrency: 3 }))
+    expect(() => createTenantWorkers('maintenance', async () => undefined)).toThrow(/not a tenant queue/)
+    await pool.close()
+  })
+
+  it('an outage hitting every tenant\'s worker writes ONE line, and a failed job is logged with its tenant', async () => {
+    const pool = createTenantWorkers('email-digest', async () => undefined)
+    await pool.add('t1')
+    await pool.add('t2')
+    const w1 = pool.workerOf('t1') as unknown as FakeWorker
+    const w2 = pool.workerOf('t2') as unknown as FakeWorker
+    expect(w1.listenerCount('error')).toBe(1)
+    w1.emit('error', new Error('ECONNRESET'))
+    w2.emit('error', new Error('ECONNRESET'))
+    expect(logError.mock.calls.filter((c) => String(c[1]).includes('connection lost'))).toHaveLength(1)
+    w2.emit('ready')
+    expect(logWarn).toHaveBeenCalledWith(expect.objectContaining({ worker: 'email-digest', taciute: 1 }), expect.stringContaining('back up after'))
+
+    w1.emit('failed', { id: 'j1', name: 'tick', attemptsMade: 1, opts: { attempts: 3 } }, new Error('boom'))
+    expect(logError).toHaveBeenCalledWith(
+      expect.objectContaining({ worker: 'email-digest', tenantId: 't1', jobId: 'j1', jobName: 'tick', attemptsMade: 1, attempts: 3, err: 'boom' }),
+      '[bullmq] job failed',
+    )
+    await pool.close()
   })
 })

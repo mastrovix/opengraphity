@@ -5,8 +5,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const add = vi.fn()
-vi.mock('bullmq', () => ({ Queue: class { add = add; getJob = vi.fn(async () => null) }, Worker: class {} }))
-vi.mock('@opengraphity/events', () => ({ publish: vi.fn(), getRedisConnection: vi.fn(() => ({})) }))
+vi.mock('@opengraphity/events', () => ({
+  publish: vi.fn(),
+  tenantQueue: () => ({ add, getJob: vi.fn(async () => null) }),
+  TenantWorkerPool: class {},
+}))
 vi.mock('../status.js', () => ({ getSLAStatus: vi.fn(), markBreached: vi.fn(), ticketReference: vi.fn() }))
 vi.mock('../olaBreach.js', () => ({ isEntityResolved: vi.fn() }))
 

@@ -6,32 +6,45 @@ import type { Job } from 'bullmq'
 type FailedHandler = (job: Job | undefined, err: Error) => void
 let failedHandler: FailedHandler | null = null
 
+const workers = vi.hoisted(() => [] as Array<{ name: string; opts: { concurrency: number } }>)
 vi.mock('bullmq', () => ({
   Worker: class {
-    constructor(public name: string, public processor: unknown, public opts: unknown) {}
-    on(event: string, cb: FailedHandler) { if (event === 'failed') failedHandler = cb }
+    constructor(public name: string, public processor: unknown, public opts: { concurrency: number }) { workers.push(this) }
+    on(event: string, cb: FailedHandler) { if (event === 'failed') failedHandler = cb; return this }
+    async close() {}
+  },
+  Queue: class {
+    constructor(public name: string) {}
+    on() { return this }
+    async resume() {}
+    async pause() {}
     async close() {}
   },
 }))
 vi.mock('ioredis', () => ({
-  Redis: class { disconnect() {} async exists() { return 0 } async set() { return 'OK' } },
+  Redis: class { on() { return this } disconnect() {} async quit() { return 'OK' } async exists() { return 0 } async set() { return 'OK' } },
 }))
 
 const { BaseConsumer, getFailedEventCount, onEventFailed, CONSUMER_CONCURRENCY } = await import('../consumer.js')
+const { reconcileTenantPools, resetTenantQueuesForTests } = await import('../tenantQueues.js')
 
 class TestConsumer extends BaseConsumer<unknown> {
   constructor() { super('test-queue') }
   async process(): Promise<void> {}
-  /** The Worker instance (fake) for the concurrency assertion. */
-  get workerOpts(): { concurrency: number } { return (this as unknown as { worker: { opts: { concurrency: number } } }).worker.opts }
+  /** Starts the consumer and gives it tenant t1, as the host does at boot. */
+  async startWithTenant(): Promise<void> {
+    await this.start()
+    await reconcileTenantPools([{ id: 't1', suspended: false }])
+  }
 }
 
 describe('BaseConsumer — concurrency (revisione 2 · D1.1)', () => {
   it('runs 3 jobs in parallel per consumer (was 10: four consumers took 40 of the ~70 slots on one Neo4j pool)', async () => {
     expect(CONSUMER_CONCURRENCY).toBe(3)
     const c = new TestConsumer()
-    await c.start()
-    expect(c.workerOpts.concurrency).toBe(3)
+    await c.startWithTenant()
+    expect(workers.at(-1)!.name).toBe('test-queue@t1')
+    expect(workers.at(-1)!.opts.concurrency).toBe(3)
     await c.stop()
   })
 })
@@ -46,6 +59,7 @@ function job(attemptsMade: number, attempts: number): Job {
 }
 
 beforeEach(() => {
+  resetTenantQueuesForTests()
   failedHandler = null
   vi.spyOn(console, 'error').mockImplementation(() => {})
   vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -54,7 +68,7 @@ beforeEach(() => {
 describe('BaseConsumer — exhausted events are counted and observable (D-33)', () => {
   it('counts only the LAST failed attempt, and notifies listeners', async () => {
     const c = new TestConsumer()
-    await c.start()
+    await c.startWithTenant()
     expect(failedHandler).not.toBeNull()
 
     const seen: Array<{ queue: string; eventType: string; eventId: string | undefined; attempts: number }> = []
@@ -79,7 +93,7 @@ describe('BaseConsumer — exhausted events are counted and observable (D-33)', 
 
   it('a job without attempts option is exhausted at the first failure; a throwing listener does not break the worker', async () => {
     const c = new TestConsumer()
-    await c.start()
+    await c.startWithTenant()
     const before = getFailedEventCount()
     const off = onEventFailed(() => { throw new Error('listener bug') })
     expect(() => failedHandler!(job(1, 1), new Error('x'))).not.toThrow()
@@ -90,7 +104,7 @@ describe('BaseConsumer — exhausted events are counted and observable (D-33)', 
 
   it('logs EXHAUSTED on the final attempt', async () => {
     const c = new TestConsumer()
-    await c.start()
+    await c.startWithTenant()
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
     failedHandler!(job(4, 4), new Error('boom'))
     expect(err.mock.calls.some(call => String(call[0]).includes('EXHAUSTED'))).toBe(true)
@@ -109,7 +123,7 @@ describe('BaseConsumer — exhausted events are counted and observable (D-33)', 
 describe('BaseConsumer — a failure with no job at all', () => {
   it('counts it as exhausted and names what it can', async () => {
     const c = new TestConsumer()
-    await c.start()
+    await c.startWithTenant()
     const seen: Array<{ eventType: string; eventId: string | undefined; attempts: number }> = []
     const off = onEventFailed((i) => seen.push({ eventType: i.eventType, eventId: i.eventId, attempts: i.attempts }))
 
@@ -123,7 +137,7 @@ describe('BaseConsumer — a failure with no job at all', () => {
 
   it('a job whose data carries no event type falls back to the job name', async () => {
     const c = new TestConsumer()
-    await c.start()
+    await c.startWithTenant()
     const seen: string[] = []
     const off = onEventFailed((i) => seen.push(i.eventType))
 

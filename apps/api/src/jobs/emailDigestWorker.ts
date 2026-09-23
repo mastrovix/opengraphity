@@ -22,13 +22,14 @@
  * the hardcoded `@demo.` / `@opengrafo.com` / `usr-N@` exclusions are gone
  * (a real customer on such a domain was silently never served).
  */
-import type { Worker, Job } from 'bullmq'
+import type { Job, Queue } from 'bullmq'
+import type { TenantWorkerPool } from '@opengraphity/events'
 import { TICKET_WORKER_PERMISSION } from '@opengraphity/types'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { loadNotificationLocale, loadTenantBrand, sendTenantEmail } from '@opengraphity/notifications'
 import { digestDaily } from '../lib/emailTemplates.js'
 import { logger } from '../lib/logger.js'
-import { createWorker, getQueue, getSharedRedis } from '../lib/bullmq.js'
+import { createTenantWorkers, getSharedRedis } from '../lib/bullmq.js'
 
 const log = logger.child({ module: 'email-digest' })
 
@@ -85,26 +86,28 @@ export function digestMarkerKey(tenantId: string, localDate: string): string {
   return `digest:${tenantId}:${localDate}`
 }
 
-async function loadTenants(): Promise<TenantRow[]> {
+async function loadTenants(tenantId: string): Promise<TenantRow[]> {
   const session = getSession()
   try {
-    // Only tenants with an ENABLED digest rule: the rule is the configuration.
+    // Only an ENABLED digest rule: the rule is the configuration. The tick is
+    // the tenant's own, in its queue `email-digest@<tenant>` (23 Sep 2026).
     return await runQuery<TenantRow>(session, `
-      MATCH (t:Tenant)
+      MATCH (t:Tenant {id: $tenantId})
       MATCH (r:NotificationRule {tenant_id: t.id, event_type: 'digest.daily', enabled: true})
       RETURN t.id AS id, t.timezone AS timezone, r.digest_time AS digestTime, r.target AS target, r.digest_recipients AS recipients
-    `, {})
+    `, { tenantId })
   } finally {
     await session.close()
   }
 }
 
 /**
- * One tick: for every tenant whose local hour is DIGEST_LOCAL_HOUR, claim the
- * daily marker and send. `now` is injectable for tests.
+ * One tick of a tenant: if its local time has reached the time of its
+ * digest.daily rule, claim the daily marker and send. `now` is injectable
+ * for tests.
  */
-export async function processDigestTick(now: Date = new Date()): Promise<{ sent: string[]; skipped: string[] }> {
-  const tenants = await loadTenants()
+export async function processDigestTick(tenantId: string, now: Date = new Date()): Promise<{ sent: string[]; skipped: string[] }> {
+  const tenants = await loadTenants(tenantId)
   const sent: string[] = []
   const skipped: string[] = []
   let failures = 0
@@ -258,33 +261,22 @@ export function digestRole(target: string | null): string | null {
 }
 
 /**
- * Schedules the tick and starts the worker. Async because the
- * repeatable job registration is awaited: a failed registration is a startup
- * error, not a lost `.then()`.
+ * The tick of a tenant, in its queue: a Job Scheduler (BullMQ 6) with an
+ * explicit identity, so upserting it from every process and at every boot
+ * never makes a second one.
  */
-export async function startEmailDigestWorker(): Promise<Worker> {
-  /*
-   * JOB SCHEDULER, non piu' «repeat» (21 set 2026, BullMQ 6).
-   *
-   * BullMQ 6 ha RIMOSSO i job ripetibili: `repeat` su `add()`, la classe
-   * `Repeat`, `getRepeatableJobs()` e `removeRepeatable*()` non esistono piu'.
-   * Al loro posto i Job Scheduler, che hanno un'identita' esplicita — il primo
-   * argomento — invece di essere dedotta da (nome, opzioni di ripetizione).
-   *
-   * La ricorrenza si registra a ogni avvio del worker, come prima: non c'e'
-   * stato da migrare, e `upsert` significa che riavviare non ne crea una
-   * seconda.
-   */
-  await getQueue(EMAIL_DIGEST_QUEUE).upsertJobScheduler(
+export async function scheduleDigestTick(queue: Queue, tenantId: string): Promise<void> {
+  await queue.upsertJobScheduler(
     'email-digest-tick',
     { pattern: '*/5 * * * *', tz: 'UTC' },
-    { name: 'digest-tick', data: {}, opts: { removeOnComplete: true } },
+    { name: 'digest-tick', data: { tenantId }, opts: { removeOnComplete: true } },
   )
-  log.info('Email digest tick scheduled (every 5 minutes; sends at the time of each tenant\'s digest.daily rule)')
+}
 
-  return createWorker(EMAIL_DIGEST_QUEUE, async (_job: Job) => {
-    log.info('Running email digest tick')
-    const { sent, skipped } = await processDigestTick()
-    log.info({ sent: sent.length, skipped: skipped.length }, 'Email digest tick done')
-  }, { concurrency: 1 })
+/** One worker per tenant on `email-digest@<tenant>`, each with its tenant's tick every 5 minutes. */
+export function startEmailDigestWorker(): TenantWorkerPool<{ tenantId: string }> {
+  return createTenantWorkers<{ tenantId: string }>(EMAIL_DIGEST_QUEUE, async (job: Job<{ tenantId: string }>) => {
+    const { sent, skipped } = await processDigestTick(job.data.tenantId)
+    if (sent.length > 0) log.info({ tenantId: job.data.tenantId, sent: sent.length, skipped: skipped.length }, 'Email digest sent')
+  }, { concurrency: 1, schedule: scheduleDigestTick })
 }

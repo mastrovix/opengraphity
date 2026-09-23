@@ -73,26 +73,13 @@ COPY --from=builder --chown=node:node /out/package.json  ./package.json
 COPY --from=builder --chown=node:node /out/node_modules  ./node_modules
 COPY --from=builder --chown=node:node /out/dist          ./dist
 
-# Liveness probe for the `worker` service (same image, no HTTP endpoint):
-# BullMQ workers register their connection name in Redis (CLIENT SETNAME) and
-# Queue.getWorkersCount() lists them — exit 0 only while an `embeddings` worker
-# is connected. Used by the compose healthcheck: `node worker-healthcheck.mjs`.
-RUN printf '%s\n' \
-  'import { Queue } from "bullmq";' \
-  'import { getRedisConnection } from "@opengraphity/events";' \
-  'const timer = setTimeout(() => { console.error("worker healthcheck: timeout"); process.exit(1); }, 4000);' \
-  'const queue = new Queue(process.env.HEALTHCHECK_QUEUE || "embeddings", { connection: getRedisConnection() });' \
-  'queue.on("error", () => {});' \
-  'let workers = 0;' \
-  'try {' \
-  '  workers = await queue.getWorkersCount();' \
-  '} catch (err) {' \
-  '  console.error("worker healthcheck: " + (err instanceof Error ? err.message : String(err)));' \
-  '}' \
-  'try { await queue.close(); } catch {}' \
-  'clearTimeout(timer);' \
-  'process.exit(workers > 0 ? 0 : 1);' \
-  > /app/worker-healthcheck.mjs && chown node:node /app/worker-healthcheck.mjs
+# Liveness probe for the `worker` and `events-worker` services (same image, no
+# HTTP endpoint): the process's heartbeat in Redis and, with tenants, a
+# connected worker of HEALTHCHECK_QUEUE for some tenant — since 23 Sep 2026
+# every tenant has its own queues. The logic is src/workerHealthcheck.ts and
+# lib/workerLiveness.ts, compiled and tested with the rest; this file only
+# keeps the path the compose healthcheck calls: `node worker-healthcheck.mjs`.
+RUN printf '%s\n' 'import "./dist/workerHealthcheck.js";' > /app/worker-healthcheck.mjs && chown node:node /app/worker-healthcheck.mjs
 
 # Writable data dirs for the unprivileged user. NB: an api_data volume created
 # by an older (root) image keeps root-owned files — see docs/DEPLOY.md

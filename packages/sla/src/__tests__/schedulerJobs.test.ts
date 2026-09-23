@@ -21,40 +21,43 @@ import type { SLAStatus } from '../status.js'
 const fake = vi.hoisted(() => {
   interface FakeJob { remove: () => Promise<void>; getState: () => Promise<string> }
   const state = {
-    workers: [] as Array<{ name: string; handlers: Map<string, (...a: unknown[]) => void>; closed: number }>,
-    added: [] as Array<{ name: string; data: unknown; opts: { jobId: string; delay: number } }>,
+    pools: [] as Array<{ base: string; processor: unknown; closed: number }>,
+    added: [] as Array<{ queue: string; name: string; data: unknown; opts: { jobId: string; delay: number; removeOnComplete?: unknown; removeOnFail?: unknown } }>,
     jobs: new Map<string, FakeJob>(),
     gotten: [] as string[],
-    queuesBuilt: 0,
-    closed: 0,
+    queuesAsked: [] as string[],
   }
-  class Queue {
-    constructor() { state.queuesBuilt += 1 }
-    async getJob(id: string) { state.gotten.push(id); return state.jobs.get(id) ?? null }
-    async add(name: string, data: unknown, opts: { jobId: string; delay: number }) { state.added.push({ name, data, opts }); return { id: opts.jobId } }
-    async close() { state.closed += 1 }
+  /** The tenant queues of @opengraphity/events: one fake per name, like the real singletons. */
+  const queues = new Map<string, unknown>()
+  function tenantQueue(base: string, tenantId: string) {
+    const name = `${base}@${tenantId}`
+    state.queuesAsked.push(name)
+    if (!queues.has(name)) {
+      queues.set(name, {
+        name,
+        async getJob(id: string) { state.gotten.push(`${name}/${id}`); return state.jobs.get(`${name}/${id}`) ?? null },
+        async add(jobName: string, data: unknown, opts: { jobId: string; delay: number }) { state.added.push({ queue: name, name: jobName, data, opts }); return { id: opts.jobId } },
+      })
+    }
+    return queues.get(name)
   }
-  return { state, Queue }
+  class TenantWorkerPool {
+    me: { base: string; processor: unknown; closed: number }
+    constructor(base: string, processor: unknown) { this.me = { base, processor, closed: 0 }; state.pools.push(this.me) }
+    async close() { this.me.closed += 1 }
+  }
+  return { state, tenantQueue, TenantWorkerPool }
 })
 
-vi.mock('bullmq', () => ({
-  Queue: fake.Queue,
-  Worker: class {
-    private me
-    constructor(name: string) {
-      this.me = { name, handlers: new Map<string, (...a: unknown[]) => void>(), closed: 0 }
-      fake.state.workers.push(this.me)
-    }
-    on(event: string, cb: (...a: unknown[]) => void) { this.me.handlers.set(event, cb) }
-    async close() { this.me.closed += 1 }
-  },
-}))
-vi.mock('@opengraphity/events', () => ({ publish: vi.fn(), getRedisConnection: () => ({ host: 'fake' }) }))
+vi.mock('@opengraphity/events', () => ({ publish: vi.fn(), tenantQueue: fake.tenantQueue, TenantWorkerPool: fake.TenantWorkerPool }))
 vi.mock('../status.js', () => ({ ticketReference: vi.fn(), getSLAStatus: vi.fn(), markBreached: vi.fn(), markResponseBreachNotified: vi.fn() }))
 vi.mock('../olaBreach.js', () => ({ isEntityResolved: vi.fn() }))
 
 const { scheduleWarning, scheduleBreachCheck, scheduleResponseCheck, cancelSLAJobs, cancelOLABreaches,
-        initScheduler, closeScheduler } = await import('../scheduler.js')
+        initScheduler, closeScheduler, processSLAJob } = await import('../scheduler.js')
+
+/** The key of a job in the fake store: the queue of tenant c-one, then the job id. */
+const inQueue = (jobId: string, tenant = 'c-one') => `sla-jobs@${tenant}/${jobId}`
 
 /** Deadlines relative to now, so the delays are predictable. */
 const IN_AN_HOUR = () => new Date(Date.now() + 60 * 60_000).toISOString()
@@ -74,11 +77,11 @@ const active = () => ({
 })
 
 beforeEach(() => {
-  fake.state.workers = []
+  fake.state.pools = []
   fake.state.added = []
   fake.state.jobs.clear()
   fake.state.gotten = []
-  fake.state.closed = 0
+  fake.state.queuesAsked = []
   vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -134,18 +137,25 @@ describe('scheduling the three timers', () => {
     })
   })
 
-  it('the queue is built once and reused across schedulings', async () => {
-    const before = fake.state.queuesBuilt
+  it('the timers of a tenant go in that tenant\'s own queue (23 Sep 2026)', async () => {
     await scheduleBreachCheck(status())
-    await scheduleResponseCheck(status())
-    expect(fake.state.queuesBuilt).toBe(before === 0 ? 1 : before)
+    await scheduleBreachCheck(status({ tenant_id: 'c-two', entity_id: 'inc-9' }))
+    expect(fake.state.added.map((a) => [a.queue, a.opts.jobId])).toEqual([
+      ['sla-jobs@c-one', 'breach-inc-1'],
+      ['sla-jobs@c-two', 'breach-inc-9'],
+    ])
+  })
+
+  it('every timer carries its own cleanup: completed ones go, the last 200 failed ones stay for diagnosis', async () => {
+    await scheduleBreachCheck(status())
+    expect(fake.state.added[0]!.opts).toMatchObject({ removeOnComplete: true, removeOnFail: 200 })
   })
 })
 
 describe('rescheduling over an existing timer', () => {
   it('the old job with the same id is removed first: re-scheduling is idempotent', async () => {
     const old = removable()
-    fake.state.jobs.set('breach-inc-1', old)
+    fake.state.jobs.set(inQueue('breach-inc-1'), old)
     await scheduleBreachCheck(status())
     expect(old.remove).toHaveBeenCalledOnce()
     expect(fake.state.added[0]!.opts.jobId).toBe('breach-inc-1')
@@ -155,7 +165,7 @@ describe('rescheduling over an existing timer', () => {
     // BullMQ refuses `remove()` on a job a worker holds. Letting that throw
     // put the resume-from-pause event in the failed queue, and the SLA kept
     // a deadline that no longer applied.
-    fake.state.jobs.set('breach-inc-1', active())
+    fake.state.jobs.set(inQueue('breach-inc-1'), active())
     await scheduleBreachCheck(status())
     expect(fake.state.added).toHaveLength(1)
     expect(fake.state.added[0]!.opts.jobId).toMatch(/^breach-inc-1:re\d+$/)
@@ -165,7 +175,7 @@ describe('rescheduling over an existing timer', () => {
     // "Active" is the one case we know how to carry on from; everything else
     // would be scheduling a second timer on top of a live one.
     const broken = { remove: vi.fn(async () => { throw new Error('Redis down') }), getState: vi.fn(async () => 'delayed') }
-    fake.state.jobs.set('breach-inc-1', broken)
+    fake.state.jobs.set(inQueue('breach-inc-1'), broken)
     await expect(scheduleBreachCheck(status())).rejects.toThrow('Redis down')
     expect(fake.state.added).toHaveLength(0)
   })
@@ -175,7 +185,7 @@ describe('rescheduling over an existing timer', () => {
       remove: vi.fn(async () => { throw new Error('Redis down') }),
       getState: vi.fn(async () => { throw new Error('Redis down') }),
     }
-    fake.state.jobs.set('breach-inc-1', broken)
+    fake.state.jobs.set(inQueue('breach-inc-1'), broken)
     await expect(scheduleBreachCheck(status())).rejects.toThrow('Redis down')
   })
 })
@@ -183,15 +193,15 @@ describe('rescheduling over an existing timer', () => {
 describe('cancelSLAJobs — which clock stops', () => {
   const setup = () => {
     const jobs = { warning: removable(), breach: removable(), response: removable() }
-    fake.state.jobs.set('warning-inc-1', jobs.warning)
-    fake.state.jobs.set('breach-inc-1', jobs.breach)
-    fake.state.jobs.set('response-inc-1', jobs.response)
+    fake.state.jobs.set(inQueue('warning-inc-1'), jobs.warning)
+    fake.state.jobs.set(inQueue('breach-inc-1'), jobs.breach)
+    fake.state.jobs.set(inQueue('response-inc-1'), jobs.response)
     return jobs
   }
 
   it('"resolve" cancels the warning and the breach: both hang off the resolve deadline', async () => {
     const j = setup()
-    await cancelSLAJobs('inc-1', 'resolve')
+    await cancelSLAJobs('c-one', 'inc-1', 'resolve')
     expect(j.warning.remove).toHaveBeenCalledOnce()
     expect(j.breach.remove).toHaveBeenCalledOnce()
     expect(j.response.remove).not.toHaveBeenCalled()
@@ -199,36 +209,43 @@ describe('cancelSLAJobs — which clock stops', () => {
 
   it('"response" cancels only the response timer', async () => {
     const j = setup()
-    await cancelSLAJobs('inc-1', 'response')
+    await cancelSLAJobs('c-one', 'inc-1', 'response')
     expect(j.response.remove).toHaveBeenCalledOnce()
     expect(j.warning.remove).not.toHaveBeenCalled()
   })
 
   it('the default is "both": on resolution all three go', async () => {
     const j = setup()
-    await cancelSLAJobs('inc-1')
+    await cancelSLAJobs('c-one', 'inc-1')
     expect([j.warning, j.breach, j.response].every((x) => x.remove.mock.calls.length === 1)).toBe(true)
   })
 
   it('a timer that is not in the queue is not an error: it already fired', async () => {
-    await expect(cancelSLAJobs('inc-1')).resolves.toBeUndefined()
-    expect(fake.state.gotten).toEqual(['warning-inc-1', 'breach-inc-1', 'response-inc-1'])
+    await expect(cancelSLAJobs('c-one', 'inc-1')).resolves.toBeUndefined()
+    expect(fake.state.gotten).toEqual([inQueue('warning-inc-1'), inQueue('breach-inc-1'), inQueue('response-inc-1')])
+  })
+
+  it('the timers are looked for in the tenant\'s queue only', async () => {
+    const j = setup()
+    await cancelSLAJobs('c-two', 'inc-1')
+    expect(j.breach.remove).not.toHaveBeenCalled()
+    expect(fake.state.gotten.every((g) => g.startsWith('sla-jobs@c-two/'))).toBe(true)
   })
 })
 
 describe('cancelOLABreaches — the per-ticket timers the sweep replaced', () => {
   it('removes one job per contract, keyed by contract AND entity', async () => {
     const a = removable(); const b = removable()
-    fake.state.jobs.set('ola-ola1-chg-1', a)
-    fake.state.jobs.set('ola-ola2-chg-1', b)
-    await cancelOLABreaches('chg-1', ['ola1', 'ola2', 'ola3'])
+    fake.state.jobs.set(inQueue('ola-ola1-chg-1'), a)
+    fake.state.jobs.set(inQueue('ola-ola2-chg-1'), b)
+    await cancelOLABreaches('c-one', 'chg-1', ['ola1', 'ola2', 'ola3'])
     expect(a.remove).toHaveBeenCalledOnce()
     expect(b.remove).toHaveBeenCalledOnce()
-    expect(fake.state.gotten).toEqual(['ola-ola1-chg-1', 'ola-ola2-chg-1', 'ola-ola3-chg-1'])
+    expect(fake.state.gotten).toEqual([inQueue('ola-ola1-chg-1'), inQueue('ola-ola2-chg-1'), inQueue('ola-ola3-chg-1')])
   })
 
   it('no contracts means nothing to do', async () => {
-    await cancelOLABreaches('chg-1', [])
+    await cancelOLABreaches('c-one', 'chg-1', [])
     expect(fake.state.gotten).toEqual([])
   })
 })
@@ -243,48 +260,26 @@ describe('cancelOLABreaches — the per-ticket timers the sweep replaced', () =>
  * entered twice (a SIGTERM while a SIGINT is already draining).
  */
 describe('initScheduler / closeScheduler', () => {
-  it('starts one worker on the SLA queue, and starting again does not start a second', async () => {
+  it('registers one pool of SLA workers (one worker per tenant, added by the host), and starting again does not register a second', async () => {
     await closeScheduler()
-    fake.state.workers = []
+    fake.state.pools = []
     initScheduler()
     initScheduler()
-    expect(fake.state.workers).toHaveLength(1)
+    expect(fake.state.pools).toHaveLength(1)
+    expect(fake.state.pools[0]!.base).toBe('sla-jobs')
+    expect(fake.state.pools[0]!.processor).toBe(processSLAJob)
     await closeScheduler()
   })
 
-  it('a completed and a failed job each leave a line naming the job', async () => {
+  it('closing drains the workers, and closing again is harmless', async () => {
     await closeScheduler()
-    fake.state.workers = []
+    fake.state.pools = []
     initScheduler()
-    const w = fake.state.workers[0]!
-    w.handlers.get('completed')!({ name: 'sla.breach', id: 'breach-inc-1' })
-    expect(console.log).toHaveBeenCalledWith('[sla:scheduler] Job completed: sla.breach (id: breach-inc-1)')
-
-    w.handlers.get('failed')!({ name: 'sla.warning', id: 'warning-inc-1' }, new Error('Neo4j down'))
-    expect(console.error).toHaveBeenCalledWith('[sla:scheduler] Job failed: sla.warning (id: warning-inc-1) — Neo4j down')
-
-    // A job BullMQ could not even load has no name and no id: the handler
-    // must still log rather than throw inside the worker's error path.
-    w.handlers.get('failed')!(undefined, new Error('payload unreadable'))
-    expect(console.error).toHaveBeenCalledWith('[sla:scheduler] Job failed: undefined (id: undefined) — payload unreadable')
+    const pool = fake.state.pools[0]!
     await closeScheduler()
-  })
-
-  it('closing drains the worker and closes the queue, and closing again is harmless', async () => {
+    expect(pool.closed).toBe(1)
     await closeScheduler()
-    fake.state.workers = []
-    initScheduler()
-    await scheduleBreachCheck(status())          // makes sure a queue exists
-    const w = fake.state.workers[0]!
-    const closedQueues = fake.state.closed
-
-    await closeScheduler()
-    expect(w.closed).toBe(1)
-    expect(fake.state.closed).toBe(closedQueues + 1)
-
-    await closeScheduler()
-    expect(w.closed).toBe(1)
-    expect(fake.state.closed).toBe(closedQueues + 1)
+    expect(pool.closed).toBe(1)
   })
 
   it('closing without ever having started is not an error', async () => {

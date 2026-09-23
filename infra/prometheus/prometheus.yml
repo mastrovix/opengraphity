@@ -4,7 +4,8 @@
 #   http_request_duration_seconds{method,route}            histogram
 #   graphql_resolver_duration_seconds{resolver}            histogram
 #   neo4j_query_duration_seconds{operation}                histogram
-#   bullmq_queue_depth{queue,status}                       gauge (30s sampling, api only: every queue of lib/queueRegistry.ts)
+#   bullmq_queue_depth{queue,tenant,status}                gauge (30s sampling, api only: every queue of lib/queueRegistry.ts;
+#                                                                a tenant queue once per tenant, `tenant` absent on platform queues)
 #   opengrafo_backup_runs_total{result}                    counter (ok | backup_failed | verify_failed)
 #   opengrafo_backup_last_success_timestamp_seconds        gauge
 #   events_* / event_* / service_* / redis_lock_*          Event Management + Servizi monitorati (docs/OPERATIONS.md §7)

@@ -206,16 +206,17 @@ describe('scanTenant — a broken rule is a failure, never "nothing found"', () 
     expect(summary.rules[0]!.error).toBe('bad settings')
   })
 
-  it('the job fails when any rule failed, across every tenant scanned', async () => {
-    state.tenants = ['tenant-a', 'tenant-b']
+  it('the job fails when any rule of its tenant failed', async () => {
     state.ruleQueryFails = true
-    await expect(anomalyScannerProcessor({ name: 'scan', data: {} } as never))
-      .rejects.toThrow('anomaly-engine: 2 rule(s) failed across 2 tenant(s)')
+    await expect(anomalyScannerProcessor({ name: 'scan', data: { tenantId: 'tenant-a' } } as never))
+      .rejects.toThrow('anomaly-engine: 1 rule(s) of tenant tenant-a failed')
   })
 
-  it('a job without data at all is the scheduled all-tenant scan', async () => {
-    await expect(anomalyScannerProcessor({ name: 'scan' } as never)).resolves.toBeUndefined()
-    expect(reads.some((r) => r.q.includes('(t:Tenant)'))).toBe(true)
+  it('the scheduled scan is of the tenant of its queue: the list of tenants is never read', async () => {
+    state.tenants = ['tenant-a', 'tenant-b']
+    await expect(anomalyScannerProcessor({ name: 'scan', data: { tenantId: 'tenant-a' } } as never)).resolves.toBeUndefined()
+    expect(reads.some((r) => r.q.includes('(t:Tenant)'))).toBe(false)
+    expect(reads.every((r) => r.p['tenantId'] === 'tenant-a')).toBe(true)
   })
 })
 

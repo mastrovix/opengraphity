@@ -305,7 +305,7 @@ services:
 
   # ── Front door ─────────────────────────────────────────────────────────────
 
-  # Reverse proxy for subdomain routing (c-one.localhost, portal.c-one.localhost)
+  # Reverse proxy for subdomain routing (<tenant>.localhost, portal.<tenant>.localhost)
   # and the Tailscale HTTPS front door. The config is a template
   # (infra/nginx/default.conf.template): the image's entrypoint renders
   # /etc/nginx/templates/*.template into /etc/nginx/conf.d with envsubst,
@@ -323,8 +323,10 @@ services:
       # *.localhost server blocks (single origin; KEYCLOAK_PUBLIC_URL may list more for the API)
       KEYCLOAK_PUBLIC_ORIGIN: ${KEYCLOAK_PUBLIC_ORIGIN:-http://localhost:8080}
       # Tenant host the Tailscale front door impersonates (X-Forwarded-Host):
-      # the Tailscale hostname carries no tenant slug
-      TAILSCALE_TENANT_HOST: ${TAILSCALE_TENANT_HOST:-c-one.localhost}
+      # the Tailscale hostname carries no tenant slug. Required: its default
+      # used to be c-one.localhost, a tenant deleted on 23 Sep 2026 — a
+      # default would send the remote traffic to a tenant that may not exist.
+      TAILSCALE_TENANT_HOST: ${TAILSCALE_TENANT_HOST:?TAILSCALE_TENANT_HOST mancante in infra/.env (host del tenant servito dal front-door Tailscale, es. demo-opengrafo.localhost)}
       # Corpo massimo accettato su /api/ (revisione totale · H-11): era 11m
       # fisso, «pari al limite di 10 MB degli allegati» — ma da quando la
       # dimensione massima e una scelta dell'organizzazione fino a
@@ -551,10 +553,11 @@ services:
     networks:
       - opengrafo-network
     healthcheck:
-      # No HTTP API in this process: the probe (baked into the image, see
-      # apps/api/Dockerfile) asks Redis whether an `embeddings` BullMQ worker
-      # is connected. Caveat: it counts every worker of that queue on the
-      # Redis server, i.e. it is per-queue, not per-container.
+      # No HTTP API in this process: the probe (src/workerHealthcheck.ts, see
+      # apps/api/Dockerfile) asks Redis for THIS container's heartbeat and,
+      # when there are tenants, for a connected `embeddings` worker of some
+      # tenant (one queue per tenant since 23 Sep 2026). The second half is
+      # per-queue, not per-container: it counts the workers of every replica.
       test: ["CMD", "node", "worker-healthcheck.mjs"]
       interval: 30s
       timeout: 10s
@@ -596,7 +599,8 @@ services:
       # pipeline runs (scraped by prometheus as `events-worker:4000`)
       PORT: "4000"
       METRICS_TOKEN: ${METRICS_TOKEN:-}
-      # Liveness probe: an `events-ingest` worker connected to Redis (see `worker`)
+      # Liveness probe: this container's heartbeat and, with tenants, an
+      # `events-ingest` worker of some tenant connected to Redis (see `worker`)
       HEALTHCHECK_QUEUE: events-ingest
     volumes:
       - api_data:/data

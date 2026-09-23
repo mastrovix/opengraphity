@@ -7,7 +7,7 @@ import {
   getConnector,
 } from '@opengraphity/discovery'
 import type { GraphQLContext } from '../../context.js'
-import { scheduleSourceSync, syncQueue } from '../../discovery/syncWorker.js'
+import { scheduleSourceSync, syncQueueOf } from '../../discovery/syncWorker.js'
 import { CONFLICT_LOCKED_FIELDS, CONFLICT_UNKNOWN_CI_TYPE } from '../../discovery/reconciliationEngine.js'
 import { CITypeResolver } from '../../discovery/ciTypeResolution.js'
 import { withSession } from './ci-utils.js'
@@ -431,7 +431,7 @@ export const syncResolvers = {
           { runId, sourceId: args.sourceId, tenantId: ctx.tenantId, syncType, now },
         ))
 
-        await syncQueue.add('sync', {
+        await syncQueueOf(ctx.tenantId).add('sync', {
           runId,
           sourceId:  args.sourceId,
           tenantId:  ctx.tenantId,

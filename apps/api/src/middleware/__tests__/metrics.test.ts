@@ -74,9 +74,9 @@ describe('getRequestMetrics / getNeo4jMetrics / getQueueMetricsSnapshot', () => 
     m.neo4jQueryDurationSeconds.observe({ operation: 'QUERY' }, 0.5)
     expect(m.getNeo4jMetrics()).toMatchObject({ totalQueries: 1, averageQueryMs: 500 })
 
-    m.bullmqQueueDepth.set({ queue: 'embeddings', status: 'waiting' }, 4)
-    m.bullmqQueueDepth.set({ queue: 'embeddings', status: 'failed' }, 1)
-    expect(m.getQueueMetricsSnapshot()).toContainEqual({ name: 'embeddings', waiting: 4, active: 0, completed: 0, failed: 1, delayed: 0 })
+    m.bullmqQueueDepth.set({ queue: 'embeddings', tenant: 't1', status: 'waiting' }, 4)
+    m.bullmqQueueDepth.set({ queue: 'embeddings', tenant: 't1', status: 'failed' }, 1)
+    expect(m.getQueueMetricsSnapshot('t1')).toContainEqual({ name: 'embeddings', waiting: 4, active: 0, completed: 0, failed: 1, delayed: 0 })
   })
 })
 

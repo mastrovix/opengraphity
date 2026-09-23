@@ -80,11 +80,14 @@ export async function reevaluateSuppressedEvents(tenantId: string, changeId: str
 
 interface EventRef { tenantId: string; id: string }
 
-/** Una pagina di (tenant, evento) con id > cursor, ordinata per id. `match` è il MATCH … WHERE … (senza RETURN). */
+/**
+ * Una pagina di eventi del tenant con id > cursor, ordinata per id. `match` è
+ * il MATCH … WHERE … (senza RETURN) e ancora il pattern a `$tenantId`: la
+ * passata è quella del tenant, nella sua coda (23 set 2026).
+ */
 async function fetchEventPage(match: string, params: Props, cursor: string, limit: number): Promise<EventRef[]> {
   const session = getSession()
   try {
-    // tenant-ok(piattaforma): job di manutenzione su tutti i tenant; ogni evento è poi rivalutato nel suo tenant.
     return await runQuery<EventRef>(session, `
       ${match}
       RETURN e.tenant_id AS tenantId, e.id AS id
@@ -115,13 +118,12 @@ async function reevaluatePass(name: string, match: string, params: Props, now: s
 }
 
 /**
- * Job periodico: ogni evento soppresso (di ogni tenant) viene rivalutato; quelli
- * la cui finestra è chiusa tornano firing. Paginato; un errore su un evento
- * non ferma gli altri, ma alla fine fa fallire il job (visibile in coda).
+ * Job periodico: ogni evento soppresso del tenant viene rivalutato; quelli la
+ * cui finestra è chiusa tornano firing. Paginato; un errore su un evento non
+ * ferma gli altri, ma alla fine fa fallire il job (visibile in coda).
  */
-export async function reevaluateClosedWindows(now: string = new Date().toISOString()): Promise<PagedPassResult> {
-  // tenant-ok(piattaforma): passata di manutenzione su tutti i tenant; ogni evento è poi rivalutato nel suo tenant.
-  return reevaluatePass('reevaluateClosedWindows', `MATCH (e:Event {status: 'suppressed'})\n      WHERE e.id > $cursor`, {}, now, 'suppressed')
+export async function reevaluateClosedWindows(tenantId: string, now: string = new Date().toISOString()): Promise<PagedPassResult> {
+  return reevaluatePass('reevaluateClosedWindows', `MATCH (e:Event {tenant_id: $tenantId, status: 'suppressed'})\n      WHERE e.id > $cursor`, { tenantId }, now, 'suppressed')
 }
 
 /**
@@ -137,26 +139,24 @@ export async function reevaluateClosedWindows(now: string = new Date().toISOStri
  * ritardo di apertura scaduto da più della sua grazia (in `reevaluate` il
  * passo del ritardo non viene rieseguito, quindi non si ricade in attesa).
  */
-export async function reevaluatePendingEvents(now: string = new Date().toISOString()): Promise<PagedPassResult> {
-  // tenant-ok(piattaforma): passata di manutenzione su tutti i tenant; ogni evento è poi rivalutato nel suo tenant.
-  return reevaluatePass('reevaluatePendingEvents', `MATCH (e:Event {status: 'firing'})
+export async function reevaluatePendingEvents(tenantId: string, now: string = new Date().toISOString()): Promise<PagedPassResult> {
+  return reevaluatePass('reevaluatePendingEvents', `MATCH (e:Event {tenant_id: $tenantId, status: 'firing'})
       WHERE e.id > $cursor AND (${STUCK_FIRING_WHERE})`,
-    { ...stuckEventParams(now) }, now, 'pending', 'Uncorrelated firing event picked up by the periodic pass')
+    { tenantId, ...stuckEventParams(now) }, now, 'pending', 'Uncorrelated firing event picked up by the periodic pass')
 }
 
 /**
- * Job periodico: ogni evento `flapping` (di ogni tenant) senza passaggi da
+ * Job periodico: ogni evento `flapping` del tenant senza passaggi da
  * `flap_stable_minutes` torna allo stato dell'ultimo payload, pubblica
  * `event.stable` e ripassa dalla pipeline (`reevaluate`: correlazione se
  * firing, chiusura automatica se resolved). Paginato (lib/pagedPass.ts); un
  * errore su un evento non ferma gli altri ma fa fallire il job.
  */
-export async function reevaluateFlappingEvents(now: string = new Date().toISOString()): Promise<PagedPassResult & { stabilized: number }> {
+export async function reevaluateFlappingEvents(tenantId: string, now: string = new Date().toISOString()): Promise<PagedPassResult & { stabilized: number }> {
   const policies = new Map<string, EventPolicy>()
   let stabilized = 0
   const result = await runPagedPass<EventRef>({
-    // tenant-ok(piattaforma): passata di manutenzione su tutti i tenant; ogni evento è poi trattato nel suo tenant.
-    fetchPage: (cursor, limit) => fetchEventPage(`MATCH (e:Event {status: 'flapping'})\n      WHERE e.id > $cursor`, {}, cursor, limit),
+    fetchPage: (cursor, limit) => fetchEventPage(`MATCH (e:Event {tenant_id: $tenantId, status: 'flapping'})\n      WHERE e.id > $cursor`, { tenantId }, cursor, limit),
     keyOf: (r) => r.id,
     handle: async (r) => {
       let policy = policies.get(r.tenantId)

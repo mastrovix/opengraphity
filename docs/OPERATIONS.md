@@ -468,6 +468,39 @@ sorgente dalle cache in memoria (vedi *Cache in memoria*).
 
 ### Code BullMQ
 
+**Una coda per tenant (decisione del proprietario, 23 set 2026).** Ogni coda
+che contiene il lavoro di un cliente è sua: `<nome>@<tenant>`
+(`sla-jobs@acme`), `packages/events/src/tenantQueues.ts`. I nomi della
+tabella qui sotto sono le **basi**; le sole code che restano una per tutta
+la piattaforma sono `maintenance` (backup, purghe) e `autoanalisi`
+(`lib/queueRegistry.ts`, `scope: 'platform'`). Conseguenze:
+
+- ogni processo ha, per ogni coda che lavora, **un worker per tenant**, con la
+  concorrenza che la coda aveva quando era condivisa: con N tenant i job in
+  parallelo sono N volte tanti. Fanno eccezione le tre code con un **tetto di
+  processo** (`processLimit`): `embeddings` (il modello locale consuma CPU),
+  `anomaly-scanner` e `proposal-scanner` (le passate di tutti i tenant
+  scattano nello stesso istante). Lì lavora un job alla volta per processo,
+  qualunque sia il tenant, come quando la coda era una sola; gli altri
+  aspettano il turno in ordine d'arrivo, già presi in carico (restano
+  `active`, BullMQ ne rinnova il lucchetto);
+- `lib/tenantQueueLifecycle.ts` tiene i worker allineati ai tenant: all'avvio
+  (un errore qui ferma l'avvio), quando la console di piattaforma crea,
+  sospende, riattiva o cancella un tenant (canale Redis `og:tenant-queues`,
+  ogni processo si riallinea subito) e comunque **ogni minuto** (un annuncio
+  perso costa al più un minuto);
+- le passate periodiche (scadenze dei passi, OLA, transizioni da riprendere,
+  digest, report, anomalie, proposte, finestre e tempeste degli allarmi, mappe
+  dei servizi, sync di discovery) sono **per tenant**, nella sua coda, e
+  leggono solo i suoi nodi;
+- un tenant **sospeso** ha le code **in pausa** (BullMQ tiene la pausa in
+  Redis, vale per tutti i processi): niente timer SLA, webhook, notifiche,
+  allarmi elaborati; quello che scade intanto parte alla riattivazione;
+- un tenant **cancellato** perde le code (`obliterate`): la risposta della
+  cancellazione lo dice con `queuesRemoved`;
+- un job deve portare il tenant della sua coda (`tenantId`/`tenant_id`): uno
+  di un altro tenant, o di nessuno, viene rifiutato e resta fra i falliti.
+
 | Coda | Job | Cosa fa |
 |---|---|---|
 | `events-ingest` (concurrency 4) | `ingest` | uno per allarme normalizzato; job id `ev-<tenant>-<impronta>-<ms>` (il **retry BullMQ** dello stesso job non raddoppia i conteggi — stessa `receivedAt`; una **ri-consegna del mittente** è una nuova richiesta con una `receivedAt` nuova e conta come ripetizione legittima dell'allarme); **5 tentativi** con attese 10 s → 20 s → 40 s → **10 minuti** (revisione 2 · D1.2: un riavvio di Neo4j di qualche minuto non brucia l'allarme; prima l'ultima attesa era 80 s). Un job fallito all'ultimo tentativo scrive `last_error` sulla sorgente e resta nella coda 7 giorni, **rigiocabile** da *Amministrazione → Code*. Esegue `ingestEvent`: MERGE per impronta, aggancio al CI (alias → nome), pipeline di correlazione, eventi di dominio. Misura `event_ingest_lag_seconds` (ricezione → inizio ingest) |
@@ -1025,7 +1058,7 @@ cruscotto Grafana `infra/grafana/dashboards/opengraphity-api.json`):
 | `events_failed_total{queue,type}` | counter | eventi di dominio che hanno esaurito i 4 tentativi di un consumer (`notification-service`, `sla-engine`, `escalation-consumer`, `service-impact-consumer`), per coda e tipo di evento: una notifica non inviata, uno SLA non avviato, una mappa non rivalutata. **Non** rigiocabili dalla console (vedi §9) |
 | `redis_lock_timeouts_total{lock}` | counter | attese di un lock Redis abbandonate dopo il timeout (il job ritenta con backoff), per famiglia: `events:group`, `events:storm-open`, `services:incident` |
 | `redis_lock_hold_seconds{lock}` | histogram | durata della sezione critica sotto il lock; oltre il TTL (30 s) il processo logga `Critical section outlived the lock TTL` — la gara che il lock evita torna possibile |
-| `bullmq_queue_depth{queue,status}` | gauge | profondità di **ogni** coda del registro (`lib/queueRegistry.ts`, revisione 2 · D2.2): anche `events-*`, `services-impact` e le quattro code dei consumer di dominio, che prima non erano campionate. Campionata dal solo processo API ogni 30 s |
+| `bullmq_queue_depth{queue,tenant,status}` | gauge | profondità di **ogni** coda del registro (`lib/queueRegistry.ts`, revisione 2 · D2.2): anche `events-*`, `services-impact` e le quattro code dei consumer di dominio, che prima non erano campionate. Dal 23 set 2026 una serie per tenant (`queue` = base, `tenant` = il cliente); le code della piattaforma non hanno `tenant`. Campionata dal solo processo API ogni 30 s; ogni giro **sostituisce** le serie: una coda sparita (tenant cancellato) o illeggibile non ha serie invece di mostrare l'ultimo valore |
 
 **Dove vivono le metriche** (revisione 2 · D1.1): con `WORKER_PROFILE=api`
 la pipeline gira nel processo `events-worker`, che serve lo stesso
@@ -1590,10 +1623,13 @@ Cosa cambia con il profilo `events` nel container dedicato:
   evaluated`. Le mutation di allarmi e servizi (`reevaluateEvent`,
   `reevaluateServiceMap`, configurazione delle mappe) restano nell'API e
   accodano su Redis: il processo che le esegue è il worker;
-- la **liveness** del container è il probe Redis del Dockerfile con
-  `HEALTHCHECK_QUEUE=events-ingest` (un worker di quella coda connesso). Vale
-  per coda, non per container: con due repliche di `events-worker` una ferma
-  resta «healthy» finché l'altra è viva;
+- la **liveness** del container è il probe del Dockerfile
+  (`src/workerHealthcheck.ts`) con `HEALTHCHECK_QUEUE=events-ingest`: il
+  battito del processo di QUEL container (`og:tenant-queues:alive:<hostname>`,
+  riscritto a ogni riconciliazione delle code, scade in 3 minuti) e, se ci
+  sono tenant, un worker `events-ingest@<tenant>` connesso per almeno un
+  tenant. Senza tenant (installazione nuova) è sano: non c'è lavoro da
+  prendere. La seconda metà vale per coda, non per container;
 - le **metriche** della pipeline vivono nel worker: serve `GET /metrics` sulla
   porta 4000 (`PORT`, `METRICS_TOKEN` come l'API) e Prometheus lo raschia come
   target `events-worker:4000` (vedi §7 *Dove vivono le metriche*);
@@ -1709,7 +1745,8 @@ valutazioni in attesa, marcatori di idempotenza.
    `re-evaluation failed`. `reevaluateEvent` dal dettaglio dell'allarme la
    anticipa per un evento.
 3. **Guardare `bullmq_queue_depth`** (pannello *Code BullMQ* e *Job falliti per
-   coda*, oppure *Amministrazione → Code*): `waiting` che scende, `failed` a 0.
+   coda*, oppure *Amministrazione → Code* di ogni tenant): `waiting` che
+   scende, `failed` a 0.
    Le mappe dei servizi si rivalutano da sole (`services-periodic` prende
    quelle con `evaluated_at` più vecchio di 10 minuti; `services-sync-periodic`
    quelle con `synced_at` più vecchio di 30). Il ritardo accumulato si legge
@@ -1733,15 +1770,20 @@ valutazioni in attesa, marcatori di idempotenza.
 
 ### Job falliti: cosa si rigioca e cosa no
 
-*Amministrazione → Code* elenca **tutte** le code del registro
-(`lib/queueRegistry.ts`) raggruppate per sottosistema — allarmi, servizi,
-ITSM, piattaforma — con i job falliti e il pulsante di rigioco dove la coda è
-`retryable` (`retryQueueJob`, solo admin). Rigiocabili: `events-ingest`
-(l'allarme viene ingerito ora; il MERGE per impronta rende innocuo un
-doppione), `events-correlate`, `events-maintenance`, `services-impact`,
-`workflow-jobs`, `notification-jobs`, `sla-jobs`, `email-digest`,
-`webhook-delivery`, `report-scheduler`, `anomaly-scanner`, `discovery-sync`,
-`embeddings`, `maintenance`.
+*Amministrazione → Code* elenca le code **del tenant** di chi guarda
+(`lib/queueRegistry.ts`, le voci con `scope: 'tenant'`) raggruppate per
+sottosistema — allarmi, servizi, ITSM, integrazioni e analisi — con i job
+falliti e il pulsante di rigioco dove la coda è `retryable`
+(`retryQueueJob`, solo admin). Legge e rigioca solo i job di quel tenant:
+prima un amministratore di un cliente vedeva e rigiocava i job di tutti
+(revisione del 23 set 2026). Rigiocabili: `events-ingest` (l'allarme viene
+ingerito ora; il MERGE per impronta rende innocuo un doppione),
+`events-correlate`, `events-maintenance`, `services-impact`, `workflow-jobs`,
+`notification-jobs`, `sla-jobs`, `email-digest`, `webhook-delivery`,
+`report-scheduler`, `anomaly-scanner`, `proposal-scanner`, `discovery-sync`,
+`embeddings`. Le code della piattaforma (`maintenance`, `autoanalisi`) non
+sono di nessun tenant e non compaiono lì: si guardano dalla console di
+piattaforma.
 
 **Non** rigiocabili dalla console le quattro code dei **consumer di dominio**
 (`notification-service`, `sla-engine`, `escalation-consumer`,
@@ -1839,6 +1881,30 @@ import('bullmq').then(async ({ Queue }) => {
 Il filtro sulle 32 cifre esadecimali e' quello che distingue una voce vecchia
 da uno scheduler nostro: i nostri hanno un nome che si legge.
 
+## Passaggio alle code per tenant: le code condivise restano in Redis
+
+Dal 23 set 2026 ogni tenant ha le sue code (`<nome>@<tenant>`, vedi *Code
+BullMQ*). Le code che i tenant condividevano (`sla-jobs`, `workflow-jobs`, …)
+dopo il deploy non le lavora più nessuno: quello che contengono — timer,
+ricorrenze, storico — resta in Redis per sempre. Scelta del proprietario:
+**non si migra niente** (il tenant di dimostrazione si rigenera da capo).
+
+Si tolgono una volta sola, **dopo** che tutti i processi (`api`, `worker`,
+`events-worker`) girano con la versione nuova — prima, le code condivise sono
+quelle vive:
+
+```sh
+cd apps/api
+pnpm exec tsx --env-file=../../infra/.env --env-file=.env src/scripts/drop-shared-queues.ts               # dice cosa toglierebbe
+pnpm exec tsx --env-file=../../infra/.env --env-file=.env src/scripts/drop-shared-queues.ts --yes-delete  # lo toglie
+```
+
+Senza `--yes-delete` non tocca niente: elenca per ogni coda condivisa i job
+per stato, le ricorrenze e i worker ancora connessi. Non tocca le code dei
+tenant né quelle della piattaforma (`maintenance`, `autoanalisi`), e **non
+cancella una coda condivisa che ha ancora worker connessi**: vuol dire che un
+processo gira col codice di prima, e il comando esce con errore.
+
 ## Le change che hanno perso l'occasione riprendono a camminare
 
 Le transizioni automatiche si valutano dentro una mutation sulla change: una
@@ -1920,8 +1986,9 @@ essere unita.
 
 ### Come si guarda
 
-- coda `autoanalisi` in *Amministrazione → Code* (lavoro `porta-il-fascicolo`
-  a ogni Problem aperto da una proposta, `controlla` ogni quarto d'ora);
+- coda `autoanalisi` nella console di piattaforma (lavoro `porta-il-fascicolo`
+  a ogni Problem aperto da una proposta, `controlla` ogni quarto d'ora): è una
+  coda della piattaforma, e la pagina Code di un tenant non la mostra;
 - log del modulo `autoanalisi` e `autoanalisi-github`;
 - il numero della issue è sul Problem (`autoanalisi_issue`).
 

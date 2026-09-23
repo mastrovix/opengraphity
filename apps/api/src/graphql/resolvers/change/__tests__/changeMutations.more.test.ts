@@ -201,7 +201,8 @@ describe('deleteChange — post-commit cleanups', () => {
     vi.mocked(sla.getActiveOLAContractsFor).mockResolvedValueOnce([{ id: 'ola-1' }, { id: 'ola-2' }] as never)
     await mod.deleteChange(null, { id: 'chg-1' }, ctx)
     expect(sla.getActiveOLAContractsFor).toHaveBeenCalledWith('t1', 'change')
-    expect(sla.cancelOLABreaches).toHaveBeenCalledWith('chg-1', ['ola-1', 'ola-2'])
+    // In the tenant's own queue (23 Sep 2026): the tenant comes first.
+    expect(sla.cancelOLABreaches).toHaveBeenCalledWith('t1', 'chg-1', ['ola-1', 'ola-2'])
   })
 
   it('an OLA cleanup failure is logged and does not undo the deletion', async () => {

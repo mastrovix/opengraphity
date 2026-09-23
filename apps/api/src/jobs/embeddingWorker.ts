@@ -8,10 +8,11 @@
  * job fails visibly and BullMQ retries.
  */
 import { aiFeatureEnabled } from '../lib/aiSettings.js'
-import type { Worker, Job } from 'bullmq'
+import type { Job } from 'bullmq'
+import type { TenantWorkerPool } from '@opengraphity/events'
 import { getSession, runQueryOne } from '@opengraphity/neo4j'
 import { logger } from '../lib/logger.js'
-import { createWorker, getQueue } from '../lib/bullmq.js'
+import { createTenantWorkers, getTenantQueue } from '../lib/bullmq.js'
 import {
   getEmbedder,
   vectorIndexName,
@@ -48,7 +49,7 @@ export function embeddingJobId(data: EmbeddingJobData, now: number = Date.now())
 
 /** Enqueue (or re-enqueue) the embedding of an entity, deduped per entity version. */
 export async function enqueueEmbedding(data: EmbeddingJobData): Promise<void> {
-  await getQueue<EmbeddingJobData>(EMBEDDINGS_QUEUE).add('embed', data, {
+  await getTenantQueue<EmbeddingJobData>(EMBEDDINGS_QUEUE, data.tenantId).add('embed', data, {
     jobId:            embeddingJobId(data),
     removeOnComplete: true,
     removeOnFail:     50,
@@ -70,7 +71,7 @@ export type EmbeddingRequest = { state: 'queued' } | { state: 'failed'; reason: 
  * reader's back; a new version of the entity gets a new job.
  */
 export async function requestEmbedding(data: EmbeddingJobData & { updatedAt: string }): Promise<EmbeddingRequest> {
-  const job = await getQueue<EmbeddingJobData>(EMBEDDINGS_QUEUE).getJob(embeddingJobId(data))
+  const job = await getTenantQueue<EmbeddingJobData>(EMBEDDINGS_QUEUE, data.tenantId).getJob(embeddingJobId(data))
   if (job && await job.isFailed()) return { state: 'failed', reason: job.failedReason }
   if (!job) await enqueueEmbedding(data)
   return { state: 'queued' }
@@ -153,13 +154,19 @@ async function processEmbedding(job: Job<EmbeddingJobData>): Promise<void> {
  * is a startup failure that propagates to the caller (index.ts → fatal),
  * instead of a detached rejection racing with an already-running worker.
  */
-export async function startEmbeddingWorker(): Promise<Worker<EmbeddingJobData>> {
+export async function startEmbeddingWorker(): Promise<TenantWorkerPool<EmbeddingJobData>> {
   await ensureVectorIndexes()
-  getQueue<EmbeddingJobData>(EMBEDDINGS_QUEUE)  // producer singleton (metrics)
 
-  return createWorker<EmbeddingJobData>(EMBEDDINGS_QUEUE, processEmbedding, {
-    // The local ONNX model is CPU-bound — one job at a time keeps the API responsive.
+  return createTenantWorkers<EmbeddingJobData>(EMBEDDINGS_QUEUE, processEmbedding, {
+    /*
+     * The local ONNX model is CPU-bound: one inference at a time in this
+     * process, whatever the tenant, as when the tenants shared one queue.
+     * Each tenant's queue keeps a concurrency of 1 (owner's decision, 23 Sep
+     * 2026); without the process limit N tenants would run N inferences at
+     * once on the same CPU.
+     */
     concurrency: 1,
+    processLimit: 1,
     onFailed: (job, err) => {
       log.error({ jobId: job?.id, data: job?.data, err: err.message }, '[embeddings] job failed')
     },

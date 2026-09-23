@@ -155,6 +155,12 @@ describe('systemMetrics e traceInfo', () => {
     expect(getGraphQLMetrics).toHaveBeenLastCalledWith('t1')
   })
 
+  it('and so are the queues: every tenant has its own since 23 Sep 2026', async () => {
+    const { getQueueMetricsSnapshot } = await import('../../../middleware/metrics.js')
+    await R.Query.systemMetrics(null, null, ADMIN)
+    expect(getQueueMetricsSnapshot).toHaveBeenLastCalledWith('t1')
+  })
+
   it('le tracce escono COPIATE: chi legge non tiene in mano il buffer vivo', async () => {
     const out = await R.Query.traceInfo(null, null, ADMIN) as Record<string, unknown>
     expect(out).toMatchObject({ enabled: true, endpoint: 'http://jaeger:4318' })

@@ -16,10 +16,14 @@
  *                                 né fallisce per la correlazione). Job id
  *                                 deterministico per (tenant, change, epoca del passo).
  *
+ * Una coda per tenant per ciascuna delle due (`events-correlate@<tenant>`,
+ * `events-maintenance@<tenant>`, 23 set 2026): la manutenzione di un tenant
+ * guarda solo i suoi eventi e gira nella sua coda.
+ *
  * Coda `events-maintenance` (concurrency 1, separata così le passate lunghe
  * non rubano gli slot ai job ritardati; `lockDuration` di 10 minuti) — job
- * `events-maintenance` ripetuto ogni 5 minuti, cinque passate paginate e
- * indipendenti: eventi soppressi con finestra chiusa (copre le change che non
+ * `events-maintenance` ripetuto ogni 5 minuti per tenant, cinque passate
+ * paginate e indipendenti: eventi soppressi con finestra chiusa (copre le change che non
  * passano dalle mutation); eventi `pending` (fine soppressione /
  * stabilizzazione la cui correlazione era fallita); stabilizzazione degli
  * eventi `flapping`; chiusura delle tempeste raffreddate; riallineamento dei
@@ -32,9 +36,10 @@
  *
  * Gli id dei job non contengono ':' (BullMQ li rifiuta, vedi f36083a).
  */
-import type { Worker, Job } from 'bullmq'
+import type { Job, Queue } from 'bullmq'
+import type { TenantWorkerPool } from '@opengraphity/events'
 import { logger } from '../lib/logger.js'
-import { createWorker, getQueue } from '../lib/bullmq.js'
+import { createTenantWorkers, getTenantQueue } from '../lib/bullmq.js'
 import { eventCorrelateJobLagSeconds, eventPassDurationSeconds, eventPassTotal } from '../middleware/metrics.js'
 import { reevaluateClosedWindows, reevaluateFlappingEvents, reevaluatePendingEvents, reevaluateSuppressedEvents, refreshEventGauges, runEventPipeline } from '../services/eventCorrelation.js'
 import { endCooledStorms } from '../services/eventStorm.js'
@@ -48,17 +53,6 @@ export const EVENT_MAINTENANCE_JOB = 'events-maintenance'
 export const EVENT_MAINTENANCE_EVERY_MS = 5 * 60 * 1000
 /** Una passata può superare i 30 s predefiniti di BullMQ (fino a 20 pagine × 200 eventi × 4 passate): oltre il lock il job sarebbe considerato bloccato e rieseguito. */
 export const EVENT_MAINTENANCE_LOCK_MS = 10 * 60 * 1000
-/**
- * Nome del job ripetuto che viveva sulla coda events-correlate prima della
- * revisione: rimosso all'avvio.
- *
- * L'intervallo non serve piu' (21 set 2026): con BullMQ 6 uno scheduler si
- * toglie per NOME, mentre il vecchio `removeRepeatable` pretendeva anche la
- * ripetizione esatta con cui era stato creato — cioe' bisognava ricordarsi un
- * numero per cancellare una cosa.
- */
-export const LEGACY_REEVALUATE_WINDOWS_JOB = 'reevaluate-windows'
-
 export interface CorrelateJobData {
   tenantId: string
   eventId:  string
@@ -74,6 +68,9 @@ export interface ChangeWindowJobData {
 }
 
 type CorrelateQueueData = CorrelateJobData | ChangeWindowJobData
+
+/** The job of the maintenance scheduler: the passes of one tenant. */
+export interface MaintenanceJobData { tenantId: string }
 
 export function correlationJobId(tenantId: string, eventId: string, dueAt: string): string {
   const ms = Date.parse(dueAt)
@@ -116,9 +113,9 @@ async function processCorrelateJob(job: Job<CorrelateQueueData>): Promise<void> 
   }
 }
 
-async function processMaintenanceJob(job: Job<Record<string, never>>): Promise<void> {
+async function processMaintenanceJob(job: Job<MaintenanceJobData>): Promise<void> {
   if (job.name !== EVENT_MAINTENANCE_JOB) throw new Error(`[${EVENT_MAINTENANCE_QUEUE}] unknown job "${job.name}"`)
-  await runPeriodicPasses()
+  await runPeriodicPasses(job.data.tenantId)
 }
 
 /** Etichette `pass` di event_pass_total / event_pass_duration_seconds (insieme chiuso). */
@@ -144,8 +141,12 @@ export function motiviDelFallimento(failures: readonly { pass: string; message: 
   return [...perMessaggio].map(([message, passate]) => `${passate.join(', ')}: ${message}`).join('; ')
 }
 
-/** Le cinque passate del job periodico, ciascuna eseguita e misurata anche se le altre falliscono. */
-export async function runPeriodicPasses(now: string = new Date().toISOString()): Promise<void> {
+/**
+ * Le cinque passate del job periodico di un tenant, ciascuna eseguita e
+ * misurata anche se le altre falliscono. La quinta riallinea i gauge di
+ * salute, che sono della piattaforma: conteggi, nessun dato del tenant.
+ */
+export async function runPeriodicPasses(tenantId: string, now: string = new Date().toISOString()): Promise<void> {
   const failures: { pass: PeriodicPass; message: string }[] = []
   const pass = async <R extends object>(label: PeriodicPass, run: () => Promise<R>, what: string, worthLogging: (r: R) => boolean) => {
     const startedAt = performance.now()
@@ -162,10 +163,10 @@ export async function runPeriodicPasses(now: string = new Date().toISOString()):
     }
   }
   const evaluatedSome = (r: { evaluated: number }) => r.evaluated > 0
-  await pass('closed_windows', () => reevaluateClosedWindows(now), 'Suppressed events re-evaluated (periodic)', evaluatedSome)
-  await pass('pending', () => reevaluatePendingEvents(now), 'Pending events re-evaluated (periodic)', evaluatedSome)
-  await pass('flapping', () => reevaluateFlappingEvents(now), 'Flapping events evaluated for stabilisation (periodic)', evaluatedSome)
-  await pass('storms', () => endCooledStorms(now), 'Alert storms checked for cooldown (periodic)', (r) => r.active > 0 || r.ended > 0)
+  await pass('closed_windows', () => reevaluateClosedWindows(tenantId, now), 'Suppressed events re-evaluated (periodic)', evaluatedSome)
+  await pass('pending', () => reevaluatePendingEvents(tenantId, now), 'Pending events re-evaluated (periodic)', evaluatedSome)
+  await pass('flapping', () => reevaluateFlappingEvents(tenantId, now), 'Flapping events evaluated for stabilisation (periodic)', evaluatedSome)
+  await pass('storms', () => endCooledStorms(tenantId, now), 'Alert storms checked for cooldown (periodic)', (r) => r.active > 0 || r.ended > 0)
   await pass('gauges', () => refreshEventGauges(now), 'Event health gauges refreshed (periodic)', (r) => r.overdueDelayed > 0 || r.firingUncorrelated > 0)
   if (failures.length) throw new Error(`[${EVENT_MAINTENANCE_QUEUE}] ${EVENT_MAINTENANCE_JOB}: ${motiviDelFallimento(failures)}`)
 }
@@ -186,7 +187,7 @@ export async function runPeriodicPasses(now: string = new Date().toISOString()):
 export async function enqueueCorrelation(tenantId: string, eventId: string, dueAt: string): Promise<void> {
   const delay = Math.max(Date.parse(dueAt) - Date.now(), 0)
   const jobId = correlationJobId(tenantId, eventId, dueAt)
-  const queue = getQueue<CorrelateQueueData>(EVENT_CORRELATE_QUEUE)
+  const queue = getTenantQueue<CorrelateQueueData>(EVENT_CORRELATE_QUEUE, tenantId)
   const existing = await queue.getJob(jobId)
   if (existing && await existing.isFailed()) {
     await existing.retry()
@@ -211,7 +212,7 @@ export async function enqueueCorrelation(tenantId: string, eventId: string, dueA
  * ritentabile, è nel job.
  */
 export async function enqueueChangeWindowReevaluation(tenantId: string, changeId: string, stepEpoch: number): Promise<void> {
-  await getQueue<CorrelateQueueData>(EVENT_CORRELATE_QUEUE).add(CHANGE_WINDOW_JOB, { tenantId, changeId, stepEpoch }, {
+  await getTenantQueue<CorrelateQueueData>(EVENT_CORRELATE_QUEUE, tenantId).add(CHANGE_WINDOW_JOB, { tenantId, changeId, stepEpoch }, {
     jobId: changeWindowJobId(tenantId, changeId, stepEpoch),
     attempts: 3,
     backoff:  { type: 'exponential', delay: 5_000 },
@@ -221,15 +222,9 @@ export async function enqueueChangeWindowReevaluation(tenantId: string, changeId
   log.info({ tenantId, changeId, stepEpoch }, 'Change window re-evaluation enqueued')
 }
 
-export async function startEventCorrelateWorker(): Promise<Worker<CorrelateQueueData>> {
-  const queue = getQueue<CorrelateQueueData>(EVENT_CORRELATE_QUEUE)
-  // Prima della revisione il job periodico era un repeat job su questa coda:
-  // BullMQ lo conserva in Redis, e questo processore non lo conosce più.
-  // BullMQ 6 non ha piu' `removeRepeatable`: l'erede e' `removeJobScheduler`,
-  // e l'identita' e' il nome del job invece della terna (nome, ripetizione, id).
-  const removed = await queue.removeJobScheduler(LEGACY_REEVALUATE_WINDOWS_JOB)
-  if (removed) log.info({ job: LEGACY_REEVALUATE_WINDOWS_JOB }, `Legacy repeat job removed from ${EVENT_CORRELATE_QUEUE} (now on ${EVENT_MAINTENANCE_QUEUE})`)
-  return createWorker<CorrelateQueueData>(EVENT_CORRELATE_QUEUE, processCorrelateJob, {
+/** One worker per tenant on `events-correlate@<tenant>` (23 Sep 2026). */
+export function startEventCorrelateWorker(): TenantWorkerPool<CorrelateQueueData> {
+  return createTenantWorkers<CorrelateQueueData>(EVENT_CORRELATE_QUEUE, processCorrelateJob, {
     concurrency: 2,
     onFailed: (job, err) => {
       const d = job?.data as Partial<CorrelateJobData & ChangeWindowJobData> | undefined
@@ -238,31 +233,27 @@ export async function startEventCorrelateWorker(): Promise<Worker<CorrelateQueue
   })
 }
 
-export async function startEventMaintenanceWorker(): Promise<Worker<Record<string, never>>> {
-  const queue = getQueue<Record<string, never>>(EVENT_MAINTENANCE_QUEUE)
-  // Repeat job: BullMQ deduplica per (name, repeat) — riavviare l'API non ne crea un secondo.
-  /*
-   * JOB SCHEDULER, non piu' «repeat» (21 set 2026, BullMQ 6).
-   *
-   * BullMQ 6 ha RIMOSSO i job ripetibili: `repeat` su `add()`, la classe
-   * `Repeat`, `getRepeatableJobs()` e `removeRepeatable*()` non esistono piu'.
-   * Al loro posto i Job Scheduler, che hanno un'identita' esplicita — il primo
-   * argomento — invece di essere dedotta da (nome, opzioni di ripetizione).
-   *
-   * La ricorrenza si registra a ogni avvio del worker, come prima: non c'e'
-   * stato da migrare, e `upsert` significa che riavviare non ne crea una
-   * seconda.
-   */
+/**
+ * La ricorrenza di un tenant, nella sua coda: un Job Scheduler (BullMQ 6) con
+ * un'identità esplicita — `upsert` da ogni processo e a ogni avvio non ne crea
+ * una seconda.
+ */
+export async function scheduleEventMaintenance(queue: Queue, tenantId: string): Promise<void> {
   await queue.upsertJobScheduler(
     EVENT_MAINTENANCE_JOB,
     { every: EVENT_MAINTENANCE_EVERY_MS },
-    { name: EVENT_MAINTENANCE_JOB, data: {}, opts: { removeOnComplete: { count: 20 }, removeOnFail: { age: 7 * 24 * 3600 } } },
+    { name: EVENT_MAINTENANCE_JOB, data: { tenantId } satisfies MaintenanceJobData, opts: { removeOnComplete: { count: 20 }, removeOnFail: { age: 7 * 24 * 3600 } } },
   )
-  return createWorker<Record<string, never>>(EVENT_MAINTENANCE_QUEUE, processMaintenanceJob, {
+}
+
+/** One worker per tenant on `events-maintenance@<tenant>`, each with its tenant's recurring passes. */
+export function startEventMaintenanceWorker(): TenantWorkerPool<MaintenanceJobData> {
+  return createTenantWorkers<MaintenanceJobData>(EVENT_MAINTENANCE_QUEUE, processMaintenanceJob, {
     concurrency: 1,
     lockDuration: EVENT_MAINTENANCE_LOCK_MS,
-    onFailed: (job, err) => {
-      log.error({ jobId: job?.id, jobName: job?.name, attemptsMade: job?.attemptsMade, err: err.message }, 'Event maintenance job failed')
+    schedule: scheduleEventMaintenance,
+    onFailed: (job, err, tenantId) => {
+      log.error({ jobId: job?.id, jobName: job?.name, tenantId, attemptsMade: job?.attemptsMade, err: err.message }, 'Event maintenance job failed')
     },
   })
 }

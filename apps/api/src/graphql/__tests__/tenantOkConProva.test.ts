@@ -98,20 +98,23 @@ interface Genere {
  * che si sta cercando. Un elenco chiuso, perché è l'unico genere in cui la
  * query non può essere scopata nemmeno in teoria.
  */
-const PRE_AUTH = ['apiKeyAuth.ts', 'resolveAuth.ts', 'platformAuth.ts', 'webhooks-inbound.ts', 'slackInstallation.ts']
+const PRE_AUTH = ['apiKeyAuth.ts', 'webhooks-inbound.ts', 'slackInstallation.ts']
 
 /**
  * I moduli che guardano DI MESTIERE tutti i clienti: metriche di processo,
  * passate di manutenzione, retention, tetti di spesa di piattaforma. Chiuso
  * anche questo: un resolver non ci finisce per sbaglio.
+ *
+ * Dal 23 set 2026 le passate periodiche girano per tenant, ognuna nella coda
+ * del suo cliente (packages/events/src/tenantQueues.ts): scadenze dei passi,
+ * OLA, transizioni da riprendere, report pianificati, anomalie, proposte,
+ * finestre degli eventi, mappe dei servizi sono uscite da qui. Ci è entrato
+ * chi decide QUALI tenant hanno le code.
  */
 const PIATTAFORMA = [
-  'gauges.ts', 'passes.ts', 'serverLogRetention.ts', 'aiBudget.ts', 'formDraftPurge.ts',
-  'engine.ts', 'anomalyEngine.ts', 'proposalScanner.ts', 'metrics.ts', 'platformAnalyst.ts',
-  'tenantOnboarding.ts', 'maintenance.worker.ts', 'seed-common.ts', 'autoanalisiWorker.ts',
-  'reportScheduler.ts', 'olaSweep.ts', 'problemDossier.ts', 'stepDeadlines.ts',
-  'tenantLifecycle.ts', 'eventRetention.ts', 'storm.ts', 'sync.ts',
-  'riprendiTransizioni.ts',
+  'gauges.ts', 'serverLogRetention.ts', 'aiBudget.ts', 'formDraftPurge.ts', 'engine.ts',
+  'problemDossier.ts', 'tenantLifecycle.ts', 'eventRetention.ts', 'storm.ts',
+  'tenantQueueLifecycle.ts',
 ]
 
 const GENERI: Record<string, Genere> = {
@@ -230,5 +233,15 @@ describe('le eccezioni allo scoping per tenant portano una prova', () => {
   it('i due elenchi chiusi restano piccoli: se crescono, qualcuno ci si sta infilando', () => {
     expect(PRE_AUTH.length).toBeLessThanOrEqual(6)
     expect(PIATTAFORMA.length).toBeLessThanOrEqual(24)
+  })
+
+  /*
+   * An entry nobody uses any more is room for the next one to slip in unseen:
+   * when the queries of a file become scoped, its name leaves the list too.
+   */
+  it('e ogni voce degli elenchi chiusi serve ancora a un\'eccezione vera', () => {
+    const usata = (genere: string, nome: string) => siti.some((s) => s.genere === genere && s.file.endsWith(nome))
+    expect(PRE_AUTH.filter((n) => !usata('pre-auth', n)), 'voci di PRE_AUTH senza più eccezioni: toglierle').toEqual([])
+    expect(PIATTAFORMA.filter((n) => !usata('piattaforma', n)), 'voci di PIATTAFORMA senza più eccezioni: toglierle').toEqual([])
   })
 })

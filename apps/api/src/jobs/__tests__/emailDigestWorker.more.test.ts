@@ -17,8 +17,7 @@ const redis = {
 }
 vi.mock('../../lib/bullmq.js', () => ({
   getSharedRedis: () => redis,
-  createWorker: vi.fn(),
-  getQueue: vi.fn(),
+  createTenantWorkers: vi.fn(),
 }))
 
 let tenants: Array<Record<string, unknown>> = []
@@ -28,7 +27,7 @@ vi.mock('@opengraphity/neo4j', () => ({
   getSession: vi.fn(() => ({ close: vi.fn().mockResolvedValue(undefined) })),
   runQuery: vi.fn(async (_s: unknown, q: string, p: Record<string, unknown>) => {
     queries.push({ q, p })
-    if (q.includes('MATCH (t:Tenant)')) return tenants
+    if (q.includes('MATCH (t:Tenant {id: $tenantId})')) return tenants
     if (q.includes('slaBreaches')) return stats
     if (q.includes('ORDER BY i.created_at')) return []
     if (q.includes('MATCH (u:User')) return [{ email: 'a@rome.io' }]
@@ -75,7 +74,7 @@ describe('marker removal that fails after a failed send', () => {
   it('logs that today\'s digest is lost for the tenant, and the tick still rejects', async () => {
     sendEmail.mockRejectedValue(new Error('smtp down'))
     redis.del.mockRejectedValueOnce(new Error('redis gone'))
-    await expect(processDigestTick(AT_ROME_8)).rejects.toThrow(/digest failed for 1 tenant/)
+    await expect(processDigestTick('t1', AT_ROME_8)).rejects.toThrow(/digest failed for 1 tenant/)
     expect(logError).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 'rome', date: '2026-09-08', err: expect.objectContaining({ message: 'redis gone' }) }),
       expect.stringContaining('marker could not be removed'),
@@ -90,7 +89,7 @@ describe('"resolved today" step names', () => {
       { name: 'closed', category: 'closed', isTerminal: true },
       { name: 'cancelled', category: 'closed', isTerminal: true },
     ])
-    await processDigestTick(AT_ROME_8)
+    await processDigestTick('t1', AT_ROME_8)
     const q = queries.find((x) => x.q.includes('slaBreaches'))!
     expect(q.p['resolvedStepNames']).toEqual(['closed', 'cancelled'])
   })
@@ -101,13 +100,13 @@ describe('"resolved today" step names', () => {
       { name: 'fixed', category: 'resolved', isTerminal: false },
       { name: 'closed', category: 'closed', isTerminal: true },
     ])
-    await processDigestTick(AT_ROME_8)
+    await processDigestTick('t1', AT_ROME_8)
     expect(queries.find((x) => x.q.includes('slaBreaches'))!.p['resolvedStepNames']).toEqual(['resolved', 'fixed'])
   })
 
   it('no stats row → the digest reports zeros rather than NaN', async () => {
     stats = []
-    await processDigestTick(AT_ROME_8)
+    await processDigestTick('t1', AT_ROME_8)
     expect(digestDaily.mock.calls[0]![0]).toMatchObject({ openIncidents: 0, resolvedToday: 0, ongoingChanges: 0, slaBreaches: 0 })
   })
 })
@@ -125,13 +124,13 @@ describe('rule target', () => {
 
   it('a tenant with an unusable target gets no email and the tick fails visibly', async () => {
     tenants = [{ id: 'rome', timezone: 'Europe/Rome', digestTime: '08:00', target: 'group:x', recipients: null }]
-    await expect(processDigestTick(AT_ROME_8)).rejects.toThrow(/digest failed for 1 tenant/)
+    await expect(processDigestTick('t1', AT_ROME_8)).rejects.toThrow(/digest failed for 1 tenant/)
     expect(sendEmail).not.toHaveBeenCalled()
   })
 
   it('a rule without digest_time is an error for that tenant, not a digest at a guessed hour', async () => {
     tenants = [{ id: 'rome', timezone: 'Europe/Rome', digestTime: null, target: 'all', recipients: null }]
-    await expect(processDigestTick(AT_ROME_8)).rejects.toThrow(/digest failed for 1 tenant/)
+    await expect(processDigestTick('t1', AT_ROME_8)).rejects.toThrow(/digest failed for 1 tenant/)
     expect(logError).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 'rome', err: expect.objectContaining({ message: expect.stringContaining('has no digest_time') }) }),
       'Digest failed for tenant',
@@ -143,7 +142,7 @@ describe('digest_time on the rule', () => {
   it('a malformed time fails that tenant with the offending value, instead of never or always sending', async () => {
     expect(() => digestDue({ hour: 8, minute: 0 }, '8:00')).toThrow('invalid digest_time "8:00" (expected HH:MM)')
     tenants = [{ id: 'rome', timezone: 'Europe/Rome', digestTime: '8am', target: 'all', recipients: null }]
-    await expect(processDigestTick(AT_ROME_8)).rejects.toThrow(/digest failed for 1 tenant/)
+    await expect(processDigestTick('t1', AT_ROME_8)).rejects.toThrow(/digest failed for 1 tenant/)
     expect(sendEmail).not.toHaveBeenCalled()
   })
 })

@@ -72,11 +72,11 @@ beforeEach(() => {
 })
 
 describe('SLAEngine — response met cancels the response timer (D-01)', () => {
-  it('incident.assigned → markResponseMet then cancelSLAJobs(id, "response")', async () => {
+  it('incident.assigned → markResponseMet then cancelSLAJobs(tenant, id, "response")', async () => {
     const engine = new SLAEngine()
     await engine.process(event('incident.assigned', { id: 'inc-1', assignedTo: 'u2' }))
     expect(markResponseMet).toHaveBeenCalledWith('t1', 'inc-1')
-    expect(cancelSLAJobs).toHaveBeenCalledWith('inc-1', 'response')
+    expect(cancelSLAJobs).toHaveBeenCalledWith('t1', 'inc-1', 'response')
     // Only the response timer: warning/breach stay armed.
     expect(cancelSLAJobs).toHaveBeenCalledTimes(1)
   })
@@ -157,7 +157,7 @@ describe('SLAEngine — resolution passes the real resolved_at (D-02)', () => {
     const [tenant, id, at] = markResolveMet.mock.calls[0]! as unknown as [string, string, Date]
     expect(tenant).toBe('t1'); expect(id).toBe('inc-1')
     expect(at.toISOString()).toBe('2026-05-01T12:00:00.000Z')
-    expect(cancelSLAJobs).toHaveBeenCalledWith('inc-1')
+    expect(cancelSLAJobs).toHaveBeenCalledWith('t1', 'inc-1')
   })
 
   it('request.completed uses completed_at; without it the event timestamp', async () => {
@@ -274,7 +274,7 @@ describe('SLAEngine — workflow.step_entered', () => {
     getSLAStatus.mockResolvedValue({ ...baseStatus, entity_id: 'prb-1', response_met: false })
     await new SLAEngine().process(step({ from_initial: true }))
     expect(markResponseMet).toHaveBeenCalledWith('t1', 'prb-1')
-    expect(cancelSLAJobs).toHaveBeenCalledWith('prb-1', 'response')
+    expect(cancelSLAJobs).toHaveBeenCalledWith('t1', 'prb-1', 'response')
     expect(markResolveMet).not.toHaveBeenCalled()
   })
 
@@ -282,7 +282,7 @@ describe('SLAEngine — workflow.step_entered', () => {
     getSLAStatus.mockResolvedValue({ ...baseStatus, entity_id: 'prb-1', response_met: true })
     await new SLAEngine().process(step({ step_name: 'resolved', step_category: 'resolved', step_terminal: true }))
     expect(markResolveMet).toHaveBeenCalledWith('t1', 'prb-1', new Date('2026-05-01T11:00:00.000Z'))
-    expect(cancelSLAJobs).toHaveBeenCalledWith('prb-1')
+    expect(cancelSLAJobs).toHaveBeenCalledWith('t1', 'prb-1')
   })
 
   it('una richiesta che entra in un passo terminale di categoria «closed» chiude lo SLA', async () => {
@@ -366,7 +366,7 @@ describe('SLAEngine — azioni di passo sla_start / sla_stop', () => {
   it('sla.response.stop → obiettivo di risposta raggiunto', async () => {
     await new SLAEngine().process(event('sla.response.stop', { entity_id: 'inc-1', sla_type: 'response' }))
     expect(markResponseMet).toHaveBeenCalledWith('t1', 'inc-1')
-    expect(cancelSLAJobs).toHaveBeenCalledWith('inc-1', 'response')
+    expect(cancelSLAJobs).toHaveBeenCalledWith('t1', 'inc-1', 'response')
   })
 })
 
@@ -412,7 +412,7 @@ describe('SLAEngine — coerenza fra i ticket', () => {
     pauseSLA.mockResolvedValueOnce({ ...baseStatus, paused_at: '2026-05-02T09:00:00.000Z' })
     await new SLAEngine().process(stepEntered({}))
     expect(pauseSLA).toHaveBeenCalledWith('t1', 'inc-1', 'both', new Date('2026-05-02T09:00:00.000Z'))
-    expect(cancelSLAJobs).toHaveBeenCalledWith('inc-1', 'both')
+    expect(cancelSLAJobs).toHaveBeenCalledWith('t1', 'inc-1', 'both')
   })
 
   it('F4 + SL-8: uscire dall\'attesa riprende con l\'istante del passo, non con l\'ora del consumatore', async () => {
@@ -552,7 +552,7 @@ describe('pausing the clock', () => {
     pauseSLA.mockResolvedValueOnce({ ...baseStatus, paused_at: '2026-05-01T10:00:00.000Z', paused_type: slaType })
     await new SLAEngine().process(event(type, { entity_id: 'inc-1' }))
     expect(pauseSLA).toHaveBeenCalledWith('t1', 'inc-1', slaType, new Date('2026-05-01T10:00:00.000Z'))
-    expect(cancelSLAJobs).toHaveBeenCalledWith('inc-1', slaType)
+    expect(cancelSLAJobs).toHaveBeenCalledWith('t1', 'inc-1', slaType)
   })
 
   it('nothing to pause cancels nothing: the timers belong to a clock still running', async () => {

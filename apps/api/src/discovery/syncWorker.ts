@@ -1,4 +1,4 @@
-import type { Worker, Job } from 'bullmq'
+import type { Job } from 'bullmq'
 import { config } from '../lib/config.js'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import {
@@ -8,8 +8,8 @@ import {
 import type { SyncSourceConfig } from '@opengraphity/discovery'
 import { logger } from '../lib/logger.js'
 import { reconcileBatch, markStale, type ReconciliationStats } from './reconciliationEngine.js'
-import { publish } from '@opengraphity/events'
-import { createWorker, getQueue } from '../lib/bullmq.js'
+import { publish, type TenantWorkerPool } from '@opengraphity/events'
+import { createTenantWorkers, getTenantQueue } from '../lib/bullmq.js'
 
 function encryptionKey(): string {
   const k = config.discoveryEncryptionKey
@@ -39,9 +39,14 @@ interface SyncJobPayload {
   syncType: string
 }
 
-// ── Queue export (used by sync.ts resolver to enqueue) ────────────────────────
+// ── Queue (used by the sync.ts resolver to enqueue) ───────────────────────────
 
-export const syncQueue = getQueue<SyncJobPayload>('discovery-sync')
+export const DISCOVERY_SYNC_QUEUE = 'discovery-sync'
+
+/** The tenant's own sync queue, `discovery-sync@<tenant>` (23 Sep 2026). */
+export function syncQueueOf(tenantId: string) {
+  return getTenantQueue<SyncJobPayload>(DISCOVERY_SYNC_QUEUE, tenantId)
+}
 
 // ── Processor ─────────────────────────────────────────────────────────────────
 
@@ -305,16 +310,12 @@ async function publishSyncEvent(
 
 // ── Queue & Worker setup ──────────────────────────────────────────────────────
 
-export function startSyncWorker(): Worker<SyncJobPayload> {
-  // createWorker registra on('error') (un blip Redis non abbatte l'API) e on('failed')
-  const worker = createWorker<SyncJobPayload>('discovery-sync', processSyncJob, { concurrency: 2 })
-
-  worker.on('completed', (job) => {
-    logger.debug({ jobId: job.id }, '[sync] Worker job completed')
-  })
-
-  logger.info('[sync] Sync worker started (concurrency: 2)')
-  return worker
+/** One worker per tenant on `discovery-sync@<tenant>` (concurrency 2), each with its tenant's scheduled syncs. */
+export function startSyncWorker(): TenantWorkerPool<SyncJobPayload> {
+  // createTenantWorkers registra on('error') (un blip Redis non abbatte l'API) e on('failed')
+  const pool = createTenantWorkers<SyncJobPayload>(DISCOVERY_SYNC_QUEUE, processSyncJob, { concurrency: 2, schedule: scheduleTenantSyncs })
+  logger.info('[sync] Sync worker pool registered (concurrency: 2 per tenant)')
+  return pool
 }
 
 // ── Scheduled sync loader ─────────────────────────────────────────────────────
@@ -340,6 +341,7 @@ export async function scheduleSourceSync(source: { id: string; tenantId: string;
    * repeatable la nascondeva dentro una chiave composta che si doveva
    * riconoscere con un `includes()`.
    */
+  const syncQueue = syncQueueOf(source.tenantId)
   await syncQueue.removeJobScheduler(jobId)
   if (!source.enabled || !source.cron) {
     logger.info({ sourceId: source.id }, '[sync] scheduled sync removed (source disabled or without cron)')
@@ -369,32 +371,32 @@ export async function scheduleSourceSync(source: { id: string; tenantId: string;
   logger.info({ sourceId: source.id, cron: source.cron }, '[sync] scheduled sync registered')
 }
 
-export async function loadScheduledSyncs(): Promise<void> {
+/**
+ * The scheduled syncs of a tenant, registered in its queue when the tenant's
+ * worker is created (at boot, or when the tenant appears). A source with a
+ * corrupt cron does not keep the others from being registered (D-7): it is
+ * said in the log, loudly, and the others go on.
+ */
+export async function scheduleTenantSyncs(_queue: unknown, tenantId: string): Promise<void> {
   const session = getSession()
   try {
     const result = await session.executeRead(tx => tx.run(
-      `MATCH (s:SyncSource) WHERE s.enabled = true AND s.schedule_cron IS NOT NULL
-       RETURN s.id AS id, s.tenant_id AS tenantId, s.schedule_cron AS cron`,
+      `MATCH (s:SyncSource {tenant_id: $tenantId}) WHERE s.enabled = true AND s.schedule_cron IS NOT NULL
+       RETURN s.id AS id, s.schedule_cron AS cron`,
+      { tenantId },
     ))
 
     for (const r of result.records) {
       const sourceId  = r.get('id')       as string
-      const tenantId  = r.get('tenantId') as string
       const cron      = r.get('cron')     as string
-
-      // Un cron corrotto non deve impedire l'avvio dell'API (D-7): si dice
-      // nel log e le altre sorgenti partono comunque.
       try {
         await scheduleSourceSync({ id: sourceId, tenantId, cron, enabled: true })
       } catch (err) {
-        logger.error({ err, sourceId, cron }, '[sync] scheduled sync NOT registered: fix the cron of this source')
+        logger.error({ err, tenantId, sourceId, cron }, '[sync] scheduled sync NOT registered: fix the cron of this source')
       }
     }
 
-    logger.info({ count: result.records.length }, '[sync] Scheduled syncs loaded')
-  } catch (err) {
-    logger.error({ err }, '[sync] Failed to load scheduled syncs')
-    throw err
+    if (result.records.length > 0) logger.info({ tenantId, count: result.records.length }, '[sync] Scheduled syncs loaded')
   } finally {
     await session.close()
   }

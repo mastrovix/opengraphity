@@ -84,12 +84,11 @@ export interface StepDeadlineCandidate {
 export interface SweepSummary { candidates: number; moved: number; refused: number; failed: number; notDue: number }
 
 /** I ticket fermi in un passo con scadenza, di tutti i clienti. */
-export async function stepDeadlineCandidates(session: Session, now: Date): Promise<StepDeadlineCandidate[]> {
+export async function stepDeadlineCandidates(session: Session, tenantId: string, now: Date): Promise<StepDeadlineCandidate[]> {
+  // The tenant's steps only: the sweep runs in the tenant's own queue (23 Sep 2026).
   const rows = await runQuery<Record<string, unknown>>(session, `
-    // tenant-ok(piattaforma): la passata è di piattaforma; ogni riga porta il suo tenant e ogni scrittura lo scopa
-    MATCH (s:WorkflowStep) WHERE s.deadline IS NOT NULL
-    MATCH (wi:WorkflowInstance)-[:CURRENT_STEP]->(s)
-    WHERE wi.tenant_id = s.tenant_id
+    MATCH (s:WorkflowStep {tenant_id: $tenantId}) WHERE s.deadline IS NOT NULL
+    MATCH (wi:WorkflowInstance {tenant_id: $tenantId})-[:CURRENT_STEP]->(s)
     MATCH (wi)-[:STEP_HISTORY]->(ex:WorkflowStepExecution)
     WHERE ex.exited_at IS NULL AND ex.step_name = s.name
       AND (ex.deadline_outcome IS NULL
@@ -98,7 +97,7 @@ export async function stepDeadlineCandidates(session: Session, now: Date): Promi
     RETURN wi.tenant_id AS tenantId, wi.id AS instanceId, wi.entity_id AS entityId, wi.entity_type AS entityType,
            s.name AS stepName, s.deadline AS deadline, ex.id AS execId, ex.entered_at AS enteredAt,
            ex.deadline_outcome AS previousOutcome
-  `, { now: now.toISOString(), staleBefore: new Date(now.getTime() - STALE_RUNNING_MS).toISOString() })
+  `, { tenantId, now: now.toISOString(), staleBefore: new Date(now.getTime() - STALE_RUNNING_MS).toISOString() })
   return rows.map((r) => ({
     tenantId: r['tenantId'] as string, instanceId: r['instanceId'] as string, entityId: r['entityId'] as string,
     entityType: r['entityType'] as string, stepName: r['stepName'] as string, deadline: r['deadline'] as string,
@@ -107,13 +106,13 @@ export async function stepDeadlineCandidates(session: Session, now: Date): Promi
   }))
 }
 
-/** La passata: una volta al minuto, dal job `step_deadlines` della coda workflow-jobs. */
-export async function runStepDeadlineSweep(now = new Date()): Promise<SweepSummary> {
+/** La passata di un tenant: una volta al minuto, dal job `step_deadlines` della sua coda `workflow-jobs@<tenant>`. */
+export async function runStepDeadlineSweep(tenantId: string, now = new Date()): Promise<SweepSummary> {
   const summary: SweepSummary = { candidates: 0, moved: 0, refused: 0, failed: 0, notDue: 0 }
   const readSession = getSession(undefined, 'READ')
   let candidates: StepDeadlineCandidate[]
   try {
-    candidates = await stepDeadlineCandidates(readSession, now)
+    candidates = await stepDeadlineCandidates(readSession, tenantId, now)
   } finally {
     await readSession.close()
   }

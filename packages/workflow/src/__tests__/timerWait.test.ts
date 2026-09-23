@@ -1,5 +1,5 @@
 /**
- * THE WAIT STEP, AND THE QUEUE THAT ALWAYS CLOSES (E-28).
+ * THE WAIT STEP (E-28), IN THE TENANT'S OWN QUEUE (23 Sep 2026).
  *
  * Entering a `timer_wait` step enqueues a job that, once due, moves the
  * workflow out of it. Three things went wrong in production and these tests
@@ -7,7 +7,8 @@
  *
  *  1. the `Queue` was built on every transition and closed ONLY on the happy
  *     path: an `add` that threw (flaky Redis) leaked a Redis connection for
- *     good, and a few dozen of those exhausted the pool;
+ *     good. The queue is now the tenant's producer singleton
+ *     (`notification-jobs@<tenant>`), opened once per process;
  *  2. without a `jobId`, re-entering the same wait step enqueued a SECOND
  *     timer — and the workflow transitioned twice;
  *  3. a wait step with no automatic outgoing edge will never leave: that is
@@ -21,32 +22,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { WorkflowEngine } from '../engine.js'
 
 const add   = vi.fn(async () => ({ id: 'job-1' }))
-const close = vi.fn(async () => {})
-const queueBuilt = vi.fn()
+const queueAsked = vi.fn()
 
-/**
- * `vi.hoisted` and not a plain const: `actions.ts` asks for the Redis
- * connection at module LOAD time, i.e. before this file's consts exist —
- * without hoisting the file would not load at all.
- */
 const redisBroken = vi.hoisted(() => ({ value: false }))
 
-vi.mock('bullmq', () => ({
-  Queue: function Queue(this: unknown, name: string, opts: unknown) {
-    queueBuilt(name, opts)
-    return { add, close }
-  },
-}))
 /**
  * `@opengraphity/events` is faked WHOLE rather than partially: importing it
- * for real opens a Neo4j and a Redis connection at module load, and a unit
- * test must not need live infrastructure. The other four exports are here
- * because `actions.ts` imports them statically.
+ * for real opens a Redis connection, and a unit test must not need live
+ * infrastructure. The other exports are here because `actions.ts` imports
+ * them statically.
  */
 vi.mock('@opengraphity/events', () => ({
-  getRedisConnection: () => {
+  tenantQueue: (base: string, tenantId: string) => {
+    queueAsked(base, tenantId)
     if (redisBroken.value) throw new Error('no Redis connection configured')
-    return { host: 'fake' }
+    return { add }
   },
   publish:               vi.fn(),
   assertSafeOutboundUrl: vi.fn(),
@@ -85,7 +75,7 @@ function waitSession(opts: { minutes?: unknown; exit?: string | null } = {}) {
 const manual = { instanceId: 'wi-1', toStepName: 'waiting_customer', triggeredBy: 'user-1', triggerType: 'manual' as const }
 const actx = { userId: 'user-1', entityData: {} }
 
-beforeEach(() => { add.mockClear(); close.mockClear(); queueBuilt.mockClear(); add.mockResolvedValue({ id: 'job-1' }) })
+beforeEach(() => { add.mockClear(); queueAsked.mockClear(); add.mockResolvedValue({ id: 'job-1' }) })
 
 describe('timer_wait — the job that leaves the wait step', () => {
   it('enqueues the timer with the delay in milliseconds and a jobId per instance and per step', async () => {
@@ -96,8 +86,8 @@ describe('timer_wait — the job that leaves the wait step', () => {
     expect(add).toHaveBeenCalledWith('timer_wait',
       { instanceId: 'wi-1', toStep: 'closed', tenantId: 'c-one' },
       { delay: 30 * 60 * 1000, jobId: 'timer_wait:wi-1:step-wait' })
-    expect(queueBuilt).toHaveBeenCalledWith('notification-jobs', { connection: { host: 'fake' } })
-    expect(close).toHaveBeenCalledOnce()
+    // The instance's tenant: its own queue, `notification-jobs@c-one`.
+    expect(queueAsked).toHaveBeenCalledWith('notification-jobs', 'c-one')
   })
 
   it('the target step comes from the AUTOMATIC edge, not from a hand-written name', async () => {
@@ -112,25 +102,14 @@ describe('timer_wait — the job that leaves the wait step', () => {
     expect(r.success).toBe(true)
     expect(r.actionErrors?.[0]).toContain('has no automatic transition — the workflow will never leave this step')
     expect(add).not.toHaveBeenCalled()
-    expect(close).toHaveBeenCalledOnce()   // the queue closes here too
   })
 
-  it('if enqueuing fails the queue still closes, and the error names the step left stuck', async () => {
+  it('if enqueuing fails, the error names the step left stuck', async () => {
     add.mockRejectedValueOnce(new Error('Redis unreachable'))
     const s = waitSession()
     const r = await new WorkflowEngine().transition(s as never, manual, actx)
     expect(r.actionErrors?.[0]).toContain('timer_wait scheduling failed: Redis unreachable')
     expect(r.actionErrors?.[0]).toContain('will never leave step "waiting_customer"')
-    expect(close).toHaveBeenCalledOnce()
-  })
-
-  it('a failing queue close does not fail the transition', async () => {
-    // Closing is cleanup: if it fails we log it and move on — undoing an
-    // already-written transition over this would be worse than the problem.
-    close.mockRejectedValueOnce(new Error('connection already dropped'))
-    const r = await new WorkflowEngine().transition(waitSession() as never, manual, actx)
-    expect(r.success).toBe(true)
-    expect(r.actionErrors).toBeUndefined()
   })
 
   it('a delay arriving as a Neo4j Integer is read as a number', async () => {
@@ -141,14 +120,11 @@ describe('timer_wait — the job that leaves the wait step', () => {
 })
 
 describe('timer_wait — the fallbacks', () => {
-  it('a queue that cannot even be BUILT is not closed', async () => {
-    // `queue` stays null: a `queue.close()` here would raise a TypeError that
-    // would bury the real reason (Redis not configured) inside the `finally`.
+  it('a queue that cannot even be opened is a scheduling error with its reason', async () => {
     redisBroken.value = true
     try {
       const r = await new WorkflowEngine().transition(waitSession() as never, manual, actx)
       expect(r.actionErrors?.[0]).toContain('timer_wait scheduling failed: no Redis connection configured')
-      expect(close).not.toHaveBeenCalled()
     } finally {
       redisBroken.value = false
     }

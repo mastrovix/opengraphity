@@ -36,6 +36,7 @@
     "seed:ci-chain": "tsx src/scripts/seed-ci-chain.ts",
     "seed:anomaly-scenarios": "tsx src/scripts/seed-anomaly-scenarios.ts",
     "scan:anomalies": "tsx src/scripts/run-anomaly-scan.ts",
+    "queues:drop-shared": "tsx src/scripts/drop-shared-queues.ts",
     "onboard-tenant": "tsx src/scripts/onboard-tenant.ts",
     "import:incidents": "tsx src/scripts/import-incidents.ts",
     "import:kb": "tsx src/scripts/import-kb.ts",

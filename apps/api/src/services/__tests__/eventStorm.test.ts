@@ -82,7 +82,7 @@ const Q = {
   countEv:    /MATCH \(e:Event \{tenant_id: \$tenantId, source_id: \$sourceId\}\)\s+WHERE e\.first_seen_at >= \$since\s+RETURN count\(e\) AS n/,
   end:        /SET w\.storm_since = null, w\.storm_incident_id = null, w\.storm_last_over_at = null/,
   gauge:      /WHERE w\.storm_since IS NOT NULL\s+RETURN count\(w\) AS n/,
-  allStorms:  /MATCH \(w:InboundWebhook\)\s+WHERE w\.storm_since IS NOT NULL AND w\.id > \$cursor\s+RETURN properties\(w\) AS props\s+ORDER BY w\.id LIMIT toInteger\(\$limit\)/,
+  tenantStorms: /MATCH \(w:InboundWebhook \{tenant_id: \$tenantId\}\)\s+WHERE w\.storm_since IS NOT NULL AND w\.id > \$cursor\s+RETURN properties\(w\) AS props\s+ORDER BY w\.id LIMIT toInteger\(\$limit\)/,
   list:       /MATCH \(w:InboundWebhook \{tenant_id: \$tenantId, entity_type: 'event'\}\)/,
   clearedInStorm: /status: 'resolved'\}\)-\[:CORRELATED_INTO\]->\(i:Incident/,
 }
@@ -455,40 +455,40 @@ describe('replaceClosedStormIncident (incident di tempesta chiuso mentre la sorg
   })
 })
 
-describe('endCooledStorms (job periodico, paginato)', () => {
+describe('endCooledStorms (job periodico del tenant, paginato)', () => {
   it('chiude solo le tempeste raffreddate (policy del tenant), riallinea il gauge; un errore su una sorgente non ferma le altre ma fa fallire il job', async () => {
     onCypher([
       ...baseRules(),
-      [Q.allStorms, [
+      [Q.tenantStorms, [
         { props: source({ ...STORMING, storm_since: minutesAgo(20), storm_last_over_at: minutesAgo(7) }) },
         { props: source({ id: 'hook-2', name: 'Grafana', ...STORMING }) },
       ]],
       [Q.gauge, { n: 1 }],
     ])
-    await expect(endCooledStorms(NOW)).resolves.toEqual({ evaluated: 2, active: 1, ended: 1, failed: 0, truncated: false })
-    expect(callMatching(Q.allStorms)!.params).toEqual({ cursor: '', limit: PAGE_SIZE })
+    await expect(endCooledStorms('t1', NOW)).resolves.toEqual({ evaluated: 2, active: 1, ended: 1, failed: 0, truncated: false })
+    expect(callMatching(Q.tenantStorms)!.params).toEqual({ tenantId: 't1', cursor: '', limit: PAGE_SIZE })
     expect(callMatching(Q.end)!.params).toMatchObject({ sourceId: 'hook-1' })
     expect(published()).toEqual(['event.storm_ended'])
     expect(metrics.eventStormsActive.set).toHaveBeenLastCalledWith({}, 1)
 
     vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
     vi.mocked(getEventPolicy).mockRejectedValueOnce(new Error('Tenant t9 has no event_policy'))
-    onCypher([...baseRules(), [Q.allStorms, [{ props: source({ tenant_id: 't9', ...STORMING }) }]], [Q.gauge, { n: 1 }]])
-    await expect(endCooledStorms(NOW)).rejects.toThrow(/1\/1 storming sources failed the cooldown check/)
+    onCypher([...baseRules(), [Q.tenantStorms, [{ props: source({ tenant_id: 't9', ...STORMING }) }]], [Q.gauge, { n: 1 }]])
+    await expect(endCooledStorms('t1', NOW)).rejects.toThrow(/1\/1 storming sources failed the cooldown check/)
 
-    onCypher([[Q.allStorms, []], [Q.gauge, { n: 0 }]])
-    await expect(endCooledStorms(NOW)).resolves.toEqual({ evaluated: 0, active: 0, ended: 0, failed: 0, truncated: false })
+    onCypher([[Q.tenantStorms, []], [Q.gauge, { n: 0 }]])
+    await expect(endCooledStorms('t1', NOW)).resolves.toEqual({ evaluated: 0, active: 0, ended: 0, failed: 0, truncated: false })
   })
 
   it('più di una pagina di sorgenti in tempesta → cursore sull\'id, una policy per tenant', async () => {
     const all = Array.from({ length: PAGE_SIZE + 5 }, (_, i) => source({ id: `hook-${String(i).padStart(4, '0')}`, ...STORMING }))
     onCypher([
       ...baseRules(),
-      [Q.allStorms, (p?: Record<string, unknown>) => all.filter((s) => (s['id'] as string) > (p!['cursor'] as string)).slice(0, p!['limit'] as number).map((s) => ({ props: s }))],
+      [Q.tenantStorms, (p?: Record<string, unknown>) => all.filter((s) => (s['id'] as string) > (p!['cursor'] as string)).slice(0, p!['limit'] as number).map((s) => ({ props: s }))],
       [Q.gauge, { n: PAGE_SIZE + 5 }],
     ])
-    await expect(endCooledStorms(NOW)).resolves.toMatchObject({ evaluated: PAGE_SIZE + 5, ended: 0, truncated: false })
-    expect(calls().filter((c) => Q.allStorms.test(c.cypher)).map((c) => c.params['cursor'])).toEqual(['', 'hook-0199'])
+    await expect(endCooledStorms('t1', NOW)).resolves.toMatchObject({ evaluated: PAGE_SIZE + 5, ended: 0, truncated: false })
+    expect(calls().filter((c) => Q.tenantStorms.test(c.cypher)).map((c) => c.params['cursor'])).toEqual(['', 'hook-0199'])
     expect(getEventPolicy).toHaveBeenCalledTimes(1)
   })
 })
@@ -561,8 +561,8 @@ describe('cache della sorgente (sourceCache.ts, TTL 10 s) e fine condizionale', 
     expect(incidentService.addIncidentComment).not.toHaveBeenCalled()
 
     vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never); invalidateSourceCache()
-    onCypher([...baseRules(), [Q.allStorms, [{ props: source({ ...STORMING, storm_since: minutesAgo(20), storm_last_over_at: minutesAgo(7) }) }]], [Q.end, null], [Q.gauge, { n: 0 }]])
-    await expect(endCooledStorms(NOW)).resolves.toMatchObject({ evaluated: 1, ended: 0, active: 1, failed: 0 })
+    onCypher([...baseRules(), [Q.tenantStorms, [{ props: source({ ...STORMING, storm_since: minutesAgo(20), storm_last_over_at: minutesAgo(7) }) }]], [Q.end, null], [Q.gauge, { n: 0 }]])
+    await expect(endCooledStorms('t1', NOW)).resolves.toMatchObject({ evaluated: 1, ended: 0, active: 1, failed: 0 })
     expect(publishEvent).not.toHaveBeenCalled()
   })
 })
@@ -577,9 +577,9 @@ describe('fine tempesta — allarmi rientrati durante la tempesta', () => {
   it('ogni incident con un allarme rientrato nella tempesta viene rivalutato una volta', async () => {
     vi.mocked(getSession).mockReturnValue(session as never)
     vi.mocked(getEventPolicy).mockResolvedValue(policy({ storm_cooldown_minutes: 1 }) as never)
-    onCypher([...baseRules(), [Q.allStorms, (p?: Record<string, unknown>) => (p!['cursor'] === '' ? [{ props: source({ ...STORMING, storm_last_over_at: minutesAgo(5) }) }] : [])],
+    onCypher([...baseRules(), [Q.tenantStorms, (p?: Record<string, unknown>) => (p!['cursor'] === '' ? [{ props: source({ ...STORMING, storm_last_over_at: minutesAgo(5) }) }] : [])],
       [Q.clearedInStorm, (p?: Record<string, unknown>) => { expect(p).toMatchObject({ tenantId: 't1', sourceId: 'hook-1', since: STORMING.storm_since }); return [{ eventId: 'ev-a' }, { eventId: 'ev-b' }] }]])
-    const out = await endCooledStorms(NOW)
+    const out = await endCooledStorms('t1', NOW)
     expect(out.ended).toBe(1)
     expect(runEventPipeline).toHaveBeenCalledTimes(2)
     expect(runEventPipeline).toHaveBeenCalledWith({ tenantId: 't1', eventId: 'ev-a', actorId: 'monitoring', mode: 'reevaluate' })

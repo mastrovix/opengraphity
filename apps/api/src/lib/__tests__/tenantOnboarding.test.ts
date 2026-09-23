@@ -99,6 +99,41 @@ beforeEach(() => {
 })
 
 // ══════════════════════════════════════════════════════════════════════════════
+/*
+ * A RESERVED NAME NEVER REACHES KEYCLOAK (23 Sep 2026). Onboarding leaves a
+ * realm that already exists as it was and creates its first administrator in
+ * it: with the slug of the platform realm that administrator would be a
+ * platform identity, with `master` a user of Keycloak's own realm. The script
+ * reaches onboardTenant without the console route's check in front of it.
+ */
+describe('un nome riservato non arriva a Keycloak', () => {
+  it.each(['system', 'master'])('%s è rifiutato prima di chiedere un token', async (slug) => {
+    const kc = keycloak()
+    await expect(onboardTenant(kc as never, spec({ slug }), password)).rejects.toThrow(/reserved/)
+    expect(kc.getAdminToken).not.toHaveBeenCalled()
+  })
+
+  it('anche il realm di piattaforma, che viene dalla configurazione', async () => {
+    const { resetConfigCache } = await import('../config.js')
+    vi.stubEnv('PLATFORM_REALM', 'opengrafo-platform')
+    resetConfigCache()
+    try {
+      const kc = keycloak()
+      await expect(onboardTenant(kc as never, spec({ slug: 'opengrafo-platform' }), password)).rejects.toThrow(/reserved/)
+      expect(kc.post).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllEnvs()
+      resetConfigCache()
+    }
+  })
+
+  it('uno slug che non è un\'etichetta DNS non passa nemmeno dallo script', async () => {
+    const kc = keycloak()
+    await expect(onboardTenant(kc as never, spec({ slug: 'Acme Corp' }), password)).rejects.toThrow(/valid tenant slug/)
+    expect(kc.getAdminToken).not.toHaveBeenCalled()
+  })
+})
+
 describe('la password si consegna SUBITO', () => {
   it('fra impostarla e consegnarla non c\'è niente che possa fallire', async () => {
     const kc = keycloak()

@@ -31,7 +31,7 @@ import neo4j from 'neo4j-driver'
 import type { Session } from 'neo4j-driver'
 import { rm } from 'node:fs/promises'
 import { getSession, runQuery } from '@opengraphity/neo4j'
-import { getQueue } from '../../bullmq.js'
+import { getTenantQueue } from '../../bullmq.js'
 import { TICKET_NUMBER_KINDS, type TicketNumberKind } from '../../ticketNumbering.js'
 import { syntheticActorIds } from '../../auditActors.js'
 
@@ -272,12 +272,12 @@ async function restoreSettings(session: Session, tenantId: string, first: RunRec
 }
 
 /**
- * D60: the SLA timers waiting in the queue for tickets of this tenant that no
- * longer exist. Read page by page, checked against the graph in one query,
- * removed — a timer of a ticket that is still there is left alone.
+ * D60: the SLA timers waiting in the tenant's queue (`sla-jobs@<tenant>`) for
+ * tickets that no longer exist. Read page by page, checked against the graph
+ * in one query, removed — a timer of a ticket that is still there is left alone.
  */
 async function removeTimersOfDeletedTickets(session: Session, tenantId: string): Promise<number> {
-  const queue = getQueue<{ tenantId?: string; entityId?: string }>('sla-jobs')
+  const queue = getTenantQueue<{ tenantId?: string; entityId?: string }>('sla-jobs', tenantId)
   const ours: Array<{ id: string; entityId: string }> = []
   // One state at a time: with several, the range applies to each and a page is not a page.
   for (const state of ['delayed', 'waiting', 'prioritized'] as const) {

@@ -764,18 +764,18 @@ describe('findMapsIncludingCI / evaluateStaleOrOldMaps / refreshServiceGauges', 
     let page = 0
     let loads = 0
     onCypher([
-      [/MATCH \(m:ServiceMap \{status: 'active'\}\)/, () => (page++ === 0 ? [{ tenantId: 't1', id: 'm1' }, { tenantId: 't2', id: 'm2' }] : [])],
+      [/MATCH \(m:ServiceMap \{tenant_id: \$tenantId, status: 'active'\}\)/, () => (page++ === 0 ? [{ tenantId: 't1', id: 'm1' }, { tenantId: 't2', id: 'm2' }] : [])],
       [LOAD_RE, () => (loads++ === 0 ? stateRow() : null)],
       [WRITE_RE, writeRow({ changed: false, previous: 'degraded' })],
     ])
-    await expect(evaluateStaleOrOldMaps(NOW)).rejects.toThrow(/1\/2 service maps failed evaluation/)
+    await expect(evaluateStaleOrOldMaps('t1', NOW)).rejects.toThrow(/1\/2 service maps failed evaluation/)
     const p = callMatching(/status: 'active'/)!
     expect(p.cypher).toContain("WHERE (m.evaluated_at IS NULL OR m.evaluated_at < $cutoff OR m.stale = true) AND m.id > $cursor")
     expect(p.cypher).toMatch(/ORDER BY m\.id LIMIT toInteger\(\$limit\)/)
-    expect(p.params).toEqual({ cutoff: '2026-09-10T09:50:00.000Z', cursor: '', limit: 200 })
+    expect(p.params).toEqual({ tenantId: 't1', cutoff: '2026-09-10T09:50:00.000Z', cursor: '', limit: 200 })
     expect(callMatching(WRITE_RE)!.params).toMatchObject({ hTrigger: 'periodic', tenantId: 't1', mapId: 'm1' })
     expect(log.error).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't2', mapId: 'm2' }), expect.stringContaining('Periodic service map evaluation failed'))
-    await expect(evaluateStaleOrOldMaps('ieri')).rejects.toThrow(/not an ISO date/)
+    await expect(evaluateStaleOrOldMaps('t1', 'ieri')).rejects.toThrow(/not an ISO date/)
   })
 
   it('refreshServiceGauges: services_health{health} per ogni salute (0 dove assente) e service_maps_stale, su tutti i tenant, in UNA lettura', async () => {

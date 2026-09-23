@@ -7,11 +7,12 @@
  * OutboundWebhook node (tenant-scoped) at delivery time, so no secret sits in
  * Redis and a rotated secret/URL takes effect on queued jobs too.
  */
-import type { Worker, Job } from 'bullmq'
+import type { Job } from 'bullmq'
+import type { TenantWorkerPool } from '@opengraphity/events'
 import { createHash, createHmac } from 'crypto'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { logger } from '../lib/logger.js'
-import { createWorker, getQueue } from '../lib/bullmq.js'
+import { createTenantWorkers, getTenantQueue } from '../lib/bullmq.js'
 import { assertSafeOutboundUrl, loggableUrl } from '../lib/safeUrl.js'
 
 const log = logger.child({ module: 'webhook-delivery' })
@@ -124,9 +125,9 @@ async function processDelivery(job: Job<DeliveryJobData>): Promise<void> {
 
 // ── Worker ───────────────────────────────────────────────────────────────────
 
-export function startWebhookDeliveryWorker(): Worker<DeliveryJobData> {
-  getQueue<DeliveryJobData>(WEBHOOK_DELIVERY_QUEUE)  // producer singleton (metrics)
-  return createWorker<DeliveryJobData>(WEBHOOK_DELIVERY_QUEUE, processDelivery, {
+/** One worker per tenant on `webhook-delivery@<tenant>` (23 Sep 2026): a slow receiver of one tenant holds only that tenant's deliveries. */
+export function startWebhookDeliveryWorker(): TenantWorkerPool<DeliveryJobData> {
+  return createTenantWorkers<DeliveryJobData>(WEBHOOK_DELIVERY_QUEUE, processDelivery, {
     concurrency: 10,
     onFailed: (job, err) => {
       log.error({ jobId: job?.id, webhookId: (job?.data as DeliveryJobData | undefined)?.webhookId, attemptsMade: job?.attemptsMade, err: err.message }, 'Webhook delivery job failed')
@@ -194,7 +195,7 @@ export async function enqueueOutboundWebhooks(
 
     if (rows.length === 0) return
 
-    const queue = getQueue<DeliveryJobData>(WEBHOOK_DELIVERY_QUEUE)
+    const queue = getTenantQueue<DeliveryJobData>(WEBHOOK_DELIVERY_QUEUE, tenantId)
     const timestamp = new Date().toISOString()
 
     for (const row of rows) {

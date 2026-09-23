@@ -20,6 +20,7 @@ import { api, messaggio, type Tenant, type NuovoTenant, type EsitoCreazione, typ
 import { LogOut, Plus } from 'lucide-react'
 import { getKeycloak } from './keycloak'
 import { collegaAvvisi } from './tokenRefresh'
+import { QueuesPanel } from './QueuesPanel'
 
 function Conteggio({ n }: { n: number | null }) {
   // `null` non è zero: dirlo «0» manderebbe a cancellare un tenant pieno.
@@ -573,6 +574,8 @@ export function TenantsPage() {
           onFatto={(messaggio) => { setDaCancellare(null); setEsito(messaggio); carica() }}
         />
       )}
+
+      <QueuesPanel />
 
       </div>
       </main>

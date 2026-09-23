@@ -25,6 +25,8 @@ import type { Tenant } from './api'
 const api = vi.hoisted(() => ({
   tenants: vi.fn(), create: vi.fn(), footprint: vi.fn(), rename: vi.fn(),
   suspend: vi.fn(), resume: vi.fn(), resetPassword: vi.fn(), purge: vi.fn(),
+  // The queues panel under the tenants (QueuesPanel.test.tsx covers it).
+  queues: vi.fn(), failedJobs: vi.fn(), retryJob: vi.fn(),
 }))
 const collegaAvvisi = vi.hoisted(() => vi.fn())
 const getKeycloak = vi.hoisted(() => vi.fn())
@@ -60,6 +62,7 @@ beforeEach(() => {
   for (const fn of Object.values(api)) fn.mockReset()
   api.tenants.mockResolvedValue({ tenants: [] })
   api.footprint.mockResolvedValue({ slug: 'acme', nodes: {} })
+  api.queues.mockResolvedValue({ platform: [], tenants: [] })
   getKeycloak.mockReturnValue({ tokenParsed: { email: 'ops@opengrafo.example' }, logout: vi.fn() })
 })
 afterEach(cleanup)

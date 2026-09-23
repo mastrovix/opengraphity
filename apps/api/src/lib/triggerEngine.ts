@@ -6,7 +6,7 @@
 import { runQuery } from '@opengraphity/neo4j'
 import { logger as appLogger } from './logger.js'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
-import { getQueue } from './bullmq.js'
+import { getTenantQueue } from './bullmq.js'
 import { createAutomationCache, evaluateRules } from './automationEngine.js'
 import { invalidateSchema } from './schemaInvalidator.js'
 import { parseConditions } from './conditionEvaluator.js'
@@ -126,7 +126,7 @@ export async function scheduleTimerTriggers(
   const triggers = await loadTriggers(tenantId, entityType, 'on_timer')
   if (triggers.length === 0) return
 
-  const queue = getQueue(WORKFLOW_JOBS_QUEUE)
+  const queue = getTenantQueue(WORKFLOW_JOBS_QUEUE, tenantId)
   for (const trigger of triggers) {
     if (!trigger.timer_delay_minutes || trigger.timer_delay_minutes <= 0) continue
     await queue.add('trigger_timer', {

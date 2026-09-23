@@ -23,8 +23,9 @@ import { ServiceImpactConsumer } from './consumers/serviceImpactConsumer.js'
 import { closeConnection } from '@opengraphity/events'
 import { closeDriver, registerSessionTracker } from '@opengraphity/neo4j'
 import { neo4jQueryDurationSeconds, recordSlowQuery, startBullMQMetricsCollector } from './middleware/metrics.js'
-import { getAllQueues, getQueue, closeAllQueues } from './lib/bullmq.js'
-import { QUEUE_REGISTRY } from './lib/queueRegistry.js'
+import { getAllQueues, getQueue, getTenantQueue, closeAllQueues } from './lib/bullmq.js'
+import { PLATFORM_QUEUE_NAMES, TENANT_QUEUE_BASES } from './lib/queueRegistry.js'
+import { startTenantQueueLifecycle, stopTenantQueueLifecycle, tenantsWithQueues } from './lib/tenantQueueLifecycle.js'
 import { wireDomainEventFailureMetric } from './lib/domainEventFailures.js'
 import { runGracefulShutdown, type Closable } from './lib/shutdown.js'
 import { accendiSinkDeiLog, spegniSinkDeiLog } from './lib/serverLogSink.js'
@@ -45,7 +46,7 @@ registerSessionTracker((durationMs, query) => {
 import { startReportScheduler } from './jobs/reportScheduler.js'
 import { startAnomalyScanner } from './anomaly/anomalyEngine.js'
 import { startProposalScanner } from './jobs/proposalScanner.js'
-import { startWorkflowJobWorker, startNotificationJobWorker, scheduleStepDeadlineSweep, scheduleOLASweep, scheduleRipresaTransizioni } from './jobs/workflowJobWorker.js'
+import { startWorkflowJobWorker, startNotificationJobWorker } from './jobs/workflowJobWorker.js'
 import { startWebhookDeliveryWorker } from './jobs/webhookDeliveryWorker.js'
 import { startAutoanalisiWorker } from './jobs/autoanalisiWorker.js'
 import { startEventIngestWorker } from './jobs/eventIngestWorker.js'
@@ -54,13 +55,12 @@ import { startServiceImpactWorker } from './jobs/serviceImpactWorker.js'
 import { startEmbeddingWorker } from './jobs/embeddingWorker.js'
 import { startEmailDigestWorker } from './jobs/emailDigestWorker.js'
 import { registerAllConnectors } from './discovery/registerConnectors.js'
-import { startSyncWorker, loadScheduledSyncs } from './discovery/syncWorker.js'
+import { startSyncWorker } from './discovery/syncWorker.js'
 import { startMaintenanceWorker } from './workers/maintenance.worker.js'
 import { logger } from './lib/logger.js'
 import { assertMigrationsAppliedAtBoot } from './lib/migrationState.js'
 import { startInAppBus, stopInAppBus } from './lib/inAppBus.js'
 import { assertEmailConfigured } from '@opengraphity/notifications'
-import type { Worker } from 'bullmq'
 
 async function main() {
   // Revisione del 14 set 2026 · F8: migrazioni pendenti dette all'avvio (e,
@@ -96,14 +96,11 @@ async function main() {
   const automationConsumer = new AutomationConsumer()
   await automationConsumer.start()
 
-  // Start report scheduler (BullMQ, every 60s)
-  const reportScheduler = await startReportScheduler()
-
-  // Start anomaly scanner (BullMQ, every 1h)
-  const anomalyWorker = await startAnomalyScanner()
-
-  // Le proposte di miglioramento: un giro a notte, un job per cliente.
-  const proposalWorker = await startProposalScanner()
+  // Report programmati (ogni minuto per tenant), anomalie (ogni ora), proposte
+  // di miglioramento (un giro a notte): una coda per tenant ciascuno.
+  const reportScheduler = startReportScheduler()
+  const anomalyWorker = startAnomalyScanner()
+  const proposalWorker = startProposalScanner()
 
   // Il giro dell'Autoanalisi che si chiude: porta il fascicolo su GitHub quando
   // nasce un Problem da una proposta, e ogni quarto d'ora chiede com'è finita.
@@ -111,11 +108,9 @@ async function main() {
   // installazione, e il lavoro che fa è una richiesta HTTP ogni tanto.
   const autoanalisiWorker = await startAutoanalisiWorker()
 
-  // Start workflow job worker (BullMQ: step deadlines, webhook retries, timed triggers)
+  // Workflow (scadenze dei passi, OLA, ripresa delle transizioni: le passate
+  // di ogni tenant nella sua coda), riprove dei webhook, trigger a tempo.
   const workflowWorker = startWorkflowJobWorker()
-  await scheduleStepDeadlineSweep()
-  await scheduleOLASweep()
-  await scheduleRipresaTransizioni()
 
   // Start notification job worker (escalation_check, digest, timer_wait)
   const notificationWorker = startNotificationJobWorker()
@@ -128,7 +123,7 @@ async function main() {
   // che la innesca da ci.health_changed. Con WORKER_PROFILE=api tutto questo
   // gira nel processo `events-worker` (worker.ts) e l'API resta libera per le
   // richieste: qui non parte nulla, e il webhook continua ad accodare.
-  const eventWorkers: Worker[] = []
+  const eventWorkers: Closable[] = []
   const eventConsumers: Closable[] = []
   if (workGroups.includes('events')) {
     const serviceImpactConsumer = new ServiceImpactConsumer()
@@ -136,9 +131,9 @@ async function main() {
     eventConsumers.push({ name: 'service-impact-consumer', close: () => serviceImpactConsumer.stop() })
     eventWorkers.push(
       startEventIngestWorker(),
-      await startEventCorrelateWorker(),
-      await startEventMaintenanceWorker(),
-      await startServiceImpactWorker(),
+      startEventCorrelateWorker(),
+      startEventMaintenanceWorker(),
+      startServiceImpactWorker(),
     )
   } else {
     logger.info({ profile: config.workerProfile }, 'Event Management and Servizi monitorati workers delegated to the events worker process (WORKER_PROFILE)')
@@ -150,12 +145,12 @@ async function main() {
   const embeddingExternal = config.embeddingWorkerExternal
   const embeddingWorker = embeddingExternal ? null : await startEmbeddingWorker()
   if (embeddingExternal) logger.info('Embedding worker delegated to external worker process')
-  const emailDigestWorker = await startEmailDigestWorker()
+  const emailDigestWorker = startEmailDigestWorker()
 
-  // Register discovery connectors and start sync worker
+  // Register discovery connectors and start sync worker (the scheduled syncs
+  // of each tenant are registered in its queue when its worker is created).
   registerAllConnectors()
   const syncWorker        = startSyncWorker()
-  await loadScheduledSyncs()
 
   // Start maintenance worker (backup scheduler)
   const maintenanceWorker = await startMaintenanceWorker()
@@ -170,27 +165,39 @@ async function main() {
    */
   await accendiSinkDeiLog()
 
+  /*
+   * THE WORKERS FOLLOW THE TENANTS (23 Sep 2026). Every pool is registered by
+   * now: each tenant gets its workers and its recurring jobs, and from here on
+   * a tenant created, suspended, resumed or deleted is followed within
+   * seconds (lib/tenantQueueLifecycle.ts). A failure at boot stops the boot.
+   */
+  await startTenantQueueLifecycle()
+
   // BullMQ queue-depth gauges for /metrics and the admin "System metrics" page
-  // (A-14). Every queue of the registry is opened here as a producer handle so
-  // the gauge covers ALL of them — the consumer queues of packages/events and
-  // the queues whose workers run in another process included (revisione 2 ·
-  // D2.2) — not only the ones this process happened to open. Getter: queues
-  // opened later are picked up too. Interval is unref'd.
-  for (const entry of QUEUE_REGISTRY) getQueue(entry.name)
-  startBullMQMetricsCollector(getAllQueues)
+  // (A-14). The platform queues, and every tenant's queue of every base —
+  // those whose workers run in another process included (revisione 2 ·
+  // D2.2) — not only the ones this process happened to open. Getter: the
+  // tenants of the last reconciliation. Interval is unref'd.
+  for (const name of PLATFORM_QUEUE_NAMES) getQueue(name)
+  startBullMQMetricsCollector(() => [
+    ...getAllQueues(),
+    ...tenantsWithQueues().flatMap((t) => TENANT_QUEUE_BASES.map((base) => getTenantQueue(base, t.id))),
+  ])
 
   logger.info({ profile: config.workerProfile, workGroups }, 'All consumers started')
 
   // Every worker/consumer must be closed on shutdown; a job left in-flight is
   // redelivered at-least-once on the next boot (idempotency in BaseConsumer and
   // the SLAStatus MERGE keep that safe, but draining cleanly avoids the churn).
-  const bullWorkers: Worker[] = [
+  const bullWorkers: Closable[] = [
     anomalyWorker, proposalWorker, autoanalisiWorker, workflowWorker, syncWorker, maintenanceWorker,
     notificationWorker, webhookDeliveryWorker, ...eventWorkers,
     emailDigestWorker, reportScheduler,
     ...(embeddingWorker ? [embeddingWorker] : []),
   ]
   const closables: Closable[] = [
+    // Stop following the tenants first: no worker is created while the others close.
+    { name: 'tenant-queue-lifecycle', close: () => stopTenantQueueLifecycle() },
     ...bullWorkers.map((w) => ({ name: w.name, close: () => w.close() })),
     { name: 'notification-service', close: () => notificationDispatcher.stop() },
     { name: 'sla-engine',           close: () => slaEngine.stop() },

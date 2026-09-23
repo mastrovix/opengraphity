@@ -372,6 +372,14 @@ for (const k of [...defined].sort()) {
         .matchAll(/(?:name: '([a-z-]+)'|consumerEntry\('([a-z-]+)')/g)].map((m) => m[1] ?? m[2]),
       chiavi:  (v) => [`pages.queueStats.queue.${v}`],
     },
+    // The groups of the same registry: the page titles each group with its label.
+    {
+      nome:    'QUEUE_GROUPS',
+      valori:  [...(leggi('apps/api/src/lib/queueRegistry.ts')
+        .match(/export const QUEUE_GROUPS = \[([^\]]*)\] as const/)?.[1] ?? '')
+        .matchAll(/'([a-z]+)'/g)].map((m) => m[1]),
+      chiavi:  (v) => [`pages.queueStats.group.${v}`],
+    },
   ]
   for (const ins of insiemi) {
     if (ins.valori.length === 0) {

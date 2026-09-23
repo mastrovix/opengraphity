@@ -99,7 +99,7 @@ export const monitoringResolvers = {
       const graphql  = getGraphQLMetrics(ctx.tenantId)
       const neo4j    = getNeo4jMetrics()
       const system   = getProcessMetrics()
-      const queues   = getQueueMetricsSnapshot()
+      const queues   = getQueueMetricsSnapshot(ctx.tenantId)
 
       return { requests, graphql, neo4j, system, queues }
     },

@@ -5,18 +5,22 @@
  *  - an invalid cron on one template is logged loudly and does not stop the others;
  *  - a failing execution makes the tick fail after the claim (visible in BullMQ).
  * previousDueAt / buildSlackSummary (pure) are covered in schedulerHelpers.test.ts.
+ *
+ * Since 23 Sep 2026 every tenant has its own queue `report-scheduler@<tenant>`
+ * and its own check: a tick reads the templates of ITS tenant only.
  */
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
 import type { Job } from 'bullmq'
 
 type AnyProcessor = (job: Job) => Promise<unknown>
 const processors = new Map<string, AnyProcessor>()
-const queueAdd = vi.fn().mockResolvedValue(undefined)
-const upsertScheduler = vi.fn().mockResolvedValue(undefined)
-const removeScheduler = vi.fn().mockResolvedValue(true)
+const poolOptions = new Map<string, { schedule?: unknown }>()
 vi.mock('../../lib/bullmq.js', () => ({
-  createWorker: vi.fn((name: string, processor: AnyProcessor, opts?: unknown) => { processors.set(name, processor); return { name, opts } }),
-  getQueue: vi.fn(() => ({ add: queueAdd, upsertJobScheduler: upsertScheduler, removeJobScheduler: removeScheduler })),
+  createTenantWorkers: vi.fn((name: string, processor: AnyProcessor, opts: { schedule?: unknown }) => {
+    processors.set(name, processor)
+    poolOptions.set(name, opts)
+    return { name, opts }
+  }),
 }))
 
 interface Rec { get(k: string): unknown }
@@ -88,13 +92,11 @@ vi.useFakeTimers()
 vi.setSystemTime(new Date('2026-09-08T10:00:30.000Z'))
 afterAll(() => { vi.useRealTimers() })
 
-const { startReportScheduler, REPORT_SCHEDULER_QUEUE } = await import('../reportScheduler.js')
+const { startReportScheduler, scheduleReportCheck, REPORT_SCHEDULER_QUEUE } = await import('../reportScheduler.js')
 
-await startReportScheduler()
+startReportScheduler()
 const processor = processors.get(REPORT_SCHEDULER_QUEUE)!
-// captured now: beforeEach clears every mock's calls
-const repeatRegistration = upsertScheduler.mock.calls[0]
-const tick = () => processor({ name: 'check', data: {} } as unknown as Job)
+const tick = (tenantId = 't1') => processor({ name: 'check', data: { tenantId } } as unknown as Job)
 
 const DUE_AT = '2026-09-08T10:00:00.000Z'
 const NOW    = '2026-09-08T10:00:30.000Z'
@@ -110,13 +112,14 @@ const template = (over: Record<string, unknown> = {}) => ({
 /** Wires the dispatcher: template list, claim result, optional channel webhook. */
 function db(opts: { templates: Record<string, unknown>[]; claim: (p?: Record<string, unknown>) => Record<string, unknown>[]; webhook?: string | null }) {
   handler.mockImplementation((q, p) => {
-    if (q.includes('MATCH (r:ReportTemplate)') && q.includes('schedule_enabled')) return opts.templates
+    if (q.includes('MATCH (r:ReportTemplate {tenant_id: $tenantId})') && q.includes('schedule_enabled')) return opts.templates
     if (q.includes('SET r.last_scheduled_run')) return opts.claim(p)
     if (q.includes('NotificationChannel')) return opts.webhook ? [{ webhookUrl: opts.webhook }] : []
     throw new Error(`unexpected query: ${q}`)
   })
 }
 const claimQuery = () => calls.find((c) => c.q.includes('SET r.last_scheduled_run'))
+const loadQuery = () => calls.find((c) => c.q.includes('schedule_enabled'))
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -240,13 +243,23 @@ describe('report-scheduler — claim atomico', () => {
 
   it('ogni template è reclamato separatamente: uno skip non blocca l\'altro', async () => {
     db({
-      templates: [template({ id: 'tpl-a' }), template({ id: 'tpl-b', tenant_id: 't2' })],
+      templates: [template({ id: 'tpl-a' }), template({ id: 'tpl-b' })],
       claim: (p) => (p?.['id'] === 'tpl-b' ? [{ id: 'tpl-b' }] : []),
     })
     await tick()
     expect(loadTemplateSections).toHaveBeenCalledTimes(1)
-    expect(loadTemplateSections).toHaveBeenCalledWith(expect.anything(), 'tpl-b', 't2')
-    expect(sendToTenant).toHaveBeenCalledWith('t2', expect.anything())
+    expect(loadTemplateSections).toHaveBeenCalledWith(expect.anything(), 'tpl-b', 't1')
+    expect(sendToTenant).toHaveBeenCalledWith('t1', expect.anything())
+  })
+})
+
+describe('report-scheduler — il giro è del tenant della coda', () => {
+  it('il tick legge solo i template del SUO tenant: la query è scopata e riceve il tenant del job', async () => {
+    db({ templates: [], claim: () => [] })
+    await tick('t2')
+    const load = loadQuery()!
+    expect(load.q).toContain('MATCH (r:ReportTemplate {tenant_id: $tenantId})')
+    expect(load.p).toEqual({ tenantId: 't2' })
   })
 })
 
@@ -328,7 +341,10 @@ describe('report-scheduler — consegna Slack', () => {
 })
 
 describe('startReportScheduler', () => {
-  it('registra il check ogni 60s con jobId fisso', () => {
-    expect(repeatRegistration).toEqual(['report-scheduler-check', { every: 60_000 }, { name: 'check', data: {}, opts: { removeOnComplete: true } }])
+  it('ogni tenant riceve il suo check ogni 60s, con un id fisso e il tenant nei dati', async () => {
+    expect(poolOptions.get(REPORT_SCHEDULER_QUEUE)?.schedule).toBe(scheduleReportCheck)
+    const upsertJobScheduler = vi.fn().mockResolvedValue(undefined)
+    await scheduleReportCheck({ upsertJobScheduler } as never, 't1')
+    expect(upsertJobScheduler).toHaveBeenCalledWith('report-scheduler-check', { every: 60_000 }, { name: 'check', data: { tenantId: 't1' }, opts: { removeOnComplete: true } })
   })
 })

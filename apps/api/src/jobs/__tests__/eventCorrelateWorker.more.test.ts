@@ -13,16 +13,16 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-type OnFailed = (job: unknown, err: Error) => void
+type OnFailed = (job: unknown, err: Error, tenantId?: string) => void
 const workerOpts = new Map<string, { onFailed: OnFailed }>()
 const logError = vi.fn()
 
 vi.mock('../../lib/bullmq.js', () => ({
-  createWorker: vi.fn((name: string, _processor: unknown, opts: { onFailed: OnFailed }) => {
+  createTenantWorkers: vi.fn((name: string, _processor: unknown, opts: { onFailed: OnFailed }) => {
     workerOpts.set(name, opts)
     return { name }
   }),
-  getQueue: vi.fn(() => ({ add: vi.fn(), upsertJobScheduler: vi.fn(), removeJobScheduler: vi.fn(async () => false), getJob: vi.fn() })),
+  getTenantQueue: vi.fn(() => ({ add: vi.fn(), upsertJobScheduler: vi.fn(), getJob: vi.fn() })),
 }))
 vi.mock('../../lib/logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: (...a: unknown[]) => logError(...a), debug: vi.fn() }
@@ -74,8 +74,8 @@ describe('events-maintenance onFailed', () => {
   it('logs the job and the reason; a missing job does not crash', async () => {
     await startEventMaintenanceWorker()
     const { onFailed } = workerOpts.get(EVENT_MAINTENANCE_QUEUE)!
-    onFailed({ id: 'm1', name: 'events-maintenance', attemptsMade: 1 }, new Error('pending: db down'))
-    expect(logError).toHaveBeenCalledWith({ jobId: 'm1', jobName: 'events-maintenance', attemptsMade: 1, err: 'pending: db down' }, 'Event maintenance job failed')
+    onFailed({ id: 'm1', name: 'events-maintenance', attemptsMade: 1 }, new Error('pending: db down'), 't1')
+    expect(logError).toHaveBeenCalledWith({ jobId: 'm1', jobName: 'events-maintenance', tenantId: 't1', attemptsMade: 1, err: 'pending: db down' }, 'Event maintenance job failed')
     expect(() => onFailed(undefined, new Error('stalled'))).not.toThrow()
   })
 })
@@ -83,6 +83,6 @@ describe('events-maintenance onFailed', () => {
 describe('runPeriodicPasses with a non-Error rejection', () => {
   it('uses the string form of whatever was thrown as the reason', async () => {
     vi.mocked(reevaluatePendingEvents).mockRejectedValueOnce('lock timeout')
-    await expect(runPeriodicPasses('2026-09-09T10:00:00.000Z')).rejects.toThrow('[events-maintenance] events-maintenance: pending: lock timeout')
+    await expect(runPeriodicPasses('t1', '2026-09-09T10:00:00.000Z')).rejects.toThrow('[events-maintenance] events-maintenance: pending: lock timeout')
   })
 })

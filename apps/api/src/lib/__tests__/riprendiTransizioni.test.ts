@@ -35,14 +35,13 @@ vi.mock('@opengraphity/workflow', () => ({
 }))
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: () => ({ close: async () => { sessioniChiuse.n += 1 } }),
-  runQuery: async () => [{ tenantId: 't1' }, { tenantId: 't2' }],
 }))
 vi.mock('../logger.js', () => {
   const finto = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => finto }
   return { logger: finto }
 })
 
-const { riprendiTransizioniDi, riprendiTransizioni, ATTORE, MAX_PER_GIRO } =
+const { riprendiTransizioniDi, ATTORE, MAX_PER_GIRO } =
   await import('../riprendiTransizioni.js')
 
 const ok = { success: true, instance: {}, execution: {}, actionsRun: [] }
@@ -109,14 +108,5 @@ describe('riprendiTransizioniDi', () => {
     transition.mockRejectedValue(new Error('boom'))
     await riprendiTransizioniDi('t1')
     expect(sessioniChiuse.n).toBe(1)
-  })
-})
-
-describe('riprendiTransizioni (tutti i clienti)', () => {
-  it('somma quello che ha fatto su ogni tenant', async () => {
-    candidate = [cambio('CHG1')]
-    const esito = await riprendiTransizioni()
-    // due tenant dalla query, una change mossa per ciascuno
-    expect(esito).toEqual({ mosse: 2, candidate: 2, rifiutateDalVarco: 0 })
   })
 })

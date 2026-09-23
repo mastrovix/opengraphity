@@ -24,7 +24,7 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.f
 const counts = { waiting: 0, active: 0, completed: 0, failed: 1, delayed: 0 }
 const QUEUES = [
   { name: 'workflow-jobs', group: 'itsm', retryable: true, paused: false, counts },
-  { name: 'notification-service', group: 'platform', retryable: false, paused: false, counts },
+  { name: 'notification-service', group: 'itsm', retryable: false, paused: false, counts },
 ]
 
 const FAILED_JOB = {

@@ -163,14 +163,14 @@ const Q = {
   linked:      /count\(DISTINCT other\) AS stillFiring/,
   defTr:       /HAS_STEP\]->\(from:WorkflowStep\)\s+MATCH \(from\)-\[tr:TRANSITIONS_TO\]->\(to:WorkflowStep\)/,
   byChange:    /status: 'suppressed', suppressed_by_change_id: \$changeId/,
-  allSupp:     /MATCH \(e:Event \{status: 'suppressed'\}\)/,
+  allSupp:     /MATCH \(e:Event \{tenant_id: \$tenantId, status: 'suppressed'\}\)/,
   // ondata 4
   flap:        /SET e\.status = 'flapping', e\.flapping_since = \$now/,
   linkedOpen:  /NOT wi\.current_step IN \$terminalSteps\s+RETURN i\.id AS incidentId, i\.created_at AS createdAt/,
-  allFlap:     /MATCH \(e:Event \{status: 'flapping'\}\)/,
+  allFlap:     /MATCH \(e:Event \{tenant_id: \$tenantId, status: 'flapping'\}\)/,
   stabilize:   /SET e\.status = \$status, e\.flapping_since = null, e\.correlation = \$correlation/,
   // revisione
-  allPending:  /MATCH \(e:Event \{status: 'firing'\}\)\s+WHERE e\.id > \$cursor AND \(/,
+  allPending:  /MATCH \(e:Event \{tenant_id: \$tenantId, status: 'firing'\}\)\s+WHERE e\.id > \$cursor AND \(/,
   incStep:     /MATCH \(i:Incident \{id: \$incidentId, tenant_id: \$tenantId\}\)-\[:HAS_WORKFLOW\]->\(wi:WorkflowInstance \{tenant_id: \$tenantId\}\)\s+RETURN i\.id AS incidentId, wi\.id AS instanceId, wi\.current_step AS step/,
   // revisione 1.16: incident chiuso a cui l'allarme era correlato (dopo l'apertura di uno nuovo)
   closedPrev:  /WHERE wi\.current_step IN \$terminalSteps AND wi\.current_step <> \$resolvedStep AND i\.id <> \$openedId/,
@@ -1194,7 +1194,7 @@ describe('sfarfallio', () => {
         ? { props: props({ status: 'flapping', flapping_since: minutesAgo(30), correlation: 'flapping', transitions: [minutesAgo(40), minutesAgo(16)], last_payload_status: 'firing' }), ciId: 'ci-1' }
         : { props: props({ status: 'firing', transitions: [minutesAgo(40), minutesAgo(16)] }), ciId: 'ci-1' })],
     ])
-    await expect(reevaluateFlappingEvents(NOW)).resolves.toEqual({ evaluated: 1, stabilized: 1, failed: 0, truncated: false })
+    await expect(reevaluateFlappingEvents('t1', NOW)).resolves.toEqual({ evaluated: 1, stabilized: 1, failed: 0, truncated: false })
     const st = callMatching(Q.stabilize)!
     expect(st.cypher).toContain('MATCH (e:Event {id: $eventId, tenant_id: $tenantId})')
     // torna firing come `pending` con scadenza = ora: se la correlazione che segue fallisce, la passata periodica lo riprende
@@ -1218,7 +1218,7 @@ describe('sfarfallio', () => {
         ? { props: props({ status: 'flapping', flapping_since: minutesAgo(30), correlation: 'flapping', transitions: [minutesAgo(16)], last_payload_status: 'resolved', resolved_at: minutesAgo(16) }), ciId: 'ci-1' }
         : { props: props({ status: 'resolved', transitions: [minutesAgo(16)], last_payload_status: 'resolved', resolved_at: minutesAgo(16) }), ciId: 'ci-1' })],
     ])
-    await expect(reevaluateFlappingEvents(NOW)).resolves.toEqual({ evaluated: 1, stabilized: 1, failed: 0, truncated: false })
+    await expect(reevaluateFlappingEvents('t1', NOW)).resolves.toEqual({ evaluated: 1, stabilized: 1, failed: 0, truncated: false })
     expect(callMatching(Q.stabilize)!.params).toMatchObject({ status: 'resolved', correlation: 'none', dueAt: null })
     expect(callMatching(Q.linked)).toBeDefined()
     expect(incidentService.createIncident).not.toHaveBeenCalled()
@@ -1230,7 +1230,7 @@ describe('sfarfallio', () => {
       [Q.allFlap, [{ tenantId: 't1', id: 'ev-1' }]],
       [Q.load, { props: props({ status: 'flapping', transitions: [minutesAgo(30), minutesAgo(10)], last_payload_status: 'firing' }), ciId: 'ci-1' }],
     ])
-    await expect(reevaluateFlappingEvents(NOW)).resolves.toEqual({ evaluated: 1, stabilized: 0, failed: 0, truncated: false })
+    await expect(reevaluateFlappingEvents('t1', NOW)).resolves.toEqual({ evaluated: 1, stabilized: 0, failed: 0, truncated: false })
     expect(callMatching(Q.stabilize)).toBeUndefined()
     expect(publishEvent).not.toHaveBeenCalled()
 
@@ -1238,11 +1238,11 @@ describe('sfarfallio', () => {
       [Q.allFlap, [{ tenantId: 't1', id: 'ev-1' }, { tenantId: 't1', id: 'ev-2' }]],
       [Q.load, { props: props({ status: 'flapping', transitions: [minutesAgo(30)], last_payload_status: undefined }), ciId: 'ci-1' }],
     ])
-    await expect(reevaluateFlappingEvents(NOW)).rejects.toThrow(/2\/2 flapping events failed stabilisation/)
+    await expect(reevaluateFlappingEvents('t1', NOW)).rejects.toThrow(/2\/2 flapping events failed stabilisation/)
     expect(callMatching(Q.stabilize)).toBeUndefined()
 
     onCypher([[Q.allFlap, []]])
-    await expect(reevaluateFlappingEvents(NOW)).resolves.toEqual({ evaluated: 0, stabilized: 0, failed: 0, truncated: false })
+    await expect(reevaluateFlappingEvents('t1', NOW)).resolves.toEqual({ evaluated: 0, stabilized: 0, failed: 0, truncated: false })
   })
 })
 
@@ -1379,14 +1379,14 @@ describe('fine finestra', () => {
     await expect(reevaluateSuppressedEvents('t1', 'chg-1')).resolves.toBe(0)
   })
 
-  it('reevaluateClosedWindows (job periodico): rivaluta ogni evento soppresso di ogni tenant; un errore non ferma gli altri ma fa fallire il job', async () => {
+  it('reevaluateClosedWindows (job periodico del tenant): rivaluta ogni evento soppresso del tenant; un errore non ferma gli altri ma fa fallire il job', async () => {
     let loads = 0
     onCypher([
       [Q.allSupp, [{ tenantId: 't1', id: 'ev-1' }, { tenantId: 't2', id: 'ev-2' }]],
       [Q.load, () => (loads++ === 0 ? { props: props({ status: 'suppressed', suppressed_by_change_id: 'chg-1' }), ciId: 'ci-1' } : null)],
       ...baseRules().slice(1),
     ])
-    await expect(reevaluateClosedWindows()).rejects.toThrow(/1\/2 suppressed events failed re-evaluation/)
+    await expect(reevaluateClosedWindows('t1')).rejects.toThrow(/1\/2 suppressed events failed re-evaluation/)
     // t2 fallisce al caricamento dell'evento: la policy viene letta solo per t1
     expect(vi.mocked(getEventPolicy).mock.calls.every((c) => c[0] === 't1')).toBe(true)
     expect(vi.mocked(getEventPolicy).mock.calls.length).toBeGreaterThan(0)
@@ -1394,7 +1394,7 @@ describe('fine finestra', () => {
 
     vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
     onCypher([[Q.allSupp, []]])
-    await expect(reevaluateClosedWindows()).resolves.toEqual({ evaluated: 0, failed: 0, truncated: false })
+    await expect(reevaluateClosedWindows('t1')).resolves.toEqual({ evaluated: 0, failed: 0, truncated: false })
   })
 })
 
@@ -1640,17 +1640,17 @@ describe('stati ritentabili (pending)', () => {
 
   it('reevaluatePendingEvents (passata periodica): riprende i firing con correlation pending/none e scadenza passata, pipeline in reevaluate → correlati; la pagina è filtrata per stato con LIMIT', async () => {
     onCypher([...baseRules({ correlation: 'pending', correlation_due_at: minutesAgo(3) }), [Q.allPending, [{ tenantId: 't1', id: 'ev-1' }]]])
-    await expect(reevaluatePendingEvents(NOW)).resolves.toEqual({ evaluated: 1, failed: 0, truncated: false })
+    await expect(reevaluatePendingEvents('t1', NOW)).resolves.toEqual({ evaluated: 1, failed: 0, truncated: false })
     const q = callMatching(Q.allPending)!
     expect(q.cypher).toContain('WHERE e.id > $cursor AND (')
     expect(q.cypher).toContain('ORDER BY e.id LIMIT toInteger($limit)')
-    expect(q.params).toEqual({ correlations: ['pending', 'none'], now: NOW, uncorrelatedCutoff: minutesAgo(UNCORRELATED_AFTER_MINUTES), delayedCutoff: minutesAgo(OVERDUE_DELAYED_GRACE_MINUTES), cursor: '', limit: PAGE_SIZE })
+    expect(q.params).toEqual({ tenantId: 't1', correlations: ['pending', 'none'], now: NOW, uncorrelatedCutoff: minutesAgo(UNCORRELATED_AFTER_MINUTES), delayedCutoff: minutesAgo(OVERDUE_DELAYED_GRACE_MINUTES), cursor: '', limit: PAGE_SIZE })
     expect(incidentService.createIncident).toHaveBeenCalledTimes(1)
     expect(callMatching(Q.setCorr)!.params).toMatchObject({ correlation: 'opened', dueAt: null })
     expect(enqueueCorrelation).not.toHaveBeenCalled()
 
     onCypher([...baseRules(), [Q.allPending, [{ tenantId: 't1', id: 'ev-1' }]], [Q.load, null]])
-    await expect(reevaluatePendingEvents(NOW)).rejects.toThrow(/reevaluatePendingEvents: 1\/1 pending events failed/)
+    await expect(reevaluatePendingEvents('t1', NOW)).rejects.toThrow(/reevaluatePendingEvents: 1\/1 pending events failed/)
   })
 
   // Revisione 2 · B2-01/B2-02: il predicato è quello del gauge, non solo la scadenza.
@@ -1677,7 +1677,7 @@ describe('stati ritentabili (pending)', () => {
 
   it('reevaluatePendingEvents: un firing/none SENZA scadenza e più vecchio della grazia rientra in pipeline e viene correlato, con una riga di log per evento (B2-01)', async () => {
     onCypher([...baseRules({ correlation: 'none', correlation_at: null, correlation_due_at: null, first_seen_at: minutesAgo(20) }), [Q.allPending, [{ tenantId: 't1', id: 'ev-1' }]]])
-    await expect(reevaluatePendingEvents(NOW)).resolves.toEqual({ evaluated: 1, failed: 0, truncated: false })
+    await expect(reevaluatePendingEvents('t1', NOW)).resolves.toEqual({ evaluated: 1, failed: 0, truncated: false })
     expect(incidentService.createIncident).toHaveBeenCalledTimes(1)
     expect(callMatching(Q.setCorr)!.params).toMatchObject({ correlation: 'opened' })
     const { logger } = await import('../../lib/logger.js')
@@ -1699,7 +1699,7 @@ describe('passate paginate', () => {
 
   it('reevaluateClosedWindows: 3 pagine (200 + 200 + 50) lette con cursore sull\'id, ogni evento rivalutato', async () => {
     onCypher([...baseRules({ status: 'suppressed', suppressed_by_change_id: 'chg-1', correlation: 'suppressed' }), [Q.allSupp, pages(450)]])
-    await expect(reevaluateClosedWindows(NOW)).resolves.toEqual({ evaluated: 450, failed: 0, truncated: false })
+    await expect(reevaluateClosedWindows('t1', NOW)).resolves.toEqual({ evaluated: 450, failed: 0, truncated: false })
     const pageCalls = calls().filter((c) => Q.allSupp.test(c.cypher))
     expect(pageCalls.map((c) => c.params['cursor'])).toEqual(['', 'ev-0199', 'ev-0399'])
     expect(pageCalls.every((c) => c.params['limit'] === PAGE_SIZE)).toBe(true)
@@ -1709,7 +1709,7 @@ describe('passate paginate', () => {
 
   it('oltre MAX_PAGES pagine piene la passata si ferma (truncated) e il resto va al giro successivo', async () => {
     onCypher([...baseRules({ status: 'flapping', transitions: [minutesAgo(40)], last_payload_status: 'firing' }), [Q.allFlap, pages(PAGE_SIZE * MAX_PAGES + 1)]])
-    const out = await reevaluateFlappingEvents(NOW)
+    const out = await reevaluateFlappingEvents('t1', NOW)
     expect(out).toMatchObject({ evaluated: PAGE_SIZE * MAX_PAGES, truncated: true, failed: 0 })
     expect(MAX_PAGES).toBe(20)
   })
@@ -1882,7 +1882,7 @@ describe('cronologia dell\'allarme', () => {
         ? { props: props({ status: 'flapping', flapping_since: minutesAgo(30), correlation: 'flapping', transitions: [minutesAgo(40), minutesAgo(16)], last_payload_status: 'firing' }), ciId: 'ci-1' }
         : { props: props({ status: 'firing', transitions: [minutesAgo(40), minutesAgo(16)] }), ciId: 'ci-1' })],
     ])
-    await reevaluateFlappingEvents(NOW)
+    await reevaluateFlappingEvents('t1', NOW)
     expect(callMatching(Q.stabilize)!.cypher).toMatch(/e\.updated_at = \$now\s+FOREACH \(_ IN CASE WHEN true THEN \[1\] ELSE \[\] END \|\s+CREATE \(e\)-\[:HAS_HISTORY\]/)
     expect(historyWrites().map((h) => [h.kind, h.note, h.outcome])).toEqual([['stable', 'nessun passaggio in 15 min', null], ['correlated', null, 'opened']])
   })

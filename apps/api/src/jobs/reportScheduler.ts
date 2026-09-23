@@ -14,7 +14,8 @@
  * promessa che l'interfaccia faceva e questo job non manteneva.
  */
 import { randomUUID } from 'crypto'
-import type { Worker, Job } from 'bullmq'
+import type { Job, Queue } from 'bullmq'
+import type { TenantWorkerPool } from '@opengraphity/events'
 import { CronExpressionParser } from 'cron-parser'
 import { getSession } from '@opengraphity/neo4j'
 import fs from 'node:fs/promises'
@@ -23,7 +24,7 @@ import { executeReportSection } from '../lib/reportExecutor.js'
 import { isLingua } from '../lib/tenantLanguage.js'
 import { loadTemplateSections } from '../lib/reportTemplates.js'
 import { logger } from '../lib/logger.js'
-import { createWorker, getQueue } from '../lib/bullmq.js'
+import { createTenantWorkers } from '../lib/bullmq.js'
 
 export const REPORT_SCHEDULER_QUEUE = 'report-scheduler'
 
@@ -82,15 +83,13 @@ function nomeDiFile(nome: string): string {
   return pulito === '' ? 'report' : pulito.slice(0, 60)
 }
 
-async function loadDueTemplates(now: Date): Promise<TemplateRow[]> {
+async function loadDueTemplates(tenantId: string, now: Date): Promise<TemplateRow[]> {
   const session = getSession(undefined, 'READ')
   try {
     const result = await session.executeRead(tx =>
       tx.run(`
-        // Job di pianificazione: legge i template di TUTTI i tenant, e ognuno viene
-        // poi eseguito nel proprio (loadTemplate scopa per tenant_id).
-        // tenant-ok(piattaforma): passata di manutenzione cross-tenant, sola lettura.
-        MATCH (r:ReportTemplate)
+        // Il giro è del tenant, nella sua coda report-scheduler@<tenant> (23 set 2026).
+        MATCH (r:ReportTemplate {tenant_id: $tenantId})
         WHERE r.schedule_enabled = true AND r.schedule_cron IS NOT NULL
         // Il fuso del cliente viaggia con il template: il cron è orario di
         // parete del cliente (revisione totale · C-6 — senza il fuso veniva
@@ -98,7 +97,7 @@ async function loadDueTemplates(now: Date): Promise<TemplateRow[]> {
         // 8 partiva alle 10:00 italiane, 11:00 con l'ora legale).
         OPTIONAL MATCH (t:Tenant {id: r.tenant_id})
         RETURN properties(r) AS props, t.timezone AS timezone
-      `),
+      `, { tenantId }),
     )
     const due: TemplateRow[] = []
     for (const rec of result.records) {
@@ -218,10 +217,10 @@ export function buildSlackSummary(templateName: string, templateId: string, resu
 
 // ── Job processor ──────────────────────────────────────────────────────────────
 
-async function reportSchedulerProcessor(_job: Job) {
+async function reportSchedulerProcessor(job: Job<{ tenantId: string }>) {
   const now = new Date()
-  const templates = await loadDueTemplates(now)
-  logger.info({ count: templates.length }, 'report-scheduler: templates due')
+  const templates = await loadDueTemplates(job.data.tenantId, now)
+  if (templates.length > 0) logger.info({ tenantId: job.data.tenantId, count: templates.length }, 'report-scheduler: templates due')
 
   let failures = 0
   for (const tpl of templates) {
@@ -336,33 +335,20 @@ async function reportSchedulerProcessor(_job: Job) {
 
 // ── Queue & Worker ──────────────────────────────────────────────────────────────
 
-export function getReportSchedulerQueue() {
-  return getQueue(REPORT_SCHEDULER_QUEUE)
-}
-
-/** Async: the repeatable job registration is awaited (startup error, not a swallowed rejection). */
-export async function startReportScheduler(): Promise<Worker> {
-  const worker = createWorker(REPORT_SCHEDULER_QUEUE, reportSchedulerProcessor)
-
-  // Repeating job: every 60 seconds
-  /*
-   * JOB SCHEDULER, non piu' «repeat» (21 set 2026, BullMQ 6).
-   *
-   * BullMQ 6 ha RIMOSSO i job ripetibili: `repeat` su `add()`, la classe
-   * `Repeat`, `getRepeatableJobs()` e `removeRepeatable*()` non esistono piu'.
-   * Al loro posto i Job Scheduler, che hanno un'identita' esplicita — il primo
-   * argomento — invece di essere dedotta da (nome, opzioni di ripetizione).
-   *
-   * La ricorrenza si registra a ogni avvio del worker, come prima: non c'e'
-   * stato da migrare, e `upsert` significa che riavviare non ne crea una
-   * seconda.
-   */
-  await getReportSchedulerQueue().upsertJobScheduler(
+/**
+ * The check of a tenant, every minute in its queue: a Job Scheduler (BullMQ 6)
+ * with an explicit identity, so upserting it from every process and at every
+ * boot never makes a second one.
+ */
+export async function scheduleReportCheck(queue: Queue, tenantId: string): Promise<void> {
+  await queue.upsertJobScheduler(
     'report-scheduler-check',
     { every: 60_000 },
-    { name: 'check', data: {}, opts: { removeOnComplete: true } },
+    { name: 'check', data: { tenantId }, opts: { removeOnComplete: true } },
   )
+}
 
-  logger.info('report-scheduler started')
-  return worker
+/** One worker per tenant on `report-scheduler@<tenant>`, each with its tenant's check every minute. */
+export function startReportScheduler(): TenantWorkerPool<{ tenantId: string }> {
+  return createTenantWorkers<{ tenantId: string }>(REPORT_SCHEDULER_QUEUE, reportSchedulerProcessor, { schedule: scheduleReportCheck })
 }

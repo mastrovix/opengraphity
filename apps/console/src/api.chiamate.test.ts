@@ -140,6 +140,18 @@ describe('the routes', () => {
     fetchMock.mockResolvedValueOnce(ok({ tenants: [{ slug: 'acme', stato: 'active' }] }))
     expect(await api.tenants()).toEqual({ tenants: [{ slug: 'acme', stato: 'active' }] })
   })
+
+  // The queues (23 Sep 2026): the platform's are retried here, a tenant's only in its own console.
+  it('the queues are a GET; the failed jobs are read per queue; a retry is a POST on the job, names encoded', async () => {
+    await api.queues()
+    expect(lastCall()[0]).toBe('/platform/queues')
+    expect(lastCall()[1]!.method).toBeUndefined()
+    await api.failedJobs('maintenance')
+    expect(lastCall()[0]).toBe('/platform/queues/maintenance/jobs')
+    await api.retryJob('maintenance', 'repeat:a/b')
+    expect(lastCall()[0]).toBe('/platform/queues/maintenance/jobs/repeat%3Aa%2Fb/retry')
+    expect(lastCall()[1]!.method).toBe('POST')
+  })
 })
 
 describe('the two shapes of an error body', () => {

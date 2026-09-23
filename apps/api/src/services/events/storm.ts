@@ -541,25 +541,26 @@ export async function trackSourceStorm(input: TrackStormInput): Promise<StormSta
 // ── Job periodico ────────────────────────────────────────────────────────────
 
 /**
- * Chiude le tempeste raffreddate delle sorgenti che non ricevono più nulla
- * (l'ingest non passa, quindi nessuno le rivaluta). Paginata per id della
- * sorgente (lib/pagedPass.ts); un errore su una sorgente non ferma le altre
- * ma fa fallire il job. Riallinea il gauge.
+ * Chiude le tempeste raffreddate delle sorgenti del tenant che non ricevono
+ * più nulla (l'ingest non passa, quindi nessuno le rivaluta). Paginata per id
+ * della sorgente (lib/pagedPass.ts); un errore su una sorgente non ferma le
+ * altre ma fa fallire il job. Riallinea il gauge, che resta della piattaforma
+ * (un conteggio, nessun dato del tenant).
  */
-export async function endCooledStorms(now: string = new Date().toISOString()): Promise<PagedPassResult & { active: number; ended: number }> {
+export async function endCooledStorms(tenantId: string, now: string = new Date().toISOString()): Promise<PagedPassResult & { active: number; ended: number }> {
   let ended = 0
   const policies = new Map<string, EventPolicy>()
   const result = await runPagedPass<Props>({
     fetchPage: async (cursor, limit) => {
       const session = getSession()
       try {
+        // The tenant's sources only: the pass runs in the tenant's own queue (23 Sep 2026).
         const rows = await runQuery<{ props: Props }>(session, `
-          // tenant-ok(piattaforma): job di manutenzione su tutti i tenant; ogni sorgente è poi trattata nel suo tenant
-          MATCH (w:InboundWebhook)
+          MATCH (w:InboundWebhook {tenant_id: $tenantId})
           WHERE w.storm_since IS NOT NULL AND w.id > $cursor
           RETURN properties(w) AS props
           ORDER BY w.id LIMIT toInteger($limit)
-        `, { cursor, limit })
+        `, { tenantId, cursor, limit })
         return rows.map((r) => r.props)
       } finally { await session.close() }
     },

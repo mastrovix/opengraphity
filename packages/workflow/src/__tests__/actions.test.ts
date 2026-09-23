@@ -22,7 +22,8 @@ vi.mock('@opengraphity/events', async (importOriginal) => {
   return {
     ...orig,
     publish: vi.fn(async () => {}),
-    getRedisConnection: () => ({ host: 'redis.test', port: 6379 }),
+    // The tenant's queue, `<base>@<tenant>`: a fresh fake per call, so each test sees only its own.
+    tenantQueue: (base: string, tenantId: string) => new fake.Queue(`${base}@${tenantId}`, {}),
   }
 })
 
@@ -58,7 +59,7 @@ const RESOLVED = 'id=inc-1;title=DB down'
 const webhook = (over: Record<string, unknown> = {}) => action('call_webhook', {
   url: PUBLIC_URL, method: 'POST', headers: { 'X-Token': 'abc' }, payload_template: TEMPLATE, ...over,
 })
-const retryQueues = () => fake.queues.filter(q => q.name === 'workflow-jobs')
+const retryQueues = () => fake.queues.filter(q => q.name === 'workflow-jobs@t1')
 
 beforeEach(() => {
   fake.queues.length = 0
@@ -156,7 +157,7 @@ describe('call_webhook — public URL', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('non-2xx response → error naming the status, a webhook_retry job is queued (attempt 1, exponential 30s ×3) and the queue closed', async () => {
+  it('non-2xx response → error naming the status, a webhook_retry job is queued in the tenant\'s queue (attempt 1, exponential 30s ×3)', async () => {
     fetchMock.mockResolvedValueOnce({ ok: false, status: 503 })
     await expect(runAction(webhook(), instance, ctx())).rejects.toThrow('call_webhook failed (HTTP 503) — retry scheduled')
 
@@ -174,7 +175,8 @@ describe('call_webhook — public URL', () => {
     })
     expect(JSON.stringify(data)).not.toContain('X-Token')
     expect(opts).toEqual({ attempts: 3, backoff: { type: 'exponential', delay: 30_000 }, removeOnComplete: true, removeOnFail: { age: 7 * 24 * 3600 } })
-    expect(q.close).toHaveBeenCalledTimes(1)
+    // The producer singleton of the tenant: never closed after one use.
+    expect(q.close).not.toHaveBeenCalled()
   })
 
   it('network failure (fetch rejects) → same retry path with the error message', async () => {
@@ -189,12 +191,11 @@ describe('call_webhook — public URL', () => {
     expect(retryQueues()).toHaveLength(0)
   })
 
-  it('if scheduling the retry fails, THAT error propagates (the payload would be lost forever) and the queue is still closed', async () => {
+  it('if scheduling the retry fails, THAT error propagates (the payload would be lost forever)', async () => {
     fetchMock.mockResolvedValueOnce({ ok: false, status: 500 })
     fake.state.addFails = true
     await expect(runAction(webhook(), instance, ctx())).rejects.toThrow('redis down')
     expect(retryQueues()).toHaveLength(1)
-    expect(retryQueues()[0]!.close).toHaveBeenCalledTimes(1)
   })
 })
 

@@ -57,8 +57,9 @@ describe('deleteProblem', () => {
 
   it('dopo il commit annulla i job di breach SLA e OLA, toglie i file e pubblica problem.deleted', async () => {
     await problemResolvers.Mutation.deleteProblem(undefined, { id: 'p1' }, admin)
-    expect(sla.cancelSLAJobs).toHaveBeenCalledWith('p1', 'both')
-    expect(sla.cancelOLABreaches).toHaveBeenCalledWith('p1', ['ola-1'])
+    // In the tenant's own queues (23 Sep 2026): the tenant comes first.
+    expect(sla.cancelSLAJobs).toHaveBeenCalledWith('tenant-1', 'p1', 'both')
+    expect(sla.cancelOLABreaches).toHaveBeenCalledWith('tenant-1', 'p1', ['ola-1'])
     expect(fs.rm).toHaveBeenCalledWith('/data/att/1.pdf', { force: true })
     expect(publishEvent).toHaveBeenCalledWith('problem.deleted', 'tenant-1', 'u1', { id: 'p1' }, expect.any(String))
   })

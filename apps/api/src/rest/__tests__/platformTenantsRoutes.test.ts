@@ -42,6 +42,14 @@ const lifecycle = {
   resetAdminPassword: vi.fn(async () => ({ email: 'admin@acme.io', temporaryPassword: 'Pw-1', tenantSospeso: false })),
 }
 vi.mock('../../lib/tenantLifecycle.js', () => lifecycle)
+// The queues follow the tenants (23 Sep 2026): the route announces every change
+// and removes a deleted tenant's queues.
+const queues = vi.hoisted(() => ({
+  announceTenantChange: vi.fn(async () => {}),
+  obliterateTenantQueues: vi.fn(async () => {}),
+}))
+vi.mock('../../lib/tenantQueueLifecycle.js', () => ({ announceTenantChange: queues.announceTenantChange }))
+vi.mock('@opengraphity/events', () => ({ obliterateTenantQueues: queues.obliterateTenantQueues }))
 vi.mock('../../scripts/lib/keycloakAdmin.js', () => ({
   createKeycloakAdmin: () => ({ getAdminToken: async () => 't', delete: async () => {}, setPassword: async () => {} }),
   keycloakConfigFromEnv: () => ({}),
@@ -86,24 +94,45 @@ describe('le rotte che SCRIVONO chiedono una sessione di scrittura', () => {
     expect(modi()[0]).toBe('WRITE')
   })
 
-  it('sospensione', async () => {
+  it('sospensione: e le code del tenant vanno in pausa, in ogni processo', async () => {
     const res = await patch('acme', { action: 'suspend' })
     expect(res.status).toBe(200)
     expect(modi()[0]).toBe('WRITE')
+    expect(queues.announceTenantChange).toHaveBeenCalledWith('acme', 'suspended')
   })
 
-  it('riattivazione', async () => {
+  it('riattivazione: e le code ripartono', async () => {
     const res = await patch('acme', { action: 'resume' })
     expect(res.status).toBe(200)
     expect(modi()[0]).toBe('WRITE')
+    expect(queues.announceTenantChange).toHaveBeenCalledWith('acme', 'resumed')
   })
 
-  it('cancellazione definitiva', async () => {
+  it('cancellazione definitiva: i worker del tenant si chiudono, poi le sue code lasciano Redis', async () => {
     const res = await fetch(`${base}/acme`, {
       method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm: 'acme' }),
     })
     expect(res.status).toBe(200)
     expect(modi()).toEqual(['WRITE'])
+    expect(queues.announceTenantChange).toHaveBeenCalledWith('acme', 'deleted')
+    expect(queues.obliterateTenantQueues).toHaveBeenCalledWith('acme', expect.arrayContaining(['sla-jobs', 'workflow-jobs', 'notification-service']))
+    expect(queues.announceTenantChange.mock.invocationCallOrder[0]!).toBeLessThan(queues.obliterateTenantQueues.mock.invocationCallOrder[0]!)
+    expect(await res.json()).toMatchObject({ slug: 'acme', queuesRemoved: true })
+  })
+
+  it('una coda che non si toglie è detta nella risposta, e il tenant resta cancellato', async () => {
+    queues.obliterateTenantQueues.mockRejectedValueOnce(new Error('redis down'))
+    const res = await fetch(`${base}/acme`, {
+      method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm: 'acme' }),
+    })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ slug: 'acme', queuesRemoved: false })
+  })
+
+  it('un annuncio che fallisce non fa fallire la richiesta: il cambio è già scritto, e ogni processo riconcilia entro un minuto', async () => {
+    queues.announceTenantChange.mockRejectedValueOnce(new Error('neo4j blip'))
+    const res = await patch('acme', { action: 'suspend' })
+    expect(res.status).toBe(200)
   })
 })
 

@@ -161,7 +161,7 @@ describe('syncServiceMap — applying changes', () => {
 
 describe('syncStaleOrOldMaps', () => {
   it('rejects a clock value that is not an ISO date before touching the graph', async () => {
-    await expect(syncStaleOrOldMaps('yesterday')).rejects.toThrow('syncStaleOrOldMaps: "yesterday" is not an ISO date')
+    await expect(syncStaleOrOldMaps('t1', 'yesterday')).rejects.toThrow('syncStaleOrOldMaps: "yesterday" is not an ISO date')
     expect(getSession).not.toHaveBeenCalled()
   })
 
@@ -169,7 +169,7 @@ describe('syncStaleOrOldMaps', () => {
     // A full page (pageSize 2, one page max) means there may be more.
     vi.mocked(runQuery).mockResolvedValue([{ tenantId: 't1', id: 'map-a' }, { tenantId: 't2', id: 'map-b' }] as never)
     rows({ touch: { version: 1, status: 'active' } })
-    const r = await syncStaleOrOldMaps(NOW)
+    const r = await syncStaleOrOldMaps('t1', NOW)
     expect(r).toMatchObject({ evaluated: 2, failed: 0, truncated: true })
     expect(log.warn).toHaveBeenCalledWith({ evaluated: 2 }, expect.stringContaining('page cap reached'))
     // Each map is synchronized inside its own tenant.

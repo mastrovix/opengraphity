@@ -9,7 +9,9 @@
  *    slot forever: past the run timeout the run fails with a readable reason;
  *  - disabling a source or clearing its cron must remove its scheduler, or a
  *    deleted cron keeps firing forever from Redis;
- *  - one corrupt cron must not stop the API from starting the others.
+ *  - one corrupt cron must not keep the tenant's other sources from being
+ *    scheduled (since 23 Sep 2026 they are registered per tenant, in the
+ *    tenant's own queue `discovery-sync@<tenant>`).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { Job } from 'bullmq'
@@ -18,15 +20,15 @@ import { resetConfigCache } from '../../lib/config.js'
 
 type AnyProcessor = (job: Job) => Promise<unknown>
 const processors = new Map<string, AnyProcessor>()
-const workerListeners = new Map<string, (job: { id: string }) => void>()
 const upsertScheduler = vi.fn().mockResolvedValue(undefined)
 const removeScheduler = vi.fn().mockResolvedValue(true)
+const getTenantQueue = vi.fn((_base: string, _tenantId: string) => ({ upsertJobScheduler: upsertScheduler, removeJobScheduler: removeScheduler }))
 vi.mock('../../lib/bullmq.js', () => ({
-  createWorker: vi.fn((name: string, processor: AnyProcessor) => {
+  createTenantWorkers: vi.fn((name: string, processor: AnyProcessor) => {
     processors.set(name, processor)
-    return { name, on: (ev: string, fn: (job: { id: string }) => void) => { workerListeners.set(ev, fn) } }
+    return { name }
   }),
-  getQueue: vi.fn(() => ({ upsertJobScheduler: upsertScheduler, removeJobScheduler: removeScheduler })),
+  getTenantQueue: (base: string, tenantId: string) => getTenantQueue(base, tenantId),
 }))
 
 interface Rec { get(k: string): unknown }
@@ -62,14 +64,13 @@ vi.mock('../reconciliationEngine.js', () => ({
 vi.mock('@opengraphity/events', () => ({ publish: vi.fn().mockResolvedValue(undefined) }))
 
 const logError = vi.fn()
-const logDebug = vi.fn()
-vi.mock('../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: logError, debug: logDebug } }))
+vi.mock('../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: logError, debug: vi.fn() } }))
 
 vi.stubEnv('NODE_ENV', 'test')
 vi.stubEnv('DISCOVERY_ENCRYPTION_KEY', 'a'.repeat(64))
 resetConfigCache()
 
-const { startSyncWorker, loadScheduledSyncs, scheduleSourceSync, scheduledSyncJobId } = await import('../syncWorker.js')
+const { startSyncWorker, scheduleTenantSyncs, scheduleSourceSync, scheduledSyncJobId } = await import('../syncWorker.js')
 startSyncWorker()
 const processor = processors.get('discovery-sync')!
 
@@ -156,13 +157,6 @@ describe('processSyncJob — run timeout', () => {
   })
 })
 
-describe('worker events', () => {
-  it('logs completed jobs', () => {
-    workerListeners.get('completed')!({ id: 'j-9' })
-    expect(logDebug).toHaveBeenCalledWith({ jobId: 'j-9' }, expect.any(String))
-  })
-})
-
 describe('scheduleSourceSync', () => {
   it.each([
     [{ enabled: false, cron: '0 * * * *' }],
@@ -173,8 +167,9 @@ describe('scheduleSourceSync', () => {
     expect(upsertScheduler).not.toHaveBeenCalled()
   })
 
-  it('an enabled source with cron replaces its single scheduler, carrying its tenant', async () => {
+  it('an enabled source with cron replaces its single scheduler, carrying its tenant, in its tenant\'s queue', async () => {
     await scheduleSourceSync({ id: 'src-1', tenantId: 't1', cron: '0 3 * * *', enabled: true })
+    expect(getTenantQueue).toHaveBeenCalledWith('discovery-sync', 't1')
     expect(removeScheduler).toHaveBeenCalledWith('sync-scheduled-src-1')
     expect(upsertScheduler).toHaveBeenCalledWith('sync-scheduled-src-1', { pattern: '0 3 * * *' }, expect.objectContaining({
       data: { runId: 'scheduled-src-1', sourceId: 'src-1', tenantId: 't1', syncType: 'scheduled' },
@@ -182,15 +177,15 @@ describe('scheduleSourceSync', () => {
   })
 })
 
-describe('loadScheduledSyncs — one corrupt cron', () => {
-  it('is logged and the other sources are still registered', async () => {
+describe('scheduleTenantSyncs — one corrupt cron', () => {
+  it('is logged and the tenant\'s other sources are still registered', async () => {
     readRows = [
-      { id: 'bad', tenantId: 't1', cron: 'not a cron' },
-      { id: 'good', tenantId: 't2', cron: '0 3 * * *' },
+      { id: 'bad', cron: 'not a cron' },
+      { id: 'good', cron: '0 3 * * *' },
     ]
     upsertScheduler.mockImplementation(async (jobId: string) => { if (jobId === 'sync-scheduled-bad') throw new Error('Invalid cron') })
-    await expect(loadScheduledSyncs()).resolves.toBeUndefined()
-    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ sourceId: 'bad', cron: 'not a cron' }), expect.stringContaining('NOT registered'))
+    await expect(scheduleTenantSyncs(null, 't1')).resolves.toBeUndefined()
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't1', sourceId: 'bad', cron: 'not a cron' }), expect.stringContaining('NOT registered'))
     expect(upsertScheduler).toHaveBeenCalledWith('sync-scheduled-good', { pattern: '0 3 * * *' }, expect.anything())
   })
 })

@@ -632,7 +632,7 @@ interface MapRef { tenantId: string; id: string }
  * ognuna viene rivalutata con trigger `periodic`. Un errore su una mappa non
  * ferma le altre ma fa fallire il job alla fine.
  */
-export async function evaluateStaleOrOldMaps(now: string = new Date().toISOString()): Promise<PagedPassResult> {
+export async function evaluateStaleOrOldMaps(tenantId: string, now: string = new Date().toISOString()): Promise<PagedPassResult> {
   const nowMs = Date.parse(now)
   if (Number.isNaN(nowMs)) throw new Error(`evaluateStaleOrOldMaps: "${now}" is not an ISO date`)
   const cutoff = new Date(nowMs - SERVICE_STALE_EVALUATION_MINUTES * 60_000).toISOString()
@@ -640,13 +640,13 @@ export async function evaluateStaleOrOldMaps(now: string = new Date().toISOStrin
     fetchPage: async (cursor, limit) => {
       const session = getSession()
       try {
+        // The tenant's maps only: the pass runs in the tenant's own queue (23 Sep 2026).
         return await runQuery<MapRef>(session, `
-          // tenant-ok(piattaforma): passata di manutenzione su tutti i tenant; ogni mappa è poi valutata nel suo tenant.
-          MATCH (m:ServiceMap {status: 'active'})
+          MATCH (m:ServiceMap {tenant_id: $tenantId, status: 'active'})
           WHERE (m.evaluated_at IS NULL OR m.evaluated_at < $cutoff OR m.stale = true) AND m.id > $cursor
           RETURN m.tenant_id AS tenantId, m.id AS id
           ORDER BY m.id LIMIT toInteger($limit)
-        `, { cutoff, cursor, limit })
+        `, { tenantId, cutoff, cursor, limit })
       } finally { await session.close() }
     },
     keyOf:   (r) => r.id,

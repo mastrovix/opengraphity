@@ -536,7 +536,7 @@ interface MapRef { tenantId: string; id: string }
  * giù. Un errore su una mappa non ferma le altre ma fa fallire il job alla
  * fine, con tutti i motivi.
  */
-export async function syncStaleOrOldMaps(now: string = new Date().toISOString()): Promise<PagedPassResult> {
+export async function syncStaleOrOldMaps(tenantId: string, now: string = new Date().toISOString()): Promise<PagedPassResult> {
   const nowMs = Date.parse(now)
   if (Number.isNaN(nowMs)) throw new Error(`syncStaleOrOldMaps: "${now}" is not an ISO date`)
   const cutoff = new Date(nowMs - SERVICE_MAP_SYNC_EVERY_MS).toISOString()
@@ -544,14 +544,14 @@ export async function syncStaleOrOldMaps(now: string = new Date().toISOString())
     fetchPage: async (cursor, limit) => {
       const session = getSession()
       try {
+        // The tenant's maps only: the pass runs in the tenant's own queue (23 Sep 2026).
         return await runQuery<MapRef>(session, `
-          // tenant-ok(piattaforma): passata di manutenzione su tutti i tenant; ogni mappa è poi sincronizzata nel suo tenant.
-          MATCH (m:ServiceMap)
+          MATCH (m:ServiceMap {tenant_id: $tenantId})
           WHERE m.auto_sync = true AND m.status <> 'paused'
             AND (m.synced_at IS NULL OR m.synced_at < $cutoff) AND m.id > $cursor
           RETURN m.tenant_id AS tenantId, m.id AS id
           ORDER BY m.id LIMIT toInteger($limit)
-        `, { cutoff, cursor, limit })
+        `, { tenantId, cutoff, cursor, limit })
       } finally { await session.close() }
     },
     keyOf:   (r) => r.id,

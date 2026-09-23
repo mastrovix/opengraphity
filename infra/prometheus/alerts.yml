@@ -156,12 +156,12 @@ groups:
           runbook: "docs/OPERATIONS.md §7 «Procedure di ripristino → Job falliti»"
 
       - alert: BullMQFailedJobs
-        expr: max by (queue) (bullmq_queue_depth{status="failed"}) > 0
+        expr: max by (queue, tenant) (bullmq_queue_depth{status="failed"}) > 0
         for: 15m
         labels: { severity: warning, subsystem: platform }
         annotations:
-          summary: "Failed jobs in queue {{ $labels.queue }}"
-          description: "{{ $value }} job(s) in the failed set of `{{ $labels.queue }}` for more than 15 minutes: inspect and retry them from Amministrazione → Code (consumer queues are not retryable)."
+          summary: "Failed jobs in queue {{ $labels.queue }}{{ if $labels.tenant }} of tenant {{ $labels.tenant }}{{ end }}"
+          description: "{{ $value }} job(s) in the failed set of `{{ $labels.queue }}`{{ if $labels.tenant }} of tenant `{{ $labels.tenant }}`{{ end }} for more than 15 minutes: a tenant queue is inspected and retried from that tenant's Amministrazione → Code, a platform queue (no tenant) from the platform console (consumer queues are not retryable)."
           runbook: "docs/OPERATIONS.md §7 «Procedure di ripristino → Job falliti»"
 
       - alert: RedisLockTimeouts

@@ -26,7 +26,7 @@ describe('runOLASweep', () => {
         { id: 'inc-late', number: 'INC1', title: 'x', createdAt: '2026-09-15T00:00:00Z', concludedAt: null, currentTeamId: 'rete', segments: [seg('2026-09-15T08:00:00Z')] },
         { id: 'inc-ok', number: 'INC2', title: 'y', createdAt: '2026-09-15T00:00:00Z', concludedAt: null, currentTeamId: 'rete', segments: [seg('2026-09-15T11:00:00Z')] },
       ])
-    const summary = await runOLASweep(new Date('2026-09-15T12:30:00Z'))
+    const summary = await runOLASweep('t1', new Date('2026-09-15T12:30:00Z'))
     expect(summary).toEqual({ contracts: 1, candidates: 2, alerted: 1, failed: 0 })
     expect(publishEvent).toHaveBeenCalledTimes(1)
     expect(publishEvent.mock.calls[0]).toEqual(['ola.breached', 't1', expect.any(String), expect.objectContaining({ entity_id: 'inc-late', contract_id: 'c1', used_minutes: 270, target_minutes: 240 }), expect.any(String)])
@@ -37,7 +37,7 @@ describe('runOLASweep', () => {
     const { calendarFor } = await import('@opengraphity/sla')
     vi.mocked(calendarFor).mockRejectedValueOnce(new Error('calendar gone'))
     runQuery.mockResolvedValueOnce([CONTRACT, { ...CONTRACT, id: 'c2' }]).mockResolvedValueOnce([])
-    const summary = await runOLASweep(new Date('2026-09-15T12:30:00Z'))
+    const summary = await runOLASweep('t1', new Date('2026-09-15T12:30:00Z'))
     expect(summary).toMatchObject({ contracts: 2, failed: 1 })
   })
 
@@ -66,7 +66,7 @@ describe('runOLASweep', () => {
     ])
     loadChangeUnits.mockResolvedValueOnce(units)
     runQuery.mockResolvedValueOnce([{ ...CONTRACT, entityType: 'change' }])
-    const summary = await runOLASweep(new Date('2026-09-15T12:30:00Z'))
+    const summary = await runOLASweep('t1', new Date('2026-09-15T12:30:00Z'))
     // dp-new: validazione oltre (4h30 su 4h) → avviso; rilascio non ancora iniziato; dp-old: già avvisato per la validazione.
     expect(summary).toEqual({ contracts: 1, candidates: 3, alerted: 1, failed: 0 })
     expect(loadChangeUnits).toHaveBeenCalledWith(expect.anything(), 't1', { by: 'open', teamId: 'rete' })

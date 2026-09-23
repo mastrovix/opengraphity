@@ -43,7 +43,7 @@ export default defineConfig({
       // a new untested module lowers the ratio instead of being invisible.
       include: ['src/**/*.ts'],
       // `ESCLUSI_SEMPRE` vale per tutti i workspace; qui si aggiunge quello
-      // che e' solo dell'api: gli script di servizio e i due punti d'ingresso.
+      // che e' solo dell'api: gli script di servizio e i tre punti d'ingresso.
       /*
        * Il generatore del tenant di prova si divide in due. La parte che
        * PENSA — chi sono le persone, che forma ha il CMDB, come si muove un
@@ -55,7 +55,7 @@ export default defineConfig({
        * prova e' un Neo4j vero, e si verifica con `--verify` dopo una corsa.
        * Contarla con dei finti non direbbe niente su quello che scrive.
        */
-      exclude: [...ESCLUSI_SEMPRE, 'src/scripts/**', 'src/index.ts', 'src/worker.ts',
+      exclude: [...ESCLUSI_SEMPRE, 'src/scripts/**', 'src/index.ts', 'src/worker.ts', 'src/workerHealthcheck.ts',
         'src/lib/testData/demoTenant/{writer,writeReference,writeTickets,generate,clean,afterRun,verify,catalogSetup,reports,serviceRequests}.ts'],
       /*
        * I PAVIMENTI stanno in `copertura.mjs` alla radice, con tutti gli altri

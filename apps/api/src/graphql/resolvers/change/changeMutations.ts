@@ -100,7 +100,7 @@ export async function deleteChange(_: unknown, args: { id: string }, ctx: GraphQ
     // caricamento, non deve pesare su chi importa le mutation.
     const { getActiveOLAContractsFor, cancelOLABreaches } = await import('@opengraphity/sla')
     const contracts = await getActiveOLAContractsFor(ctx.tenantId, 'change')
-    if (contracts.length > 0) await cancelOLABreaches(args.id, contracts.map((c) => c.id))
+    if (contracts.length > 0) await cancelOLABreaches(ctx.tenantId, args.id, contracts.map((c) => c.id))
   } catch (err) {
     logger.error({ err, changeId: args.id }, '[deleteChange] cancellazione job OLA non riuscita')
   }

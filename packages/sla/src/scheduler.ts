@@ -1,34 +1,27 @@
 import { randomUUID } from 'crypto'
-import { Queue, Worker, Job } from 'bullmq'
-import { publish, getRedisConnection } from '@opengraphity/events'
+import type { Job } from 'bullmq'
+import { publish, tenantQueue, TenantWorkerPool } from '@opengraphity/events'
 import type { DomainEvent, SLAWarningPayload, SLABreachedPayload } from '@opengraphity/types'
 import { markBreached, markResponseBreachNotified, getSLAStatus, ticketReference } from './status.js'
 import type { SLAStatus } from './status.js'
 
-// Redis options come from the shared parser in @opengraphity/events (D-14):
-// same REDIS_URL / REDIS_PASSWORD rules as the event queues, so the SLA timers
-// can never land on a different Redis than the consumers. Resolved lazily so a
-// unit test that mocks the events package never touches the environment.
+/**
+ * The SLA timers of a tenant live in that tenant's queue (`sla-jobs@<tenant>`,
+ * 23 Sep 2026): the queues and the Redis connection come from
+ * @opengraphity/events, the one place that knows how a tenant queue is named
+ * and opened (D-14: same REDIS_URL / REDIS_PASSWORD rules as every consumer).
+ */
+export const SLA_JOBS_QUEUE = 'sla-jobs'
 
-const QUEUE_NAME = 'sla-jobs'
+/**
+ * On every timer, not as queue defaults: a tenant queue can be opened first by
+ * anyone (the console, the metrics), and defaults set by whoever opened it
+ * would silently be someone else's. Keep the last N failed jobs for
+ * diagnosis; `false` would let them accumulate in Redis forever (D-10).
+ */
+const SLA_JOB_OPTIONS = { removeOnComplete: true, removeOnFail: 200 } as const
 
-let _queue: Queue | null = null
-let _worker: Worker | null = null
-
-function getQueue(): Queue {
-  if (!_queue) {
-    _queue = new Queue(QUEUE_NAME, {
-      connection: getRedisConnection(),
-      defaultJobOptions: {
-        removeOnComplete: true,
-        // Keep the last N failed jobs for diagnosis; `false` would let them
-        // accumulate in Redis forever (D-10).
-        removeOnFail:     200,
-      },
-    })
-  }
-  return _queue
-}
+let _pool: TenantWorkerPool<SLAJobData> | null = null
 
 // ── Job data type ─────────────────────────────────────────────────────────────
 
@@ -170,40 +163,28 @@ export async function processSLAJob(job: Job<SLAJobData>): Promise<void> {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/** Starts the BullMQ worker that processes SLA jobs. */
+/**
+ * Registers the pool of SLA workers: one worker per tenant, created when the
+ * host reconciles the pools with the tenants (`reconcileTenantPools`).
+ */
 export function initScheduler(): void {
-  if (_worker) return
-
-  _worker = new Worker(QUEUE_NAME, processSLAJob, { connection: getRedisConnection() })
-
-  _worker.on('completed', (job) => {
-    console.log(`[sla:scheduler] Job completed: ${job.name} (id: ${job.id})`)
-  })
-
-  _worker.on('failed', (job, err) => {
-    console.error(`[sla:scheduler] Job failed: ${job?.name} (id: ${job?.id}) — ${err.message}`)
-  })
-
-  console.log('[sla:scheduler] Worker started')
+  if (_pool) return
+  _pool = new TenantWorkerPool<SLAJobData>(SLA_JOBS_QUEUE, processSLAJob)
+  console.log('[sla:scheduler] Worker pool registered (one worker per tenant)')
 }
 
 /**
- * Closes the sla-jobs Worker (draining in-flight jobs) and the Queue used to
- * schedule timers. Called by the API shutdown sequence before the Neo4j driver
- * is closed (D-24). Idempotent.
+ * Closes the SLA workers (draining in-flight jobs). The producer queues are
+ * closed with the other tenant queues (`closeConnection` of
+ * @opengraphity/events). Called by the API shutdown sequence before the Neo4j
+ * driver is closed (D-24). Idempotent.
  */
 export async function closeScheduler(): Promise<void> {
-  const worker = _worker
-  const queue  = _queue
-  _worker = null
-  _queue  = null
-  if (worker) {
-    await worker.close()
-    console.log('[sla:scheduler] Worker closed')
-  }
-  if (queue) {
-    await queue.close()
-    console.log('[sla:scheduler] Queue closed')
+  const pool = _pool
+  _pool = null
+  if (pool) {
+    await pool.close()
+    console.log('[sla:scheduler] Workers closed')
   }
 }
 
@@ -218,7 +199,7 @@ async function scheduleJob(
     return
   }
 
-  const queue = getQueue()
+  const queue = tenantQueue<SLAJobData>(SLA_JOBS_QUEUE, data.tenantId)
 
   /**
    * Il job vecchio con lo stesso id si toglie per idempotenza, ma un job
@@ -242,7 +223,7 @@ async function scheduleJob(
     }
   }
 
-  await queue.add(jobName, data, { jobId: scheduledId, delay: delayMs })
+  await queue.add(jobName, data, { ...SLA_JOB_OPTIONS, jobId: scheduledId, delay: delayMs })
   console.log(`[sla:scheduler] Scheduled ${jobName} (${scheduledId}) in ${Math.round(delayMs / 1000)}s`)
 }
 
@@ -288,8 +269,8 @@ export async function scheduleResponseCheck(status: SLAStatus): Promise<void> {
  * id erano quelli dei vecchi controlli per ticket (`ola-<contractId>-<entityId>`):
  * sostituiti dalla passata OLA dell'API, restano da togliere quelli già in coda.
  */
-export async function cancelOLABreaches(entityId: string, contractIds: string[]): Promise<void> {
-  const queue = getQueue()
+export async function cancelOLABreaches(tenantId: string, entityId: string, contractIds: string[]): Promise<void> {
+  const queue = tenantQueue(SLA_JOBS_QUEUE, tenantId)
   for (const contractId of contractIds) {
     const jobId = `ola-${contractId}-${entityId}`
     const job = await queue.getJob(jobId)
@@ -301,10 +282,11 @@ export async function cancelOLABreaches(entityId: string, contractIds: string[])
  * Cancels the SLA timers for an entity. `which` selects the target: 'resolve'
  * cancels the warning + breach timers (both keyed to the resolve deadline),
  * 'response' cancels the response timer, 'both' cancels all three. Used both
- * on resolution ('both') and on a per-type pause.
+ * on resolution ('both') and on a per-type pause. The timers are in the
+ * tenant's own queue: the tenant is part of where they are.
  */
-export async function cancelSLAJobs(entityId: string, which: 'resolve' | 'response' | 'both' = 'both'): Promise<void> {
-  const queue = getQueue()
+export async function cancelSLAJobs(tenantId: string, entityId: string, which: 'resolve' | 'response' | 'both' = 'both'): Promise<void> {
+  const queue = tenantQueue(SLA_JOBS_QUEUE, tenantId)
 
   const ids: string[] = []
   if (which === 'resolve' || which === 'both') ids.push(`warning-${entityId}`, `breach-${entityId}`)

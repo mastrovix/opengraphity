@@ -1,23 +1,23 @@
-import type { Worker, Job } from 'bullmq'
+import type { Job, Queue } from 'bullmq'
+import type { TenantWorkerPool } from '@opengraphity/events'
 import { randomUUID } from 'crypto'
 import { getSession } from '@opengraphity/neo4j'
 import { sendSlackMessage } from '@opengraphity/notifications'
 import { logger } from '../lib/logger.js'
 import { ciTypeFromLabels } from '../lib/ciTypeFromLabels.js'
-import { createWorker, getQueue } from '../lib/bullmq.js'
+import { createTenantWorkers, getTenantQueue } from '../lib/bullmq.js'
 import { buildAnomalyRule, type AnomalyRule, type ResolvedRuleSettings } from './rules.js'
 import { ANOMALY_RULE_SPECS, anomalyRuleOptions, anomalyRuleProblem, loadAnomalyRuleConfigs, type AnomalyRuleConfig, type AnomalyRuleOptions } from './ruleConfig.js'
 
 export const ANOMALY_SCANNER_QUEUE = 'anomaly-scanner'
 
 /**
- * Job payload. The hourly `scan` job carries no tenantId and scans every
- * tenant; a manual `scan-manual` (runAnomalyScanner mutation) carries the
- * caller's tenantId and scans ONLY that tenant (C-18) — before, one click
- * from any tenant scanned the whole platform.
+ * Job data of the `anomaly-scanner` queue: always the tenant of the queue
+ * (`anomaly-scanner@<tenant>`, 23 Sep 2026). The hourly `scan` and the manual
+ * `scan-manual` (runAnomalyScanner mutation, C-18) scan that tenant only.
  */
 export interface AnomalyScanJobData {
-  tenantId?: string
+  tenantId: string
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -30,22 +30,6 @@ interface RuleHit {
   description:   string
   params:        Record<string, string>
   severity:      string
-}
-
-interface TenantRow {
-  id: string
-}
-
-async function loadTenants(): Promise<TenantRow[]> {
-  const session = getSession(undefined, 'READ')
-  try {
-    const result = await session.executeRead(tx =>
-      tx.run(`MATCH (t:Tenant) RETURN t.id AS id`),
-    )
-    return result.records.map(r => ({ id: r.get('id') as string }))
-  } finally {
-    await session.close()
-  }
 }
 
 /** I parametri della frase di un risultato, come stringhe (la pagina li interpola). */
@@ -338,19 +322,15 @@ export async function scanTenant(tenantId: string): Promise<TenantScanSummary> {
   return summary
 }
 
+/** A scan of the job's tenant: the hourly one and the manual one both run in the tenant's queue. */
 export async function anomalyScannerProcessor(job: Job<AnomalyScanJobData>): Promise<void> {
-  const requested = job.data?.tenantId
-  const tenants = requested ? [{ id: requested }] : await loadTenants()
-  logger.info({ count: tenants.length, tenantId: requested ?? null, jobName: job.name }, 'anomaly-engine: scanning tenants')
-
-  let failures = 0
-  for (const tenant of tenants) {
-    failures += (await scanTenant(tenant.id)).ruleFailures
-  }
+  const { tenantId } = job.data
+  logger.info({ tenantId, jobName: job.name }, 'anomaly-engine: scanning tenant')
+  const failures = (await scanTenant(tenantId)).ruleFailures
   if (failures > 0) {
     // Visible failure: the scan status was persisted for the rules that ran,
     // but a job with broken rules must not show up as completed.
-    throw new Error(`anomaly-engine: ${failures} rule(s) failed across ${tenants.length} tenant(s) — see log`)
+    throw new Error(`anomaly-engine: ${failures} rule(s) of tenant ${tenantId} failed — see log`)
   }
 }
 
@@ -372,41 +352,33 @@ async function persistScanStatus(tenantId: string): Promise<void> {
 
 // ── Queue & Worker ─────────────────────────────────────────────────────────────
 
-export function getAnomalyScannerQueue() {
-  return getQueue<AnomalyScanJobData>(ANOMALY_SCANNER_QUEUE)
-}
-
-/** Enqueues a scan of ONE tenant (manual trigger). Deduped per tenant per minute. */
+/** Enqueues a scan of ONE tenant (manual trigger), in its queue. Deduped per tenant per minute. */
 export async function enqueueTenantScan(tenantId: string): Promise<void> {
-  await getAnomalyScannerQueue().add('scan-manual', { tenantId }, {
+  await getTenantQueue<AnomalyScanJobData>(ANOMALY_SCANNER_QUEUE, tenantId).add('scan-manual', { tenantId }, {
     jobId:            `manual-${tenantId}-${Math.floor(Date.now() / 60_000)}`,
     removeOnComplete: true,
   })
 }
 
-/** Async: the repeatable job registration is awaited (startup error, not a swallowed rejection). */
-export async function startAnomalyScanner(): Promise<Worker<AnomalyScanJobData>> {
-  const worker = createWorker<AnomalyScanJobData>(ANOMALY_SCANNER_QUEUE, anomalyScannerProcessor)
-
-  // Repeating job: every hour, all tenants
-  /*
-   * JOB SCHEDULER, non piu' «repeat» (21 set 2026, BullMQ 6).
-   *
-   * BullMQ 6 ha RIMOSSO i job ripetibili: `repeat` su `add()`, la classe
-   * `Repeat`, `getRepeatableJobs()` e `removeRepeatable*()` non esistono piu'.
-   * Al loro posto i Job Scheduler, che hanno un'identita' esplicita — il primo
-   * argomento — invece di essere dedotta da (nome, opzioni di ripetizione).
-   *
-   * La ricorrenza si registra a ogni avvio del worker, come prima: non c'e'
-   * stato da migrare, e `upsert` significa che riavviare non ne crea una
-   * seconda.
-   */
-  await getAnomalyScannerQueue().upsertJobScheduler(
+/**
+ * The hourly scan of a tenant, in its queue: a Job Scheduler (BullMQ 6) with
+ * an explicit identity, so upserting it from every process and at every boot
+ * never makes a second one.
+ */
+export async function scheduleAnomalyScan(queue: Queue, tenantId: string): Promise<void> {
+  await queue.upsertJobScheduler(
     'anomaly-scanner-scan',
     { every: 60 * 60_000 },
-    { name: 'scan', data: {}, opts: { removeOnComplete: true } },
+    { name: 'scan', data: { tenantId }, opts: { removeOnComplete: true } },
   )
+}
 
-  logger.info('anomaly-scanner started (interval: 1h)')
-  return worker
+/**
+ * One worker per tenant on `anomaly-scanner@<tenant>`, each with its tenant's
+ * hourly scan. The scans of every tenant fire at the same instant: one at a
+ * time in this process, as when one job scanned the tenants in turn — N heavy
+ * graph scans at once would load Neo4j N times over.
+ */
+export function startAnomalyScanner(): TenantWorkerPool<AnomalyScanJobData> {
+  return createTenantWorkers<AnomalyScanJobData>(ANOMALY_SCANNER_QUEUE, anomalyScannerProcessor, { schedule: scheduleAnomalyScan, processLimit: 1 })
 }

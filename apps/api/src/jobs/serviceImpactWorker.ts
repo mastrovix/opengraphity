@@ -1,5 +1,7 @@
 /**
- * BullMQ worker della coda `services-impact` (Servizi monitorati, ondata 1).
+ * BullMQ worker della coda `services-impact` (Servizi monitorati, ondata 1):
+ * una coda per tenant, `services-impact@<tenant>` (23 set 2026), con le due
+ * passate periodiche del tenant nella sua coda.
  *
  *  - `evaluate`           — valutazione di UNA mappa, accodata dal consumer di
  *                           `ci.health_changed` (consumers/serviceImpactConsumer.ts)
@@ -39,9 +41,10 @@
  * superare i 30 s predefiniti. Gli id dei job non contengono ':' (BullMQ li
  * rifiuta).
  */
-import type { Worker, Job } from 'bullmq'
+import type { Job, Queue } from 'bullmq'
+import type { TenantWorkerPool } from '@opengraphity/events'
 import { logger } from '../lib/logger.js'
-import { createWorker, getQueue } from '../lib/bullmq.js'
+import { createTenantWorkers, getTenantQueue } from '../lib/bullmq.js'
 import { serviceEvaluationLagSeconds } from '../middleware/metrics.js'
 import type { ServiceHealthTrigger } from '../lib/serviceVocabularies.js'
 import { evaluateServiceMap, evaluateStaleOrOldMaps, refreshServiceGauges } from '../services/serviceImpact/engine.js'
@@ -75,7 +78,10 @@ export interface ServiceSyncJobData {
   actorId?: string
 }
 
-type ServiceQueueData = ServiceEvaluateJobData | ServiceSyncJobData | Record<string, never>
+/** A recurring pass of one tenant: which tenant is all it needs. */
+export interface ServicePeriodicJobData { tenantId: string }
+
+type ServiceQueueData = ServiceEvaluateJobData | ServiceSyncJobData | ServicePeriodicJobData
 
 function assertJobId(id: string, what: string, tenantId: string, mapId: string): string {
   if (id.includes(':')) throw new Error(`${what}: job id must not contain ':' (tenant ${JSON.stringify(tenantId)}, map ${JSON.stringify(mapId)})`)
@@ -116,7 +122,7 @@ function serviceJobOptions(deduplicationId: string) {
  * consumer (che ritenta), non perdere la valutazione in silenzio.
  */
 export async function enqueueServiceMapEvaluation(tenantId: string, mapId: string, trigger: ServiceHealthTrigger = 'ci_health'): Promise<void> {
-  await getQueue<ServiceQueueData>(SERVICE_IMPACT_QUEUE).add(SERVICE_EVALUATE_JOB, { tenantId, mapId, trigger }, serviceJobOptions(serviceMapJobId(tenantId, mapId)))
+  await getTenantQueue<ServiceQueueData>(SERVICE_IMPACT_QUEUE, tenantId).add(SERVICE_EVALUATE_JOB, { tenantId, mapId, trigger }, serviceJobOptions(serviceMapJobId(tenantId, mapId)))
   log.info({ tenantId, mapId, trigger }, 'Service map evaluation enqueued')
 }
 
@@ -127,7 +133,7 @@ export async function enqueueServiceMapEvaluation(tenantId: string, mapId: strin
  * `syncServiceMap`.
  */
 export async function enqueueServiceMapSync(tenantId: string, mapId: string, trigger: ServiceMapSyncTrigger, actorId?: string): Promise<void> {
-  await getQueue<ServiceQueueData>(SERVICE_IMPACT_QUEUE).add(SERVICE_SYNC_JOB, { tenantId, mapId, trigger, ...(actorId ? { actorId } : {}) }, serviceJobOptions(serviceMapSyncJobId(tenantId, mapId)))
+  await getTenantQueue<ServiceQueueData>(SERVICE_IMPACT_QUEUE, tenantId).add(SERVICE_SYNC_JOB, { tenantId, mapId, trigger, ...(actorId ? { actorId } : {}) }, serviceJobOptions(serviceMapSyncJobId(tenantId, mapId)))
   log.info({ tenantId, mapId, trigger }, 'Service map synchronization enqueued')
 }
 
@@ -139,7 +145,7 @@ export async function enqueueServiceMapSync(tenantId: string, mapId: string, tri
  * cancellata — ma restituisce quanti ne ha tolti.
  */
 export async function forgetServiceMapJobs(tenantId: string, mapId: string): Promise<number> {
-  const queue = getQueue<ServiceQueueData>(SERVICE_IMPACT_QUEUE)
+  const queue = getTenantQueue<ServiceQueueData>(SERVICE_IMPACT_QUEUE, tenantId)
   let removed = 0
   for (const id of [serviceMapJobId(tenantId, mapId), serviceMapSyncJobId(tenantId, mapId)]) {
     try {
@@ -185,7 +191,7 @@ async function processServiceJob(job: Job<ServiceQueueData>): Promise<void> {
       return
     }
     case SERVICE_SYNC_PERIODIC_JOB: {
-      const r = await syncStaleOrOldMaps()
+      const r = await syncStaleOrOldMaps((job.data as ServicePeriodicJobData).tenantId)
       if (r.evaluated > 0) log.info({ ...r }, 'Service maps synchronized with the CMDB (periodic safety net)')
       return
     }
@@ -193,7 +199,7 @@ async function processServiceJob(job: Job<ServiceQueueData>): Promise<void> {
       const now = new Date().toISOString()
       const failures: string[] = []
       try {
-        const r = await evaluateStaleOrOldMaps(now)
+        const r = await evaluateStaleOrOldMaps((job.data as ServicePeriodicJobData).tenantId, now)
         if (r.evaluated > 0) log.info({ ...r }, 'Stale or old service maps evaluated (periodic)')
       } catch (err) {
         failures.push(`evaluate: ${err instanceof Error ? err.message : String(err)}`)
@@ -211,36 +217,25 @@ async function processServiceJob(job: Job<ServiceQueueData>): Promise<void> {
   }
 }
 
-export async function startServiceImpactWorker(): Promise<Worker<ServiceQueueData>> {
-  const queue = getQueue<ServiceQueueData>(SERVICE_IMPACT_QUEUE)
-  // Repeat job: BullMQ deduplica per (name, repeat) — riavviare l'API non ne crea un secondo.
-  /*
-   * JOB SCHEDULER, non piu' «repeat» (21 set 2026, BullMQ 6).
-   *
-   * BullMQ 6 ha RIMOSSO i job ripetibili: `repeat` su `add()`, la classe
-   * `Repeat`, `getRepeatableJobs()` e `removeRepeatable*()` non esistono piu'.
-   * Al loro posto i Job Scheduler, che hanno un'identita' esplicita — il primo
-   * argomento — invece di essere dedotta da (nome, opzioni di ripetizione).
-   *
-   * La ricorrenza si registra a ogni avvio del worker, come prima: non c'e'
-   * stato da migrare, e `upsert` significa che riavviare non ne crea una
-   * seconda.
-   */
-  await queue.upsertJobScheduler(
-    SERVICE_PERIODIC_JOB,
-    { every: SERVICE_PERIODIC_EVERY_MS },
-    { name: SERVICE_PERIODIC_JOB, data: {}, opts: { removeOnComplete: { count: 20 }, removeOnFail: { age: 7 * 24 * 3600 } } },
-  )
-  // Rete di sicurezza della mappa viva (ondata 5): rada di proposito, il
-  // meccanismo principale è `notifyCIGraphChanged` (immediato).
-  await queue.upsertJobScheduler(
-    SERVICE_SYNC_PERIODIC_JOB,
-    { every: SERVICE_MAP_SYNC_EVERY_MS },
-    { name: SERVICE_SYNC_PERIODIC_JOB, data: {}, opts: { removeOnComplete: { count: 20 }, removeOnFail: { age: 7 * 24 * 3600 } } },
-  )
-  return createWorker<ServiceQueueData>(SERVICE_IMPACT_QUEUE, processServiceJob, {
+/**
+ * Le due ricorrenze di un tenant, nella sua coda: Job Scheduler (BullMQ 6) con
+ * un'identità esplicita — `upsert` da ogni processo e a ogni avvio non ne crea
+ * una seconda. La sincronizzazione è rada di proposito: il meccanismo
+ * principale della mappa viva è `notifyCIGraphChanged` (immediato).
+ */
+export async function scheduleServicePasses(queue: Queue, tenantId: string): Promise<void> {
+  const data: ServicePeriodicJobData = { tenantId }
+  const opts = { removeOnComplete: { count: 20 }, removeOnFail: { age: 7 * 24 * 3600 } }
+  await queue.upsertJobScheduler(SERVICE_PERIODIC_JOB, { every: SERVICE_PERIODIC_EVERY_MS }, { name: SERVICE_PERIODIC_JOB, data, opts })
+  await queue.upsertJobScheduler(SERVICE_SYNC_PERIODIC_JOB, { every: SERVICE_MAP_SYNC_EVERY_MS }, { name: SERVICE_SYNC_PERIODIC_JOB, data, opts })
+}
+
+/** One worker per tenant on `services-impact@<tenant>`, each with its tenant's recurring passes. */
+export function startServiceImpactWorker(): TenantWorkerPool<ServiceQueueData> {
+  return createTenantWorkers<ServiceQueueData>(SERVICE_IMPACT_QUEUE, processServiceJob, {
     concurrency: 2,
     lockDuration: SERVICE_IMPACT_LOCK_MS,
+    schedule: scheduleServicePasses,
     onFailed: (job, err) => {
       const d = job?.data as Partial<ServiceEvaluateJobData> | undefined
       log.error({ jobId: job?.id, jobName: job?.name, tenantId: d?.tenantId, mapId: d?.mapId, trigger: d?.trigger, attemptsMade: job?.attemptsMade, err: err.message }, 'Service impact job failed')

@@ -24,14 +24,13 @@
  * forma.
  *
  * ## Il fallimento di un cliente non ferma gli altri
- * Si accumulano e si alza alla fine, come `anomalyScannerProcessor`: un giro
- * con un cliente rotto non deve risultare completato, ma nemmeno impedire agli
- * altri sei di avere le loro proposte.
+ * Ogni cliente ha la sua coda e il suo job (23 set 2026): un cliente rotto fa
+ * fallire il SUO giro, visibile in BullMQ, e gli altri non se ne accorgono.
  */
-import type { Job, Worker } from 'bullmq'
+import type { Job, Queue } from 'bullmq'
+import type { TenantWorkerPool } from '@opengraphity/events'
 import { randomUUID } from 'node:crypto'
-import { getSession } from '@opengraphity/neo4j'
-import { getQueue, createWorker, getSharedRedis } from '../lib/bullmq.js'
+import { createTenantWorkers, getSharedRedis } from '../lib/bullmq.js'
 import { logger } from '../lib/logger.js'
 import { audit } from '../lib/audit.js'
 import { analizzaConfigurazione } from '../lib/proposalAnalysts.js'
@@ -42,30 +41,8 @@ import { scriviProposta, scadiLeVecchie, risvegliaLeRimandate, type ProposalToWr
 
 export const PROPOSAL_SCANNER_QUEUE = 'proposal-scanner'
 
-export interface ProposalScanJobData { tenantId?: string }
-
-/**
- * I clienti su cui girare.
- *
- * Si escludono i sospesi — un tenant sospeso non deve ricevere proposte che
- * nessuno leggerà — e lo scope di sistema, che non è un cliente. Le due
- * convenzioni nel codice erano incoerenti (`eventRetention` li prende tutti,
- * `backfill-embeddings` esclude `system`): qui la regola è scritta una volta
- * e sta in un posto solo.
- */
-async function clientiDaAnalizzare(): Promise<string[]> {
-  const session = getSession(undefined, 'READ')
-  try {
-    const res = await session.executeRead((tx) => tx.run(`
-      MATCH (t:Tenant)
-      WHERE t.id <> 'system' AND coalesce(t.status, 'active') <> 'suspended'
-      RETURN t.id AS id ORDER BY id
-    `))
-    return res.records.map((r) => r.get('id') as string)
-  } finally {
-    await session.close()
-  }
-}
+/** The nightly job of a tenant, in its queue `proposal-scanner@<tenant>` (23 Sep 2026). */
+export interface ProposalScanJobData { tenantId: string }
 
 /** Il giro di un cliente solo. Restituisce quante proposte sono nate. */
 /**
@@ -111,50 +88,37 @@ export async function analizzaCliente(tenantId: string): Promise<{ create: numbe
   return { create, saltate }
 }
 
+/**
+ * Il giro notturno di UN cliente, nella sua coda. Un cliente sospeso non ci
+ * arriva: le sue code sono in pausa finché non viene riattivato.
+ */
 export async function proposalScannerProcessor(job: Job<ProposalScanJobData>): Promise<void> {
-  const richiesto = job.data?.tenantId
+  const { tenantId } = job.data
 
   /*
-   * La manutenzione del ciclo di vita gira PRIMA dell'analisi, e solo nel
-   * giro generale: scadere le vecchie libera gli slot del tetto, e senza
-   * quello un cliente con cinque proposte ignorate non ne riceverebbe mai
-   * più — in silenzio, in un modo indistinguibile dal funzionare.
+   * La manutenzione del ciclo di vita gira PRIMA dell'analisi: scadere le
+   * vecchie libera gli slot del tetto, e senza quello un cliente con cinque
+   * proposte ignorate non ne riceverebbe mai più — in silenzio, in un modo
+   * indistinguibile dal funzionare.
    */
-  if (!richiesto) {
-    const scadute = await scadiLeVecchie()
-    const risvegliate = await risvegliaLeRimandate()
-    if (scadute > 0 || risvegliate > 0) {
-      logger.info({ module: 'proposals', scadute, risvegliate }, 'proposal-scanner: lifecycle swept')
-    }
+  const scadute = await scadiLeVecchie(tenantId)
+  const risvegliate = await risvegliaLeRimandate(tenantId)
+  if (scadute > 0 || risvegliate > 0) {
+    logger.info({ module: 'proposals', tenantId, scadute, risvegliate }, 'proposal-scanner: lifecycle swept')
   }
 
-  const clienti = richiesto ? [richiesto] : await clientiDaAnalizzare()
-  const falliti: string[] = []
-  for (const tenantId of clienti) {
-    try {
-      /*
-       * Anche il giro notturno passa dal lucchetto: se un amministratore ha
-       * appena cliccato «Analizza adesso», rifarlo costa il doppio e non
-       * produce niente di nuovo — `scriviProposta` scarterebbe tutto come
-       * già presente, ma i gettoni sono già spesi.
-       */
-      const esito = await conIlLucchetto(tenantId, () => analizzaCliente(tenantId))
-      if (esito === null) {
-        logger.info({ module: 'proposals', tenantId }, 'proposal-scanner: already running, skipped')
-      } else {
-        await recordAnalysisRun(tenantId, esito, richiesto ? 'queued' : 'nightly')
-      }
-    } catch (err) {
-      falliti.push(tenantId)
-      logger.error(
-        { module: 'proposals', tenantId, err: err instanceof Error ? err.message : String(err) },
-        'proposal-scanner: tenant failed',
-      )
-    }
+  /*
+   * Anche il giro notturno passa dal lucchetto: se un amministratore ha
+   * appena cliccato «Analizza adesso», rifarlo costa il doppio e non produce
+   * niente di nuovo — `scriviProposta` scarterebbe tutto come già presente,
+   * ma i gettoni sono già spesi.
+   */
+  const esito = await conIlLucchetto(tenantId, () => analizzaCliente(tenantId))
+  if (esito === null) {
+    logger.info({ module: 'proposals', tenantId }, 'proposal-scanner: already running, skipped')
+    return
   }
-  if (falliti.length > 0) {
-    throw new Error(`proposal-scanner: ${String(falliti.length)} tenant(s) failed: ${falliti.join(', ')} — see log`)
-  }
+  await recordAnalysisRun(tenantId, esito, 'nightly')
 }
 
 /**
@@ -167,14 +131,10 @@ export async function proposalScannerProcessor(job: Job<ProposalScanJobData>): P
  * entry, as the product (`system`), so it stays out of what people did.
  */
 export async function recordAnalysisRun(
-  tenantId: string, esito: { create: number; saltate: Record<string, number> }, source: 'nightly' | 'queued',
+  tenantId: string, esito: { create: number; saltate: Record<string, number> }, source: 'nightly',
 ): Promise<void> {
   await audit({ tenantId, userId: 'system', userEmail: 'system', role: 'system' } as never,
     'proposal.analysis_run', 'Proposal', tenantId, { created: esito.create, skipped: esito.saltate, source })
-}
-
-export function getProposalScannerQueue() {
-  return getQueue<ProposalScanJobData>(PROPOSAL_SCANNER_QUEUE)
 }
 
 /**
@@ -240,33 +200,28 @@ export async function conIlLucchetto<T>(
 }
 
 /**
- * Il giro notturno: una volta al giorno, tutti i clienti.
+ * Il giro notturno di un cliente, nella sua coda: un Job Scheduler (BullMQ 6)
+ * con un'identità esplicita — `upsert` da ogni processo e a ogni avvio non ne
+ * crea un secondo.
  *
  * Le 4:30 e non le 3: le purghe della manutenzione girano fra le 3:30 e le
  * 4:15, e anche se le due cose non si toccano, due lavori pesanti insieme su
  * un pool Neo4j condiviso sono un rischio gratuito.
  */
-export async function startProposalScanner(): Promise<Worker<ProposalScanJobData>> {
-  const worker = createWorker<ProposalScanJobData>(PROPOSAL_SCANNER_QUEUE, proposalScannerProcessor)
-
-  /*
-   * JOB SCHEDULER, non piu' «repeat» (21 set 2026, BullMQ 6).
-   *
-   * BullMQ 6 ha RIMOSSO i job ripetibili: `repeat` su `add()`, la classe
-   * `Repeat`, `getRepeatableJobs()` e `removeRepeatable*()` non esistono piu'.
-   * Al loro posto i Job Scheduler, che hanno un'identita' esplicita — il primo
-   * argomento — invece di essere dedotta da (nome, opzioni di ripetizione).
-   *
-   * La ricorrenza si registra a ogni avvio del worker, come prima: non c'e'
-   * stato da migrare, e `upsert` significa che riavviare non ne crea una
-   * seconda.
-   */
-  await getProposalScannerQueue().upsertJobScheduler(
+export async function scheduleProposalScan(queue: Queue, tenantId: string): Promise<void> {
+  await queue.upsertJobScheduler(
     'proposal-scanner-nightly',
     { pattern: '30 4 * * *' },
-    { name: 'scan', data: {}, opts: { removeOnComplete: true } },
+    { name: 'scan', data: { tenantId }, opts: { removeOnComplete: true } },
   )
+}
 
-  logger.info({ module: 'proposals' }, 'proposal-scanner started (nightly 04:30)')
-  return worker
+/**
+ * One worker per tenant on `proposal-scanner@<tenant>`, each with its tenant's
+ * nightly run. Every tenant's run fires at 04:30: one at a time in this
+ * process, as when one job went through the tenants in turn — N analyses at
+ * once would be N concurrent calls to the model and N graph reads.
+ */
+export function startProposalScanner(): TenantWorkerPool<ProposalScanJobData> {
+  return createTenantWorkers<ProposalScanJobData>(PROPOSAL_SCANNER_QUEUE, proposalScannerProcessor, { schedule: scheduleProposalScan, processLimit: 1 })
 }

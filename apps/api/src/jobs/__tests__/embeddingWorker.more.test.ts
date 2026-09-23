@@ -18,9 +18,10 @@ let processor: Processor | null = null
 let onFailed: OnFailed | null = null
 vi.mock('../../lib/aiSettings.js', () => import('../../lib/__tests__/aiSettingsFake.js'))
 const queue = { add: vi.fn(), getJob: vi.fn() }
+const getTenantQueue = vi.fn((_base: string, _tenantId: string) => queue)
 vi.mock('../../lib/bullmq.js', () => ({
-  createWorker: vi.fn((_name: string, p: Processor, opts: { onFailed: OnFailed }) => { processor = p; onFailed = opts.onFailed; return {} }),
-  getQueue: vi.fn(() => queue),
+  createTenantWorkers: vi.fn((_name: string, p: Processor, opts: { onFailed: OnFailed }) => { processor = p; onFailed = opts.onFailed; return {} }),
+  getTenantQueue: (base: string, tenantId: string) => getTenantQueue(base, tenantId),
 }))
 
 const getSession = vi.fn(() => ({ executeWrite: vi.fn(async () => undefined), close: vi.fn(async () => undefined) }))
@@ -105,6 +106,8 @@ describe('requestEmbedding', () => {
   it('queues the job of this version when there is none', async () => {
     queue.getJob.mockResolvedValue(undefined)
     await expect(requestEmbedding(data)).resolves.toEqual({ state: 'queued' })
+    // The job is looked up in the tenant's own queue: another tenant's job is never seen.
+    expect(getTenantQueue).toHaveBeenCalledWith('embeddings', 't1')
     expect(queue.getJob).toHaveBeenCalledWith(jobId)
     expect(queue.add).toHaveBeenCalledWith('embed', data, expect.objectContaining({ jobId }))
   })

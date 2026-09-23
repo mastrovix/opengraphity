@@ -223,7 +223,7 @@ describe('runStepDeadlineSweep', () => {
       { ...candidate({ execId: 'ex-2', entityId: 'chg-2', enteredAt: '2026-09-19T10:00:00Z' }), previousOutcome: null }, // entrato ieri
     ])
     scriptReads()
-    const summary = await runStepDeadlineSweep(NOW)
+    const summary = await runStepDeadlineSweep('t1', NOW)
     expect(summary).toMatchObject({ candidates: 2, moved: 1, notDue: 1 })
     expect(transition).toHaveBeenCalledTimes(1)
   })
@@ -234,7 +234,7 @@ describe('runStepDeadlineSweep', () => {
     ])
     const { getServiceCalendarById } = await import('@opengraphity/sla')
     vi.mocked(getServiceCalendarById).mockRejectedValueOnce(new Error('Service calendar cal-sparito does not exist'))
-    const summary = await runStepDeadlineSweep(NOW)
+    const summary = await runStepDeadlineSweep('t1', NOW)
     expect(summary).toMatchObject({ failed: 1, moved: 0 })
     expect(lastOutcome()).toMatchObject({ outcome: 'failed', reason: 'config' })
   })

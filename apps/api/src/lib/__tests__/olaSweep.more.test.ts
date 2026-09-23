@@ -36,7 +36,7 @@ describe('runOLASweep: timezone', () => {
   it('24x7 contracts never read the timezone, so a tenant without one does not fail', async () => {
     getTenantTimezone.mockRejectedValue(new Error('tenant has no timezone'))
     runQuery.mockResolvedValueOnce([CONTRACT]).mockResolvedValueOnce([])
-    const summary = await runOLASweep(new Date('2026-09-15T12:00:00Z'))
+    const summary = await runOLASweep('t1', new Date('2026-09-15T12:00:00Z'))
     expect(summary).toEqual({ contracts: 1, candidates: 0, alerted: 0, failed: 0 })
     expect(getTenantTimezone).not.toHaveBeenCalled()
     getTenantTimezone.mockReset().mockResolvedValue('Europe/Rome')
@@ -50,7 +50,7 @@ describe('runOLASweep: timezone', () => {
         { ...CONTRACT, id: 'c3', tenantId: 't2', businessHours: true },
       ])
       .mockResolvedValue([])
-    const summary = await runOLASweep(new Date('2026-09-15T12:00:00Z'))
+    const summary = await runOLASweep('t1', new Date('2026-09-15T12:00:00Z'))
     expect(summary.failed).toBe(0)
     expect(getTenantTimezone.mock.calls.map((c) => c[0])).toEqual(['t1', 't2'])
   })
@@ -58,7 +58,7 @@ describe('runOLASweep: timezone', () => {
   it('a missing timezone on a business-hours contract counts that contract as failed, not the sweep', async () => {
     getTenantTimezone.mockRejectedValueOnce(new Error('tenant has no timezone'))
     runQuery.mockResolvedValueOnce([{ ...CONTRACT, businessHours: true }, { ...CONTRACT, id: 'c2', tenantId: 't2' }]).mockResolvedValue([])
-    const summary = await runOLASweep(new Date('2026-09-15T12:00:00Z'))
+    const summary = await runOLASweep('t1', new Date('2026-09-15T12:00:00Z'))
     expect(summary).toMatchObject({ contracts: 2, failed: 1 })
   })
 })
@@ -66,7 +66,7 @@ describe('runOLASweep: timezone', () => {
 describe('runOLASweep: contract data', () => {
   it('a contract without an entity type is measured on incidents', async () => {
     runQuery.mockResolvedValueOnce([{ ...CONTRACT, entityType: '' }]).mockResolvedValueOnce([])
-    await runOLASweep(new Date('2026-09-15T12:00:00Z'))
+    await runOLASweep('t1', new Date('2026-09-15T12:00:00Z'))
     expect(runQuery).toHaveBeenCalledTimes(2)
     expect(runQuery.mock.calls[1]![1]).toContain(olaOpenTicketsCypher('incident'))
     expect(runQuery.mock.calls[1]![2]).toEqual({ tenantId: 't1', teamId: 'net', contractId: 'c1' })
@@ -74,7 +74,7 @@ describe('runOLASweep: contract data', () => {
 
   it('closes the session even when the contracts cannot be read', async () => {
     runQuery.mockRejectedValueOnce(new Error('neo4j down'))
-    await expect(runOLASweep()).rejects.toThrow('neo4j down')
+    await expect(runOLASweep('t1')).rejects.toThrow('neo4j down')
     expect(session.close).toHaveBeenCalledTimes(1)
   })
 })

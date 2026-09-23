@@ -260,10 +260,13 @@ describe('scriviLapide', () => {
 })
 
 describe('lifecycle sweeps', () => {
-  it('expiry cuts at exactly PROPOSAL_EXPIRY_DAYS and returns how many expired', async () => {
+  it('expiry cuts at exactly PROPOSAL_EXPIRY_DAYS, touches only the tenant\'s proposals and returns how many expired', async () => {
     fake.many = () => [{ n: 4 }]
-    expect(await scadiLeVecchie(NOW)).toBe(4)
+    expect(await scadiLeVecchie('t1', NOW)).toBe(4)
+    // The sweep runs in the tenant's own queue (23 Sep 2026): it touches that tenant only.
+    expect(fake.queries[0]!.q).toContain("MATCH (p:Proposal {tenant_id: $tenantId, status: 'open'})")
     const p = fake.queries[0]!.p
+    expect(p['tenantId']).toBe('t1')
     expect(p['limite']).toBe(new Date(NOW.getTime() - PROPOSAL_EXPIRY_DAYS * 86_400_000).toISOString())
     expect(p['now']).toBe(NOW.toISOString())
     // Expiring is not rejecting: no tombstone is written.
@@ -271,15 +274,16 @@ describe('lifecycle sweeps', () => {
   })
 
   it('expiry with no result reads as zero', async () => {
-    expect(await scadiLeVecchie(NOW)).toBe(0)
+    expect(await scadiLeVecchie('t1', NOW)).toBe(0)
   })
 
   it('waking "not now" proposals returns the count, zero when none', async () => {
     fake.many = () => [{ n: 2 }]
-    expect(await risvegliaLeRimandate(NOW)).toBe(2)
-    expect(fake.queries[0]!.p).toEqual({ now: NOW.toISOString() })
+    expect(await risvegliaLeRimandate('t1', NOW)).toBe(2)
+    expect(fake.queries[0]!.q).toContain("MATCH (p:Proposal {tenant_id: $tenantId, status: 'not_now'})")
+    expect(fake.queries[0]!.p).toEqual({ tenantId: 't1', now: NOW.toISOString() })
     fake.many = () => []
-    expect(await risvegliaLeRimandate()).toBe(0)
+    expect(await risvegliaLeRimandate('t1')).toBe(0)
     expect(fake.closed).toBe(2)
   })
 })

@@ -31,11 +31,27 @@ import { asyncHandler, restErrorHandler } from './errorHandler.js'
 import { logger } from '../lib/logger.js'
 import {
   listTenants, renameTenant, suspendTenant, resumeTenant, purgeTenant, tenantFootprint, assertSlugValido,
-  resetAdminPassword,
+  configuredReservedSlugs, resetAdminPassword,
 } from '../lib/tenantLifecycle.js'
-import { config } from '../lib/config.js'
 import { DEFAULT_TENANT_PLAN, DEFAULT_TENANT_TIMEZONE } from '../lib/tenantPlans.js'
 import { parametro } from './parametroDiRotta.js'
+import { announceTenantChange, type TenantChange } from '../lib/tenantQueueLifecycle.js'
+import { obliterateTenantQueues } from '@opengraphity/events'
+import { TENANT_QUEUE_BASES } from '../lib/queueRegistry.js'
+
+/**
+ * The workers of every process follow the tenants (lib/tenantQueueLifecycle.ts):
+ * a change made here is announced at once. The change itself is already
+ * committed, so a failed announcement does not fail the request — every
+ * process reconciles within a minute anyway — but it is said.
+ */
+async function annuncia(slug: string, change: TenantChange): Promise<void> {
+  try {
+    await announceTenantChange(slug, change)
+  } catch (err) {
+    log.error({ slug, change, err: err instanceof Error ? err.message : String(err) }, 'console: tenant queues not reconciled now; every process does it within a minute')
+  }
+}
 
 const log = logger.child({ module: 'platform-console' })
 
@@ -114,7 +130,8 @@ router.get('/platform/tenants/:slug/footprint', asyncHandler(async (req: Request
  * ## Lo slug non si cambia dopo
  * È il realm, il sottodominio e il `tenant_id` di ogni nodo: si valida QUI, coi
  * nomi riservati del prodotto più l'host della console, che è configurazione e
- * non una costante.
+ * non una costante. Since 23 Sep 2026 the platform realm is reserved too, and
+ * onboardTenant checks the slug again for the callers that are not this route.
  */
 router.post('/platform/tenants', asyncHandler(async (req: Request, res: Response) => {
   const body = req.body as Record<string, unknown>
@@ -126,10 +143,11 @@ router.post('/platform/tenants', asyncHandler(async (req: Request, res: Response
   }
 
   const slug = testo('slug').toLowerCase()
-  // Lo slug della console fra i riservati: sta nella configurazione, non in una
-  // costante del modulo, perché ogni installazione ha il suo host.
-  const hostConsole = config.platformHost?.split('.')[0]?.toLowerCase()
-  assertSlugValido(slug, hostConsole ? [hostConsole] : [])
+  // The console's subdomain and the platform realm are reserved as well: they
+  // are in the configuration, not in a constant, because every installation
+  // has its own (tenantLifecycle.ts). Checked here to answer 400 at once;
+  // onboardTenant checks again for the other callers.
+  assertSlugValido(slug, configuredReservedSlugs())
 
   const email = testo('adminEmail').toLowerCase()
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
@@ -184,6 +202,7 @@ router.post('/platform/tenants', asyncHandler(async (req: Request, res: Response
       onPassword: () => { consegnata = password.value },
     })
     log.warn({ slug, chi }, 'console: tenant created')
+    await annuncia(slug, 'created')
     res.json({ slug, temporaryPassword: consegnata, steps: esito.steps, created: esito })
   } catch (err) {
     /*
@@ -273,10 +292,13 @@ router.patch('/platform/tenants/:slug', asyncHandler(async (req: Request, res: R
     case 'suspend':
       await conSessioneDiScrittura((s) => suspendTenant(s, slug))
       log.warn({ slug, chi }, 'console: tenant SUSPENDED')
+      // Its queues are paused: nothing of the tenant runs while it is suspended.
+      await annuncia(slug, 'suspended')
       break
     case 'resume':
       await conSessioneDiScrittura((s) => resumeTenant(s, slug))
       log.warn({ slug, chi }, 'console: tenant resumed')
+      await annuncia(slug, 'resumed')
       break
     default:
       res.status(400).json({ error: 'action must be one of: rename, suspend, resume' })
@@ -313,7 +335,21 @@ router.delete('/platform/tenants/:slug', asyncHandler(async (req: Request, res: 
   log.warn({ slug, chi }, 'console: PERMANENT tenant deletion requested')
   const esito = await conSessioneDiScrittura((s) => purgeTenant(s, slug, body.confirm as string, deleteRealm))
   log.warn({ slug, chi, ...esito }, 'console: tenant deleted')
-  res.json({ slug, ...esito })
+  /*
+   * Its queues go too (23 Sep 2026): first every process closes the tenant's
+   * workers, then its queues leave Redis — jobs, recurring jobs, history. The
+   * data they point to no longer exists. A queue that cannot be removed is
+   * said, and the answer says it: the tenant is deleted either way.
+   */
+  await annuncia(slug, 'deleted')
+  let codeRimosse = true
+  try {
+    await obliterateTenantQueues(slug, TENANT_QUEUE_BASES)
+  } catch (err) {
+    codeRimosse = false
+    log.error({ slug, chi, err: err instanceof Error ? err.message : String(err) }, 'console: the queues of the deleted tenant were not all removed from Redis')
+  }
+  res.json({ slug, ...esito, queuesRemoved: codeRimosse })
 }))
 
 router.use(restErrorHandler)

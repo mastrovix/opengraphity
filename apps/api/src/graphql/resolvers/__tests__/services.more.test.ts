@@ -29,7 +29,7 @@ vi.mock('../../../lib/logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
   return { logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => child } }
 })
-vi.mock('../../../lib/bullmq.js', () => ({ getQueue: vi.fn(() => ({})) }))
+vi.mock('../../../lib/bullmq.js', () => ({ getQueue: vi.fn(() => ({})), getTenantQueue: vi.fn(() => ({})) }))
 vi.mock('../../../jobs/serviceImpactWorker.js', () => ({ forgetServiceMapJobs: vi.fn().mockResolvedValue(0) }))
 vi.mock('../../../services/serviceImpact/engine.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../services/serviceImpact/engine.js')>()),

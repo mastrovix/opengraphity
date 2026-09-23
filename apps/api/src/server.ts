@@ -39,6 +39,7 @@ import { assistantRouter } from './rest/assistant.js'
 import { clientLogRouter } from './rest/client-logs.js'
 import { platformTenantsRouter } from './rest/platform-tenants.js'
 import { platformServerLogsRouter } from './rest/platform-server-logs.js'
+import { platformQueuesRouter } from './rest/platform-queues.js'
 import { handleSlackCommands, handleSlackActions, handleSlackOAuthCallback } from './rest/slack.js'
 import { runRoute } from './rest/routeSafety.js'
 import { attachmentRouter } from './rest/attachments.js'
@@ -249,6 +250,8 @@ app.use('/api', clientLogRouter)
 app.use(platformTenantsRouter)
 // Ondata 3: l'archivio dei log del server, leggibile solo dall'identità di piattaforma.
 app.use(platformServerLogsRouter)
+// Le code della piattaforma e i totali delle code di ogni tenant (23 set 2026).
+app.use(platformQueuesRouter)
 app.use('/api', attachmentRouter)
 app.use('/api', brandRouter)
 app.use('/api', incidentPdfRouter)

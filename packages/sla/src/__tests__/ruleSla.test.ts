@@ -31,7 +31,7 @@ describe('applyRuleSLA', () => {
   it('annulla i job vecchi, sostituisce lo stato e programma avviso, breach e risposta', async () => {
     const start = new Date('2026-09-14T10:00:00Z')
     const s = await applyRuleSLA({ tenantId: 't1', entityType: 'incident', entityId: 'i1', responseMinutes: 15, resolveMinutes: 120, ruleName: 'Security critico', startedAt: start })
-    expect(scheduler.cancelSLAJobs).toHaveBeenCalledWith('i1', 'both')
+    expect(scheduler.cancelSLAJobs).toHaveBeenCalledWith('t1', 'i1', 'both')
     expect(runs[0]!.cypher).toContain('DETACH DELETE old')
     expect(runs[0]!.params).toMatchObject({ ruleName: 'Security critico', resolveDeadline: '2026-09-14T12:00:00.000Z' })
     for (const f of [scheduler.scheduleWarning, scheduler.scheduleBreachCheck, scheduler.scheduleResponseCheck]) expect(f).toHaveBeenCalledWith(s)

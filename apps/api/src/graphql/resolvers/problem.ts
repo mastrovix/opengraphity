@@ -349,9 +349,9 @@ async function deleteProblem(
   void audit(ctx, 'problem.deleted', 'Problem', args.id)
 
   const { cancelSLAJobs, getActiveOLAContractsFor, cancelOLABreaches } = await import('@opengraphity/sla')
-  await cancelSLAJobs(args.id, 'both')
+  await cancelSLAJobs(ctx.tenantId, args.id, 'both')
   const contracts = await getActiveOLAContractsFor(ctx.tenantId, 'problem')
-  if (contracts.length > 0) await cancelOLABreaches(args.id, contracts.map((c) => c.id))
+  if (contracts.length > 0) await cancelOLABreaches(ctx.tenantId, args.id, contracts.map((c) => c.id))
 
   const { rm } = await import('node:fs/promises')
   for (const file of removed.files) {

@@ -89,7 +89,7 @@ const calls = () => [...vi.mocked(runQueryOne).mock.calls, ...vi.mocked(runQuery
 const LOAD_RE = /MATCH \(m:ServiceMap \{id: \$mapId, tenant_id: \$tenantId\}\)\s+OPTIONAL MATCH \(m\)-\[inc:INCLUDES\]->/
 const WRITE_RE = /SET m\.health = \$health, m\.impact_score = toInteger\(\$impactScore\)/
 const HOLD_RE = /SET m\.evaluated_at = \$now, m\.health_note = \$healthNote/
-const PAGE_RE = /MATCH \(m:ServiceMap \{status: 'active'\}\)/
+const PAGE_RE = /MATCH \(m:ServiceMap \{tenant_id: \$tenantId, status: 'active'\}\)/
 
 const node = (o: Record<string, unknown>) => ({ name: o['ciId'], labels: ['Server'], level: 2, role: 'infrastructure', propagate: 'weighted', weight: 5, critical: false, via: 'api-03', addedBy: 'auto', health: 'operational', healthSource: 'monitoring', status: 'active', changes: [], ...o })
 function stateRow(over: { props?: Record<string, unknown>; nodes?: Record<string, unknown>[] } = {}) {
@@ -180,7 +180,7 @@ describe('evaluateStaleOrOldMaps — outcome of the safety-net pass', () => {
       [LOAD_RE, stateRow()],
       [WRITE_RE, writeRow({ changed: false, previous: 'degraded' })],
     ])
-    await expect(evaluateStaleOrOldMaps(NOW)).resolves.toEqual({ evaluated: 1, failed: 0, truncated: false })
+    await expect(evaluateStaleOrOldMaps('t1', NOW)).resolves.toEqual({ evaluated: 1, failed: 0, truncated: false })
   })
 
   it('page cap reached: logged as truncated (the rest waits for the next pass)', async () => {
@@ -194,7 +194,7 @@ describe('evaluateStaleOrOldMaps — outcome of the safety-net pass', () => {
       }],
       [LOAD_RE, null],
     ])
-    await expect(evaluateStaleOrOldMaps(NOW)).rejects.toThrow(new RegExp(`${MAX_PAGES * PAGE_SIZE}/${MAX_PAGES * PAGE_SIZE} service maps failed`))
+    await expect(evaluateStaleOrOldMaps('t1', NOW)).rejects.toThrow(new RegExp(`${MAX_PAGES * PAGE_SIZE}/${MAX_PAGES * PAGE_SIZE} service maps failed`))
     expect(page).toBe(MAX_PAGES)
     expect(log.warn).toHaveBeenCalledWith({ evaluated: MAX_PAGES * PAGE_SIZE }, expect.stringContaining('page cap reached'))
   }, 30_000)

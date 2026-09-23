@@ -32,6 +32,7 @@ import { runQuery, runQueryOne, toNumber } from '@opengraphity/neo4j'
 import { ValidationError, NotFoundError } from './errors.js'
 import { logger } from './logger.js'
 import { config } from './config.js'
+import { SYSTEM_TENANT } from './enumScope.js'
 
 const log = logger.child({ module: 'tenant-lifecycle' })
 
@@ -81,9 +82,27 @@ function daModello(modello: string | undefined, slug: string): string | null {
  *
  * `portal` perché `portal.<tenant>` è l'host del portale; l'host della console
  * lo passa chi chiama, perché sta nella configurazione e non qui.
+ *
+ * Reserved since 23 Sep 2026: `system` (SYSTEM_TENANT), the tenant_id of the
+ * rows every tenant shares — a tenant with that id would read and change them
+ * as its own; and `master`, Keycloak's own realm — onboarding leaves a realm
+ * that already exists as it was and creates its first administrator in it.
  */
 const SLUG_RE = /^[a-z0-9]([a-z0-9-]{1,30}[a-z0-9])$/
-const SLUG_RISERVATI = ['portal', 'www', 'api', 'admin', 'localhost', 'keycloak']
+const SLUG_RISERVATI = ['portal', 'www', 'api', 'admin', 'localhost', 'keycloak', SYSTEM_TENANT, 'master']
+
+/**
+ * The names this installation reserves in its configuration: the subdomain of
+ * the platform console, and the platform realm. A tenant named like the
+ * platform realm would get its first administrator created IN that realm
+ * (onboarding leaves an existing realm as it was): a login to the platform
+ * console, handed to a customer.
+ */
+export function configuredReservedSlugs(): string[] {
+  const consoleHost = config.platformHost?.split('.')[0]?.toLowerCase()
+  const platformRealm = config.platformRealm?.toLowerCase()
+  return [consoleHost, platformRealm].filter((n): n is string => typeof n === 'string' && n !== '')
+}
 
 export function assertSlugValido(slug: string, slugRiservatiExtra: readonly string[] = []): void {
   if (!SLUG_RE.test(slug)) {

@@ -33,8 +33,10 @@ const mockSession = {
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
 vi.mock('@opengraphity/events', () => ({
-  publish:         vi.fn().mockResolvedValue(undefined),
-  getRedisOptions: vi.fn(() => ({})),
+  publish:             vi.fn().mockResolvedValue(undefined),
+  getRedisOptions:     vi.fn(() => ({})),
+  setTenantQueueHooks: vi.fn(),
+  tenantQueue:         vi.fn(() => ({ add: vi.fn().mockResolvedValue(undefined) })),
 }))
 
 vi.mock('../../lib/triggerEngine.js', () => ({

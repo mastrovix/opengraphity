@@ -2,27 +2,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 
-const queueAdd = vi.fn().mockResolvedValue(undefined)
 /*
- * `upsertJobScheduler` nel finto (21 set 2026, BullMQ 6): le ricorrenze non
- * passano piu' da `add({ repeat })` — quella API non esiste piu' — ma da un
- * Job Scheduler con identita' esplicita. Il finto deve esporre quello che il
- * codice chiama davvero, se no il test prova un cammino che non esiste.
+ * Le code del tenant (23 set 2026): ogni tenant ha `anomaly-scanner@<tenant>`,
+ * il suo worker e la sua scansione oraria. I gestori `error` e `failed` dei
+ * worker sono del pool (packages/events, tenantQueues.test.ts — A-06).
  */
-const upsertScheduler = vi.fn().mockResolvedValue(undefined)
-const removeScheduler = vi.fn().mockResolvedValue(true)
-const workerOn = vi.fn()
-
-// vitest 4: a mock is constructible (`new Queue(...)`) only when its
-// implementation is a `function`/class, not an arrow function.
-vi.mock('bullmq', () => ({
-  Queue:  vi.fn(function () { return { add: queueAdd, upsertJobScheduler: upsertScheduler, removeJobScheduler: removeScheduler, on: vi.fn(), close: vi.fn().mockResolvedValue(undefined), name: 'anomaly-scanner' } }),
-  Worker: vi.fn(function () { return { on: workerOn, close: vi.fn().mockResolvedValue(undefined) } }),
+const queueAdd = vi.fn().mockResolvedValue(undefined)
+const getTenantQueue = vi.fn((_base: string, _tenantId: string) => ({ add: queueAdd }))
+const createTenantWorkers = vi.fn((..._a: unknown[]) => ({ pool: true }))
+vi.mock('../../lib/bullmq.js', () => ({
+  getTenantQueue: (base: string, tenantId: string) => getTenantQueue(base, tenantId),
+  createTenantWorkers: (...a: unknown[]) => createTenantWorkers(...a),
 }))
 
-vi.mock('ioredis', () => ({ Redis: vi.fn() }))
-
-// Sessions: `MATCH (t:Tenant)` → two tenants; every other query → no rows.
+// Sessions: `MATCH (t:Tenant)` → two tenants (a scan that still read the list
+// would show up as an extra read); every other query → no rows.
 const executeRead = vi.fn(async (fn: (tx: { run: (q: string) => Promise<{ records: unknown[] }> }) => unknown) =>
   fn({ run: async (q: string) => ({
     records: q.includes('(t:Tenant)')
@@ -73,8 +67,7 @@ vi.mock('../ruleConfig.js', async (importOriginal) => {
 
 // ── Import after mocks ────────────────────────────────────────────────────────
 
-const { startAnomalyScanner, getAnomalyScannerQueue, enqueueTenantScan, anomalyScannerProcessor, entitySubtypeOf } = await import('../anomalyEngine.js')
-const { Worker } = await import('bullmq')
+const { startAnomalyScanner, scheduleAnomalyScan, enqueueTenantScan, anomalyScannerProcessor, entitySubtypeOf } = await import('../anomalyEngine.js')
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
@@ -83,43 +76,29 @@ describe('startAnomalyScanner', () => {
     vi.clearAllMocks()
   })
 
-  it('getAnomalyScannerQueue restituisce il singleton con metodo add', () => {
-    const q = getAnomalyScannerQueue()
-    expect(typeof q.add).toBe('function')
-    expect(getAnomalyScannerQueue()).toBe(q)
+  it('un worker per tenant su anomaly-scanner, ognuno con la scansione oraria del suo tenant, una scansione alla volta nel processo', () => {
+    startAnomalyScanner()
+    // Le scansioni di tutti i tenant scattano insieme: a turno, come quando un job solo le faceva in fila.
+    expect(createTenantWorkers).toHaveBeenCalledWith('anomaly-scanner', anomalyScannerProcessor, { schedule: scheduleAnomalyScan, processLimit: 1 })
   })
 
-  it('istanzia Worker con nome anomaly-scanner e connection', async () => {
-    await startAnomalyScanner()
-    expect(Worker).toHaveBeenCalledWith(
-      'anomaly-scanner',
-      expect.any(Function),
-      expect.objectContaining({ connection: expect.any(Object) }),
-    )
-  })
-
-  it('registra il job ripetibile scan (tutti i tenant) e lo attende', async () => {
-    await startAnomalyScanner()
-    expect(upsertScheduler).toHaveBeenCalledWith(
+  it('la scansione oraria di un tenant ha un id fisso e porta il SUO tenant', async () => {
+    const upsertJobScheduler = vi.fn().mockResolvedValue(undefined)
+    await scheduleAnomalyScan({ upsertJobScheduler } as never, 'tenant-a')
+    expect(upsertJobScheduler).toHaveBeenCalledWith(
       'anomaly-scanner-scan',
-      expect.objectContaining({ every: expect.any(Number) }),
-      expect.objectContaining({ name: 'scan' }),
+      { every: 60 * 60_000 },
+      { name: 'scan', data: { tenantId: 'tenant-a' }, opts: { removeOnComplete: true } },
     )
-  })
-
-  it('registra gli handler failed E error sul worker (A-06)', async () => {
-    await startAnomalyScanner()
-    const events = workerOn.mock.calls.map(c => c[0])
-    expect(events).toContain('failed')
-    expect(events).toContain('error')
   })
 })
 
 describe('enqueueTenantScan (C-18)', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('accoda scan-manual con il SOLO tenantId del chiamante', async () => {
+  it('accoda scan-manual nella coda del chiamante, con il SOLO suo tenantId', async () => {
     await enqueueTenantScan('tenant-a')
+    expect(getTenantQueue).toHaveBeenCalledWith('anomaly-scanner', 'tenant-a')
     expect(queueAdd).toHaveBeenCalledWith(
       'scan-manual',
       { tenantId: 'tenant-a' },
@@ -136,17 +115,17 @@ describe('anomalyScannerProcessor (C-18)', () => {
   const WRITES_PER_TENANT = 3
   const tenantsScanned = () => executeWrite.mock.calls.length / WRITES_PER_TENANT
 
-  it('con tenantId scansiona SOLO quel tenant', async () => {
+  it('la scansione manuale scansiona SOLO il tenant del job', async () => {
     await anomalyScannerProcessor({ name: 'scan-manual', data: { tenantId: 'tenant-a' } } as never)
     expect(tenantsScanned()).toBe(1)
-    // loadTenants must NOT have been called: the only executeRead is the rule query
+    // The only executeRead is the rule query: no list of tenants is read.
     expect(executeRead.mock.calls.length).toBe(1)
   })
 
-  it('senza tenantId (job schedulato) scansiona tutti i tenant', async () => {
-    await anomalyScannerProcessor({ name: 'scan', data: {} } as never)
-    expect(tenantsScanned()).toBe(2)
-    expect(executeRead.mock.calls.length).toBe(1 + 2)  // loadTenants + one rule query per tenant
+  it('anche quella oraria: il tenant è quello della sua coda, e nessun altro viene toccato', async () => {
+    await anomalyScannerProcessor({ name: 'scan', data: { tenantId: 'tenant-b' } } as never)
+    expect(tenantsScanned()).toBe(1)
+    expect(executeRead.mock.calls.length).toBe(1)
   })
 
   it('una regola spenta non esegue query e chiude le sue anomalie aperte con il motivo', async () => {

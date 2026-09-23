@@ -1,21 +1,24 @@
 /**
- * Pagina Code dell'amministrazione: conteggi, job per stato, rigioco.
+ * Pagina Code dell'amministrazione di un tenant: conteggi, job per stato, rigioco.
  *
  * Le code vengono dal registro unico `lib/queueRegistry.ts` (revisione 2 ·
- * D2.2): prima una lista a mano di sei nomi lasciava fuori tutte le code
- * dell'Event Management e dei Servizi monitorati — un job di ingest fallito
- * dopo l'ultimo tentativo non era né visibile né rigiocabile — e il rigioco
- * era offerto anche dove non ha senso. Ogni `QueueStat` porta `group` e
- * `retryable` così l'interfaccia raggruppa e mostra il pulsante senza
- * conoscere i nomi. Gli oggetti Queue sono i singleton di lib/bullmq.ts
- * (una connessione per coda per processo), non più uno nuovo per chiamata.
+ * D2.2): ogni `QueueStat` porta `group` e `retryable` così l'interfaccia
+ * raggruppa e mostra il pulsante senza conoscere i nomi.
+ *
+ * LE CODE DEL TENANT, E BASTA (23 set 2026). Ogni coda che contiene il lavoro
+ * di un tenant è sua: `<nome>@<tenant>` (packages/events/src/tenantQueues.ts).
+ * La pagina mostra quelle del tenant di chi chiama, con i SUOI conteggi, e
+ * rigioca solo i suoi job. Prima le code erano condivise: un amministratore
+ * leggeva e rigiocava i job di tutti i tenant (revisione del 23 set 2026,
+ * ondata 1). Le code della piattaforma (backup, Autoanalisi) non sono di
+ * nessun tenant: si guardano dalla console di piattaforma.
  */
 import type { JobType } from 'bullmq'
 import type { GraphQLContext } from '../../context.js'
 import { GraphQLError } from 'graphql'
 import { lookupOrError } from '../../lib/lookupOrError.js'
-import { getQueue } from '../../lib/bullmq.js'
-import { QUEUE_REGISTRY, isRegisteredQueue, queueEntry } from '../../lib/queueRegistry.js'
+import { getTenantQueue } from '../../lib/bullmq.js'
+import { QUEUE_REGISTRY, isTenantQueueBase, queueEntry } from '../../lib/queueRegistry.js'
 import { requirePermission } from '../../lib/permissions.js'
 
 const STATUS_TYPES: Record<string, JobType[]> = {
@@ -37,39 +40,16 @@ const STATUS_TYPES: Record<string, JobType[]> = {
    */
 }
 
-/**
- * THE QUEUES ARE THE PLATFORM'S, THE JOBS ARE A TENANT'S (review of 23 Sep 2026).
- *
- * Every tenant runs on the same BullMQ queues, and every tenant's admin holds
- * `admin.system`. The page listed and retried the jobs of all tenants: webhook
- * bodies with ticket data, alarm payloads. A tenant admin now sees and retries
- * only the jobs whose data names their tenant; a job that names none is a
- * platform job and belongs to the platform console. The counts stay the
- * queue's: they say how busy it is, not what it holds.
- */
-function jobTenant(data: unknown): string | null {
-  if (data === null || typeof data !== 'object') return null
-  const d = data as Record<string, unknown>
-  for (const key of ['tenantId', 'tenant_id']) if (typeof d[key] === 'string') return d[key] as string
-  for (const inner of Object.values(d)) {
-    if (inner !== null && typeof inner === 'object' && !Array.isArray(inner)) {
-      const t = (inner as Record<string, unknown>)['tenantId'] ?? (inner as Record<string, unknown>)['tenant_id']
-      if (typeof t === 'string') return t
-    }
-  }
-  return null
-}
-
-/** Pages read to fill one list: a busy queue of other tenants must not hide this tenant's jobs forever. */
-const SCAN_PAGE = 200
-const SCAN_MAX  = 5_000
+/** The queues a tenant has: every base of the registry whose scope is the tenant. */
+const TENANT_ENTRIES = QUEUE_REGISTRY.filter((e) => e.scope === 'tenant')
 
 function requireSystemPermission(ctx: GraphQLContext): void {
   requirePermission(ctx, 'admin.system')
 }
 
-function requireRegistered(queueName: string): void {
-  if (!isRegisteredQueue(queueName)) {
+/** A queue of the caller's tenant; a platform queue, or a name that is no queue, is not one. */
+function requireTenantQueue(queueName: string): void {
+  if (!isTenantQueueBase(queueName)) {
     throw new GraphQLError(`Unknown queue: ${queueName}`, { extensions: { code: 'BAD_USER_INPUT' } })
   }
 }
@@ -79,19 +59,13 @@ export const queueStatsResolvers = {
     queueJobs: async (_: unknown, args: { queueName: string; status?: string; limit?: number }, ctx: GraphQLContext) => {
       requireSystemPermission(ctx)
       const { queueName, status = 'failed', limit = 50 } = args
-      requireRegistered(queueName)
+      requireTenantQueue(queueName)
       const types = lookupOrError(STATUS_TYPES, status, 'STATUS_TYPES')
-      const queue = getQueue(queueName)
-      type QueueJob = NonNullable<Awaited<ReturnType<typeof queue.getJobs>>[number]>
-      const jobs: QueueJob[] = []
-      for (let start = 0; start < SCAN_MAX && jobs.length < limit; start += SCAN_PAGE) {
-        const page = await queue.getJobs(types, start, start + SCAN_PAGE - 1)
-        // BullMQ returns undefined for job IDs whose hash data is gone from Redis
-        // (e.g. auto-cleaned completed/failed jobs whose IDs still linger in sorted sets).
-        // Filter them out so the resolver never crashes on undefined.id.
-        for (const j of page) if (j != null && jobTenant(j.data) === ctx.tenantId && jobs.length < limit) jobs.push(j)
-        if (page.length < SCAN_PAGE) break
-      }
+      const rawJobs = await getTenantQueue(queueName, ctx.tenantId).getJobs(types, 0, limit - 1)
+      // BullMQ returns undefined for job IDs whose hash data is gone from Redis
+      // (e.g. auto-cleaned completed/failed jobs whose IDs still linger in sorted sets).
+      // Filter them out so the resolver never crashes on undefined.id.
+      const jobs = rawJobs.filter((j): j is NonNullable<typeof j> => j != null)
       return jobs.map((job) => ({
         id:           job.id ?? '',
         name:         job.name,
@@ -112,8 +86,8 @@ export const queueStatsResolvers = {
     queueStats: async (_: unknown, __: unknown, ctx: GraphQLContext) => {
       requireSystemPermission(ctx)
       return Promise.all(
-        QUEUE_REGISTRY.map(async (entry) => {
-          const coda = getQueue(entry.name)
+        TENANT_ENTRIES.map(async (entry) => {
+          const coda = getTenantQueue(entry.name, ctx.tenantId)
           const [counts, inPausa] = await Promise.all([
             coda.getJobCounts('waiting', 'active', 'completed', 'failed', 'delayed'),
             coda.isPaused(),
@@ -139,7 +113,7 @@ export const queueStatsResolvers = {
     retryQueueJob: async (_: unknown, args: { queueName: string; jobId: string }, ctx: GraphQLContext) => {
       requireSystemPermission(ctx)
       const { queueName, jobId } = args
-      requireRegistered(queueName)
+      requireTenantQueue(queueName)
       const entry = queueEntry(queueName)
       if (!entry.retryable) {
         throw new GraphQLError(
@@ -147,9 +121,8 @@ export const queueStatsResolvers = {
           { extensions: { code: 'BAD_USER_INPUT' } },
         )
       }
-      const job = await getQueue(queueName).getJob(jobId)
-      // Another tenant's job, or a platform job, is not there for this tenant.
-      if (!job || jobTenant(job.data) !== ctx.tenantId) throw new GraphQLError(`Job ${jobId} not found in queue ${queueName}`, { extensions: { code: 'NOT_FOUND' } })
+      const job = await getTenantQueue(queueName, ctx.tenantId).getJob(jobId)
+      if (!job) throw new GraphQLError(`Job ${jobId} not found in queue ${queueName}`, { extensions: { code: 'NOT_FOUND' } })
       await job.retry()
       return true
     },

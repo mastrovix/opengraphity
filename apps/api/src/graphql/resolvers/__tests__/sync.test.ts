@@ -24,8 +24,10 @@ vi.mock('@opengraphity/discovery', () => ({
   getConnector:       vi.fn(),
 }))
 // `scheduleSourceSync`: il cron in Redis segue la sorgente (revisione totale · D-6).
+// `syncQueueOf`: la coda della sync è quella del tenant (23 set 2026).
+const syncQueue = vi.hoisted(() => ({ add: vi.fn().mockResolvedValue({ id: 'job-1' }) }))
 vi.mock('../../../discovery/syncWorker.js', () => ({
-  syncQueue: { add: vi.fn().mockResolvedValue({ id: 'job-1' }) },
+  syncQueueOf: vi.fn(() => syncQueue),
   scheduleSourceSync: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
@@ -33,7 +35,7 @@ vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undef
 const { syncResolvers } = await import('../sync.js')
 const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { encryptCredentials } = await import('@opengraphity/discovery')
-const { syncQueue } = await import('../../../discovery/syncWorker.js')
+const { syncQueueOf } = await import('../../../discovery/syncWorker.js')
 
 const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin', permissions: perms('admin') }
 
@@ -167,6 +169,7 @@ describe('triggerSync', () => {
     expect(params).toMatchObject({ sourceId: 's-1', tenantId: 'tenant-1', syncType: 'manual' })
     const runId = params['runId'] as string
 
+    expect(syncQueueOf).toHaveBeenCalledWith('tenant-1')
     expect(syncQueue.add).toHaveBeenCalledOnce()
     expect(syncQueue.add).toHaveBeenCalledWith('sync', { runId, sourceId: 's-1', tenantId: 'tenant-1', syncType: 'manual' }, { jobId: `sync-${runId}` })
     expect(out).toMatchObject({ sourceId: 's-1', tenantId: 'tenant-1', status: 'queued' })

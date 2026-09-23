@@ -63,19 +63,19 @@ export function olaOpenTicketsCypher(entityType: string): string {
            [x IN segs | {teamId: x.team_id, startedAt: x.started_at, endedAt: x.ended_at, inferred: coalesce(x.inferred, false)}] AS segments`
 }
 
-export async function runOLASweep(now: Date = new Date()): Promise<OLASweepSummary> {
+export async function runOLASweep(tenantId: string, now: Date = new Date()): Promise<OLASweepSummary> {
   const summary: OLASweepSummary = { contracts: 0, candidates: 0, alerted: 0, failed: 0 }
   const session = getSession(undefined, 'WRITE')
   try {
+    // The tenant's contracts only: the sweep runs in the tenant's own queue (23 Sep 2026).
     const contracts = await runQuery<ContractRow>(session, `
-      // tenant-ok(piattaforma): passata di manutenzione su tutti i tenant; ogni contratto è poi letto e scritto nel suo tenant.
-      MATCH (o:OLAContract)
+      MATCH (o:OLAContract {tenant_id: $tenantId})
       WHERE coalesce(o.enabled, true) = true AND o.team_id IS NOT NULL
       RETURN o.id AS id, o.tenant_id AS tenantId, o.name AS name, o.type AS type, o.entity_type AS entityType, o.team_id AS teamId,
              o.resolve_minutes AS resolveMinutes, coalesce(o.business_hours, false) AS businessHours,
              o.calendar_id AS calendarId, o.created_at AS createdAt, o.timezone AS timezone
-      ORDER BY o.tenant_id, o.id
-    `, {})
+      ORDER BY o.id
+    `, { tenantId })
     summary.contracts = contracts.length
     const timezones = new Map<string, string>()
     for (const c of contracts) {

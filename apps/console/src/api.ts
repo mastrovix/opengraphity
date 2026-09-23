@@ -140,6 +140,33 @@ export interface EsitoCreazione {
   steps: string[]
 }
 
+/** The counts of a queue, or the totals of a tenant's queues. */
+export interface QueueCounts { waiting: number; active: number; delayed: number; failed: number; completed: number }
+
+/** A queue of the platform itself: backups and maintenance, self-analysis. */
+export interface PlatformQueue { name: string; counts: QueueCounts; paused: boolean }
+
+/** A tenant's queues, as totals: its jobs are retried by its own administrator, in its console. */
+export interface TenantQueues {
+  tenantId: string
+  /** A suspended tenant's queues are paused: its jobs wait, they are not lost. */
+  suspended: boolean
+  counts: QueueCounts
+  failedQueues: Array<{ name: string; failed: number }>
+}
+
+export interface PlatformJob {
+  id: string
+  name: string
+  /** The job's data as JSON text. */
+  data: string
+  timestamp: string
+  finishedOn: string | null
+  failedReason: string | null
+  attemptsMade: number
+  maxAttempts: number
+}
+
 export const api = {
   create:    (t: NuovoTenant)             => chiama<EsitoCreazione>('/platform/tenants', { method: 'POST', body: JSON.stringify(t) }),
   tenants:   ()                          => chiama<{ tenants: Tenant[] }>('/platform/tenants'),
@@ -154,4 +181,7 @@ export const api = {
    */
   resetPassword: (slug: string, email: string) => chiama<EsitoResetPassword>(`/platform/tenants/${encodeURIComponent(slug)}/admin-password`, { method: 'POST', body: JSON.stringify({ email }) }),
   purge:     (slug: string, confirm: string) => chiama<{ slug: string; nodiCancellati: number; realmCancellato: boolean }>(`/platform/tenants/${encodeURIComponent(slug)}`, { method: 'DELETE', body: JSON.stringify({ confirm }) }),
+  queues:    ()                           => chiama<{ platform: PlatformQueue[]; tenants: TenantQueues[] }>('/platform/queues'),
+  failedJobs: (queue: string)             => chiama<{ queue: string; status: string; jobs: PlatformJob[] }>(`/platform/queues/${encodeURIComponent(queue)}/jobs`),
+  retryJob:  (queue: string, id: string)  => chiama<{ queue: string; id: string; retried: boolean }>(`/platform/queues/${encodeURIComponent(queue)}/jobs/${encodeURIComponent(id)}/retry`, { method: 'POST' }),
 }

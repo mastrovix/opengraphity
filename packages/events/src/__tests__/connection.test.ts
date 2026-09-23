@@ -1,35 +1,49 @@
-import { describe, it, expect, vi } from 'vitest'
-import type { Queue } from 'bullmq'
-import { registerQueue, closeConnection, openQueueCount } from '../connection.js'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-function fakeQueue(): Queue & { close: ReturnType<typeof vi.fn> } {
-  return { close: vi.fn(async () => {}) } as unknown as Queue & { close: ReturnType<typeof vi.fn> }
-}
+const fake = vi.hoisted(() => {
+  const state = { failClose: null as string | null }
+  class Queue {
+    close = vi.fn(async () => { if (state.failClose === this.name) throw new Error('redis gone') })
+    constructor(public name: string) {}
+    on() { return this }
+  }
+  class Redis {
+    quit = vi.fn(async () => 'OK')
+    on() { return this }
+    disconnect() {}
+  }
+  return { state, Queue, Redis }
+})
+vi.mock('bullmq', () => ({ Queue: fake.Queue, Worker: class {} }))
+vi.mock('ioredis', () => ({ Redis: fake.Redis }))
 
-describe('closeConnection — really closes the registered queues (D-24)', () => {
-  it('closes every registered queue once, runs onClosed, and empties the registry', async () => {
-    vi.spyOn(console, 'log').mockImplementation(() => {})
-    const q1 = fakeQueue(); const q2 = fakeQueue()
-    const onClosed = vi.fn()
-    registerQueue(q1, onClosed)
-    registerQueue(q2)
+const { closeConnection, openQueueCount } = await import('../connection.js')
+const { tenantQueue, resetTenantQueuesForTests } = await import('../tenantQueues.js')
+
+beforeEach(() => {
+  resetTenantQueuesForTests()
+  fake.state.failClose = null
+  vi.spyOn(console, 'log').mockImplementation(() => {})
+})
+
+describe('closeConnection — really closes the queues the package opened (D-24)', () => {
+  it('closes every producer queue once and empties the registry; idempotent', async () => {
+    const q1 = tenantQueue('sla-engine', 't1') as unknown as InstanceType<typeof fake.Queue>
+    const q2 = tenantQueue('sla-engine', 't2') as unknown as InstanceType<typeof fake.Queue>
     expect(openQueueCount()).toBe(2)
 
     await closeConnection()
     expect(q1.close).toHaveBeenCalledTimes(1)
     expect(q2.close).toHaveBeenCalledTimes(1)
-    expect(onClosed).toHaveBeenCalledTimes(1)
     expect(openQueueCount()).toBe(0)
 
-    // Idempotent: a second call closes nothing again.
     await closeConnection()
     expect(q1.close).toHaveBeenCalledTimes(1)
   })
 
   it('propagates a queue close failure (shutdown must see it)', async () => {
-    const bad = fakeQueue()
-    bad.close.mockRejectedValueOnce(new Error('redis gone'))
-    registerQueue(bad)
+    tenantQueue('sla-engine', 't1')
+    fake.state.failClose = 'sla-engine@t1'
     await expect(closeConnection()).rejects.toThrow('redis gone')
     expect(openQueueCount()).toBe(0)
   })

@@ -1,10 +1,9 @@
-import { Queue } from 'bullmq'
 import type { DomainEvent } from '@opengraphity/types'
-import { registerQueue } from './connection.js'
-import { getRedisConnection } from './redis.js'
+import { tenantQueue } from './tenantQueues.js'
 
 /**
- * One queue per consumer — fan-out by publishing to all.
+ * One queue per consumer — fan-out by publishing to all. Each consumer's
+ * queue is the tenant's own (`<consumer>@<tenant>`, 23 Sep 2026).
  * `service-impact-consumer`: apps/api consumers/serviceImpactConsumer.ts
  * (Servizi monitorati: `ci.health_changed` → valutazione delle mappe).
  */
@@ -17,23 +16,12 @@ const JOB_OPTIONS = {
   removeOnFail:     100,
 } as const
 
-let _queues: Queue[] | null = null
-
-function getQueues(): Queue[] {
-  if (_queues) return _queues
-  const conn = getRedisConnection()
-  const queues = CONSUMER_QUEUES.map(name => new Queue(name, { connection: conn }))
-  _queues = queues
-  for (const q of queues) {
-    // After closeConnection() a later publish must open fresh queues, not
-    // reuse closed ones.
-    registerQueue(q, () => { if (_queues === queues) _queues = null })
-  }
-  return queues
-}
-
 /**
- * Pubblica l'evento su tutte le code dei consumatori.
+ * Pubblica l'evento su tutte le code dei consumatori del suo tenant.
+ *
+ * Un evento senza tenant non si pubblica: la coda di un consumatore è quella
+ * di un tenant, e `tenantQueue` lo rifiuta ad alta voce invece di metterlo in
+ * una coda che nessun worker legge.
  *
  * Il fan-out NON è atomico: se una `add` fallisce, le altre sono già
  * accodate, e chi ritenta ripubblica l'evento (revisione totale · E-7). Il
@@ -45,9 +33,9 @@ function getQueues(): Queue[] {
  * consumatori vedono due eventi (vedi `packages/sla/src/scheduler.ts`).
  */
 export async function publish<T>(event: DomainEvent<T>): Promise<void> {
-  const queues = getQueues()
+  const queues = CONSUMER_QUEUES.map((name) => tenantQueue(name, event.tenant_id))
   await Promise.all(
     queues.map(q => q.add(event.type, event, { ...JOB_OPTIONS, jobId: event.id }))
   )
-  console.log(`[publisher] Published: ${event.type} (id: ${event.id})`)
+  console.log(`[publisher] Published: ${event.type} (id: ${event.id}, tenant: ${event.tenant_id})`)
 }

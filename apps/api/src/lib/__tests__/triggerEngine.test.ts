@@ -26,7 +26,7 @@ vi.mock('@opengraphity/neo4j', () => ({
     (cypher.includes('RETURN t.id AS id') ? (h.rowsByTenant.get(params.tenantId) ?? []) : [])),
 }))
 vi.mock('../../graphql/resolvers/ci-utils.js', () => ({ withSession: vi.fn(async (fn: (s: unknown) => unknown) => fn({})) }))
-vi.mock('../bullmq.js', () => ({ getQueue: vi.fn(() => h.queue) }))
+vi.mock('../bullmq.js', () => ({ getTenantQueue: vi.fn(() => h.queue) }))
 vi.mock('../actionExecutor.js', () => ({
   executeActions: vi.fn(async () => [{ action: 'set_field', success: true }]),
   parseActions: vi.fn(() => [{ type: 'set_field' }]),
@@ -39,7 +39,7 @@ vi.mock('../logger.js', () => {
 
 const { evaluateTriggers, scheduleTimerTriggers, invalidateTriggerCache } = await import('../triggerEngine.js')
 const { runQuery } = await import('@opengraphity/neo4j')
-const { getQueue } = await import('../bullmq.js')
+const { getTenantQueue } = await import('../bullmq.js')
 
 const trigger = (over: Row = {}): Row => ({
   id: 'tr-1', name: 'Escalate', entity_type: 'incident', event_type: 'on_create',
@@ -125,7 +125,7 @@ describe('evaluateTriggers', () => {
 describe('scheduleTimerTriggers', () => {
   it('no on_timer triggers → no queue is even opened', async () => {
     await scheduleTimerTriggers(freshTenant(), 'incident', 'i1')
-    expect(getQueue).not.toHaveBeenCalled()
+    expect(getTenantQueue).not.toHaveBeenCalled()
   })
 
   it('schedules a delayed job per trigger with a positive delay, with a deterministic job id; skips null/zero/negative delays', async () => {
@@ -141,7 +141,7 @@ describe('scheduleTimerTriggers', () => {
 
     await scheduleTimerTriggers(t, 'incident', 'inc-7')
 
-    expect(getQueue).toHaveBeenCalledWith('workflow-jobs')
+    expect(getTenantQueue).toHaveBeenCalledWith('workflow-jobs', t)
     expect(h.queue.add.mock.calls).toEqual([
       ['trigger_timer', { triggerId: 'tm-30', tenantId: t, entityType: 'incident', entityId: 'inc-7' },
         { delay: 30 * 60_000, jobId: 'trigger-tm-30-inc-7', removeOnComplete: true }],

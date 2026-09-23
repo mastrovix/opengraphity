@@ -341,7 +341,7 @@ export class SLAEngine extends BaseConsumer<unknown> {
     const paused = await pauseSLA(event.tenant_id, entityId, slaType, eventInstant(event))
     if (paused) {
       // Stop only the paused clock's timers — they are re-created on resume.
-      await cancelSLAJobs(entityId, slaType)
+      await cancelSLAJobs(event.tenant_id, entityId, slaType)
       console.log(`[sla:engine] SLA paused (${slaType}) for ${entityId}`)
     }
   }
@@ -376,7 +376,7 @@ export class SLAEngine extends BaseConsumer<unknown> {
     await markResponseMet(event.tenant_id, entityId)
     // The response target is met: the pending response-breach timer must not
     // fire a false "response breach" warning (D-01).
-    await cancelSLAJobs(entityId, 'response')
+    await cancelSLAJobs(event.tenant_id, entityId, 'response')
   }
 
   /**
@@ -419,7 +419,7 @@ export class SLAEngine extends BaseConsumer<unknown> {
 
     if (p.from_initial && !status.response_met) {
       await markResponseMet(event.tenant_id, p.entity_id)
-      await cancelSLAJobs(p.entity_id, 'response')
+      await cancelSLAJobs(event.tenant_id, p.entity_id, 'response')
       console.log(`[sla:engine] Response met for ${p.entity_type} ${p.entity_id} (left the initial step "${p.from_step}")`)
     }
 
@@ -437,7 +437,7 @@ export class SLAEngine extends BaseConsumer<unknown> {
       if (p.step_category === 'waiting' && !status.paused_at) {
         const paused = await pauseSLA(event.tenant_id, p.entity_id, 'both', enteredAt)
         if (paused) {
-          await cancelSLAJobs(p.entity_id, 'both')
+          await cancelSLAJobs(event.tenant_id, p.entity_id, 'both')
           console.log(`[sla:engine] SLA paused for ${p.entity_type} ${p.entity_id}: entered waiting step "${p.step_name}"`)
         }
       } else if (p.step_category !== 'waiting' && !concludes && status.paused_at) {
@@ -462,7 +462,7 @@ export class SLAEngine extends BaseConsumer<unknown> {
       const at = new Date(p.entered_at)
       if (Number.isNaN(at.getTime())) throw new Error(`[sla:engine] ${event.type}: entered_at is not a valid instant (${JSON.stringify(p.entered_at)})`)
       const updated = await markResolveMet(event.tenant_id, p.entity_id, at)
-      await cancelSLAJobs(p.entity_id)
+      await cancelSLAJobs(event.tenant_id, p.entity_id)
       console.log(
         `[sla:engine] SLA closed for ${p.entity_type} ${p.entity_id} entering "${p.step_name}": ` +
           (updated?.resolve_met ? 'resolved within target' : 'resolved AFTER target (breached)'),
@@ -489,7 +489,7 @@ export class SLAEngine extends BaseConsumer<unknown> {
       console.log(`[sla:engine] SLA of ${entityType} ${id} already closed at ${existing.resolved_at} — ${event.type} ignored`)
     } else if (existing) {
       const updated = await markResolveMet(event.tenant_id, id, this.resolvedInstant(event))
-      await cancelSLAJobs(id)
+      await cancelSLAJobs(event.tenant_id, id)
       console.log(
         `[sla:engine] SLA closed for ${entityType} ${id}: ` +
           (updated?.resolve_met ? 'resolved within target' : 'resolved AFTER target (breached)'),

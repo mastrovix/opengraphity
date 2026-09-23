@@ -9,7 +9,7 @@
  *    sorgente (scoped per tenant) con impronta e messaggio, metrica
  *    events_ingest_failed_total{connector}; ai tentativi intermedi non scrive;
  *    scrittura fallita → solo log.
- * BullMQ è mockato attraverso lib/bullmq.ts; il processore e onFailed sono catturati da createWorker.
+ * BullMQ è mockato attraverso lib/bullmq.ts; il processore e onFailed sono catturati da createTenantWorkers.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Job } from 'bullmq'
@@ -20,11 +20,11 @@ const captured: Captured[] = []
 const addBulk = vi.fn().mockResolvedValue(undefined)
 
 vi.mock('../../lib/bullmq.js', () => ({
-  createWorker: vi.fn((name: string, processor: AnyProcessor, opts: Captured['opts']) => {
+  createTenantWorkers: vi.fn((name: string, processor: AnyProcessor, opts: Captured['opts']) => {
     captured.push({ processor, opts })
     return { name, opts, on: vi.fn(), close: vi.fn() }
   }),
-  getQueue: vi.fn(() => ({ addBulk })),
+  getTenantQueue: vi.fn(() => ({ addBulk })),
 }))
 vi.mock('../../lib/logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
@@ -39,7 +39,7 @@ vi.mock('../../services/eventService.js', () => ({
 
 const worker = await import('../eventIngestWorker.js')
 const { eventJobId, enqueueEvents, startEventIngestWorker, recordIngestFailure, eventIngestBackoffMs, EVENT_INGEST_QUEUE, EVENT_INGEST_ATTEMPTS, EVENT_INGEST_BACKOFF_MS } = worker
-const { createWorker, getQueue } = await import('../../lib/bullmq.js')
+const { createTenantWorkers, getTenantQueue } = await import('../../lib/bullmq.js')
 const { getSession, runQueryOne } = await import('@opengraphity/neo4j')
 const { ingestEvent } = await import('../../services/eventService.js')
 const { eventsIngestFailedTotal, eventIngestLagSeconds } = await import('../../middleware/metrics.js')
@@ -72,7 +72,7 @@ describe('eventJobId / enqueueEvents', () => {
     expect(EVENT_INGEST_BACKOFF_MS).toEqual([10_000, 20_000, 40_000, 600_000])
     const n = await enqueueEvents('t1', 'hook-1', [EV, { ...EV, title: 'HighLoad' }], DATA.receivedAt)
     expect(n).toBe(2)
-    expect(getQueue).toHaveBeenCalledWith(EVENT_INGEST_QUEUE)
+    expect(getTenantQueue).toHaveBeenCalledWith(EVENT_INGEST_QUEUE, 't1')
     const jobs = vi.mocked(addBulk).mock.calls[0]![0] as Array<{ name: string; data: unknown; opts: Record<string, unknown> }>
     expect(jobs).toHaveLength(2)
     expect(jobs[0]).toEqual({
@@ -106,10 +106,10 @@ describe('eventJobId / enqueueEvents', () => {
 })
 
 describe('processore', () => {
-  it('startEventIngestWorker: worker sulla coda con concurrency 4, onFailed e la strategia di backoff custom registrata sul worker', () => {
+  it('startEventIngestWorker: un worker per tenant sulla coda, concurrency 4, onFailed e la strategia di backoff custom registrata sul worker', () => {
     const w = startEventIngestWorker()
     expect(w.name).toBe(EVENT_INGEST_QUEUE)
-    expect(createWorker).toHaveBeenCalledWith(EVENT_INGEST_QUEUE, expect.any(Function), expect.objectContaining({ concurrency: 4, onFailed: expect.any(Function), settings: { backoffStrategy: expect.any(Function) } }))
+    expect(createTenantWorkers).toHaveBeenCalledWith(EVENT_INGEST_QUEUE, expect.any(Function), expect.objectContaining({ concurrency: 4, onFailed: expect.any(Function), settings: { backoffStrategy: expect.any(Function) } }))
     const strategy = (captured[0]!.opts as { settings: { backoffStrategy: (n: number) => number } }).settings.backoffStrategy
     expect(strategy(4)).toBe(600_000)
   })

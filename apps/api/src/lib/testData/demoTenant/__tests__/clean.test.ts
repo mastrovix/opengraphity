@@ -13,6 +13,7 @@ const fake = vi.hoisted(() => ({
   jobs: [] as Array<{ id: string; data: { tenantId: string; entityId: string } }>,
   alive: [] as string[],
   removed: [] as string[],
+  queuesOpened: [] as string[],
 }))
 
 function answer(cypher: string, params: Record<string, unknown>): Array<Record<string, unknown>> {
@@ -45,10 +46,13 @@ vi.mock('@opengraphity/neo4j', () => ({
   },
 }))
 vi.mock('../../../bullmq.js', () => ({
-  getQueue: () => ({
-    getJobs: async ([state]: string[], start: number) => (state === 'delayed' && start === 0 ? fake.jobs : []),
-    remove: async (id: string) => { fake.removed.push(id); return 1 },
-  }),
+  getTenantQueue: (base: string, tenantId: string) => {
+    fake.queuesOpened.push(`${base}@${tenantId}`)
+    return {
+      getJobs: async ([state]: string[], start: number) => (state === 'delayed' && start === 0 ? fake.jobs : []),
+      remove: async (id: string) => { fake.removed.push(id); return 1 },
+    }
+  },
 }))
 
 const { cleanDemoTenant, sequenceOf, WORK_SINCE_RUN, DERIVED_LABELS } = await import('../clean.js')
@@ -57,7 +61,7 @@ const writes = (pattern: string) => fake.queries.filter((q) => q.cypher.includes
 const RUN = { id: 'r1', startedAt: '2026-09-23T03:38:14.274Z', limits: null, eventPolicy: null, hasEventPolicy: false, retention: null, hasRetention: false, rules: null }
 
 beforeEach(() => {
-  fake.queries = []; fake.run = { ...RUN }; fake.highest = {}; fake.jobs = []; fake.alive = []; fake.removed = []
+  fake.queries = []; fake.run = { ...RUN }; fake.highest = {}; fake.jobs = []; fake.alive = []; fake.removed = []; fake.queuesOpened = []
 })
 
 describe('the sweep lists', () => {
@@ -137,6 +141,8 @@ describe('cleanDemoTenant', () => {
     ]
     fake.alive = ['kept']
     await cleanDemoTenant('demo', () => undefined)
+    // The timers live in the tenant's own queue (23 Sep 2026).
+    expect(fake.queuesOpened).toEqual(['sla-jobs@demo'])
     expect(fake.removed).toEqual(['breach-gone'])
   })
 })

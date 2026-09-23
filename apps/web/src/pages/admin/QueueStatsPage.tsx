@@ -74,8 +74,11 @@ const COUNTER_STYLE: Record<string, { color: string; bg: string }> = {
 const COUNTER_ORDER = ['active', 'waiting', 'delayed', 'failed', 'completed'] as const
 const JOB_STATUSES  = ['failed', 'waiting', 'active', 'completed', 'delayed'] as const
 
-/** Ordine di presentazione dei sottosistemi; un gruppo nuovo dichiarato dal server finisce in coda, col suo nome. */
-const GROUP_ORDER = ['events', 'services', 'itsm', 'platform'] as const
+/**
+ * Ordine di presentazione dei sottosistemi; un gruppo nuovo dichiarato dal server finisce in coda, col suo nome.
+ * `platform` non arriva più alla pagina di un tenant (23 set 2026): le sue code non sono di nessun tenant.
+ */
+const GROUP_ORDER = ['events', 'services', 'itsm', 'analysis', 'platform'] as const
 
 function formatTs(iso: string | null): string {
   if (!iso) return '—'

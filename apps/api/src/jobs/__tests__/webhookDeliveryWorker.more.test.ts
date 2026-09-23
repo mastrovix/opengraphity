@@ -13,7 +13,10 @@
  *  - send/error counters on the node are what the admin page shows; a non-2xx
  *    response must count as an error AND be retried;
  *  - enqueueing must not swallow errors (events would be lost silently) and
- *    must honour `retry_on_failure` and the per-event job id (de-duplication).
+ *    must honour `retry_on_failure` and the per-event job id (de-duplication);
+ *  - since 23 Sep 2026 every tenant has its own delivery queue
+ *    (`webhook-delivery@<tenant>`): one tenant's slow receiver no longer
+ *    delays another tenant's deliveries.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createHmac } from 'crypto'
@@ -33,11 +36,11 @@ vi.mock('../../lib/logger.js', () => {
 })
 
 const queueAdd = vi.fn(async () => undefined)
-const getQueue = vi.fn(() => ({ add: queueAdd }))
-const createWorker = vi.fn((..._a: unknown[]) => ({ worker: true }))
+const getTenantQueue = vi.fn((_base: string, _tenantId: string) => ({ add: queueAdd }))
+const createTenantWorkers = vi.fn((..._a: unknown[]) => ({ pool: true }))
 vi.mock('../../lib/bullmq.js', () => ({
-  getQueue: (...a: unknown[]) => getQueue(...(a as [])),
-  createWorker: (...a: unknown[]) => createWorker(...a),
+  getTenantQueue: (base: string, tenantId: string) => getTenantQueue(base, tenantId),
+  createTenantWorkers: (...a: unknown[]) => createTenantWorkers(...a),
 }))
 
 const assertSafeOutboundUrl = vi.fn(async (u: string) => new URL(u))
@@ -56,7 +59,7 @@ interface WorkerOpts { concurrency: number; onFailed: (job: unknown, err: Error)
 /** Starts the worker and hands back the processor BullMQ would call. */
 function processor(): { run: Processor; opts: WorkerOpts } {
   startWebhookDeliveryWorker()
-  const call = createWorker.mock.calls.at(-1)!
+  const call = createTenantWorkers.mock.calls.at(-1)!
   return { run: call[1] as Processor, opts: call[2] as WorkerOpts }
 }
 
@@ -196,10 +199,10 @@ describe('processDelivery — the node is the truth', () => {
 })
 
 describe('startWebhookDeliveryWorker', () => {
-  it('opens the producer queue and a worker on the delivery queue with bounded concurrency', () => {
+  it('registers one worker per tenant on the delivery queue, with bounded concurrency', () => {
     const { opts } = processor()
-    expect(getQueue).toHaveBeenCalledWith(WEBHOOK_DELIVERY_QUEUE)
-    expect(createWorker.mock.calls[0]![0]).toBe('webhook-delivery')
+    expect(WEBHOOK_DELIVERY_QUEUE).toBe('webhook-delivery')
+    expect(createTenantWorkers.mock.calls[0]![0]).toBe('webhook-delivery')
     expect(opts.concurrency).toBe(10)
     // The failure hook only logs: it must tolerate a missing job (stalled job cleanup).
     expect(() => opts.onFailed(undefined, new Error('x'))).not.toThrow()
@@ -223,6 +226,8 @@ describe('enqueueOutboundWebhooks', () => {
     ])
     await enqueueOutboundWebhooks('t1', 'incident.created', { id: 'i1', title: 'Disk "full"' }, 'ev-9')
 
+    // The deliveries go to the tenant's own queue.
+    expect(getTenantQueue).toHaveBeenCalledWith('webhook-delivery', 't1')
     expect(queueAdd).toHaveBeenCalledTimes(2)
     const [name1, data1, opts1] = queueAdd.mock.calls[0]! as unknown as [string, Record<string, string>, Record<string, unknown>]
     expect(name1).toBe('deliver')

@@ -44,6 +44,7 @@ Regole comuni (`lib/scriptArgs.ts`, `lib/runScript.ts`):
 | `export-schema.ts` | Esporta l'SDL GraphQL statico in `docs/`. | `exec tsx src/scripts/export-schema.ts` | no |
 | `revert-problem` | One-off: riporta un problem a `under_investigation` via engine. | `revert-problem -- --tenant=<slug> PRB00000001` | no |
 | `scan:anomalies` | Esegue una volta lo scanner anomalie (senza coda). Una regola rotta fa fallire lo scan. | `scan:anomalies -- --tenant=<slug>` | no |
+| `queues:drop-shared` | Toglie da Redis le code che i tenant condividevano prima del 23 set 2026 (ora ogni tenant ha le sue, `<nome>@<tenant>`): senza conferma dice solo cosa toglierebbe — job, ricorrenze, worker collegati. Non tocca le code dei tenant né quelle della piattaforma, né una coda condivisa che ha ancora worker (un processo gira col codice di prima). Da lanciare dopo il deploy delle code per tenant. | `queues:drop-shared -- [--yes-delete]` | con `--yes-delete` |
 
 ### Migrazioni versionate (`migrations/`)
 

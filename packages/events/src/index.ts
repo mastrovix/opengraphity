@@ -1,6 +1,7 @@
 export * from './redis.js'
 export * from './connection.js'
 export * from './topology.js'
+export * from './tenantQueues.js'
 export * from './publisher.js'
 export * from './consumer.js'
 export * from './safeUrl.js'

@@ -344,31 +344,32 @@ describe('syncServiceMap: pausa e modalità', () => {
 describe('syncStaleOrOldMaps: rete di sicurezza ogni 30 minuti', () => {
   it('prende solo le mappe vive e non in pausa, non sincronizzate da più di 30 minuti (o mai), paginate per id', async () => {
     onCypher([
-      [/MATCH \(m:ServiceMap\)/, [{ tenantId: 't1', id: 'map-1' }]],
+      [/MATCH \(m:ServiceMap \{tenant_id: \$tenantId\}\)\s+WHERE m\.auto_sync/, [{ tenantId: 't1', id: 'map-1' }]],
       [LOAD_RE, stateRow()], [/REALIZES/, ENTRY_ROW], [/apoc\.path\.expandConfig/, EXPANDED_ROWS], [EXCL_RE, EXCLUSION_ROWS],
       [APPLY_RE, { version: 3, status: 'active', added: 1, removed: 1, moved: 1 }],
     ])
-    const r = await syncStaleOrOldMaps(NOW)
+    const r = await syncStaleOrOldMaps('t1', NOW)
     expect(r).toMatchObject({ evaluated: 1, failed: 0, truncated: false })
 
-    const page = callMatching(/MATCH \(m:ServiceMap\)\s+WHERE m\.auto_sync = true/)!
+    const page = callMatching(/MATCH \(m:ServiceMap \{tenant_id: \$tenantId\}\)\s+WHERE m\.auto_sync = true/)!
     expect(page.cypher).toContain('WHERE m.auto_sync = true AND m.status <> \'paused\'')
     expect(page.cypher).toContain('(m.synced_at IS NULL OR m.synced_at < $cutoff)')
     expect(page.cypher).toContain('AND m.id > $cursor')
     expect(page.cypher).toContain('ORDER BY m.id LIMIT toInteger($limit)')
-    expect(page.cypher).toContain('// tenant-ok')
+    // The tenant's maps only: the pass runs in the tenant's own queue.
+    expect(page.params['tenantId']).toBe('t1')
     expect(page.params['cutoff']).toBe(new Date(Date.parse(NOW) - SERVICE_MAP_SYNC_EVERY_MS).toISOString())
     expect(SERVICE_MAP_SYNC_EVERY_MS).toBe(30 * 60 * 1000)
   })
 
   it('un errore su una mappa non ferma le altre ma fa fallire la passata alla fine', async () => {
     onCypher([
-      [/MATCH \(m:ServiceMap\)/, [{ tenantId: 't1', id: 'map-1' }, { tenantId: 't1', id: 'map-2' }]],
+      [/MATCH \(m:ServiceMap \{tenant_id: \$tenantId\}\)\s+WHERE m\.auto_sync/, [{ tenantId: 't1', id: 'map-1' }, { tenantId: 't1', id: 'map-2' }]],
       [LOAD_RE, (p?: Record<string, unknown>) => (p?.['mapId'] === 'map-2' ? null : stateRow())],
       [/REALIZES/, ENTRY_ROW], [/apoc\.path\.expandConfig/, EXPANDED_ROWS], [EXCL_RE, EXCLUSION_ROWS],
       [APPLY_RE, { version: 3, status: 'active', added: 1, removed: 1, moved: 1 }],
     ])
-    await expect(syncStaleOrOldMaps(NOW)).rejects.toThrow(/1\/2 service maps failed synchronization/)
+    await expect(syncStaleOrOldMaps('t1', NOW)).rejects.toThrow(/1\/2 service maps failed synchronization/)
     // la prima è stata sincronizzata comunque
     expect(callMatching(APPLY_RE)).toBeDefined()
   })

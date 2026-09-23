@@ -29,12 +29,15 @@ const removeScheduler = vi.fn().mockResolvedValue(true)
 const queueGetJobs = vi.fn().mockResolvedValue([])
 const queueRemoveDeduplicationKey = vi.fn().mockResolvedValue(1)
 
+const fakeQueue = { add: queueAdd, upsertJobScheduler: upsertScheduler, removeJobScheduler: removeScheduler, getJobs: queueGetJobs, removeDeduplicationKey: queueRemoveDeduplicationKey }
+const schedules = new Map<string, (queue: unknown, tenantId: string) => Promise<void>>()
 vi.mock('../../lib/bullmq.js', () => ({
-  createWorker: vi.fn((name: string, processor: AnyProcessor, opts?: unknown) => {
+  createTenantWorkers: vi.fn((name: string, processor: AnyProcessor, opts?: { schedule?: (queue: unknown, tenantId: string) => Promise<void> }) => {
     processors.set(name, processor)
-    return { name, opts, on: vi.fn(), close: vi.fn() }
+    if (opts?.schedule) schedules.set(name, opts.schedule)
+    return { name, opts, close: vi.fn() }
   }),
-  getQueue: vi.fn(() => ({ add: queueAdd, upsertJobScheduler: upsertScheduler, removeJobScheduler: removeScheduler, getJobs: queueGetJobs, removeDeduplicationKey: queueRemoveDeduplicationKey })),
+  getTenantQueue: vi.fn(() => fakeQueue),
 }))
 vi.mock('../../lib/logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
@@ -60,7 +63,7 @@ const {
 const {
   enqueueServiceMapSync, serviceMapSyncJobId, forgetServiceMapJobs, SERVICE_SYNC_JOB, SERVICE_SYNC_PERIODIC_JOB,
 } = worker
-const { createWorker, getQueue } = await import('../../lib/bullmq.js')
+const { createTenantWorkers, getTenantQueue } = await import('../../lib/bullmq.js')
 const { evaluateServiceMap, evaluateStaleOrOldMaps, refreshServiceGauges } = await import('../../services/serviceImpact/engine.js')
 const { syncServiceMap, syncStaleOrOldMaps, SERVICE_MAP_SYNC_EVERY_MS } = await import('../../services/serviceImpact/sync.js')
 const metrics = await import('../../middleware/metrics.js')
@@ -80,7 +83,7 @@ beforeEach(() => {
 describe('enqueueServiceMapEvaluation (dedup a finestra, revisione 2 · Q1/D2.1)', () => {
   it('accoda `evaluate` con deduplication {id: svc-<tenant>-<mapId>, ttl: 2 s} e NESSUN jobId fisso, ritardo 2 s, 5 tentativi con backoff esponenziale 5 s, rimosso a completamento e fallimento', async () => {
     await enqueueServiceMapEvaluation('c-one', 'map-1', 'ci_health')
-    expect(getQueue).toHaveBeenCalledWith(SERVICE_IMPACT_QUEUE)
+    expect(getTenantQueue).toHaveBeenCalledWith(SERVICE_IMPACT_QUEUE, 'c-one')
     expect(SERVICE_IMPACT_QUEUE).toBe('services-impact')
     expect(queueAdd).toHaveBeenCalledWith(SERVICE_EVALUATE_JOB, { tenantId: 'c-one', mapId: 'map-1', trigger: 'ci_health' }, {
       deduplication: { id: 'svc-c-one-map-1', ttl: 2_000 },
@@ -110,17 +113,18 @@ describe('enqueueServiceMapEvaluation (dedup a finestra, revisione 2 · Q1/D2.1)
 })
 
 describe('worker services-impact', () => {
-  it('startServiceImpactWorker: registra il repeat job ogni 5 minuti e avvia il worker con concurrency 2 e lockDuration 10 min', async () => {
-    const w = await startServiceImpactWorker()
+  it('startServiceImpactWorker: un worker per tenant con concurrency 2 e lockDuration 10 min; la ricorrenza ogni 5 minuti è del tenant, nella sua coda, e porta il tenant', async () => {
+    const w = startServiceImpactWorker()
     expect(w.name).toBe(SERVICE_IMPACT_QUEUE)
-    expect(upsertScheduler).toHaveBeenCalledWith(SERVICE_PERIODIC_JOB, { every: SERVICE_PERIODIC_EVERY_MS }, expect.objectContaining({ name: SERVICE_PERIODIC_JOB }))
+    await schedules.get(SERVICE_IMPACT_QUEUE)!(fakeQueue, 't1')
+    expect(upsertScheduler).toHaveBeenCalledWith(SERVICE_PERIODIC_JOB, { every: SERVICE_PERIODIC_EVERY_MS }, expect.objectContaining({ name: SERVICE_PERIODIC_JOB, data: { tenantId: 't1' } }))
     expect(SERVICE_PERIODIC_EVERY_MS).toBe(5 * 60 * 1000)
     expect(SERVICE_IMPACT_LOCK_MS).toBe(10 * 60 * 1000)
-    expect(createWorker).toHaveBeenCalledWith(SERVICE_IMPACT_QUEUE, expect.any(Function), expect.objectContaining({ concurrency: 2, lockDuration: SERVICE_IMPACT_LOCK_MS }))
+    expect(createTenantWorkers).toHaveBeenCalledWith(SERVICE_IMPACT_QUEUE, expect.any(Function), expect.objectContaining({ concurrency: 2, lockDuration: SERVICE_IMPACT_LOCK_MS }))
   })
 
   it('`evaluate` → evaluateServiceMap(tenant, mappa, trigger) con il job id; un errore del motore fa fallire il job (ritenta)', async () => {
-    await startServiceImpactWorker()
+    startServiceImpactWorker()
     const proc = processors.get(SERVICE_IMPACT_QUEUE)!
     await proc(job(SERVICE_EVALUATE_JOB, { tenantId: 't1', mapId: 'm1', trigger: 'ci_health' }))
     expect(evaluateServiceMap).toHaveBeenCalledWith({ tenantId: 't1', mapId: 'm1', trigger: 'ci_health', jobId: 'j1' })
@@ -129,15 +133,15 @@ describe('worker services-impact', () => {
   })
 
   it('`services-periodic` → passata delle mappe vecchie/stale + gauge; ognuno gira anche se l\'altro fallisce, il job fallisce con tutti i motivi; job sconosciuto → errore', async () => {
-    await startServiceImpactWorker()
+    startServiceImpactWorker()
     const proc = processors.get(SERVICE_IMPACT_QUEUE)!
-    await proc(job(SERVICE_PERIODIC_JOB))
-    expect(evaluateStaleOrOldMaps).toHaveBeenCalledWith(expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/))
+    await proc(job(SERVICE_PERIODIC_JOB, { tenantId: 't1' }))
+    expect(evaluateStaleOrOldMaps).toHaveBeenCalledWith('t1', expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/))
     expect(refreshServiceGauges).toHaveBeenCalledTimes(1)
 
     vi.mocked(evaluateStaleOrOldMaps).mockRejectedValueOnce(new Error('1/2 service maps failed'))
     vi.mocked(refreshServiceGauges).mockRejectedValueOnce(new Error('neo4j down'))
-    await expect(proc(job(SERVICE_PERIODIC_JOB))).rejects.toThrow(/\[services-impact\] services-periodic: evaluate: 1\/2 service maps failed; gauges: neo4j down/)
+    await expect(proc(job(SERVICE_PERIODIC_JOB, { tenantId: 't1' }))).rejects.toThrow(/\[services-impact\] services-periodic: evaluate: 1\/2 service maps failed; gauges: neo4j down/)
     expect(refreshServiceGauges).toHaveBeenCalledTimes(2)
     await expect(proc(job('nope'))).rejects.toThrow(/\[services-impact\] unknown job "nope"/)
   })
@@ -162,7 +166,7 @@ describe('sincronizzazione con la CMDB (ondata 5)', () => {
   })
 
   it('`sync` → syncServiceMap(tenant, mappa, trigger, attore); un errore fa fallire il job (ritenta)', async () => {
-    await startServiceImpactWorker()
+    startServiceImpactWorker()
     const proc = processors.get(SERVICE_IMPACT_QUEUE)!
     await proc(job(SERVICE_SYNC_JOB, { tenantId: 't1', mapId: 'm1', trigger: 'manual', actorId: 'adm-1' }))
     expect(syncServiceMap).toHaveBeenCalledWith('t1', 'm1', 'manual', 'adm-1')
@@ -171,14 +175,15 @@ describe('sincronizzazione con la CMDB (ondata 5)', () => {
   })
 
   it('rete di sicurezza `services-sync-periodic`: repeat job ogni 30 minuti (rada di proposito: l\'immediatezza la dà notifyCIGraphChanged)', async () => {
-    await startServiceImpactWorker()
-    expect(upsertScheduler).toHaveBeenCalledWith(SERVICE_SYNC_PERIODIC_JOB, { every: SERVICE_MAP_SYNC_EVERY_MS }, expect.objectContaining({ name: SERVICE_SYNC_PERIODIC_JOB }))
+    startServiceImpactWorker()
+    await schedules.get(SERVICE_IMPACT_QUEUE)!(fakeQueue, 't1')
+    expect(upsertScheduler).toHaveBeenCalledWith(SERVICE_SYNC_PERIODIC_JOB, { every: SERVICE_MAP_SYNC_EVERY_MS }, expect.objectContaining({ name: SERVICE_SYNC_PERIODIC_JOB, data: { tenantId: 't1' } }))
     expect(SERVICE_MAP_SYNC_EVERY_MS).toBe(30 * 60 * 1000)
     const proc = processors.get(SERVICE_IMPACT_QUEUE)!
-    await proc(job(SERVICE_SYNC_PERIODIC_JOB))
-    expect(syncStaleOrOldMaps).toHaveBeenCalledTimes(1)
+    await proc(job(SERVICE_SYNC_PERIODIC_JOB, { tenantId: 't1' }))
+    expect(syncStaleOrOldMaps).toHaveBeenCalledWith('t1')
     vi.mocked(syncStaleOrOldMaps).mockRejectedValueOnce(new Error('1/2 service maps failed synchronization'))
-    await expect(proc(job(SERVICE_SYNC_PERIODIC_JOB))).rejects.toThrow(/1\/2 service maps failed synchronization/)
+    await expect(proc(job(SERVICE_SYNC_PERIODIC_JOB, { tenantId: 't1' }))).rejects.toThrow(/1\/2 service maps failed synchronization/)
   })
 })
 
@@ -209,7 +214,7 @@ describe('forgetServiceMapJobs', () => {
 
 describe('service_evaluation_lag_seconds', () => {
   it('misura i secondi fra l\'istante atteso (accodamento + ritardo di dedup) e l\'inizio della valutazione, una volta per job', async () => {
-    await startServiceImpactWorker()
+    startServiceImpactWorker()
     const proc = processors.get(SERVICE_IMPACT_QUEUE)!
     // accodato 32 s fa con 2 s di ritardo → atteso 30 s fa
     await proc(job(SERVICE_EVALUATE_JOB, { tenantId: 't1', mapId: 'm1', trigger: 'ci_health' }, Date.now() - 32_000))
@@ -221,7 +226,7 @@ describe('service_evaluation_lag_seconds', () => {
   })
 
   it('job partito puntuale → 0, mai un valore negativo; `services-periodic` non misura nulla', async () => {
-    await startServiceImpactWorker()
+    startServiceImpactWorker()
     const proc = processors.get(SERVICE_IMPACT_QUEUE)!
     await proc(job(SERVICE_EVALUATE_JOB, { tenantId: 't1', mapId: 'm1', trigger: 'ci_health' }, Date.now()))
     expect(vi.mocked(metrics.serviceEvaluationLagSeconds.observe).mock.calls[0]![1]).toBe(0)
@@ -231,7 +236,7 @@ describe('service_evaluation_lag_seconds', () => {
   })
 
   it('job senza timestamp (non accodato da BullMQ) → nessuna misura inventata', async () => {
-    await startServiceImpactWorker()
+    startServiceImpactWorker()
     const proc = processors.get(SERVICE_IMPACT_QUEUE)!
     await proc({ name: SERVICE_EVALUATE_JOB, data: { tenantId: 't1', mapId: 'm1', trigger: 'ci_health' }, id: 'j1' } as unknown as Job)
     expect(metrics.serviceEvaluationLagSeconds.observe).not.toHaveBeenCalled()

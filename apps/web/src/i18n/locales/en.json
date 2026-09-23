@@ -474,6 +474,7 @@
         "events": "Alarms",
         "services": "Services",
         "itsm": "ITSM",
+        "analysis": "Integrations and analysis",
         "platform": "Platform"
       },
       "queue": {

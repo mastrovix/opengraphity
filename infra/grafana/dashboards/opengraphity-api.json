@@ -98,7 +98,7 @@
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "refId": "A", "expr": "bullmq_queue_depth{status=~\"waiting|active|delayed|failed\"}", "legendFormat": "{{queue}} {{status}}" }
+        { "refId": "A", "expr": "bullmq_queue_depth{status=~\"waiting|active|delayed|failed\"}", "legendFormat": "{{queue}} {{tenant}} {{status}}" }
       ]
     },
     {
@@ -343,13 +343,13 @@
       "id": 29,
       "type": "timeseries",
       "title": "Job falliti per coda",
-      "description": "bullmq_queue_depth{status=\"failed\"} per ogni coda del registro (lib/queueRegistry.ts): comprese events-*, services-impact e le quattro code dei consumer di dominio. Rigioco da Amministrazione → Code dove la coda è rigiocabile",
+      "description": "bullmq_queue_depth{status=\"failed\"} per ogni coda del registro (lib/queueRegistry.ts): comprese events-*, services-impact e le quattro code dei consumer di dominio, una per tenant (etichetta tenant; le code della piattaforma non ne hanno). Rigioco da Amministrazione → Code del tenant dove la coda è rigiocabile",
       "gridPos": { "x": 16, "y": 56, "w": 8, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "refId": "A", "expr": "max by (queue) (bullmq_queue_depth{status=\"failed\"}) > 0", "legendFormat": "{{queue}}" }
+        { "refId": "A", "expr": "max by (queue, tenant) (bullmq_queue_depth{status=\"failed\"}) > 0", "legendFormat": "{{queue}} {{tenant}}" }
       ]
     },
     {

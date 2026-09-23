@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express'
 import { config } from '../lib/config.js'
 import type { Queue } from 'bullmq'
+import { splitTenantQueueName } from '@opengraphity/events'
 import type { ApolloServerPlugin } from '@apollo/server'
 import type { GraphQLContext } from '../context.js'
 import { logger } from '../lib/logger.js'
@@ -36,6 +37,8 @@ interface Histogram {
 
 interface Gauge {
   set(labels: Labels, value: number): void
+  /** The whole set of series at once: a series not in `samples` is gone. */
+  replace(samples: readonly GaugeSample[]): void
   collect(): string
   snapshot(): GaugeSample[]
 }
@@ -175,11 +178,17 @@ export function createGauge(name: string, help: string, _labelNames: string[]): 
   const values = new Map<string, number>()
   const labelsMap = new Map<string, Labels>()
 
+  const set = (labels: Labels, value: number): void => {
+    const key = labelKey(labels)
+    values.set(key, value)
+    labelsMap.set(key, labels)
+  }
   return {
-    set(labels: Labels, value: number): void {
-      const key = labelKey(labels)
-      values.set(key, value)
-      labelsMap.set(key, labels)
+    set,
+    replace(samples: readonly GaugeSample[]): void {
+      values.clear()
+      labelsMap.clear()
+      for (const s of samples) set(s.labels, s.value)
     },
     collect(): string {
       const lines: string[] = [
@@ -244,8 +253,8 @@ export const backupLastSuccessTimestamp = createGauge(
 
 export const bullmqQueueDepth = createGauge(
   'bullmq_queue_depth',
-  'BullMQ queue depth by status',
-  ['queue'],
+  'BullMQ queue depth by status; a tenant queue carries its tenant',
+  ['queue', 'tenant', 'status'],
 )
 
 // ── Event Management (ondata 4) ──────────────────────────────────────────────
@@ -862,11 +871,17 @@ export interface QueueMetricsData {
   delayed:   number
 }
 
-// Reads the current snapshot from the gauge data (set by startBullMQMetricsCollector)
-export function getQueueMetricsSnapshot(): QueueMetricsData[] {
+/**
+ * The tenant's queues, by base name, from the gauge (set by
+ * startBullMQMetricsCollector). Another tenant's queues are not its business,
+ * nor are the platform's: since 23 Sep 2026 every tenant has its own queues,
+ * and their names carry the tenant.
+ */
+export function getQueueMetricsSnapshot(tenantId: string): QueueMetricsData[] {
   const queueMap = new Map<string, QueueMetricsData>()
 
   for (const { labels, value } of bullmqQueueDepth.snapshot()) {
+    if (labels['tenant'] !== tenantId) continue
     const name   = labels['queue']
     const status = labels['status']
     if (!name || !status) continue
@@ -893,16 +908,29 @@ export function metricsMiddlewareWithRpm(req: import('express').Request, res: im
 
 // ── BullMQ gauge collector ────────────────────────────────────────────────────
 
+const DEPTH_STATUSES = ['active', 'waiting', 'delayed', 'failed', 'completed'] as const
+
+/** A tenant queue (`<base>@<tenant>`) is labelled by its base and its tenant; a platform queue by its name. */
+function queueLabels(name: string): Labels {
+  const tenantQueue = splitTenantQueueName(name)
+  return tenantQueue ? { queue: tenantQueue.base, tenant: tenantQueue.tenantId } : { queue: name }
+}
+
 /**
  * Samples job counts of the given queues every 30s into `bullmq_queue_depth`.
  * `queues` may be a getter so queues opened after wiring are included.
  * The interval is unref'd: it never keeps the process alive at shutdown.
+ *
+ * Each pass REPLACES the series: a queue that is gone (a deleted tenant's) or
+ * could not be read this time has none, instead of its last value passing for
+ * a current one.
  */
 export function startBullMQMetricsCollector(queues: Queue[] | (() => Queue[]), intervalMs = 30_000): NodeJS.Timeout {
   const metricsLogger = logger.child({ module: 'metrics' })
   const list = () => (typeof queues === 'function' ? queues() : queues)
 
   async function collect(): Promise<void> {
+    const samples: GaugeSample[] = []
     for (const queue of list()) {
       try {
         /*
@@ -914,17 +942,14 @@ export function startBullMQMetricsCollector(queues: Queue[] | (() => Queue[]), i
          * Se servira' sapere se una coda e' in pausa, e' una metrica sua
          * (gauge 0/1 da `queue.isPaused()`), non una profondita' di coda.
          */
-        const counts = await queue.getJobCounts('active', 'waiting', 'delayed', 'failed', 'completed')
-        const name   = queue.name
-        bullmqQueueDepth.set({ queue: name, status: 'active' },    counts['active']    ?? 0)
-        bullmqQueueDepth.set({ queue: name, status: 'waiting' },   counts['waiting']   ?? 0)
-        bullmqQueueDepth.set({ queue: name, status: 'delayed' },   counts['delayed']   ?? 0)
-        bullmqQueueDepth.set({ queue: name, status: 'failed' },    counts['failed']    ?? 0)
-        bullmqQueueDepth.set({ queue: name, status: 'completed' }, counts['completed'] ?? 0)
+        const counts = await queue.getJobCounts(...DEPTH_STATUSES)
+        const labels = queueLabels(queue.name)
+        for (const status of DEPTH_STATUSES) samples.push({ labels: { ...labels, status }, value: counts[status] ?? 0 })
       } catch (err) {
         metricsLogger.warn({ err, queue: queue.name }, 'Failed to collect BullMQ metrics')
       }
     }
+    bullmqQueueDepth.replace(samples)
   }
 
   void collect()

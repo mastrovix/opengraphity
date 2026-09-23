@@ -1,8 +1,9 @@
-import type { Worker, Job } from 'bullmq'
+import type { Job, Queue } from 'bullmq'
+import type { TenantWorkerPool } from '@opengraphity/events'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
 import { logger } from '../lib/logger.js'
-import { createWorker, getQueue } from '../lib/bullmq.js'
+import { createTenantWorkers, getTenantQueue } from '../lib/bullmq.js'
 import { evaluateConditions, parseConditions } from '../lib/conditionEvaluator.js'
 import { executeActions, parseActions, type ActionExecutionContext } from '../lib/actionExecutor.js'
 import { assertSafeOutboundUrl, loggableUrl } from '../lib/safeUrl.js'
@@ -100,26 +101,30 @@ async function webhookRetryHeaders(d: WebhookRetryData): Promise<Record<string, 
 // ── Processor ─────────────────────────────────────────────────────────────────
 
 /**
- * Le passate periodiche, per nome del lavoro. Ognuna scrive solo quando ha
- * fatto qualcosa: una riga «zero» ogni minuto insegna a non leggere i log.
+ * Le passate periodiche di un tenant, per nome del lavoro: girano nella coda
+ * del tenant (`workflow-jobs@<tenant>`, 23 set 2026) e guardano solo i suoi
+ * dati. Ognuna scrive solo quando ha fatto qualcosa: una riga «zero» ogni
+ * minuto insegna a non leggere i log.
  */
-const PASSATE: Record<string, (() => Promise<void>) | undefined> = {
-  [STEP_DEADLINES_JOB]: async () => {
+const PASSATE: Record<string, ((tenantId: string) => Promise<void>) | undefined> = {
+  [STEP_DEADLINES_JOB]: async (tenantId) => {
     // Verifica «Cosa resta cablato», ondata 3: le scadenze dei passi. La
     // passata cerca i ticket fermi oltre la scadenza del loro passo e li
     // sposta; l'esito resta sull'esecuzione del passo (lib/stepDeadlines.ts).
-    const summary = await runStepDeadlineSweep()
-    if (summary.moved + summary.refused + summary.failed > 0) logger.info(summary, '[workflow-jobs] step deadlines')
+    const summary = await runStepDeadlineSweep(tenantId)
+    if (summary.moved + summary.refused + summary.failed > 0) logger.info({ tenantId, ...summary }, '[workflow-jobs] step deadlines')
   },
-  [OLA_SWEEP_JOB]: async () => {
+  [OLA_SWEEP_JOB]: async (tenantId) => {
     // Secondo giro UI del 15 set 2026: gli avvisi OLA/UC sul tempo del team (lib/olaSweep.ts).
-    const summary = await runOLASweep()
-    if (summary.alerted + summary.failed > 0) logger.info(summary, '[workflow-jobs] OLA sweep')
+    const summary = await runOLASweep(tenantId)
+    if (summary.alerted + summary.failed > 0) logger.info({ tenantId, ...summary }, '[workflow-jobs] OLA sweep')
     if (summary.failed > 0) throw new Error(`OLA sweep: ${summary.failed} contract(s) could not be evaluated (see the log)`)
   },
-  [RIPRESA_JOB]: async () => {
-    const { riprendiTransizioni } = await import('../lib/riprendiTransizioni.js')
-    await riprendiTransizioni()
+  [RIPRESA_JOB]: async (tenantId) => {
+    const { riprendiTransizioniDi } = await import('../lib/riprendiTransizioni.js')
+    const esito = await riprendiTransizioniDi(tenantId)
+    // Si scrive solo quando è successo qualcosa (vedi lib/riprendiTransizioni.ts).
+    if (esito.mosse > 0 || esito.rifiutateDalVarco > 0) logger.info({ tenantId, ...esito }, 'automatic transitions resumed')
   },
 }
 
@@ -136,7 +141,7 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
    * istruzioni proprio aggiungendo la terza.
    */
   const passata = PASSATE[job.name]
-  if (passata) { await passata(); return }
+  if (passata) { await passata(tenantId); return }
 
   switch (job.name) {
     case 'auto_close': {
@@ -413,18 +418,18 @@ async function processNotificationJob(job: Job): Promise<void> {
 }
 
 
-export function startNotificationJobWorker(): Worker {
-  getQueue(NOTIFICATION_JOBS_QUEUE)  // register the producer singleton (metrics + scheduleEscalationCheck)
-  return createWorker(NOTIFICATION_JOBS_QUEUE, processNotificationJob, { concurrency: 3 })
+/** One worker per tenant on `notification-jobs@<tenant>` (23 Sep 2026). */
+export function startNotificationJobWorker(): TenantWorkerPool<unknown, void> {
+  return createTenantWorkers<unknown, void>(NOTIFICATION_JOBS_QUEUE, processNotificationJob, { concurrency: 3 })
 }
 
 /**
- * Enqueues a delayed escalation check. Awaited by the caller: a failed
- * enqueue (Redis down) must surface where the incident is created, not
- * vanish as an unhandled rejection (A-13).
+ * Enqueues a delayed escalation check in the tenant's queue. Awaited by the
+ * caller: a failed enqueue (Redis down) must surface where the incident is
+ * created, not vanish as an unhandled rejection (A-13).
  */
 export async function scheduleEscalationCheck(incidentId: string, tenantId: string, ruleId: string, delayMinutes: number): Promise<void> {
-  await getQueue(NOTIFICATION_JOBS_QUEUE).add(
+  await getTenantQueue(NOTIFICATION_JOBS_QUEUE, tenantId).add(
     'escalation_check',
     { incidentId, tenantId, ruleId },
     { delay: delayMinutes * 60 * 1000, jobId: `escalation-${incidentId}-${ruleId}`, removeOnComplete: true },
@@ -434,61 +439,26 @@ export async function scheduleEscalationCheck(incidentId: string, tenantId: stri
 // ── Worker ────────────────────────────────────────────────────────────────────
 
 /**
- * La passata delle scadenze, ripetuta ogni minuto. `jobId` fisso: ogni replica
- * la registra all'avvio, e BullMQ ne tiene una sola.
+ * Le tre passate di un tenant, nella sua coda: scadenze dei passi e OLA ogni
+ * minuto, ripresa delle transizioni automatiche ogni cinque. Job Scheduler
+ * (BullMQ 6) con un'identità esplicita: `upsert` da ogni processo e a ogni
+ * avvio non ne crea un secondo. La ripresa: il perché sta in
+ * `lib/riprendiTransizioni.ts` — una change che perde la sua occasione restava
+ * ferma per sempre.
  */
-export async function scheduleStepDeadlineSweep(): Promise<void> {
-  await getQueue(WORKFLOW_JOBS_QUEUE).upsertJobScheduler(
-    'workflow-step-deadlines',
-    { every: STEP_DEADLINES_EVERY_MS },
-    {
-      name: STEP_DEADLINES_JOB,
-      data: { instanceId: '', entityId: '', tenantId: '', job: STEP_DEADLINES_JOB },
-      opts: { removeOnComplete: true, removeOnFail: 100 },
-    },
-  )
-  logger.info({ everyMs: STEP_DEADLINES_EVERY_MS }, '[workflow-jobs] step deadlines sweep scheduled')
+export async function scheduleWorkflowSweeps(queue: Queue, tenantId: string): Promise<void> {
+  const opts = { removeOnComplete: true, removeOnFail: 100 }
+  const data = (job: string) => ({ instanceId: '', entityId: '', tenantId, job })
+  await queue.upsertJobScheduler('workflow-step-deadlines', { every: STEP_DEADLINES_EVERY_MS }, { name: STEP_DEADLINES_JOB, data: data(STEP_DEADLINES_JOB), opts })
+  await queue.upsertJobScheduler('workflow-ola-sweep', { every: OLA_SWEEP_EVERY_MS }, { name: OLA_SWEEP_JOB, data: data(OLA_SWEEP_JOB), opts })
+  await queue.upsertJobScheduler('workflow-ripresa-transizioni', { every: RIPRESA_EVERY_MS }, { name: RIPRESA_JOB, data: data(RIPRESA_JOB), opts })
 }
 
-/** La passata OLA/UC, ogni minuto: stesso schema di quella delle scadenze. */
-export async function scheduleOLASweep(): Promise<void> {
-  await getQueue(WORKFLOW_JOBS_QUEUE).upsertJobScheduler(
-    'workflow-ola-sweep',
-    { every: OLA_SWEEP_EVERY_MS },
-    {
-      name: OLA_SWEEP_JOB,
-      data: { instanceId: '', entityId: '', tenantId: '', job: OLA_SWEEP_JOB },
-      opts: { removeOnComplete: true, removeOnFail: 100 },
-    },
-  )
-  logger.info({ everyMs: OLA_SWEEP_EVERY_MS }, '[workflow-jobs] OLA sweep scheduled')
-}
-
-/**
- * La ripresa delle transizioni automatiche, ogni cinque minuti.
- *
- * Stesso schema delle altre due passate. Il perché sta in
- * `lib/riprendiTransizioni.ts`: una change che perde la sua occasione restava
- * ferma per sempre, e la diagnostica poteva solo chiedere a una persona di
- * andarla a spingere.
- */
-export async function scheduleRipresaTransizioni(): Promise<void> {
-  await getQueue(WORKFLOW_JOBS_QUEUE).upsertJobScheduler(
-    'workflow-ripresa-transizioni',
-    { every: RIPRESA_EVERY_MS },
-    {
-      name: RIPRESA_JOB,
-      data: { instanceId: '', entityId: '', tenantId: '', job: RIPRESA_JOB },
-      opts: { removeOnComplete: true, removeOnFail: 100 },
-    },
-  )
-  logger.info({ everyMs: RIPRESA_EVERY_MS }, '[workflow-jobs] automatic-transition resume scheduled')
-}
-
-export function startWorkflowJobWorker(): Worker<WorkflowJobData> {
-  getQueue(WORKFLOW_JOBS_QUEUE)  // producer singleton (packages/workflow actions + triggerEngine timers)
-  return createWorker<WorkflowJobData>(WORKFLOW_JOBS_QUEUE, processWorkflowJob, {
+/** One worker per tenant on `workflow-jobs@<tenant>`, each with its tenant's three sweeps. */
+export function startWorkflowJobWorker(): TenantWorkerPool<WorkflowJobData> {
+  return createTenantWorkers<WorkflowJobData>(WORKFLOW_JOBS_QUEUE, processWorkflowJob, {
     concurrency: 5,
+    schedule: scheduleWorkflowSweeps,
     onFailed: (job, err) => {
       if (job?.name === 'webhook_retry' && (job.attemptsMade ?? 0) >= (job.opts?.attempts ?? 1)) {
         logger.error({

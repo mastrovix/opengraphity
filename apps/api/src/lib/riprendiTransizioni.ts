@@ -35,7 +35,7 @@
  * `ATTORE`, e si legge nella storia della change. Non «un utente»: nessuna
  * persona ha cliccato, e far finta di sì renderebbe l'audit una bugia.
  */
-import { getSession, runQuery } from '@opengraphity/neo4j'
+import { getSession } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
 import { changeChePossonoMuoversi } from './changesStuck.js'
 import { automaticTransitionOutcome } from '../graphql/resolvers/change/windowGate.js'
@@ -66,15 +66,11 @@ export interface EsitoRipresa {
   rifiutateDalVarco: number
 }
 
-/** I tenant che hanno almeno una change viva: gli altri non si guardano nemmeno. */
-const TENANT_CYPHER = `
-  MATCH (c:Change)
-  WHERE coalesce(c.deleted, false) = false
-  RETURN DISTINCT c.tenant_id AS tenantId
-  ORDER BY tenantId
-`
-
-/** Riprende le change ferme di UN tenant. */
+/**
+ * Riprende le change ferme di UN tenant: la passata del tenant, nella sua
+ * coda `workflow-jobs@<tenant>` (23 set 2026). Prima una passata di
+ * piattaforma leggeva i tenant e li girava uno per uno.
+ */
 export async function riprendiTransizioniDi(tenantId: string): Promise<EsitoRipresa> {
   const session = getSession(undefined, 'WRITE')
   try {
@@ -132,38 +128,4 @@ export async function riprendiTransizioniDi(tenantId: string): Promise<EsitoRipr
   } finally {
     await session.close()
   }
-}
-
-/**
- * La passata su TUTTI i clienti.
- *
- * L'elenco dei tenant si legge senza scoping — è una passata di piattaforma —
- * ma ogni singola change poi viene letta e mossa DENTRO il suo tenant.
- */
-export async function riprendiTransizioni(): Promise<EsitoRipresa> {
-  const session = getSession(undefined, 'READ')
-  let tenants: Array<{ tenantId: string }>
-  try {
-    // tenant-ok(piattaforma): la passata guarda tutti i clienti per sapere
-    // QUALI guardare; ogni change è poi letta e mossa dentro il suo tenant.
-    tenants = await runQuery<{ tenantId: string }>(session, TENANT_CYPHER, {})
-  } finally {
-    await session.close()
-  }
-
-  const totale: EsitoRipresa = { mosse: 0, candidate: 0, rifiutateDalVarco: 0 }
-  for (const t of tenants) {
-    const e = await riprendiTransizioniDi(t.tenantId)
-    totale.mosse += e.mosse
-    totale.candidate += e.candidate
-    totale.rifiutateDalVarco += e.rifiutateDalVarco
-  }
-  /*
-   * Si scrive solo quando è successo qualcosa: una passata che ogni cinque
-   * minuti dice «zero» per mesi è rumore che insegna a non leggere i log.
-   */
-  if (totale.mosse > 0 || totale.rifiutateDalVarco > 0) {
-    log.info({ ...totale, tenants: tenants.length }, 'automatic transitions resumed')
-  }
-  return totale
 }

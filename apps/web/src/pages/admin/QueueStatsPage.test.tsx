@@ -29,8 +29,9 @@ const QUEUES = [
   { __typename: 'QueueStat', name: 'workflow-jobs',            group: 'itsm',     retryable: true, paused: false,  counts: counts({ failed: 1 }) },
   { __typename: 'QueueStat', name: 'events-ingest',            group: 'events',   retryable: true, paused: false,  counts: counts({ failed: 2 }) },
   { __typename: 'QueueStat', name: 'service-impact-consumer',  group: 'services', retryable: false, paused: false, counts: counts({ failed: 1 }) },
-  { __typename: 'QueueStat', name: 'notification-service',     group: 'platform', retryable: false, paused: false, counts: counts() },
+  { __typename: 'QueueStat', name: 'notification-service',     group: 'itsm',     retryable: false, paused: false, counts: counts() },
   { __typename: 'QueueStat', name: 'events-correlate',         group: 'events',   retryable: true, paused: false,  counts: counts() },
+  { __typename: 'QueueStat', name: 'webhook-delivery',         group: 'analysis', retryable: true, paused: false,  counts: counts() },
 ]
 
 const statsMock: GqlMock = {
@@ -52,9 +53,9 @@ function jobsMock(queueName: string): GqlMock {
 }
 
 describe('groupQueues', () => {
-  it('ordina i gruppi allarmi → servizi → ITSM → piattaforma, un gruppo nuovo dichiarato dal server va in coda col suo nome', () => {
+  it('ordina i gruppi allarmi → servizi → ITSM → integrazioni e analisi, un gruppo nuovo dichiarato dal server va in coda col suo nome', () => {
     const groups = groupQueues([...QUEUES, { name: 'x', group: 'zeta', retryable: false, paused: false, counts: counts() }, { name: 'y', group: 'alpha', retryable: false, paused: false, counts: counts() }])
-    expect(groups.map((g) => g.group)).toEqual(['events', 'services', 'itsm', 'platform', 'alpha', 'zeta'])
+    expect(groups.map((g) => g.group)).toEqual(['events', 'services', 'itsm', 'analysis', 'alpha', 'zeta'])
     expect(groups[0]!.queues.map((q) => q.name)).toEqual(['events-ingest', 'events-correlate'])
   })
 })
@@ -65,8 +66,8 @@ describe('QueueStatsPage', () => {
     expect(await screen.findByText('events-ingest')).toBeInTheDocument()
 
     const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
-    expect(headings).toEqual(['Alarms2 queues', 'Services1 queue', 'ITSM1 queue', 'Platform1 queue'])
-    expect(screen.getByText('5 queues')).toBeInTheDocument()
+    expect(headings).toEqual(['Alarms2 queues', 'Services1 queue', 'ITSM2 queues', 'Integrations and analysis1 queue'])
+    expect(screen.getByText('6 queues')).toBeInTheDocument()
 
     // ogni coda sta nella sezione del suo gruppo
     const services = screen.getByRole('region', { name: /Services/ })

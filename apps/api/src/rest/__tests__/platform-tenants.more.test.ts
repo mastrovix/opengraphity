@@ -8,7 +8,8 @@
  *    input (an e-mail that is not one, an unknown plan, an invented time
  *    zone) must be a 400 BEFORE Keycloak is touched: an invented zone does not
  *    fail at creation, it fails months later on the first SLA computation.
- *  - The console's own host must be a reserved slug, read from configuration.
+ *  - The names the configuration reserves (the console's own host, the
+ *    platform realm) must be refused along with the product's own.
  *  - The temporary password is handed over ONCE. If onboarding collapses
  *    after the password was set, the 500 must still carry it — otherwise the
  *    new tenant's administrator is locked out (it happened with the script).
@@ -35,8 +36,6 @@ vi.mock('../../auth/platformAuth.js', () => ({
     next()
   },
 }))
-const cfg = vi.hoisted(() => ({ platformHost: 'opengrafo-admin.localhost' as string | undefined }))
-vi.mock('../../lib/config.js', () => ({ config: cfg }))
 
 const lifecycle = vi.hoisted(() => ({
   listTenants:        vi.fn(async () => [] as unknown[]),
@@ -46,9 +45,18 @@ const lifecycle = vi.hoisted(() => ({
   resumeTenant:       vi.fn(async () => {}),
   purgeTenant:        vi.fn(),
   assertSlugValido:   vi.fn(),
+  configuredReservedSlugs: vi.fn(() => [] as string[]),
   resetAdminPassword: vi.fn(),
 }))
 vi.mock('../../lib/tenantLifecycle.js', () => lifecycle)
+// The queues follow the tenants (23 Sep 2026): the route announces every change
+// and removes a deleted tenant's queues.
+const queues = vi.hoisted(() => ({
+  announceTenantChange: vi.fn(async () => {}),
+  obliterateTenantQueues: vi.fn(async () => {}),
+}))
+vi.mock('../../lib/tenantQueueLifecycle.js', () => ({ announceTenantChange: queues.announceTenantChange }))
+vi.mock('@opengraphity/events', () => ({ obliterateTenantQueues: queues.obliterateTenantQueues }))
 
 const kc = vi.hoisted(() => ({
   getAdminToken: vi.fn(async () => 'tok'),
@@ -82,7 +90,6 @@ beforeAll(async () => {
 afterAll(async () => { await new Promise<void>((resolve) => server.close(() => resolve())) })
 beforeEach(() => {
   vi.clearAllMocks()
-  cfg.platformHost = 'opengrafo-admin.localhost'
   vi.mocked(getSession).mockReturnValue(session as never)
 })
 
@@ -90,15 +97,14 @@ const post = (body: unknown, headers: Record<string, string> = {}) =>
   fetch(base, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) })
 
 describe('POST /platform/tenants — validation happens before Keycloak', () => {
-  it('the console host is a reserved slug, taken from configuration', async () => {
+  it('the names the configuration reserves (console subdomain, platform realm) are checked, on the trimmed lower-case slug', async () => {
+    lifecycle.configuredReservedSlugs.mockReturnValueOnce(['opengrafo-admin', 'opengrafo-platform'])
     onboardTenant.mockResolvedValue({ steps: [] })
     await post({ slug: '  ACME ', adminEmail: 'a@acme.io' })
-    // The slug is trimmed and lower-cased before validation.
-    expect(lifecycle.assertSlugValido).toHaveBeenCalledWith('acme', ['opengrafo-admin'])
+    expect(lifecycle.assertSlugValido).toHaveBeenCalledWith('acme', ['opengrafo-admin', 'opengrafo-platform'])
   })
 
-  it('without a configured console host nothing extra is reserved', async () => {
-    cfg.platformHost = undefined
+  it('without configured names nothing extra is reserved', async () => {
     onboardTenant.mockResolvedValue({ steps: [] })
     await post({ slug: 'acme', adminEmail: 'a@acme.io' })
     expect(lifecycle.assertSlugValido).toHaveBeenCalledWith('acme', [])
@@ -145,6 +151,8 @@ describe('POST /platform/tenants — provisioning', () => {
     })
     // The password Keycloak receives must be temporary: changed at first login.
     expect(password).toEqual({ value: 'Temp-Pw-1', temporary: true })
+    // Every process gives the new tenant its workers at once (23 Sep 2026).
+    expect(queues.announceTenantChange).toHaveBeenCalledWith('acme', 'created')
   })
 
   it('explicit fields win over the defaults, and production must be literally true', async () => {
@@ -208,7 +216,7 @@ describe('the Keycloak side of reset and delete', () => {
       method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm: 'acme' }),
     })
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ slug: 'acme', nodes: 10, realmDeleted: true })
+    expect(await res.json()).toEqual({ slug: 'acme', nodes: 10, realmDeleted: true, queuesRemoved: true })
     expect(kc.delete).toHaveBeenCalledWith('tok', '/admin/realms/acme')
     expect(lifecycle.purgeTenant.mock.calls[0]![2]).toBe('acme')
   })

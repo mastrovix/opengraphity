@@ -80,7 +80,7 @@ export async function applyRuleSLA(input: RuleSLAInput): Promise<SLAStatus> {
   const resolveDeadline  = calculateDeadline(startedAt, resolve,  TWENTY_FOUR_SEVEN.businessHours, TWENTY_FOUR_SEVEN.timezone, TWENTY_FOUR_SEVEN.calendar)
 
   // I job del vecchio stato non devono scattare su uno stato che non c'è più.
-  await cancelSLAJobs(input.entityId, 'both')
+  await cancelSLAJobs(input.tenantId, input.entityId, 'both')
 
   const session = getSession(undefined, 'WRITE')
   let status: SLAStatus

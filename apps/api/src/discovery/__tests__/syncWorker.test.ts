@@ -1,8 +1,10 @@
 /**
  * Discovery sync job (discovery/syncWorker.ts → processSyncJob, captured from
- * createWorker): a mock connector streams N resources → batches reconciled,
- * stats written on the SyncRun (tenant-scoped) and the SyncSource; a connector
- * that throws marks the run `failed` with the message AND rethrows (BullMQ retry).
+ * createTenantWorkers): a mock connector streams N resources → batches
+ * reconciled, stats written on the SyncRun (tenant-scoped) and the SyncSource;
+ * a connector that throws marks the run `failed` with the message AND rethrows
+ * (BullMQ retry). Since 23 Sep 2026 every tenant has its own queue
+ * `discovery-sync@<tenant>`, and its scheduled syncs are registered there.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Job } from 'bullmq'
@@ -12,8 +14,7 @@ import { resetConfigCache } from '../../lib/config.js'
 
 type AnyProcessor = (job: Job) => Promise<unknown>
 const processors = new Map<string, AnyProcessor>()
-const workerOn = vi.fn()
-const queueAdd = vi.fn().mockResolvedValue(undefined)
+const poolOptions = new Map<string, { concurrency?: number; schedule?: unknown }>()
 /*
  * `upsertJobScheduler` nel finto (21 set 2026, BullMQ 6): le ricorrenze non
  * passano piu' da `add({ repeat })` — quella API non esiste piu' — ma da un
@@ -22,11 +23,14 @@ const queueAdd = vi.fn().mockResolvedValue(undefined)
  */
 const upsertScheduler = vi.fn().mockResolvedValue(undefined)
 const removeScheduler = vi.fn().mockResolvedValue(true)
-const getRepeatableJobs = vi.fn().mockResolvedValue([])
-const removeRepeatableByKey = vi.fn().mockResolvedValue(undefined)
+const getTenantQueue = vi.fn((_base: string, _tenantId: string) => ({ upsertJobScheduler: upsertScheduler, removeJobScheduler: removeScheduler }))
 vi.mock('../../lib/bullmq.js', () => ({
-  createWorker: vi.fn((name: string, processor: AnyProcessor, opts?: unknown) => { processors.set(name, processor); return { name, opts, on: workerOn } }),
-  getQueue: vi.fn(() => ({ add: queueAdd, upsertJobScheduler: upsertScheduler, removeJobScheduler: removeScheduler, getRepeatableJobs: getRepeatableJobs, removeRepeatableByKey: removeRepeatableByKey })),
+  createTenantWorkers: vi.fn((name: string, processor: AnyProcessor, opts: { concurrency?: number; schedule?: unknown }) => {
+    processors.set(name, processor)
+    poolOptions.set(name, opts)
+    return { name, opts }
+  }),
+  getTenantQueue: (base: string, tenantId: string) => getTenantQueue(base, tenantId),
 }))
 
 interface Rec { get(k: string): unknown }
@@ -34,6 +38,7 @@ type Tx = { run: (q: string, p?: Record<string, unknown>) => Promise<{ records: 
 type Work = (tx: Tx) => Promise<unknown>
 
 const writes: Array<{ q: string; p: Record<string, unknown> }> = []
+const reads: Array<{ q: string; p: Record<string, unknown> }> = []
 let readRows: Record<string, unknown>[] = []
 let readError: Error | null = null
 const close = vi.fn().mockResolvedValue(undefined)
@@ -41,7 +46,7 @@ const runQueryOne = vi.fn()
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: vi.fn(() => ({
     executeWrite: async (work: Work) => work({ run: async (q, p) => { writes.push({ q, p: p ?? {} }); return { records: [] } } }),
-    executeRead:  async (work: Work) => work({ run: async () => { if (readError) throw readError; return { records: readRows.map((r) => ({ get: (k: string) => r[k] ?? null })) } } }),
+    executeRead:  async (work: Work) => work({ run: async (q, p) => { reads.push({ q, p: p ?? {} }); if (readError) throw readError; return { records: readRows.map((r) => ({ get: (k: string) => r[k] ?? null })) } } }),
     close,
   })),
   runQueryOne: (...a: unknown[]) => runQueryOne(...a),
@@ -76,12 +81,10 @@ vi.stubEnv('NODE_ENV', 'test')
 vi.stubEnv('DISCOVERY_ENCRYPTION_KEY', 'a'.repeat(64))
 resetConfigCache()
 
-const { startSyncWorker, loadScheduledSyncs } = await import('../syncWorker.js')
+const { startSyncWorker, scheduleTenantSyncs, DISCOVERY_SYNC_QUEUE } = await import('../syncWorker.js')
 
 startSyncWorker()
 const processor = processors.get('discovery-sync')!
-// captured now: beforeEach clears every mock's calls
-const workerListenersAtStart = workerOn.mock.calls.map((c) => c[0])
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -124,6 +127,7 @@ const sourceWrites = () => writes.filter((w) => w.q.includes('MATCH (n:SyncSourc
 beforeEach(() => {
   vi.clearAllMocks()
   writes.length = 0
+  reads.length = 0
   readRows = []
   readError = null
   runQueryOne.mockResolvedValue(SOURCE_ROW)
@@ -299,16 +303,22 @@ describe('processSyncJob — errori di configurazione (permanenti: run failed, n
 
 // ── Worker / scheduler ───────────────────────────────────────────────────────
 
-describe('startSyncWorker / loadScheduledSyncs', () => {
-  it('avvia il worker discovery-sync con concorrenza 2 e ascolta completed', () => {
-    expect(processors.has('discovery-sync')).toBe(true)
-    expect(workerListenersAtStart).toContain('completed')
+describe('startSyncWorker / scheduleTenantSyncs', () => {
+  it('un worker per tenant su discovery-sync, con concorrenza 2, che registra le sync pianificate del tenant', () => {
+    expect(DISCOVERY_SYNC_QUEUE).toBe('discovery-sync')
+    expect(poolOptions.get('discovery-sync')).toMatchObject({ concurrency: 2, schedule: scheduleTenantSyncs })
   })
 
-  it('registra un job ripetibile per ogni sorgente abilitata con cron, jobId deterministico per sorgente', async () => {
-    readRows = [{ id: 'src-1', tenantId: 't1', cron: '0 */6 * * *' }, { id: 'src-2', tenantId: 't2', cron: '30 2 * * *' }]
+  it('registra uno scheduler per ogni sorgente abilitata con cron DEL TENANT, nella sua coda, con un id deterministico per sorgente', async () => {
+    readRows = [{ id: 'src-1', cron: '0 */6 * * *' }, { id: 'src-2', cron: '30 2 * * *' }]
 
-    await loadScheduledSyncs()
+    await scheduleTenantSyncs(null, 't1')
+
+    // Solo le sorgenti del tenant: la lettura è scopata.
+    expect(reads[0]!.q).toContain('MATCH (s:SyncSource {tenant_id: $tenantId})')
+    expect(reads[0]!.p).toEqual({ tenantId: 't1' })
+    // Tutto nella coda del tenant, nessun'altra.
+    expect(getTenantQueue.mock.calls.every(([base, tenant]) => base === 'discovery-sync' && tenant === 't1')).toBe(true)
     /*
      * Revisione totale · D-6: prima di registrarlo si toglie il vecchio, così
      * un cron cambiato non ne lascia due. Con BullMQ 6 si toglie per ID —
@@ -330,9 +340,9 @@ describe('startSyncWorker / loadScheduledSyncs', () => {
     )
   })
 
-  it('errore DB nel caricamento degli scheduled sync dovrebbe propagare — BUG: syncWorker.ts:278-280 logga e ingoia (all\'avvio nessuna sync schedulata viene registrata, senza errore per il chiamante)', async () => {
+  it('errore DB nel caricamento delle sync pianificate → propaga: il pool non segna il tenant come pianificato e riprova al giro dopo', async () => {
     readError = new Error('neo4j down')
-    await expect(loadScheduledSyncs()).rejects.toThrow('neo4j down')
+    await expect(scheduleTenantSyncs(null, 't1')).rejects.toThrow('neo4j down')
+    expect(close).toHaveBeenCalled()
   })
-
 })

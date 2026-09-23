@@ -684,18 +684,17 @@ export class WorkflowEngine {
         actionErrors.push(msg)
       } else if (nextStepType === 'timer_wait') {
         /**
-         * La coda si CHIUDE sempre, e il timer ha un id (revisione totale ·
-         * E-28): la `Queue` era creata a ogni transizione e chiusa solo sul
-         * cammino felice, quindi un `queue.add` che lanciava (Redis instabile)
-         * lasciava una connessione Redis aperta per sempre; e senza `jobId`
-         * un rientro nello stesso passo di attesa accodava un SECONDO timer,
-         * che poi transizionava due volte.
+         * Il timer ha un id (revisione totale · E-28): senza `jobId` un
+         * rientro nello stesso passo di attesa accodava un SECONDO timer, che
+         * poi transizionava due volte. La coda è quella del tenant, aperta
+         * una volta per processo: prima una `Queue` nuova a ogni transizione
+         * lasciava connessioni aperte quando `add` lanciava.
          */
-        let queue: import('bullmq').Queue | null = null
         try {
-          const { Queue } = await import('bullmq')
-          const { getRedisConnection } = await import('@opengraphity/events')
-          queue = new Queue('notification-jobs', { connection: getRedisConnection() })
+          // The tenant's own queue (23 Sep 2026): a producer singleton of
+          // @opengraphity/events, never closed here.
+          const { tenantQueue } = await import('@opengraphity/events')
+          const queue = tenantQueue('notification-jobs', wi['tenant_id'] as string)
           // Il passo di arrivo si legge ADESSO solo per dire subito se l'arco
           // manca (un passo di attesa senza uscita automatica è una definizione
           // rotta, e l'amministratore lo deve sapere al primo ingresso). Chi
@@ -732,9 +731,6 @@ export class WorkflowEngine {
           const msg = `timer_wait scheduling failed: ${e instanceof Error ? e.message : String(e)} — the workflow will never leave step "${nextStepName}"`
           workflowLogger.error({ err: e, instanceId: input.instanceId }, `[workflow-engine] ${msg}`)
           actionErrors.push(msg)
-        } finally {
-          // E-28: anche quando `add` lancia.
-          if (queue) await queue.close().catch((e: unknown) => workflowLogger.warn({ err: e }, '[workflow-engine] timer queue not closed'))
         }
       }
 

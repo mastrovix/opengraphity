@@ -1,16 +1,28 @@
 /**
  * resolvers/queueStats.ts (revisione 2 · D2.2): le code vengono dal registro
  * unico — anche `events-ingest`, `services-impact` e i quattro consumer —,
- * ogni `QueueStat` porta `group` e `retryable`, `queueJobs('events-ingest')`
- * non dice più «Unknown queue», e il rigioco è rifiutato dove non ha senso.
+ * ogni `QueueStat` porta `group` e `retryable`, e il rigioco è rifiutato dove
+ * non ha senso.
+ *
+ * Dal 23 set 2026 le code di un tenant sono sue (`<nome>@<tenant>`): la
+ * pagina legge e rigioca solo quelle del tenant di chi chiama, e non vede le
+ * code della piattaforma.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { perms } from '../../../lib/__tests__/testPermissions.js'
 import { CONSUMER_QUEUES } from '@opengraphity/events'
 
-const queues = new Map<string, { name: string; getJobCounts: ReturnType<typeof vi.fn>; getJobs: ReturnType<typeof vi.fn>; getJob: ReturnType<typeof vi.fn> }>()
+interface FakeQueue {
+  name: string
+  getJobCounts: ReturnType<typeof vi.fn>
+  isPaused: ReturnType<typeof vi.fn>
+  getJobs: ReturnType<typeof vi.fn>
+  getJob: ReturnType<typeof vi.fn>
+}
+const queues = new Map<string, FakeQueue>()
 vi.mock('../../../lib/bullmq.js', () => ({
-  getQueue: vi.fn((name: string) => {
+  getTenantQueue: vi.fn((base: string, tenantId: string) => {
+    const name = `${base}@${tenantId}`
     let q = queues.get(name)
     if (!q) {
       q = {
@@ -27,17 +39,19 @@ vi.mock('../../../lib/bullmq.js', () => ({
 }))
 
 const { queueStatsResolvers } = await import('../queueStats.js')
-const { QUEUE_REGISTRY } = await import('../../../lib/queueRegistry.js')
+const { QUEUE_REGISTRY, TENANT_QUEUE_BASES } = await import('../../../lib/queueRegistry.js')
 
 const admin = { role: 'admin', tenantId: 't1', permissions: perms('admin') } as never
 const operator = { role: 'operator', tenantId: 't1', permissions: perms('operator') } as never
+const queueOf = (base: string, tenant = 't1') => queues.get(`${base}@${tenant}`)!
 
 beforeEach(() => { queues.clear(); vi.clearAllMocks() })
 
 describe('queueStats', () => {
-  it('una voce per ogni coda del registro, con group e retryable dal registro e i conteggi di BullMQ', async () => {
+  it('una voce per ogni coda di tenant del registro, con group e retryable dal registro e i conteggi della coda DEL TENANT', async () => {
     const stats = await queueStatsResolvers.Query.queueStats(null, {}, admin)
-    expect(stats.map((s) => s.name)).toEqual(QUEUE_REGISTRY.map((e) => e.name))
+    expect(stats.map((s) => s.name)).toEqual(TENANT_QUEUE_BASES)
+    expect([...queues.keys()].every((k) => k.endsWith('@t1'))).toBe(true)
     const ingest = stats.find((s) => s.name === 'events-ingest')!
     // `paused` non e' piu' un conteggio ma uno stato DELLA CODA (BullMQ 6).
     expect(ingest).toEqual({ name: 'events-ingest', group: 'events', retryable: true, paused: false, counts: { waiting: 1, active: 0, completed: 5, failed: 2, delayed: 0 } })
@@ -46,7 +60,14 @@ describe('queueStats', () => {
     }
     expect(stats.find((s) => s.name === 'services-impact')).toMatchObject({ group: 'services', retryable: true })
     expect(stats.find((s) => s.name === 'workflow-jobs')).toMatchObject({ group: 'itsm' })
-    expect(stats.find((s) => s.name === 'webhook-delivery')).toMatchObject({ group: 'platform' })
+    expect(stats.find((s) => s.name === 'webhook-delivery')).toMatchObject({ group: 'analysis' })
+  })
+
+  it('le code della piattaforma (backup, Autoanalisi) non sono di nessun tenant: la pagina non le mostra', async () => {
+    const stats = await queueStatsResolvers.Query.queueStats(null, {}, admin)
+    const platform = QUEUE_REGISTRY.filter((e) => e.scope === 'platform').map((e) => e.name)
+    expect(platform).toEqual(['autoanalisi', 'maintenance'])
+    for (const name of platform) expect(stats.map((s) => s.name)).not.toContain(name)
   })
 
   it('richiede il ruolo admin', async () => {
@@ -55,11 +76,11 @@ describe('queueStats', () => {
 })
 
 describe('queueJobs', () => {
-  it('events-ingest è una coda conosciuta: legge i job falliti (default) e mappa i campi; i job spariti da Redis vengono saltati', async () => {
+  it('legge i job falliti (default) della coda del tenant e mappa i campi; i job spariti da Redis vengono saltati', async () => {
     const jobs = await queueStatsResolvers.Query.queueJobs(null, { queueName: 'events-ingest' }, admin)
     expect(jobs).toEqual([])
-    const q = queues.get('events-ingest')!
-    expect(q.getJobs).toHaveBeenCalledWith(['failed'], 0, 199)
+    const q = queueOf('events-ingest')
+    expect(q.getJobs).toHaveBeenCalledWith(['failed'], 0, 49)
 
     q.getJobs.mockResolvedValueOnce([
       undefined,
@@ -69,64 +90,38 @@ describe('queueJobs', () => {
     expect(job).toMatchObject({ id: 'ev-t1-fp-1', queueName: 'events-ingest', status: 'failed', failedReason: 'Neo4j down', attemptsMade: 5, maxAttempts: 5, data: '{"tenantId":"t1"}', finishedOn: null })
   })
 
-  // Review of 23 Sep 2026: the queues are shared by every tenant, and every
-  // tenant's admin holds admin.system.
-  it('lists only the jobs of the caller\'s tenant: another tenant\'s and platform jobs stay out', async () => {
-    await queueStatsResolvers.Query.queueJobs(null, { queueName: 'events-ingest' }, admin)
-    const q = queues.get('events-ingest')!
-    const job = (id: string, data: unknown) => ({ id, name: 'x', data, timestamp: 0, processedOn: null, finishedOn: null, failedReason: null, stacktrace: [], attemptsMade: 1, opts: {}, returnvalue: null })
-    q.getJobs.mockResolvedValueOnce([
-      job('mine', { tenantId: 't1' }), job('theirs', { tenantId: 't2', body: 'ticket data' }),
-      job('event', { event: { tenant_id: 't1' } }), job('platform', { sweep: true }),
-    ])
-    const jobs = await queueStatsResolvers.Query.queueJobs(null, { queueName: 'events-ingest', limit: 10 }, admin)
-    expect(jobs.map((j) => j.id)).toEqual(['mine', 'event'])
+  it('un altro tenant legge la SUA coda: i job di t1 non gli arrivano', async () => {
+    const other = { role: 'admin', tenantId: 't2', permissions: perms('admin') } as never
+    await queueStatsResolvers.Query.queueJobs(null, { queueName: 'events-ingest' }, other)
+    expect([...queues.keys()]).toEqual(['events-ingest@t2'])
   })
 
-  it('reads further pages when the first holds only other tenants\' jobs', async () => {
-    await queueStatsResolvers.Query.queueJobs(null, { queueName: 'events-ingest' }, admin)
-    const q = queues.get('events-ingest')!
-    const job = (id: string, tenantId: string) => ({ id, name: 'x', data: { tenantId }, timestamp: 0, processedOn: null, finishedOn: null, failedReason: null, stacktrace: [], attemptsMade: 1, opts: {}, returnvalue: null })
-    q.getJobs.mockResolvedValueOnce(Array.from({ length: 200 }, (_, i) => job(`o${i}`, 't2')))
-    q.getJobs.mockResolvedValueOnce([job('mine', 't1')])
-    const jobs = await queueStatsResolvers.Query.queueJobs(null, { queueName: 'events-ingest', limit: 5 }, admin)
-    expect(jobs.map((j) => j.id)).toEqual(['mine'])
-    expect(q.getJobs).toHaveBeenLastCalledWith(['failed'], 200, 399)
-  })
-
-  it('coda sconosciuta → BAD_USER_INPUT; stato sconosciuto → errore (lookupOrError)', async () => {
+  it('coda sconosciuta o della piattaforma → BAD_USER_INPUT; stato sconosciuto → errore (lookupOrError)', async () => {
     await expect(queueStatsResolvers.Query.queueJobs(null, { queueName: 'nope' }, admin)).rejects.toThrow('Unknown queue: nope')
+    await expect(queueStatsResolvers.Query.queueJobs(null, { queueName: 'maintenance' }, admin)).rejects.toThrow('Unknown queue: maintenance')
     await expect(queueStatsResolvers.Query.queueJobs(null, { queueName: 'events-ingest', status: 'weird' }, admin)).rejects.toThrow()
   })
 })
 
 describe('retryQueueJob', () => {
-  it('rimette in coda un job fallito di una coda rigiocabile', async () => {
+  it('rimette in coda un job fallito della coda del tenant', async () => {
     const retry = vi.fn().mockResolvedValue(undefined)
-    const q = queues.get('events-ingest') ?? (await queueStatsResolvers.Query.queueJobs(null, { queueName: 'events-ingest' }, admin), queues.get('events-ingest')!)
-    q.getJob.mockResolvedValueOnce({ id: 'j1', data: { tenantId: 't1' }, retry })
+    await queueStatsResolvers.Query.queueJobs(null, { queueName: 'events-ingest' }, admin)
+    queueOf('events-ingest').getJob.mockResolvedValueOnce({ id: 'j1', data: { tenantId: 't1' }, retry })
     await expect(queueStatsResolvers.Mutation.retryQueueJob(null, { queueName: 'events-ingest', jobId: 'j1' }, admin)).resolves.toBe(true)
     expect(retry).toHaveBeenCalled()
-  })
-
-  it('another tenant\'s job cannot be retried: it is not found', async () => {
-    const retry = vi.fn()
-    await queueStatsResolvers.Query.queueJobs(null, { queueName: 'events-ingest' }, admin)
-    const q = queues.get('events-ingest')!
-    q.getJob.mockResolvedValueOnce({ id: 'j2', data: { tenantId: 't2' }, retry })
-    await expect(queueStatsResolvers.Mutation.retryQueueJob(null, { queueName: 'events-ingest', jobId: 'j2' }, admin)).rejects.toThrow('Job j2 not found')
-    expect(retry).not.toHaveBeenCalled()
   })
 
   it('coda di un consumer di dominio → rifiuto esplicito (BAD_USER_INPUT), senza toccare la coda', async () => {
     await expect(queueStatsResolvers.Mutation.retryQueueJob(null, { queueName: 'service-impact-consumer', jobId: 'j1' }, admin))
       .rejects.toThrow(/service-impact-consumer is a domain-event consumer queue: its jobs cannot be retried from the console/)
-    expect(queues.get('service-impact-consumer')).toBeUndefined()
+    expect(queues.get('service-impact-consumer@t1')).toBeUndefined()
   })
 
-  it('job inesistente → NOT_FOUND; coda sconosciuta → Unknown queue; non admin → Forbidden', async () => {
+  it('job inesistente → NOT_FOUND; coda sconosciuta o della piattaforma → Unknown queue; non admin → Forbidden', async () => {
     await expect(queueStatsResolvers.Mutation.retryQueueJob(null, { queueName: 'events-ingest', jobId: 'missing' }, admin)).rejects.toThrow('Job missing not found in queue events-ingest')
     await expect(queueStatsResolvers.Mutation.retryQueueJob(null, { queueName: 'nope', jobId: 'j' }, admin)).rejects.toThrow('Unknown queue: nope')
+    await expect(queueStatsResolvers.Mutation.retryQueueJob(null, { queueName: 'maintenance', jobId: 'j' }, admin)).rejects.toThrow('Unknown queue: maintenance')
     await expect(queueStatsResolvers.Mutation.retryQueueJob(null, { queueName: 'events-ingest', jobId: 'j' }, operator)).rejects.toThrow(/admin\.system/)
   })
 })

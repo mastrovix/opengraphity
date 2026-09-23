@@ -421,16 +421,16 @@ export async function scriviLapide(
  * funzionare. Scadere NON è rifiutare: non si scrive nessuna lapide, e se le
  * prove ci sono ancora la proposta può tornare.
  */
-export async function scadiLeVecchie(adesso: Date = new Date()): Promise<number> {
+export async function scadiLeVecchie(tenantId: string, adesso: Date = new Date()): Promise<number> {
   const limite = new Date(adesso.getTime() - PROPOSAL_EXPIRY_DAYS * 86_400_000).toISOString()
   const session = getSession(undefined, 'WRITE')
   try {
     const righe = await runQuery<{ n: number }>(session, `
-      MATCH (p:Proposal {status: 'open'})
+      MATCH (p:Proposal {tenant_id: $tenantId, status: 'open'})
       WHERE p.created_at < $limite
       SET p.status = 'expired', p.decided_at = $now
       RETURN count(p) AS n
-    `, { limite, now: adesso.toISOString() })
+    `, { tenantId, limite, now: adesso.toISOString() })
     return Number(righe[0]?.n ?? 0)
   } finally {
     await session.close()
@@ -438,15 +438,15 @@ export async function scadiLeVecchie(adesso: Date = new Date()): Promise<number>
 }
 
 /** Le «non ora» tornano aperte quando il loro turno arriva. */
-export async function risvegliaLeRimandate(adesso: Date = new Date()): Promise<number> {
+export async function risvegliaLeRimandate(tenantId: string, adesso: Date = new Date()): Promise<number> {
   const session = getSession(undefined, 'WRITE')
   try {
     const righe = await runQuery<{ n: number }>(session, `
-      MATCH (p:Proposal {status: 'not_now'})
+      MATCH (p:Proposal {tenant_id: $tenantId, status: 'not_now'})
       WHERE p.not_now_until IS NOT NULL AND p.not_now_until <= $now
       SET p.status = 'open', p.not_now_until = null
       RETURN count(p) AS n
-    `, { now: adesso.toISOString() })
+    `, { tenantId, now: adesso.toISOString() })
     return Number(righe[0]?.n ?? 0)
   } finally {
     await session.close()

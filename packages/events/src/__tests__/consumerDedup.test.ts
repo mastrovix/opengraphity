@@ -18,22 +18,39 @@ const fake = vi.hoisted(() => {
   }
   class Worker {
     constructor(public name: string, processor: Processor, public opts: unknown) { state.processor = processor; state.worker = this }
-    on() {}
+    on() { return this }
+    async close() {}
+  }
+  class Queue {
+    constructor(public name: string) {}
+    on() { return this }
+    async resume() {}
+    async pause() {}
     async close() {}
   }
   class Redis {
     constructor(public opts: unknown) {}
+    on() { return this }
+    async quit() { return 'OK' }
     disconnect() {}
     async exists(key: string) { state.existsCalls.push(key); return state.keys.has(key) ? 1 : 0 }
     async set(key: string, value: string, mode: string, ttl: number) { state.setCalls.push([key, value, mode, ttl]); state.keys.set(key, { value, ttl }); return 'OK' }
   }
-  return { state, Worker, Redis }
+  return { state, Worker, Queue, Redis }
 })
 
-vi.mock('bullmq', () => ({ Worker: fake.Worker, Queue: class {} }))
+vi.mock('bullmq', () => ({ Worker: fake.Worker, Queue: fake.Queue }))
 vi.mock('ioredis', () => ({ Redis: fake.Redis }))
 
 const { BaseConsumer } = await import('../consumer.js')
+const { reconcileTenantPools, resetTenantQueuesForTests } = await import('../tenantQueues.js')
+
+/** Starts a consumer and gives it tenant t1, as the host does at boot. */
+async function started<C extends { start(): Promise<void> }>(c: C): Promise<C> {
+  await c.start()
+  await reconcileTenantPools([{ id: 't1', suspended: false }])
+  return c
+}
 
 class TestConsumer extends BaseConsumer<unknown> {
   readonly process = vi.fn<(event: DomainEvent<unknown>) => Promise<void>>(async () => {})
@@ -47,6 +64,7 @@ const evt = (id: string | undefined, type = 'incident.created'): Partial<DomainE
   ({ id: id as string, type, tenant_id: 't1', timestamp: 'now', correlation_id: 'c', actor_id: 'u', payload: {} })
 
 beforeEach(() => {
+  resetTenantQueuesForTests()
   fake.state.reset()
   vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -54,8 +72,7 @@ beforeEach(() => {
 
 describe('BaseConsumer — idempotent processing (at-least-once delivery)', () => {
   it('first delivery: process() runs, then the event id is marked processed with a 24h TTL', async () => {
-    const c = new TestConsumer()
-    await c.start()
+    const c = await started(new TestConsumer())
     await fake.state.processor!(job(evt('evt-1')))
     expect(c.process).toHaveBeenCalledTimes(1)
     expect(fake.state.existsCalls).toEqual(['evt:processed:notification-service:evt-1'])
@@ -64,8 +81,7 @@ describe('BaseConsumer — idempotent processing (at-least-once delivery)', () =
   })
 
   it('same event id delivered twice → process() runs ONCE', async () => {
-    const c = new TestConsumer()
-    await c.start()
+    const c = await started(new TestConsumer())
     await fake.state.processor!(job(evt('evt-1')))
     await fake.state.processor!(job(evt('evt-1')))
     expect(c.process).toHaveBeenCalledTimes(1)
@@ -74,8 +90,7 @@ describe('BaseConsumer — idempotent processing (at-least-once delivery)', () =
   })
 
   it('the dedup key is per queue: another consumer of the same event is not blocked', async () => {
-    const c = new TestConsumer()
-    await c.start()
+    const c = await started(new TestConsumer())
     fake.state.keys.set('evt:processed:sla-engine:evt-1', { value: '1', ttl: 1 })   // processed by ANOTHER queue
     await fake.state.processor!(job(evt('evt-1')))
     expect(c.process).toHaveBeenCalledTimes(1)
@@ -83,8 +98,7 @@ describe('BaseConsumer — idempotent processing (at-least-once delivery)', () =
   })
 
   it('process() failing → NOT marked processed (a retry must re-run it) and the error propagates to BullMQ', async () => {
-    const c = new TestConsumer()
-    await c.start()
+    const c = await started(new TestConsumer())
     c.process.mockRejectedValueOnce(new Error('neo4j down'))
     await expect(fake.state.processor!(job(evt('evt-1')))).rejects.toThrow('neo4j down')
     expect(fake.state.setCalls).toHaveLength(0)
@@ -101,8 +115,7 @@ describe('BaseConsumer — idempotent processing (at-least-once delivery)', () =
   // id-less event is silently skipped for 24h. Expected: reject the malformed
   // event explicitly (fail-loud) — or at least never dedup on a missing id.
   it('an event without id is rejected explicitly (fail-loud) and never deduplicated under "…:undefined"', async () => {
-    const c = new TestConsumer()
-    await c.start()
+    const c = await started(new TestConsumer())
     await expect(fake.state.processor!(job(evt(undefined, 'incident.created')))).rejects.toThrow(/without id/)
     expect(c.process).not.toHaveBeenCalled()
     expect(fake.state.setCalls).toHaveLength(0)
@@ -110,10 +123,9 @@ describe('BaseConsumer — idempotent processing (at-least-once delivery)', () =
   })
 
   it('worker wiring: queue name, concurrency 3 (revisione 2 · D1.1), custom backoff 5s / 30s / 5min (capped)', async () => {
-    const c = new TestConsumer()
-    await c.start()
+    const c = await started(new TestConsumer())
     const w = fake.state.worker!
-    expect(w.name).toBe('notification-service')
+    expect(w.name).toBe('notification-service@t1')
     const opts = w.opts as { concurrency: number; settings: { backoffStrategy: (attemptsMade: number) => number } }
     expect(opts.concurrency).toBe(3)
     expect([1, 2, 3, 4, 9].map(a => opts.settings.backoffStrategy(a))).toEqual([5_000, 30_000, 300_000, 300_000, 300_000])
@@ -141,8 +153,7 @@ describe('BaseConsumer — handles(): what does not concern me costs nothing', (
   }
 
   it('an event outside the declared types is dropped BEFORE Redis: no EXISTS, no SET, no process()', async () => {
-    const c = new PickyConsumer()
-    await c.start()
+    const c = await started(new PickyConsumer())
     await fake.state.processor!(job(evt('evt-1', 'ci.health_changed')))
     expect(c.process).not.toHaveBeenCalled()
     expect(fake.state.existsCalls).toEqual([])
@@ -151,8 +162,7 @@ describe('BaseConsumer — handles(): what does not concern me costs nothing', (
   })
 
   it('a declared event goes through the whole path as before', async () => {
-    const c = new PickyConsumer()
-    await c.start()
+    const c = await started(new PickyConsumer())
     await fake.state.processor!(job(evt('evt-2', 'incident.created')))
     expect(c.process).toHaveBeenCalledOnce()
     expect(fake.state.existsCalls).toEqual(['evt:processed:sla-service:evt-2'])
@@ -162,8 +172,7 @@ describe('BaseConsumer — handles(): what does not concern me costs nothing', (
   it('by default a consumer handles everything: the fan-out stays the rule', async () => {
     // Only those who opt in filter. Making the filter the default would
     // silently starve any consumer that forgot to declare its types.
-    const c = new TestConsumer()
-    await c.start()
+    const c = await started(new TestConsumer())
     await fake.state.processor!(job(evt('evt-3', 'anything.at.all')))
     expect(c.process).toHaveBeenCalledOnce()
     await c.stop()
@@ -178,8 +187,7 @@ describe('BaseConsumer — handles(): what does not concern me costs nothing', (
  */
 describe('BaseConsumer — when Redis is only half there', () => {
   it('a marker that cannot be written is logged, and the event still counts as processed', async () => {
-    const c = new TestConsumer()
-    await c.start()
+    const c = await started(new TestConsumer())
     const setError = new Error('READONLY replica')
     vi.spyOn(fake.Redis.prototype, 'set').mockRejectedValueOnce(setError)
     await expect(fake.state.processor!(job(evt('evt-9')))).resolves.toBeUndefined()

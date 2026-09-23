@@ -118,6 +118,7 @@ senza questi valori `docker compose` si rifiuta di partire.
 | `KEYCLOAK_ADMIN_PASSWORD` | admin del realm master (createUser, onboarding, script kcadm) |
 | `GRAFANA_ADMIN_PASSWORD` | admin Grafana (applicata al **primo** avvio del volume `grafana_data`) |
 | `TAILSCALE_HOST` | hostname del front-door HTTPS (server_name nginx + CSP) |
+| `TAILSCALE_TENANT_HOST` | tenant che il front-door Tailscale inoltra come `X-Forwarded-Host` (`<slug>.localhost`: l'hostname Tailscale non porta lo slug). Vale anche per il portale, che da remoto sta sotto `/portal/` dello stesso host (revisione totale · H-33). Obbligatoria dal 23 set 2026: il suo default era `c-one.localhost`, un tenant poi cancellato |
 | `VITE_KEYCLOAK_URL` | URL Keycloak raggiungibile dal browser (build del portal e del web) |
 
 Con default sicuri, da cambiare consapevolmente:
@@ -126,10 +127,6 @@ Con default sicuri, da cambiare consapevolmente:
   ammessa nella CSP `connect-src` dei blocchi `*.localhost`.
   `KEYCLOAK_PUBLIC_URL` (API) può elencare più origini separate da virgola
   (locale + Tailscale): il token è accettato solo se il suo `iss` è tra quelle.
-- `TAILSCALE_TENANT_HOST` (default `c-one.localhost`): tenant che il front-door
-  Tailscale inoltra come `X-Forwarded-Host` (l'hostname Tailscale non porta lo
-  slug). Vale anche per il portale, che da remoto sta sotto `/portal/` dello
-  stesso host (revisione totale · H-33).
 - `NGINX_API_MAX_BODY` (default `101m`): corpo massimo che il front-door
   accetta su `/api/`. Va tenuto **sopra** `ATTACHMENT_MAX_MB_CAP` (default
   100 MB), altrimenti nginx rifiuta l'allegato con un 413 in HTML prima che
@@ -303,10 +300,13 @@ Per esporre la stack oltre `localhost` passare **solo** da nginx (o da
   `GraphQL <Operazione>` e mancano quelli di HTTP, Neo4j e Redis. Se il preload
   non c'è, l'avvio dell'API lo scrive nei log.
 - **Healthcheck**: tutti i servizi ne hanno uno. Il `worker` non espone HTTP:
-  il probe (`worker-healthcheck.mjs`, generato nell'immagine) chiede a Redis se
-  un worker BullMQ della coda `embeddings` è connesso (`CLIENT LIST` via
-  `Queue.getWorkersCount()`). È un controllo per-coda, non per-container: con
-  più repliche del worker resta verde finché almeno una è connessa.
+  il probe (`worker-healthcheck.mjs`, che importa `dist/workerHealthcheck.js`)
+  chiede a Redis il **battito** del processo di quel container
+  (`og:tenant-queues:alive:<hostname>`, riscritto a ogni riconciliazione delle
+  code, scade in 3 minuti) e, se ci sono tenant, un worker `embeddings@<tenant>`
+  connesso per almeno un tenant (`CLIENT LIST`) — dal 23 set 2026 ogni tenant
+  ha le sue code. Senza tenant il container è sano: non c'è lavoro. La seconda
+  metà è per-coda, non per-container.
 
 ## 8. Aggiornamento
 
