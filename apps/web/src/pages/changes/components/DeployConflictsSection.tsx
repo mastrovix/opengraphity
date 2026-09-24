@@ -19,7 +19,13 @@
  * problema lascia il dubbio fra «non ci sono conflitti» e «nessuno ha
  * guardato» — e quel dubbio, davanti a un'approvazione, si risolve sempre
  * nel modo sbagliato.
+ *
+ * ## Chiusa, ma l'intestazione parla (24 Sep 2026, owner's choice)
+ * The section starts closed: open, a change with many conflicts pushed the
+ * rest of the detail far down. The answer is still in the header — the count,
+ * 0 or more, and a red header when there are conflicts, open or closed.
  */
+import type { CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -35,6 +41,13 @@ function perCI(conflitti: readonly ChangeDeployConflict[]): { ciId: string; ciNa
     gruppi.set(c.ciId, g)
   }
   return [...gruppi.values()].sort((a, b) => a.ciName.localeCompare(b.ciName))
+}
+
+/** The header that speaks while the section is closed: red with conflicts, a warning with unreadable plans. */
+function headerAlarm(conflicts: number, unreadable: number): { headerStyle?: CSSProperties } {
+  if (conflicts > 0) return { headerStyle: { background: 'var(--color-danger)', color: 'var(--color-white)' } }
+  if (unreadable > 0) return { headerStyle: { background: 'var(--color-warning-bg)', color: 'var(--color-warning-text)' } }
+  return {}
 }
 
 export function DeployConflictsSection({ conflitti, illeggibili = [] }: {
@@ -54,19 +67,15 @@ export function DeployConflictsSection({ conflitti, illeggibili = [] }: {
       title={t('pages.changeDetail.deployConflicts.title')}
       count={conflitti.length}
       /*
-       * APERTA SEMPRE, anche quando non c'è niente — e l'ho scoperto da un
-       * test che cercava la frase «nessun conflitto» e non la trovava: con
-       * `defaultOpen={conflitti.length > 0}` la risposta stava dietro una
-       * scheda chiusa, cioè esattamente il dubbio che questa sezione esiste
-       * per togliere. Una riga di testo non costa spazio; un'approvazione
-       * data senza saperlo costa un rilascio.
+       * Closed by default (owner's choice, 24 Sep 2026). Red only when there
+       * really is something — an alarm header on «no conflict» teaches that
+       * the colour means nothing — and red even closed, through
+       * `headerStyle`: the open-only tint would hide the alarm with the list.
+       * On the full red the text goes white: the stock teal does not read on it.
+       * A plan that could not be read colours it as a warning: closed, a 0
+       * would otherwise read as «no conflict», which nobody can say then.
        */
-      defaultOpen
-      /* Rosso solo quando c'è davvero qualcosa: un'intestazione d'allarme su
-         «nessun conflitto» insegna che il colore non vuol dire niente. */
-      /* Sul rosso pieno il testo va in bianco: il turchese di serie su quel
-         fondo non si legge, ed è la testata che deve gridare più forte. */
-      {...(conflitti.length > 0 ? { activeColor: 'var(--color-danger)', activeTextColor: 'var(--color-white)' } : {})}
+      {...headerAlarm(conflitti.length, illeggibili.length)}
     >
       {illeggibili.length > 0 && (
         <p style={{
