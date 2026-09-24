@@ -223,3 +223,16 @@ describe('what the generator refuses, and what it does without a policy', () => 
     expect(withPolicy.some((sim) => resolvedAfter(sim) > 20 * DAY)).toBe(true)
   })
 })
+
+/** 24 Sep 2026: forty random tries missed on the first weeks, and 5 of 800 problems were dropped without a word. */
+describe('the planned problems: as many as asked, or a clear refusal', () => {
+  it('every problem asked is planned, the early ones too (every candidate CI is tried)', () => {
+    expect(planned).toHaveLength(200)
+    expect(planProblemSkeletons(new Rng('problems/all'), w, 300, incidents, { closed: 0, open: 0 })).toHaveLength(300)
+  })
+
+  it('with no incident to be the evidence of any problem, the plan stops and says why', () => {
+    expect(() => planProblemSkeletons(new Rng('problems/none'), w, 5, [], { closed: 0, open: 0 }))
+      .toThrow(/no CI has incidents to be the evidence of a problem/)
+  })
+})

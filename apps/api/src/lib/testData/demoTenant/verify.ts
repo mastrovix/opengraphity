@@ -42,6 +42,8 @@ import { loadTicketWorkflows } from './workflowModel.js'
 import { DECLARED_EDGES } from './cmdb.js'
 import { DEFAULT_DEMO_COUNTS, DEMO_RATIOS, type DemoCounts } from './options.js'
 import { OLA_CONTRACT_COUNT } from './olaPlan.js'
+import { requestMeanOpenDays } from './serviceRequests.js'
+import { DEMO_CATALOG } from './catalogContent.js'
 import { getEventPolicy } from '../../../services/events/policy.js'
 import { configurationIssues, invalidateConfigurationIssues } from '../../configurationIssues.js'
 import { AI_AUDIT_ACTIONS } from '../../dailyWorkAggregates.js'
@@ -126,19 +128,23 @@ async function countsAndShares(v: Verifier, counts: DemoCounts): Promise<void> {
  * giorno per durata media — e si RIPORTA il numero vero, che è quello che
  * poi si guarda nelle pagine.
  */
+/** Durata media di una log-normale: mediana × e^(σ²/2), le due popolazioni pesate. */
+function lifetimeMeanDays(life: { medianHours: number; spread: number; stuckShare: number; stuckMedianDays: number }): number {
+  return (1 - life.stuckShare) * (life.medianHours / 24) * Math.exp(life.spread ** 2 / 2)
+    + life.stuckShare * life.stuckMedianDays * Math.exp(0.85 ** 2 / 2)
+}
+
 async function openAndDuplicates(v: Verifier, counts: DemoCounts): Promise<void> {
-  for (const [label, n, life] of [
-    ['Incident', counts.incidents, DEMO_RATIOS.lifetimes.incident],
-    ['Problem', counts.problems, DEMO_RATIOS.lifetimes.problem],
-    ['Change', counts.changes, DEMO_RATIOS.lifetimes.change],
-    ['ServiceRequest', counts.serviceRequests, DEMO_RATIOS.lifetimes.serviceRequest],
+  for (const [label, n, meanDays] of [
+    ['Incident', counts.incidents, lifetimeMeanDays(DEMO_RATIOS.lifetimes.incident)],
+    ['Problem', counts.problems, lifetimeMeanDays(DEMO_RATIOS.lifetimes.problem)],
+    ['Change', counts.changes, lifetimeMeanDays(DEMO_RATIOS.lifetimes.change)],
+    // The requests last as long as their catalog model says: the generator's own figure.
+    ['ServiceRequest', counts.serviceRequests, requestMeanOpenDays(DEMO_CATALOG)],
   ] as const) {
     const total = await v.one(`MATCH (e:${label} {tenant_id: $tenantId}) RETURN count(e) AS n`)
     const open = await v.one(`MATCH (e:${label} {tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance) WHERE wi.status = 'active' RETURN count(e) AS n`)
     v.check(total === n, `${label}: ${String(total)} ≠ ${String(n)}`)
-    // Durata media di una log-normale: mediana × e^(σ²/2), le due popolazioni pesate.
-    const meanDays = (1 - life.stuckShare) * (life.medianHours / 24) * Math.exp(life.spread ** 2 / 2)
-      + life.stuckShare * life.stuckMedianDays * Math.exp(0.85 ** 2 / 2)
     const expected = (total / (3 * 365)) * meanDays
     /*
      * La banda tiene conto del RUMORE dei numeri piccoli. Su un tenant in

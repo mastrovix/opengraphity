@@ -64,7 +64,7 @@ vi.mock('../../../bullmq.js', () => ({
   },
 }))
 
-const { cleanDemoTenant, sequenceOf, WORK_SINCE_RUN, DERIVED_LABELS } = await import('../clean.js')
+const { cleanDemoTenant, sequenceOf, WORK_SINCE_RUN, DERIVED_LABELS, deleteBatchRows, RELATIONSHIPS_PER_TRANSACTION } = await import('../clean.js')
 
 const writes = (pattern: string) => fake.queries.filter((q) => q.cypher.includes(pattern))
 const RUN = { id: 'r1', startedAt: '2026-09-23T03:38:14.274Z', limits: null, eventPolicy: null, hasEventPolicy: false, retention: null, hasRetention: false, rules: null }
@@ -155,5 +155,22 @@ describe('cleanDemoTenant', () => {
     // The timers live in the tenant's own queue (23 Sep 2026).
     expect(fake.queuesOpened).toEqual(['sla-jobs@demo'])
     expect(fake.removed).toEqual(['breach-gone'])
+  })
+})
+
+/** 24 Sep 2026: a batch of a thousand demo users went past the database's memory limit per transaction, twice. */
+describe('deleteBatchRows: a batch is sized on the busiest node of its label', () => {
+  it('light nodes go a thousand at a time', () => {
+    expect(deleteBatchRows(0)).toBe(1000)
+    expect(deleteBatchRows(5)).toBe(1000)
+  })
+
+  it('busy ones fewer, so a batch never deletes more than the budget of relationships', () => {
+    expect(deleteBatchRows(6474)).toBe(Math.floor(RELATIONSHIPS_PER_TRANSACTION / 6474))
+    for (const d of [50, 400, 6474, 19_999]) expect(deleteBatchRows(d) * d).toBeLessThanOrEqual(RELATIONSHIPS_PER_TRANSACTION)
+  })
+
+  it('a node busier than the budget goes alone (its relationships are cut first, a budget at a time)', () => {
+    expect(deleteBatchRows(RELATIONSHIPS_PER_TRANSACTION * 10)).toBe(1)
   })
 })

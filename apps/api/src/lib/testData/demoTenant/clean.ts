@@ -112,6 +112,21 @@ async function cleanDemoTenantData(tenantId: string, log: (message: string) => v
   }
 }
 
+/**
+ * How many relationships one transaction of the clean-up deletes, at most.
+ * Since wave 7 · A2 the database stops a transaction at its memory limit, and
+ * a batch of a thousand demo users — hundreds of relationships each: their
+ * tickets, approvals, watches, audit — went past it twice on 24 Sep 2026, at
+ * 1 GB and then at 2 GB. The batch of a label is sized on its busiest node.
+ */
+export const RELATIONSHIPS_PER_TRANSACTION = 20_000
+
+/** The rows of a DETACH DELETE batch when the busiest node of the label has `maxDegree` relationships: 1 to 1000. */
+export function deleteBatchRows(maxDegree: number): number {
+  const busiest = Math.min(Math.max(1, maxDegree), RELATIONSHIPS_PER_TRANSACTION)
+  return Math.max(1, Math.min(1000, Math.floor(RELATIONSHIPS_PER_TRANSACTION / busiest)))
+}
+
 /*
  * CANCELLARE CINQUE MILIONI DI NODI SENZA FAR CADERE IL DATABASE.
  *
@@ -130,17 +145,33 @@ async function cleanDemoTenantData(tenantId: string, log: (message: string) => v
  * La forma che regge: una etichetta per volta. Con l'etichetta Neo4j parte
  * dalla scansione di quella sola etichetta (e dagli indici su `tenant_id`
  * dove ci sono) invece che da tutti i nodi del database, e `IN
- * TRANSACTIONS` spezza il lavoro in transazioni vere da mille righe che
- * liberano la memoria a ogni pezzo.
+ * TRANSACTIONS` spezza il lavoro in transazioni vere che liberano la memoria
+ * a ogni pezzo. Da mille righe finché bastavano; dal 24 set 2026 il pezzo si
+ * misura sulle relazioni (`deleteBatchRows`), perché è quello che pesa.
  */
 async function deleteMarked(session: Session, tenantId: string, labels: readonly string[], log: (message: string) => void): Promise<number> {
   const deleted = await countMarked(session, tenantId, labels)
   if (deleted > 0) log(`removing ${String(deleted)} nodes, ${String(labels.length)} labels`)
   for (const label of labels) {
+    const stats = await runQuery<{ n: unknown; maxDegree: unknown }>(session, `
+      MATCH (n:${label} {tenant_id: $tenantId}) WHERE n.demo_run_id IS NOT NULL
+      RETURN count(n) AS n, max(COUNT { (n)--() }) AS maxDegree`, { tenantId })
+    if (Number(stats[0]?.n ?? 0) === 0) continue
+    const maxDegree = Number(stats[0]?.maxDegree ?? 0)
+    // A node busier than a transaction's budget loses its relationships first, a budget at a time.
+    while (maxDegree > RELATIONSHIPS_PER_TRANSACTION) {
+      const rows = await runQuery<{ deleted: unknown }>(session, `
+        MATCH (n:${label} {tenant_id: $tenantId}) WHERE n.demo_run_id IS NOT NULL AND COUNT { (n)--() } > $budget
+        WITH n LIMIT 1
+        MATCH (n)-[r]-() WITH DISTINCT r LIMIT toInteger($budget)
+        DELETE r RETURN count(r) AS deleted`, { tenantId, budget: RELATIONSHIPS_PER_TRANSACTION })
+      if (Number(rows[0]?.deleted ?? 0) === 0) break
+    }
+    // The numbers as parameters, not in the text: check-cypher verifies the whole query (a JS number is a float: toInteger).
     await session.run(`
       MATCH (n:${label} {tenant_id: $tenantId}) WHERE n.demo_run_id IS NOT NULL
-      CALL (n) { DETACH DELETE n } IN TRANSACTIONS OF 1000 ROWS
-    `, { tenantId })
+      CALL (n) { DETACH DELETE n } IN TRANSACTIONS OF toInteger($rows) ROWS
+    `, { tenantId, rows: deleteBatchRows(maxDegree) })
   }
   // Every node has a label, so the loop above reached them all: say so if not.
   const left = await countMarked(session, tenantId, labels)

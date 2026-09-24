@@ -27,7 +27,7 @@ import { DAY, HOUR, MINUTE } from './clock.js'
 import { arrivalInstants } from './arrivals.js'
 import type { BuiltCatalog, BuiltCatalogItem } from './catalogSetup.js'
 import { formDefinition } from './catalogSetup.js'
-import { DEMO_VOCABULARIES, vocabularyValues, type DemoFieldSpec } from './catalogContent.js'
+import { DEMO_VOCABULARIES, vocabularyValues, type DemoCatalogItemSpec, type DemoFieldSpec } from './catalogContent.js'
 import { REQUESTER_COMMENTS, WORK_COMMENTS } from './ticketTexts.js'
 import { simulateSla, type SlaStatusRow } from './slaSim.js'
 import { TicketTrail } from './trail.js'
@@ -164,6 +164,24 @@ export interface RequestTimeline {
 
 export const REQUEST_STUCK_SHARE = 0.006
 const MAX_REQUEST_LIFE = 29 * DAY
+
+/**
+ * How long a request stays open on average, in days, by the model above:
+ * the models' fulfilment times weighted by their demand (log-normal, σ 0.5),
+ * the stuck share, and the closure after fulfilment. The verification
+ * compares the open requests with it (Little's law). Until 24 Sep 2026 it
+ * used a global lifetime the generator no longer followed since the models
+ * got their own durations, and expected 911 open requests where the model
+ * gives about 120.
+ */
+export function requestMeanOpenDays(items: ReadonlyArray<Pick<DemoCatalogItemSpec, 'demand' | 'fulfilHours'>>): number {
+  const mean = (median: number, sigma: number): number => median * Math.exp(sigma ** 2 / 2)
+  const demand = items.reduce((sum, it) => sum + it.demand, 0)
+  if (demand <= 0) throw new Error('requestMeanOpenDays: the catalog has no demand')
+  const fulfilHours = items.reduce((sum, it) => sum + it.demand * mean(it.fulfilHours, 0.5), 0) / demand
+  const lifeHours = (1 - REQUEST_STUCK_SHARE) * fulfilHours + REQUEST_STUCK_SHARE * mean(12 * 24, 0.6)
+  return (lifeHours + mean(8, 0.8)) / 24
+}
 
 export function requestTimeline(rng: Rng, spec: BuiltCatalogItem['spec'], createdAtMs: number): RequestTimeline {
   const stuck = rng.chance(REQUEST_STUCK_SHARE)

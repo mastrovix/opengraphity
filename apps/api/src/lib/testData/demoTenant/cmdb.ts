@@ -606,3 +606,25 @@ export function planCMDB(rng: Rng, clock: DemoClock, counts: DemoCounts, people:
 
   return { cis, relations, byId, byLabel, appServers, appDatabases, databaseInstance, instanceServers }
 }
+
+/**
+ * The business applications a company watches (the monitored services):
+ * active ones, with the most PRODUCTION applications they realize. A service
+ * map walks production only (D44, services/serviceImpact/build.ts): one
+ * picked by all its components, as the generator did until 24 Sep 2026, came
+ * out with an empty map when none of its applications was in production — 16
+ * of the 30 on that run ("BusinessApplication has no REALIZES").
+ */
+export function monitoredServiceCandidates(cmdb: CMDBPlan, count: number): PlannedCI[] {
+  const productionApps = new Map<string, number>()
+  for (const r of cmdb.relations) {
+    if (r.type !== 'REALIZES' || cmdb.byId.get(r.toId)?.environment !== 'production') continue
+    productionApps.set(r.fromId, (productionApps.get(r.fromId) ?? 0) + 1)
+  }
+  return cmdb.byLabel.BusinessApplication
+    .filter((b) => b.status === 'active' && (productionApps.get(b.id) ?? 0) > 0)
+    .map((b) => ({ ba: b, weight: productionApps.get(b.id)! }))
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, count)
+    .map((x) => x.ba)
+}

@@ -21,7 +21,7 @@ import { Rng } from '../random.js'
 import { DemoClock } from '../clock.js'
 import { DEFAULT_DEMO_COUNTS, assertDemoCounts, type DemoCounts } from '../options.js'
 import { planPeople, type PeoplePlan } from '../people.js'
-import { planCMDB, CI_NAME_PREFIX, type CIRelationType, type CMDBPlan, type PlannedCI } from '../cmdb.js'
+import { monitoredServiceCandidates, planCMDB, CI_NAME_PREFIX, type CIRelationType, type CMDBPlan, type PlannedCI } from '../cmdb.js'
 import {
   APPLICATION_CODE_NAMES, APPLICATION_COMPONENTS, BA_KINDS, BA_QUALIFIERS, BA_SUBJECTS, CAPABILITY_ASPECTS, CAPABILITY_CAPACITY, CAPABILITY_TREE,
   CERTIFICATE_DOMAIN, DATABASE_PURPOSES, INFRASTRUCTURE_AREA, OWNER_TEAM_UNITS, slug,
@@ -373,5 +373,28 @@ describe('who owns the infrastructure (D75)', () => {
     expect(q.byLabel.Server.some((s) => !claimed.has(s.id))).toBe(true)
     expect(q.byLabel.DatabaseInstance.some((i) => !used.has(i.id))).toBe(true)
     for (const ci of q.cis) expect(owners.has(ci.ownerTeamId!), ci.name).toBe(true)
+  })
+})
+
+/** The monitored services (24 Sep 2026): 16 of 30 had an empty map, picked by components that were not in production. */
+describe('monitoredServiceCandidates', () => {
+  const cmdb = plan('monitored', { businessApplications: 120, applications: 300, servers: 200 })
+  const productionAppsOf = (baId: string) => cmdb.relations
+    .filter((r) => r.fromId === baId && r.type === 'REALIZES' && cmdb.byId.get(r.toId)?.environment === 'production').length
+
+  it('every one realizes at least one production application: its service map is never empty', () => {
+    const picked = monitoredServiceCandidates(cmdb, 30)
+    expect(picked.length).toBeGreaterThan(0)
+    for (const ba of picked) {
+      expect(ba.status).toBe('active')
+      expect(productionAppsOf(ba.id)).toBeGreaterThan(0)
+    }
+  })
+
+  it('the ones with the most production applications first, at most the count asked', () => {
+    const picked = monitoredServiceCandidates(cmdb, 5)
+    expect(picked.length).toBeLessThanOrEqual(5)
+    const weights = picked.map((b) => productionAppsOf(b.id))
+    expect(weights).toEqual([...weights].sort((a, b) => b - a))
   })
 })

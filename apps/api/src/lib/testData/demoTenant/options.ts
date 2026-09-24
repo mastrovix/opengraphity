@@ -144,12 +144,14 @@ export const DEMO_RATIOS = {
      *   incident   45,7/g × 3,3 g  ≈ 150-200 aperti (15 dei quali incagliati)
      *   problem     9,1/g × 33 g   ≈ 300 aperti
      *   change     13,7/g × 30 g   ≈ 400-450 aperte — abbastanza per i conflitti del CAB
-     *   richieste  13,7/g × 8,3 g  ≈ 110-130 aperte
+     *
+     * Le richieste non sono qui: dal 23 set 2026 durano quanto dice la loro
+     * voce di catalogo (`fulfilHours`, serviceRequests.ts), ~110/g × ~1,1 g
+     * ≈ 120 aperte, e la verifica usa `requestMeanOpenDays` dello stesso modello.
      */
     incident: { medianHours: 40, spread: 1.1, stuckShare: 0.02, stuckMedianDays: 12 },
     problem: { medianHours: 18 * 24, spread: 0.9, stuckShare: 0.08, stuckMedianDays: 75 },
     change: { medianHours: 16 * 24, spread: 0.8, stuckShare: 0.12, stuckMedianDays: 60 },
-    serviceRequest: { medianHours: 40, spread: 1.0, stuckShare: 0.09, stuckMedianDays: 45 },
   },
 
   /** Of the changes, those whose deploy the CAB sees in conflict with another change. */

@@ -22,7 +22,7 @@ import { Rng } from './random.js'
 import { DAY, DemoClock, HOUR, MINUTE } from './clock.js'
 import { assertDemoCounts, DEFAULT_DEMO_COUNTS, DEMO_RATIOS, type DemoOptions } from './options.js'
 import { planPeople, type PlannedUser } from './people.js'
-import { planCMDB, type CMDBPlan, type PlannedCI } from './cmdb.js'
+import { monitoredServiceCandidates, planCMDB, type CMDBPlan, type PlannedCI } from './cmdb.js'
 import { planConfig, type ConfigPlan, type PlannedOla } from './config.js'
 import { DemoWriter, ensureIdIndexes, int } from './writer.js'
 import { planClientLogs } from './clientLogs.js'
@@ -805,18 +805,15 @@ async function writeSourceCounters(run: Run, monitoring: MonitoringPlan, sourceI
 
 /*
  * I SERVIZI MONITORATI, creati con la mutation del prodotto, DOPO la salute
- * dei CI: le business application con più componenti sotto, cioè quelle che
- * un'azienda mette davvero sotto osservazione.
+ * dei CI: le business application con più applicazioni di produzione sotto,
+ * cioè quelle che un'azienda mette davvero sotto osservazione e che hanno
+ * una mappa (`monitoredServiceCandidates`).
  */
 async function createMonitoredServices(run: Run, ctx: GraphQLContext, cmdb: CMDBPlan, monitoring: MonitoringPlan): Promise<void> {
   const { session, opts, runId, clock, log, w, rng } = run
   const servicesSince = new Date().toISOString()
-  const byWeight = [...cmdb.byLabel.BusinessApplication]
-    .filter((b) => b.status === 'active')
-    .map((b) => ({ ba: b, weight: cmdb.relations.filter((r) => r.toId === b.id).length }))
-    .sort((a, b) => b.weight - a.weight)
-    .slice(0, opts.counts.monitoredServices)
-  for (const { ba } of byWeight) await serviceResolvers.Mutation.createServiceMap(null, { serviceId: ba.id }, ctx)
+  const byWeight = monitoredServiceCandidates(cmdb, opts.counts.monitoredServices)
+  for (const ba of byWeight) await serviceResolvers.Mutation.createServiceMap(null, { serviceId: ba.id }, ctx)
   await backdateAudits(session, opts.tenantId, runId, servicesSince, new Date(clock.nowMs - 60 * DAY).toISOString())
   /*
    * Marcare la mappa NON basta: creandola il motore scrive anche la sua

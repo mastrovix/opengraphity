@@ -106,6 +106,9 @@ export function planProblemSkeletons(
   // Incidents on the same CI are the evidence of a problem.
   const byCI = incidentsByCI(incidents)
   const cis = [...byCI.keys()].filter((id) => PROBLEM_STORIES[w.cmdb.byId.get(id)!.label].length > 0)
+  if (count > 0 && cis.length === 0) {
+    throw new Error(`Demo tenant: no CI has incidents to be the evidence of a problem, and ${String(count)} problems were asked`)
+  }
   const out: ProblemSkeleton[] = []
   const usedCI = new Map<string, number>()
   /*
@@ -119,14 +122,24 @@ export function planProblemSkeletons(
     const created = arrivals[i]!
     // A CI that had the symptoms of one of its stories before the problem was
     // opened; a CI gets at most three problems over the years (D19).
-    let found: { ciId: string; story: ProblemStory; incidents: IncidentSkeleton[] } | null = null
-    for (let k = 0; k < 40 && !found; k++) {
-      const ciId = rng.pick(cis)
-      if ((usedCI.get(ciId) ?? 0) >= 3) continue
+    type Found = { ciId: string; story: ProblemStory; incidents: IncidentSkeleton[] }
+    const tryCI = (ciId: string): Found | null => {
+      if ((usedCI.get(ciId) ?? 0) >= 3) return null
       const fit = storyWithEvidence(rng, w.cmdb.byId.get(ciId)!.label, byCI.get(ciId)!, created)
-      if (fit) found = { ciId, ...fit }
+      return fit ? { ciId, ...fit } : null
     }
-    if (!found) continue
+    let found: Found | null = null
+    for (let k = 0; k < 40 && !found; k++) found = tryCI(rng.pick(cis))
+    /*
+     * Forty random tries miss on the first weeks, when few incidents exist:
+     * the problem was DROPPED without a word, and the tenant had 795 of the
+     * 800 asked (24 Sep 2026). Every candidate now, in a random order; none
+     * at all is a tenant that cannot hold its problems, and it says so.
+     */
+    if (!found) for (const ciId of rng.shuffle(cis)) { found = tryCI(ciId); if (found) break }
+    if (!found) {
+      throw new Error(`Demo tenant: no CI had the symptoms of a problem before ${new Date(created).toISOString()} (problem ${String(i + 1)} of ${String(count)}): more incidents are needed for the problems asked`)
+    }
     usedCI.set(found.ciId, (usedCI.get(found.ciId) ?? 0) + 1)
     const ci = w.cmdb.byId.get(found.ciId)!
     const incidentIds = found.incidents.slice(-rng.int(1, 5)).map((e) => e.id)
