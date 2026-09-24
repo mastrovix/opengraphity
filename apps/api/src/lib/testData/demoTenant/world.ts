@@ -108,11 +108,12 @@ export class World {
 
   /** A CI that existed at that moment and is running (active or in maintenance). */
   runningCI(rng: Rng, pool: readonly PlannedCI[], atMs: number): PlannedCI | null {
+    // A CI planted for CMDB Health (healthFindings.ts) is never a ticket's: its defect stays the only story it tells.
     for (let i = 0; i < 30; i++) {
       const c = rng.pick(pool)
-      if (c.createdAtMs <= atMs && (c.status === 'active' || c.status === 'maintenance')) return c
+      if (c.createdAtMs <= atMs && (c.status === 'active' || c.status === 'maintenance') && !c.healthFinding) return c
     }
-    const ok = pool.filter((c) => c.createdAtMs <= atMs && (c.status === 'active' || c.status === 'maintenance'))
+    const ok = pool.filter((c) => c.createdAtMs <= atMs && (c.status === 'active' || c.status === 'maintenance') && !c.healthFinding)
     return ok.length ? rng.pick(ok) : null
   }
 }

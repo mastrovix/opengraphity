@@ -20,6 +20,8 @@ export function mapBase(props: Props) {
     environment:  props['environment'] as string | null ?? null,
     description:  props['description'] as string | null ?? null,
     chain:        props['chain']      as string | null ?? null,
+    // The infrastructure flag (24 Sep 2026): a field every CI has; absent = not flagged.
+    isInfrastructure: props['is_infrastructure'] === true,
     createdAt:    neo4jDateToISO(props['created_at']) ?? '',
     updatedAt:    neo4jDateToISO(props['updated_at']),
     notes:        props['notes']       as string | null ?? null,

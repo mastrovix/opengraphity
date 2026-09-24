@@ -88,6 +88,11 @@ function ciType(over: Partial<CITypeWithDefinitions> = {}): CITypeWithDefinition
       { id: 'f3', name: 'createdAt', label: 'Creato', type: 'datetime', required: true, defaultValue: null, enumValues: [], validationScript: null,  visibilityScript: null, defaultScript: null, isSystem: true, scope: 'base', tenantId: 'system' },
     ],
     relations: [],
+    // The two groups a server declares (seed-metamodel): a type that does not declare one cannot have it.
+    systemRelations: [
+      { id: 'sr1', name: 'ownerGroup',   label: 'Owner Group',   relationshipType: 'OWNED_BY',     targetEntity: 'Team', required: false, order: 1 },
+      { id: 'sr2', name: 'supportGroup', label: 'Support Group', relationshipType: 'SUPPORTED_BY', targetEntity: 'Team', required: false, order: 2 },
+    ],
     ...over,
   } as unknown as CITypeWithDefinitions
 }
@@ -144,6 +149,22 @@ describe('validateCIInput: the statuses a type does not offer (G35, 24 Sep 2026)
 
   it('a type that excludes nothing offers every value', async () => {
     await expect(validateCIInput(withStatus(), { name: 'cert', status: 'expired' }, 't1')).resolves.toBeUndefined()
+  })
+})
+
+describe('validateCIInput: the infrastructure flag of every CI (24 Sep 2026)', () => {
+  const withFlag = () => ciType({
+    fields: [
+      { id: 'f-infra', name: 'isInfrastructure', label: 'Infrastructure', fieldType: 'boolean', required: false, defaultValue: null, enumValues: [], order: 9, isSystem: true, scope: 'base' } as never,
+    ],
+  })
+
+  it('a yes or a no; anything else is refused, naming the field', async () => {
+    await expect(validateCIInput(withFlag(), { name: 'srv', isInfrastructure: true }, 't1')).resolves.toBeUndefined()
+    await expect(validateCIInput(withFlag(), { name: 'srv', isInfrastructure: false }, 't1')).resolves.toBeUndefined()
+    await expect(validateCIInput(withFlag(), { name: 'srv', isInfrastructure: 'maybe' }, 't1')).rejects.toThrow(/Infrastructure: "maybe" is not true or false/)
+    // Not sent: nothing to check.
+    await expect(validateCIInput(withFlag(), { name: 'srv' }, 't1')).resolves.toBeUndefined()
   })
 })
 
@@ -378,6 +399,26 @@ describe('buildCreateMutation', () => {
       .rejects.toMatchObject({ extensions: { code: 'NOT_FOUND' } })
     expect(session.executeWrite).toHaveBeenCalledTimes(1)
     expect(session.run.mock.calls.map((c) => String(c[0])).join('\n')).toContain('MERGE (n)-[:SUPPORTED_BY]->(t)')
+  })
+
+  /** 24 Sep 2026: a business capability has no Support Group — the type does not declare it. */
+  it('a group the type does not declare is refused before any session, in creation and in update', async () => {
+    const capability = ciType({ name: 'business_capability', label: 'Business Capability', neo4jLabel: 'BusinessCapability', systemRelations: [
+      { id: 'sr1', name: 'ownerGroup', label: 'Owner Group', relationshipType: 'OWNED_BY', targetEntity: 'Team', required: false, order: 1 },
+    ] } as never)
+    const create = buildCreateMutation(capability, 'BusinessCapability', mapCI)
+    await expect(create(undefined, { input: { name: 'Payments', ipAddress: '10.0.0.1', supportGroupId: 'team-1' } }, ctx))
+      .rejects.toMatchObject({ extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ci.groupNotDeclared', params: { group: 'supportGroup', type: 'Business Capability' } } } })
+    expect(withSession).not.toHaveBeenCalled()
+    // The owner group it declares is fine.
+    const session = fakeSession({ id: 'ci-9', name: 'Payments', ip_address: '10.0.0.1' })
+    vi.mocked(withSession).mockImplementation((fn) => fn(session as never))
+    await create(undefined, { input: { name: 'Payments', ipAddress: '10.0.0.1', ownerGroupId: 'team-1' } }, ctx)
+    const update = buildUpdateMutation(capability, 'BusinessCapability', mapCI)
+    await expect(update(undefined, { id: 'ci-9', input: { supportGroupId: 'team-1' } }, ctx))
+      .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.ci.groupNotDeclared' } } })
+    // Removing one is always allowed: it is how a stale one goes away.
+    await expect(update(undefined, { id: 'ci-9', input: { supportGroupId: null } }, ctx)).resolves.toBeDefined()
   })
 
   it('rejects an unsafe label at build time', () => {

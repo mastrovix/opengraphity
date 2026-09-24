@@ -217,3 +217,47 @@ export const GET_TICKET_WORKFLOW_STEPS = gql`
     }
   }
 `
+
+/** CMDB Health (24 Sep 2026): the count of every check, live. */
+export const GET_CMDB_HEALTH = gql`
+  query GetCmdbHealth {
+    cmdbHealth {
+      checks { key count population notCheckedTypes needsChains }
+      retiredStatuses
+      chainCount
+      chainCoverage { chainId name kind roots complete }
+    }
+  }
+`
+
+/** CMDB Health: the CIs one check finds, a page at a time. */
+export const GET_CMDB_HEALTH_ITEMS = gql`
+  query GetCmdbHealthItems($check: String!, $type: String, $environment: String, $limit: Int, $offset: Int) {
+    cmdbHealthItems(check: $check, type: $type, environment: $environment, limit: $limit, offset: $offset) {
+      total
+      population
+      items {
+        id name type environment status expiresAt inUseBy sameName missingFields
+        missingLinks { chain ciType relationType direction }
+        relation relatedId relatedName relatedType
+      }
+    }
+  }
+`
+
+/** The CMDB chains: which relations between CIs are admitted (CMDB Health → Chains). */
+export const GET_CMDB_CHAINS = gql`
+  query GetCmdbChains {
+    cmdbChains {
+      id name kind createdAt updatedAt
+      nodes { id parentId ciType relationType direction required }
+    }
+  }
+`
+
+/** The links the metamodel and the families allow below a type, in a chain of this kind. */
+export const GET_CMDB_CHAIN_LINK_OPTIONS = gql`
+  query GetCmdbChainLinkOptions($ciType: String!, $kind: String!) {
+    cmdbChainLinkOptions(ciType: $ciType, kind: $kind) { relationType direction ciType }
+  }
+`

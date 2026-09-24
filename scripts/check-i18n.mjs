@@ -661,6 +661,11 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   'pages.dictionary.valueIcons.database',
   'pages.dictionary.valueIcons.cloud',
   'pages.dictionary.valueIcons.wifi',
+  // The page and its menu entry are named, not described: «CMDB Health», like
+  // «Audit Log» (owner's request, 24 Sep 2026). «{{count}} CI» is the same word.
+  'sidebar.cmdbHealth',
+  'pages.cmdbHealth.title',
+  'pages.cmdbHealth.found_one',
   'events.aliases.kind.fqdn',
   'events.aliases.kind.hostname',
   'events.aliases.kind.ip',

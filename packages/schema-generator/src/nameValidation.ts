@@ -112,7 +112,7 @@ export const RESERVED_CI_PROPERTY_PREFIXES: readonly string[] = ['discovery_']
  */
 export const BASE_TYPE_FIELDS: ReadonlySet<string> = new Set([
   'id', 'name', 'type', 'status', 'environment',
-  'description', 'chain', 'createdAt', 'updatedAt', 'notes',
+  'description', 'chain', 'isInfrastructure', 'createdAt', 'updatedAt', 'notes',
   'ownerGroup', 'supportGroup', 'dependencies', 'dependents',
   'health', 'healthSource', 'lastEventAt',
 ])
@@ -120,7 +120,7 @@ export const BASE_TYPE_FIELDS: ReadonlySet<string> = new Set([
 /** Campi già dichiarati a mano in `Create…Input` / `Update…Input`. */
 export const BASE_INPUT_FIELDS: ReadonlySet<string> = new Set([
   'name', 'status', 'environment', 'description',
-  'notes', 'ownerGroupId', 'supportGroupId',
+  'notes', 'isInfrastructure', 'ownerGroupId', 'supportGroupId',
   'health', 'healthSource', 'lastEventAt',
 ])
 

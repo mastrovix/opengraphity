@@ -313,7 +313,8 @@ describe('conflicts the CAB sees', () => {
     const byLabel = { ...w.cmdb.byLabel }
     for (const label of ['Server', 'Application', 'Database', 'DatabaseInstance', 'Certificate'] as const) byLabel[label] = [veteran(label)]
     const estate = worldWith({ cmdb: { ...w.cmdb, byLabel } })
-    const plans = planChangeSkeletons(new Rng('estate-plan-2'), estate, { count: 600, linked: [] })
+    // Seed estate-plan-3 since 24 Sep 2026: the five CIs changed with the rule «every instance in service hosts a database».
+    const plans = planChangeSkeletons(new Rng('estate-plan-3'), estate, { count: 600, linked: [] })
     const groups = groupsOf(plans)
     expect(groups.length).toBeGreaterThanOrEqual(2)
     // Some groups are of changes already on the same first CI: nothing is added to them.

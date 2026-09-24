@@ -5,6 +5,8 @@ import { incidentSDL } from './schema-incident.js'
 import { problemSDL } from './schema-problem.js'
 import { changeSDL } from './schema-change.js'
 import { impactSDL } from './schema-impact.js'
+import { cmdbHealthSDL } from './schema-cmdbHealth.js'
+import { cmdbChainsSDL } from './schema-cmdbChains.js'
 import { serviceRequestSDL } from './schema-service-request.js'
 import { userTeamSDL } from './schema-user-team.js'
 import { workflowSDL } from './schema-workflow.js'
@@ -927,6 +929,8 @@ export function buildBaseSDL(): string {
   ${integrationsSchema}
   ${collaborationSchema}
   ${impactSDL()}
+  ${cmdbHealthSDL()}
+  ${cmdbChainsSDL()}
   ${whatifSDL()}
 
   ${similaritySDL}

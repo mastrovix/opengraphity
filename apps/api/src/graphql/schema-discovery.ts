@@ -31,6 +31,8 @@ export function discoverySDL(): string {
     ciConflicts:     Int!
     relationsCreated: Int!
     relationsRemoved: Int!
+    """Relations the source reports that no CMDB chain admits: not written."""
+    relationsRefused: Int!
     durationMs:      Float
     errorMessage:    String
     startedAt:       String!

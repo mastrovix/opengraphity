@@ -45,6 +45,10 @@ vi.mock('@opengraphity/schema-generator', () => ({
       { name: 'ownerGroup', label: 'Owner Group', required: ownerRequired.value },
       { name: 'supportGroup', label: 'Support Group', required: false },
     ],
+  }, {
+    // 24 Sep 2026: a business capability has no Support Group — its type does not declare it.
+    name: 'business_capability', label: 'Business Capability', neo4jLabel: 'BusinessCapability',
+    systemRelations: [{ name: 'ownerGroup', label: 'Owner Group', required: false }],
   }]),
 }))
 
@@ -76,6 +80,18 @@ describe('assignCIOwner — relazione OWNED_BY single-valued', () => {
     await expect(teamResolvers.Mutation.assignCIOwner(null, { ciId: 'ci-1', teamId: null }, ctx))
       .rejects.toMatchObject({ extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ci.requiredGroup' } } })
     expect(runQuery).not.toHaveBeenCalled()
+  })
+
+  it('a group the CI\'s type does not declare cannot be assigned: refused, nothing written; removing it is allowed', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ label: 'BusinessCapability' } as never)
+    await expect(teamResolvers.Mutation.assignCISupportGroup(null, { ciId: 'ci-1', teamId: 'team-9' }, ctx))
+      .rejects.toMatchObject({ extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ci.groupNotDeclared', params: { group: 'supportGroup', type: 'Business Capability' } } } })
+    expect(runQuery).not.toHaveBeenCalled()
+    await teamResolvers.Mutation.assignCISupportGroup(null, { ciId: 'ci-1', teamId: null }, ctx)
+    expect(lastQuery().cypher).toContain('OPTIONAL MATCH (ci)-[old:SUPPORTED_BY]->(:Team)')
+    // The owner group it declares is assigned as always.
+    await teamResolvers.Mutation.assignCIOwner(null, { ciId: 'ci-1', teamId: 'team-9' }, ctx)
+    expect(lastQuery().cypher).toContain('MERGE (ci)-[:OWNED_BY]->(t)')
   })
 
   it('un cambio di gruppo svuota la cache delle liste e scrive l\'audit', async () => {

@@ -155,6 +155,13 @@ import { kbAudience } from './20261011_1020_kb_audience.js'
 import { incidentStartWorkLabel } from './20261011_1030_incident_start_work_label.js'
 import { ciTypeStatusExcluded } from './20261011_1040_ci_type_status_excluded.js'
 import { requestStatusVocabulary } from './20261011_1050_request_status_vocabulary.js'
+import { businessCapabilityNoSupportGroup } from './20261011_1060_business_capability_no_support_group.js'
+import { ciIsInfrastructureField } from './20261011_1070_ci_is_infrastructure_field.js'
+import { cmdbChains } from './20261011_1080_cmdb_chains.js'
+import { certificatesOnServers } from './20261011_1090_certificates_on_servers.js'
+import { applicationChainsAsAlternatives } from './20261011_1100_application_chains_as_alternatives.js'
+import { everyLinkRequired } from './20261011_1110_every_link_required.js'
+import { dynamicGroupsOutsideChains } from './20261011_1120_dynamic_groups_outside_chains.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -291,4 +298,11 @@ export const MIGRATIONS: readonly Migration[] = [
   incidentStartWorkLabel,
   ciTypeStatusExcluded,
   requestStatusVocabulary,
+  businessCapabilityNoSupportGroup,
+  ciIsInfrastructureField,
+  cmdbChains,
+  certificatesOnServers,
+  applicationChainsAsAlternatives,
+  everyLinkRequired,
+  dynamicGroupsOutsideChains,
 ]

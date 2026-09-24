@@ -94,7 +94,8 @@ describe('dependencies (outgoing)', () => {
   it('lists declared outgoing edges with the CI fields the detail shows', async () => {
     rows.push({ props: { id: 's1', name: 'srv-01', status: 'active', environment: 'production', chain: 'A' }, label: 'Server', relation: 'RUNS_ON' })
     const out = await buildFieldResolvers(application, TYPES).dependencies({ id: 'app1' }, null, ctx)
-    expect(out).toEqual([{ ci: { id: 's1', name: 'srv-01', type: 'server', status: 'active', environment: 'production', chain: 'A' }, relation: 'RUNS_ON' }])
+    // isInfrastructure: a field of every CI (24 Sep 2026); absent on the node = not flagged.
+    expect(out).toEqual([{ ci: { id: 's1', name: 'srv-01', type: 'server', status: 'active', environment: 'production', chain: 'A', isInfrastructure: false }, relation: 'RUNS_ON' }])
     expect(seen[0]!.cypher).toContain('(n)-[rel]->(d)')
   })
 

@@ -20,3 +20,20 @@ export function assertGroupRemovable(ciType: CITypeWithDefinitions, relation: st
     { key: 'errors.ci.requiredGroup', params: { group, type: ciType.label || ciType.name } },
   )
 }
+
+/**
+ * Un gruppo si può ASSEGNARE? Solo se il tipo lo dichiara fra le sue relazioni
+ * di sistema (24 Sep 2026, owner: a business capability has no Support Group —
+ * «non dovrebbe nemmeno esserci il campo»). The form and the detail already
+ * follow the declaration; the inputs of every CI type carry `ownerGroupId` and
+ * `supportGroupId` (the schema generator's), so without this a group the type
+ * does not have could still be written — and would route incidents to it.
+ * Removing is always allowed: it is how a stale one goes away.
+ */
+export function assertGroupDeclared(ciType: CITypeWithDefinitions, relation: string): void {
+  if ((ciType.systemRelations ?? []).some((r) => r.name === relation)) return
+  throw new ValidationError(
+    `CIs of type "${ciType.label || ciType.name}" have no ${relation}: the type does not declare it.`,
+    { key: 'errors.ci.groupNotDeclared', params: { group: relation, type: ciType.label || ciType.name } },
+  )
+}

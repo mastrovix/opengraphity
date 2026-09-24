@@ -34,6 +34,12 @@ describe('ciInputFromFields — value shapes', () => {
       .toEqual({ name: 'srv-01', description: 'db host' })
   })
 
+  it('the infrastructure flag of every CI travels as a boolean, false included (24 Sep 2026)', () => {
+    expect(ciInputFromFields({ isInfrastructure: true }, SERVER)).toEqual({ isInfrastructure: true })
+    expect(ciInputFromFields({ isInfrastructure: false }, SERVER)).toEqual({ isInfrastructure: false })
+    expect(ciInputFromFields({ isInfrastructure: null }, SERVER)).toEqual({})
+  })
+
   it('already-typed JSON values pass through untouched', () => {
     expect(ciInputFromFields({ customFields: JSON.stringify({ ports: 8443, ha: false, owner: null }) }, SERVER))
       .toEqual({ ports: 8443, ha: false, owner: null })

@@ -6,7 +6,7 @@ import { useQuery } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { useTranslation } from 'react-i18next'
 import { GET_ANOMALY_STATS } from '@/graphql/queries'
-import { ListChecks, SlidersHorizontal, Server, Users, BarChart2, Settings, Activity, Radar } from 'lucide-react'
+import { ListChecks, SlidersHorizontal, Server, Users, BarChart2, Settings, Activity, Radar, HeartPulse } from 'lucide-react'
 import { useMe } from '@/hooks/useMe'
 import { routePermissions } from '@/lib/routePermissions'
 import { useMetamodel } from '@/contexts/MetamodelContext'
@@ -79,7 +79,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
     ...NAV_ITEM_DEFS, ...ITSM_ITEM_DEFS, ...REPORTING_ITEM_DEFS, ...ANALYSIS_ITEM_DEFS,
     ...MONITORING_ITEM_DEFS, ...TEAMS_ITEM_DEFS, ...CONFIG_ITEM_DEFS, ...SETTINGS_ITEM_DEFS,
     ...ADMIN_NAV_ITEM_DEFS, PROFILE_ITEM,
-  ].map((d) => d.to).concat('/cmdb', ciTypes.map((ct) => `/ci/${ct.name}`)))
+  ].map((d) => d.to).concat('/cmdb', '/cmdb/health', ciTypes.map((ct) => `/ci/${ct.name}`)))
 
   // Active flags derived from the location; open state re-opens on entry (E-12).
   const itsmActive      = startsWithAny(pathname, ITSM_ITEM_DEFS)
@@ -238,6 +238,8 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
         {opens('/cmdb') && (
         <SidebarGroup title={t('sidebar.cmdb')} icon={Server} active={cmdbActive} open={cmdbOpen} onToggle={toggleCmdb} collapsed={collapsed} collapsedTo="/cmdb">
           <SubItem to="/cmdb" label={t('sidebar.all')} icon={Server} isActive={attiva === '/cmdb'} />
+          {/* The quality of the CMDB's data, live (24 Sep 2026): same permission as the CMDB. */}
+          <SubItem to="/cmdb/health" label={t('sidebar.cmdbHealth')} icon={HeartPulse} isActive={attiva === '/cmdb/health'} />
           {ciTypes.map(ct => {
             const to = `/ci/${ct.name}`
             // L'etichetta del cliente vince; la chiave spedita è il ripiego.

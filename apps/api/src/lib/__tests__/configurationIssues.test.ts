@@ -41,6 +41,9 @@ vi.mock('@opengraphity/neo4j', () => ({
   }),
 }))
 vi.mock('../tenantSchema.js', () => ({ getSchemaState: vi.fn(async () => degraded) }))
+/** The CMDB chains of the tenant (24 Sep 2026): some by default, so this check shows only where asked. */
+let cateneDelCliente = 3
+vi.mock('../cmdbStartingChains.js', () => ({ cmdbChainCount: vi.fn(async () => cateneDelCliente) }))
 /**
  * I campi con una formula e l'interruttore degli script (moduli del catalogo,
  * ondata 6): di default nessun campo calcolato e script accesi, così questo
@@ -415,6 +418,14 @@ describe('configurationIssues', () => {
     expect(issue).toMatchObject({ severity: 'error', where: '/settings/organization' })
     fusoDelCliente = 'Europe/Rome'
     expect((await configurationIssues('c-one')).find((i) => i.kind === 'timezone_not_set')).toBeUndefined()
+  })
+
+  /** 24 Sep 2026: with no CMDB chain the relations follow the metamodel alone and CMDB Health cannot judge — a warning, fixed in CMDB Health. */
+  it('no CMDB chain → a warning that sends to CMDB Health', async () => {
+    cateneDelCliente = 0
+    expect((await configurationIssues('c-one')).find((i) => i.kind === 'cmdb_chains_missing')).toEqual({ kind: 'cmdb_chains_missing', severity: 'warning', where: '/cmdb/health', params: {} })
+    cateneDelCliente = 3
+    expect((await configurationIssues('c-one')).find((i) => i.kind === 'cmdb_chains_missing')).toBeUndefined()
   })
 
   /** Revisione del 14 set 2026 · F8: le migrazioni pendenti si dicono all'admin, con quali sono. */

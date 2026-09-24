@@ -152,6 +152,19 @@ describe('CIDynamicForm — fields from the metamodel', () => {
   })
 })
 
+describe('CIDynamicForm — the infrastructure flag of every CI (24 Sep 2026)', () => {
+  it('a checkbox, unticked by default, sends isInfrastructure with the rest', async () => {
+    const { user, onSubmit } = mount({ initial: { name: 'srv-bkp-01' } })
+    const flag = await screen.findByRole('checkbox', { name: 'Infrastructure' })
+    expect(flag).not.toBeChecked()
+    expect(screen.getByText(/it stays out of the application chains/)).toBeInTheDocument()
+    await user.click(flag)
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    expect(onSubmit.mock.calls[0]![0]).toMatchObject({ name: 'srv-bkp-01', isInfrastructure: true })
+  })
+})
+
 describe('CIDynamicForm — submit', () => {
   it('without a name nothing is sent and the name field says why', async () => {
     const { user, onSubmit } = mount()

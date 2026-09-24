@@ -15,6 +15,8 @@ export function cmdbSDL(): string {
     environment: String
     description: String
     chain: String
+    """Infrastructure that serves the whole company (backup, monitoring, directory…), not one application: it stays out of the application chains. Every CI has it."""
+    isInfrastructure: Boolean!
     createdAt: String!
     updatedAt: String
     notes: String
@@ -201,6 +203,8 @@ export function cmdbSDL(): string {
     environment: String
     description: String
     notes: String
+    """The infrastructure flag of every CI (24 Sep 2026): a yes or a no, not text."""
+    isInfrastructure: Boolean
     customFields: String
   }
 

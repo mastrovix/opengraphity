@@ -20,6 +20,8 @@ vi.mock('../../../lib/cache.js', () => ({
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/chainCalculator.js', () => ({ calculateChain: vi.fn().mockResolvedValue(undefined), recalculateChainsFrom: vi.fn().mockResolvedValue(1) }))
 vi.mock('../../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }))
+// The CMDB chains (24 Sep 2026): admitted here; the refusal has its own test below.
+vi.mock('../../../services/cmdbChains/admission.js', () => ({ assertRelationAdmitted: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../services/serviceImpact/sync.js', () => ({ notifyCIGraphChanged: vi.fn().mockResolvedValue(1) }))
 vi.mock('../../../lib/ciLabelsForTenant.js', () => ({
   ciLabelPredicateForTenant: vi.fn(async (alias: string) => `(${alias}:Application)`),

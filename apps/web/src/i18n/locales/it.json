@@ -148,7 +148,8 @@
     "changeCalendar": "Calendario change",
     "configurationDiagnostics": "Diagnostica",
     "proposals": "Proposte",
-    "dailyWork": "Lavoro quotidiano"
+    "dailyWork": "Lavoro quotidiano",
+    "cmdbHealth": "CMDB Health"
   },
   "pages": {
     "incidents": {
@@ -281,7 +282,9 @@
       "noCiOfType": "Nessun {{type}}",
       "baseEnumsUnavailable": "Valori di stato/ambiente non disponibili dal metamodello (tipo base)",
       "addOfType": "Aggiungi: {{type}}",
-      "allTypes": "Tutti i tipi"
+      "allTypes": "Tutti i tipi",
+      "isInfrastructure": "Infrastruttura",
+      "isInfrastructureHint": "Serve tutta l’azienda, non un’applicazione (backup, monitoraggio, directory…): resta fuori dalle catene applicative."
     },
     "anomalies": {
       "title": "Anomalie",
@@ -2918,6 +2921,134 @@
       },
       "empty": "Non c'è ancora niente da misurare",
       "emptyHelp": "Negli ultimi {{days}} giorni il registro non ha lavoro di persone da aggregare."
+    },
+    "cmdbHealth": {
+      "title": "CMDB Health",
+      "subtitle": "Controlli dal vivo sui dati della CMDB: cosa manca o non torna.",
+      "subtitleRetired": "Controlli dal vivo sui dati della CMDB: cosa manca o non torna. I CI ritirati ({{statuses}}) restano fuori.",
+      "pickCheck": "Scegli un controllo per vederne i CI.",
+      "clean": "Niente da sistemare",
+      "cleanOf": "nessuno su {{population}} CI controllati",
+      "countOf": "su {{population}} CI controllati · {{percent}}%",
+      "notChecked": "Non controllati: {{types}} (senza campo di scadenza).",
+      "found_one": "{{count}} CI",
+      "found_other": "{{count}} CI",
+      "allTypes": "Tutti i tipi",
+      "allEnvironments": "Tutti gli ambienti",
+      "exportCsv": "Esporta CSV",
+      "emptyCheck": "Nessun CI trovato: questo controllo non ha niente da sistemare.",
+      "emptyFiltered": "Nessun CI trovato con questi filtri.",
+      "col": {
+        "name": "Nome",
+        "type": "Tipo",
+        "environment": "Ambiente",
+        "status": "Stato",
+        "detail": "Dettaglio"
+      },
+      "detail": {
+        "expired_one": "Scaduto il {{date}} · usato da {{count}} CI",
+        "expired_other": "Scaduto il {{date}} · usato da {{count}} CI",
+        "sameName_one": "Stesso nome di un altro CI",
+        "sameName_other": "Stesso nome di altri {{count}} CI",
+        "missing": "Vuoti: {{fields}}",
+        "missingLinks": "Manca: {{links}}",
+        "relation": "{{relation}} → {{name}} ({{type}})",
+        "openRelated": "apri",
+        "missingOneOf": "Serve uno di: {{links}}",
+        "or": "oppure"
+      },
+      "checks": {
+        "chain_orphan": {
+          "title": "Fuori da ogni catena",
+          "description": "CI in servizio che nessuna catena raggiunge dalla sua radice (esclusi quelli marcati Infrastruttura)."
+        },
+        "missing_owner_group": {
+          "title": "Senza Gruppo Owner",
+          "description": "CI di nessuno: nessun team decide su di loro."
+        },
+        "missing_support_group": {
+          "title": "Senza Gruppo Support",
+          "description": "CI che nessun team supporta: un incident su di loro non ha a chi andare."
+        },
+        "certificate_unrelated": {
+          "title": "Certificati senza relazioni",
+          "description": "Certificati non installati da nessuna parte e non usati da niente."
+        },
+        "application_without_cis": {
+          "title": "Applicazioni senza CI",
+          "description": "Applicazioni, business application e capability che non puntano a nessun CI sotto di loro."
+        },
+        "certificate_expired_in_use": {
+          "title": "Certificati scaduti in uso",
+          "description": "Certificati oltre la scadenza che CI in servizio usano ancora."
+        },
+        "duplicate_name": {
+          "title": "Possibili duplicati",
+          "description": "CI dello stesso tipo con lo stesso nome."
+        },
+        "required_field_empty": {
+          "title": "Campi obbligatori vuoti",
+          "description": "CI a cui manca un campo che il loro tipo dichiara obbligatorio."
+        },
+        "chain_incomplete": {
+          "title": "Catene incomplete",
+          "description": "CI in servizio che non rispettano nessuna delle catene dove stanno: un'applicazione senza server né database, un database senza istanza."
+        },
+        "relation_not_admitted": {
+          "title": "Relazioni non ammesse",
+          "description": "Relazioni fra CI in servizio che nessuna catena ammette: l'API le rifiuta, quindi sono entrate da un'altra strada."
+        }
+      },
+      "tabs": {
+        "checks": "Controlli",
+        "chains": "Catene"
+      },
+      "needsChains": "Nessuna catena disegnata: disegnane una nella scheda Catene.",
+      "cleanOfRelations": "nessuna su {{population}} relazioni controllate",
+      "countOfRelations": "su {{population}} relazioni controllate · {{percent}}%",
+      "foundRelations_one": "{{count}} relazione",
+      "foundRelations_other": "{{count}} relazioni",
+      "chains": {
+        "intro": "Una catena dice quali relazioni fra CI sono ammesse: da un tipo radice, quali tipi seguono, con quale relazione e in quale verso. In una catena ogni collegamento è obbligatorio, e una catena si usa tutta: quello che è facoltativo è un'altra catena, un'alternativa (un'applicazione su server, oppure su server con un certificato, oppure su database…). Un CI va bene se, dove le catene lo mettono, ne rispetta una per intero. L'API rifiuta ogni relazione che nessuna catena ammette; la scheda Controlli conta quelle entrate comunque, i CI che nessuna catena raggiunge e i CI che non rispettano nessuna catena. Due tipi si possono collegare solo se hanno una famiglia di catena in comune (CI Type Designer).",
+        "root": "radice",
+        "canvas": "Disegno della catena",
+        "newChain": "Nuova catena",
+        "noChains": "Nessuna catena disegnata: le relazioni fra CI seguono solo il metamodello, e CMDB Health non può giudicare dove sta un CI.",
+        "name": "Nome",
+        "kind": "Tipo di catena",
+        "kinds": {
+          "application": "Applicativa",
+          "infrastructure": "Infrastrutturale",
+          "mixed": "Mista"
+        },
+        "kindHint": {
+          "application": "Solo tipi della famiglia Applicazione.",
+          "infrastructure": "Solo tipi della famiglia Infrastruttura.",
+          "mixed": "Tipi di qualunque famiglia; ogni collegamento unisce due tipi che ne hanno una in comune."
+        },
+        "rootType": "Tipo radice",
+        "save": "Salva",
+        "cancel": "Annulla",
+        "delete": "Elimina",
+        "deleteTitle": "Eliminare la catena «{{name}}»?",
+        "deleteBody": "Le relazioni che ammette solo questa catena verranno rifiutate da ora in poi, e CMDB Health conterà quelle esistenti come non ammesse.",
+        "saved": "Catena salvata",
+        "deleted": "Catena eliminata",
+        "choose": "Scegli un tipo nel disegno per vederne il collegamento e aggiungerne sotto.",
+        "addBelow": "Aggiungi un collegamento sotto",
+        "pickLink": "Scegli un collegamento…",
+        "addLink": "Aggiungi",
+        "noOptions": "Il metamodello e le famiglie non ammettono altri collegamenti sotto questo tipo.",
+        "remove": "Togli questo tipo",
+        "removeWithBelow": "Togli questo tipo e quello che c'è sotto",
+        "linkFrom": "Da {{parent}}: {{link}}",
+        "coverage": "{{complete}} radici su {{roots}} la seguono · {{percent}}%",
+        "coverageNone": "Nessuna radice in servizio",
+        "types_one": "{{count}} tipo",
+        "types_other": "{{count}} tipi",
+        "readOnly": "Solo chi può modificare il metamodello disegna le catene.",
+        "legend": "Ogni collegamento è obbligatorio: un'alternativa è un'altra catena."
+      }
     }
   },
   "filter": {
@@ -4365,7 +4496,8 @@
       "customFieldsNotObject": "I campi del CI devono essere un elenco nome → valore.",
       "unknownField": "«{{field}}» non è un campo del tipo {{type}}.",
       "requiredGroup": "{{group}} è obbligatorio per i CI di tipo {{type}}: si può cambiare, non togliere.",
-      "ambiguousType": "Il CI {{ci}} combacia con più di un tipo ({{types}}): le domande dell'assessment sarebbero arbitrarie. Lascia attivo un solo tipo per queste etichette."
+      "ambiguousType": "Il CI {{ci}} combacia con più di un tipo ({{types}}): le domande dell'assessment sarebbero arbitrarie. Lascia attivo un solo tipo per queste etichette.",
+      "groupNotDeclared": "I CI di tipo «{{type}}» non hanno {{group}}: il tipo non lo prevede."
     },
     "portal": {
       "unclassifiedStates": "{{count}} stati dei ticket non appartengono a nessuna classe del workflow incident attivo ({{states}}): i contatori del portale non li conterebbero. Sistema i passi (iniziale / finale / categoria) nel disegnatore.",
@@ -4907,6 +5039,33 @@
     "users": {
       "tooManyIds": "Si possono nominare al massimo {{max}} persone alla volta.",
       "unknownPermission": "Permesso sconosciuto «{{permission}}»."
+    },
+    "cmdbHealth": {
+      "unknownCheck": "Controllo della CMDB Health sconosciuto: «{{check}}».",
+      "unknownType": "Tipo di CI sconosciuto: «{{type}}»."
+    },
+    "cmdbChain": {
+      "nameRequired": "Una catena ha bisogno di un nome.",
+      "nameTooLong": "Il nome di una catena ha al massimo {{max}} caratteri.",
+      "nameTaken": "Esiste già una catena di nome «{{name}}».",
+      "unknownKind": "«{{kind}}» non è un tipo di catena: applicativa, infrastrutturale o mista.",
+      "noRoot": "Una catena ha bisogno almeno del tipo radice.",
+      "oneRoot": "Una catena ha una sola radice; questa ne ha {{count}}.",
+      "tooManyNodes": "Una catena ha al massimo {{max}} tipi.",
+      "badNodeId": "Ogni tipo di una catena ha bisogno di un id di al massimo 64 caratteri.",
+      "duplicateNodeId": "L'id «{{id}}» compare due volte nella catena.",
+      "unknownParent": "Il tipo sopra «{{id}}» non è nella catena.",
+      "cycle": "La catena torna su sé stessa.",
+      "unknownType": "«{{type}}» non è un tipo di CI attivo di questo tenant.",
+      "relationRequired": "Il collegamento a {{type}} non ha una relazione.",
+      "unknownDirection": "«{{direction}}» non è un verso.",
+      "typeWithoutFamily": "{{type}} non ha una famiglia di catena: dagliene una nel CI Type Designer prima di disegnarlo in una catena.",
+      "typeNotInKind": "{{type}} non ha la famiglia che una catena di tipo {{kind}} richiede.",
+      "noSharedFamily": "{{parent}} e {{child}} non hanno una famiglia di catena in comune: non si possono collegare.",
+      "relationNotDeclared": "Il metamodello non dichiara {{relation}} da {{source}} a {{target}}.",
+      "duplicateLink": "{{parent}} ha due volte lo stesso collegamento verso {{child}}.",
+      "relationNotAdmitted": "Nessuna catena della CMDB ammette {{relation}} da {{source}} a {{target}}: disegnala in una catena in CMDB Health → Catene.",
+      "linkOptional": "Il collegamento a {{type}} è facoltativo: in una catena ogni collegamento è obbligatorio, e un'alternativa è un'altra catena."
     }
   },
   "errorBoundary": {
@@ -6725,7 +6884,8 @@
       "tasks_without_team_one": "1 task aperto non ha nessuna squadra ({{codes}}): **nessuno sa di doverlo fare**. Succede quando la squadra scelta nel passo del workflow è stata cancellata dopo. Assegnalo, o correggi il passo.",
       "tasks_without_team_other": "{{count}} task aperti non hanno nessuna squadra ({{codes}}): **nessuno sa di doverli fare**. Succede quando la squadra scelta nel passo del workflow è stata cancellata dopo. Assegnali, o correggi il passo.",
       "tasks_waiting_forever_one": "1 task aspetta un task che sul suo ticket non esiste ({{examples}}): **non partirà mai**, e tiene fermo anche il passo. Nel disegnatore, il campo «parte quando è chiuso» nomina un task che quel passo non crea.",
-      "tasks_waiting_forever_other": "{{count}} task aspettano task che sui loro ticket non esistono ({{examples}}): **non partiranno mai**, e tengono fermi anche i passi. Nel disegnatore, il campo «parte quando è chiuso» nomina task che quei passi non creano."
+      "tasks_waiting_forever_other": "{{count}} task aspettano task che sui loro ticket non esistono ({{examples}}): **non partiranno mai**, e tengono fermi anche i passi. Nel disegnatore, il campo «parte quando è chiuso» nomina task che quei passi non creano.",
+      "cmdb_chains_missing": "Questa organizzazione non ha nessuna catena della CMDB: le relazioni fra CI seguono solo il metamodello, e CMDB Health non può dire quali CI sono fuori catena o incompleti. **Si disegnano da CMDB → CMDB Health → Catene**."
     },
     "gap": {
       "tenant_missing": "nessuna riga: il tenant non esiste",
@@ -7811,7 +7971,10 @@
       "incident.assigned_user": "Incident assegnato a una persona",
       "incident.unassigned_user": "Incident senza assegnatario",
       "proposal.acknowledged": "Preso atto di una proposta di miglioramento",
-      "proposal.problem_opened": "Problem aperto da una proposta di miglioramento"
+      "proposal.problem_opened": "Problem aperto da una proposta di miglioramento",
+      "cmdb_chain.created": "Catena della CMDB disegnata",
+      "cmdb_chain.updated": "Catena della CMDB modificata",
+      "cmdb_chain.deleted": "Catena della CMDB eliminata"
     }
   },
   "tasks": {

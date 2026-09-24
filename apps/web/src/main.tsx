@@ -24,6 +24,7 @@ import { RequestListPage } from '@/pages/requests/RequestListPage'
 import { CreateServiceRequestPage } from '@/pages/requests/CreateServiceRequestPage'
 import { ServiceRequestDetailPage } from '@/pages/requests/ServiceRequestDetailPage'
 import { CMDBPage } from '@/pages/cmdb/CMDBPage'
+import { CmdbHealthPage } from '@/pages/cmdb/CmdbHealthPage'
 import { CIListPage } from '@/pages/ci/CIListPage'
 import { CIDetailPage } from '@/pages/ci/CIDetailPage'
 import { ProfilePage as UserProfilePage } from '@/pages/profile/ProfilePage'
@@ -171,6 +172,7 @@ const router = createBrowserRouter([
       guarded('requests/new', <CreateServiceRequestPage />),
       guarded('requests/:id', <Keyed Page={ServiceRequestDetailPage} />),
       guarded('cmdb', <CMDBPage />),
+      guarded('cmdb/health', <CmdbHealthPage />),
       // Dynamic CI routes
       // Keyed like the others: switching type from the sidebar kept page, filter and sort (review of 23 Sep 2026).
       guarded('ci/:typeName', <Keyed Page={CIListPage} />),

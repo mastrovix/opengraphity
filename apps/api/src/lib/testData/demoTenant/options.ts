@@ -169,6 +169,18 @@ export const DEMO_RATIOS = {
   resolvingChanges: 0.1,
   /** Of the users, by role (they add up to the whole). */
   roles: { operator: 0.4, end_user: 1700 / 3000, viewer: 80 / 3000, admin: 20 / 3000 },
+  /**
+   * CMDB HEALTH, FED ON PURPOSE (owner, 24 Sep 2026): «alcuni CI devono fare
+   * in modo di alimentare la CMDB Health, non più di 50 tra tutte le
+   * casistiche». The plan is otherwise clean — every check reads zero on it —
+   * so the cards show exactly these (healthFindings.ts, `expectedHealthCards`
+   * for what each one reads: a certificate with no relation is also outside
+   * every chain, an application without CIs also an incomplete chain).
+   */
+  healthFindings: {
+    unflaggedInfrastructure: 4, databasesWithoutInstance: 3, relationsNotAdmitted: 3, withoutOwner: 4, withoutSupport: 4,
+    unrelatedCertificates: 3, applicationsWithoutCis: 3, expiredInUse: 4, duplicatePairs: 2, requiredFieldEmpty: 4,
+  },
 } as const
 
 export interface DemoOptions {
@@ -198,6 +210,8 @@ export function assertDemoCounts(counts: DemoCounts): void {
   need(counts.databaseInstances === 0 || counts.servers >= 1, 'database instances need at least one server')
   need(counts.databases === 0 || (counts.databaseInstances >= 1 && counts.applications >= 1),
     'databases need at least one database instance and one application')
+  // An instance no application uses is in no valid chain (owner, 24 Sep 2026): each hosts a database.
+  need(counts.databases >= counts.databaseInstances, 'every database instance hosts at least one database: there must be at least as many databases as instances')
   need(counts.serviceRequests === 0 || counts.catalogItems >= 1, 'service requests need at least one catalog item')
   // A capability is enabled by business applications, and named from the capability tree (cmdb.ts).
   need(counts.capabilities === 0 || counts.businessApplications >= 1, 'capabilities need at least one business application to enable them')

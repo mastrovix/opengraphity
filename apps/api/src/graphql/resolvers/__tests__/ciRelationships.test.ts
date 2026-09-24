@@ -17,6 +17,8 @@ vi.mock('../../../lib/cache.js', () => ({
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/chainCalculator.js', () => ({ calculateChain: vi.fn().mockResolvedValue(undefined), recalculateChainsFrom: vi.fn().mockResolvedValue(1) }))
 vi.mock('../../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) } }))
+// The CMDB chains (24 Sep 2026): admitted here; the refusal has its own test below.
+vi.mock('../../../services/cmdbChains/admission.js', () => ({ assertRelationAdmitted: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../services/serviceImpact/sync.js', () => ({ notifyCIGraphChanged: vi.fn().mockResolvedValue(1) }))
 vi.mock('../../../lib/ciLabelsForTenant.js', () => ({
   ciLabelPredicateForTenant: vi.fn(async (alias: string) => `(${alias}:Application OR ${alias}:Server)`),
@@ -25,6 +27,7 @@ vi.mock('../../../lib/ciLabelsForTenant.js', () => ({
 const { ciRelationshipResolvers } = await import('../ciRelationships.js')
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { notifyCIGraphChanged } = await import('../../../services/serviceImpact/sync.js')
+const { assertRelationAdmitted } = await import('../../../services/cmdbChains/admission.js')
 
 const ctx = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'admin', permissions: perms('admin') as const }
 const txRun = vi.fn().mockResolvedValue({ records: [] })
@@ -58,6 +61,15 @@ describe('addCIRelationship / removeCIRelationship: notifica ai servizi monitora
   it('rimozione: stessa notifica (una relazione tolta fa uscire dei componenti)', async () => {
     expect(await ciRelationshipResolvers.Mutation.removeCIRelationship(null, { sourceId: 'app-3', targetId: 'srv-9', relationType: 'HOSTED_ON' }, ctx)).toBe(true)
     expect(notifyCIGraphChanged).toHaveBeenCalledWith('t1', ['app-3', 'srv-9'], 'ci_relationship.removed:HOSTED_ON')
+  })
+
+  it('a relation no CMDB chain admits is refused after the metamodel check: nothing written, nothing notified (24 Sep 2026)', async () => {
+    vi.mocked(assertRelationAdmitted).mockRejectedValueOnce(new Error('No CMDB chain admits DEPENDS_ON from Application to Server'))
+    await expect(ciRelationshipResolvers.Mutation.addCIRelationship(null, { sourceId: 'app-3', targetId: 'srv-9', relationType: 'DEPENDS_ON' }, ctx))
+      .rejects.toThrow('No CMDB chain admits DEPENDS_ON from Application to Server')
+    expect(assertRelationAdmitted).toHaveBeenCalledWith(session, 't1', 'DEPENDS_ON', ['Application'], ['Server'])
+    expect(session.executeWrite).not.toHaveBeenCalled()
+    expect(notifyCIGraphChanged).not.toHaveBeenCalled()
   })
 
   it('relazione rifiutata (tipo non ammesso): nessuna notifica, nessuna scrittura', async () => {

@@ -42,4 +42,8 @@ describe('Breadcrumb: nome e gruppo dal menu', () => {
   it('una pagina fuori dal menu segue i segmenti dell indirizzo', () => {
     expect(briciole('/ci/server')).toEqual(['CMDB', 'Server'])
   })
+
+  it('«health» under /cmdb is the CMDB Health page, not the CI Health of Monitoring (24 Sep 2026)', () => {
+    expect(briciole('/cmdb/health')).toEqual(['CMDB', 'CMDB Health'])
+  })
 })

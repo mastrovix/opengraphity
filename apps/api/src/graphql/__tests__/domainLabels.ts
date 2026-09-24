@@ -26,7 +26,7 @@ export const DOMAIN_LABELS = [
   // Metamodello: i tipi, i loro campi, le loro relazioni. I tre in coda erano
   // il punto cieco dichiarato di D-18.
   'EnumTypeDefinition', 'CITypeDefinition',
-  'CIFieldDefinition', 'CIRelationDefinition', 'CISystemRelationDefinition',
+  'CIFieldDefinition', 'CIRelationDefinition', 'CISystemRelationDefinition', 'CMDBChain',
   'FieldVisibilityRule', 'FieldRequirementRule', 'TicketCIExclusion', 'ServiceCatalogItem', 'AssessmentQuestion',
   'Event', 'CIAlias', 'EventHistoryEntry',
   'ServiceMap', 'ServiceHealthEntry',

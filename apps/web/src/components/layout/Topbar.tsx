@@ -75,6 +75,14 @@ export function Breadcrumb() {
     sources:            t('sidebar.monitoringSources'),
     'event-policy':     t('sidebar.eventPolicy'),
   }
+  /**
+   * A segment whose name depends on where it sits: «health» is the CI Health of
+   * Monitoring under /monitoring, and the CMDB Health page under /cmdb
+   * (24 Sep 2026). Keyed by the whole path up to the segment.
+   */
+  const PATH_LABELS: Record<string, string> = {
+    '/cmdb/health': t('sidebar.cmdbHealth'),
+  }
   const formatSegment = (part: string): string => {
     // L'etichetta del cliente per un tipo di CI vince sulle chiavi dei tipi
     // spediti (revisione totale · F-22): il breadcrumb diceva «Server» anche
@@ -114,7 +122,7 @@ export function Breadcrumb() {
       // miei compiti), `/settings` è solo un gruppo. Prima erano link a «Page
       // not found» (giro nel browser del 14 set 2026, BreadcrumbLinks.test.tsx).
       const to = i === 0 && part in FIRST_SEGMENT_PAGE ? FIRST_SEGMENT_PAGE[part]! : path
-      crumbs.push({ key: path, label: formatSegment(part), to: to === '' ? null : to })
+      crumbs.push({ key: path, label: PATH_LABELS[path] ?? formatSegment(part), to: to === '' ? null : to })
     })
   }
 

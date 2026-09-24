@@ -24,7 +24,7 @@ import { planPeople, type PeoplePlan } from '../people.js'
 import { monitoredServiceCandidates, planCMDB, CI_NAME_PREFIX, type CIRelationType, type CMDBPlan, type PlannedCI } from '../cmdb.js'
 import {
   APPLICATION_CODE_NAMES, APPLICATION_COMPONENTS, BA_KINDS, BA_QUALIFIERS, BA_SUBJECTS, CAPABILITY_ASPECTS, CAPABILITY_CAPACITY, CAPABILITY_TREE,
-  CERTIFICATE_DOMAIN, DATABASE_PURPOSES, INFRASTRUCTURE_AREA, OWNER_TEAM_UNITS, slug,
+  CERTIFICATE_DOMAIN, DATABASE_PURPOSES, INFRASTRUCTURE_AREA, OWNER_TEAM_UNITS, SERVER_ROLE_MIX, slug,
 } from '../names.js'
 
 const NOW = Date.parse('2026-09-23T10:00:00.000Z')
@@ -325,7 +325,9 @@ describe('who owns the infrastructure (D75)', () => {
     : s.role === 'lb' ? 'Network and Security'
       : /^(aws|azr)-/.test(s.site!) ? 'Cloud Platform' : 'Data Centre')
   const ask = { businessApplications: 3, applications: 4, servers: 120, databaseInstances: 4, databases: 3, certificates: 12 }
-  const p = plan('own0', ask)
+  // Seed own5 (was own0 until 24 Sep 2026): a running application server now always carries an
+  // application, so only a retired load balancer is left for Network and Security to own.
+  const p = plan('own5', ask)
 
   it('what no application claims goes to the infrastructure team of what it is for', () => {
     const claimed = new Set(p.relations.filter((r) => r.type === 'HOSTED_ON').map((r) => r.toId))
@@ -340,14 +342,82 @@ describe('who owns the infrastructure (D75)', () => {
     for (const i of unused) expect(team.get(i.ownerTeamId!)!.unit, i.name).toBe('Data Centre')
   })
 
-  it('a certificate belongs to the owner of what it secures: the application or database using it, else the server or instance it is on', () => {
+  it('a certificate belongs to the owner of what it secures: the application using it, else the server or instance it is on', () => {
     const secured = new Set<string>()
     for (const cert of p.byLabel.Certificate) {
       const by = sources(p, cert.id, 'USES_CERTIFICATE')[0] ?? targets(p, cert.id, 'INSTALLED_ON')[0]!
       secured.add(by.label)
       expect(cert.ownerTeamId, cert.name).toBe(by.ownerTeamId)
     }
-    expect(secured).toEqual(new Set(['Application', 'Database', 'Server', 'DatabaseInstance']))
+    expect(secured).toEqual(new Set(['Application', 'Server', 'DatabaseInstance']))
+  })
+
+  /*
+   * The owner's rules of 24 Sep 2026: a certificate is used by an application
+   * or by a database instance and installed on the servers it runs on, or
+   * installed on a server alone — never a database's, never on the instance.
+   */
+  it('a certificate has one of the owner\'s shapes, never a database\'s', () => {
+    for (const cert of p.byLabel.Certificate) {
+      const users = sources(p, cert.id, 'USES_CERTIFICATE')
+      const hosts = targets(p, cert.id, 'INSTALLED_ON')
+      expect(hosts.every((h) => h.label === 'Server'), cert.name).toBe(true)
+      expect(users.length, cert.name).toBeLessThanOrEqual(1)
+      const user = users[0]
+      if (user) {
+        // Used: installed on the servers its user runs on, and only there.
+        expect(['Application', 'DatabaseInstance'], cert.name).toContain(user.label)
+        const servers = (user.label === 'Application' ? p.appServers : p.instanceServers).get(user.id) ?? []
+        expect(hosts.map((h) => h.id).sort(), cert.name).toEqual([...servers].sort())
+      } else {
+        expect(hosts, cert.name).toHaveLength(1)
+      }
+    }
+  })
+
+  /*
+   * The infrastructure flag (owner, 24 Sep 2026): backup, monitoring, directory
+   * and jump hosts, and the certificates installed only on flagged CIs. Nothing
+   * an application uses, and never an instance: «le istanze che nessuna
+   * applicazione usa non sono infrastrutturali».
+   */
+  it('what serves the whole company and no application is flagged as infrastructure, and nothing an application uses is', () => {
+    const infraRoles = new Set(SERVER_ROLE_MIX.filter(([, , g]) => g === 'infra').map(([role]) => role))
+    for (const s of p.byLabel.Server) expect(s.isInfrastructure === true, s.name).toBe(infraRoles.has(s.role!))
+    for (const c of p.byLabel.Certificate) {
+      const used = sources(p, c.id, 'USES_CERTIFICATE').length > 0
+      const onFlaggedOnly = targets(p, c.id, 'INSTALLED_ON').every((h) => h.isInfrastructure === true)
+      expect(c.isInfrastructure === true, c.name).toBe(!used && onFlaggedOnly)
+    }
+    // Applications, business applications, capabilities, databases and instances never are.
+    for (const label of ['Application', 'BusinessApplication', 'BusinessCapability', 'Database', 'DatabaseInstance'] as const) {
+      expect(p.byLabel[label].some((x) => x.isInfrastructure), label).toBe(false)
+    }
+    expect(p.byLabel.Server.some((s) => s.isInfrastructure)).toBe(true)
+  })
+
+  /*
+   * Only the flag keeps a CI in service out of the application chains (owner,
+   * 24 Sep 2026: «server che ospitano solo istanze non sono in una catena
+   * valida»). Before, a database drew its instance at random: 586 instances of
+   * 2000 hosted none, and the 228 servers under them were in no chain.
+   */
+  it('every instance in service hosts a database, every running application server an application, and a certificate in service stands on something that runs', () => {
+    const q = plan('chains', { businessApplications: 3, applications: 6, servers: 120, databaseInstances: 12, databases: 12, certificates: 40 })
+    const inService = q.byLabel.DatabaseInstance.filter(running)
+    expect(inService.length).toBeLessThan(12)
+    for (const i of inService) expect(sources(q, i.id, 'DEPENDS_ON').length, i.name).toBeGreaterThan(0)
+    const appRoles = new Set(SERVER_ROLE_MIX.filter(([, , g]) => g === 'app').map(([role]) => role))
+    for (const s of q.byLabel.Server.filter((x) => appRoles.has(x.role!) && running(x))) {
+      const apps = sources(q, s.id, 'HOSTED_ON').filter((x) => x.label === 'Application')
+      expect(apps.length, s.name).toBeGreaterThan(0)
+      // An application stands only on servers created before it.
+      for (const a of apps) expect(a.createdAtMs, a.name).toBeGreaterThan(s.createdAtMs)
+    }
+    for (const c of q.byLabel.Certificate.filter((x) => x.status === 'active')) {
+      const on = [...targets(q, c.id, 'INSTALLED_ON'), ...sources(q, c.id, 'USES_CERTIFICATE')]
+      expect(on.length && on.every(running), c.name).toBe(true)
+    }
   })
 
   it('with fewer owner teams than infrastructure units, what has no team of its own goes to the first of them, the Data Centre', () => {

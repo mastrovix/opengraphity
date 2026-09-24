@@ -171,7 +171,7 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   { anyOf: ['kb.rate'], mutation: ['rateKBArticle'] },
 
   // ── CMDB e monitoraggio ────────────────────────────────────────────────────
-  { anyOf: ['cmdb.read'], query: ['allCIs', 'ciById', 'ciGroupMembers', 'topology', 'blastRadius'] },
+  { anyOf: ['cmdb.read'], query: ['allCIs', 'ciById', 'ciGroupMembers', 'topology', 'blastRadius', 'cmdbHealth', 'cmdbHealthItems', 'cmdbChains', 'cmdbChainLinkOptions'] },
   { anyOf: ['cmdb.write'], mutation: ['updateCIFields', 'addCIRelationship', 'removeCIRelationship', 'assignCIOwner', 'assignCISupportGroup'] },
   {
     anyOf: ['event.read'],
@@ -246,6 +246,7 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
     query: ['domainMatrices', 'changeEnvironmentWeight', 'impactAnalysisWeights', 'ciTypeDeletionImpact', 'itilFieldValueCount', 'ciFieldValueCount', 'enumValueUsage', 'ticketWorkflowSteps'],
     mutation: [
       'createCIType', 'updateCIType', 'deleteCIType', 'addCIField', 'updateCIField', 'removeCIField', 'addCIRelation', 'removeCIRelation',
+      'createCmdbChain', 'updateCmdbChain', 'deleteCmdbChain',
       'updateITILType', 'createITILField', 'updateITILField', 'deleteITILField', 'setTicketCIExclusions',
       'createEnumType', 'updateEnumType', 'deleteEnumType', 'customizeEnumType', 'renameEnumValue', 'reorderEnumValues',
       'adoptShippedValues', 'acknowledgeShippedValues',

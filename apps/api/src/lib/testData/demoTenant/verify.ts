@@ -48,6 +48,8 @@ import { getEventPolicy } from '../../../services/events/policy.js'
 import { configurationIssues, invalidateConfigurationIssues } from '../../configurationIssues.js'
 import { AI_AUDIT_ACTIONS } from '../../dailyWorkAggregates.js'
 import { DEMO_NOTIFICATION_TARGETS } from './organization.js'
+import { cmdbHealthSummary } from '../../../services/cmdbHealth.js'
+import { expectedHealthCards } from './healthFindings.js'
 
 export interface VerifyReport { checks: number; failures: string[]; facts: string[] }
 
@@ -172,9 +174,32 @@ async function cmdbRules(v: Verifier): Promise<void> {
   v.check(await v.one(`
     MATCH (a:ConfigurationItem:Application {tenant_id: $tenantId})-[:USES_CERTIFICATE]->(c:Certificate), (a)-[:HOSTED_ON]->(s:Server)
     WHERE NOT (c)-[:INSTALLED_ON]->(s) RETURN count(*) AS n`) === 0, 'a certificate used by an application is installed on all its servers')
+  v.check(await v.one(`
+    MATCH (i:ConfigurationItem:DatabaseInstance {tenant_id: $tenantId})-[:USES_CERTIFICATE]->(c:Certificate), (i)-[:HOSTED_ON]->(s:Server)
+    WHERE NOT (c)-[:INSTALLED_ON]->(s) RETURN count(*) AS n`) === 0, 'a certificate used by an instance is installed on all its servers (24 Sep 2026)')
   v.check(await v.one(`MATCH (a:ConfigurationItem:Application {tenant_id: $tenantId}) WHERE NOT (:BusinessApplication)-[:REALIZES]->(a) RETURN count(a) AS n`) === 0, 'every application realizes a business application')
   v.check(await v.one(`MATCH (c:ConfigurationItem:BusinessCapability {tenant_id: $tenantId}) WHERE NOT (c)-[:ENABLED_BY]->(:BusinessApplication) RETURN count(c) AS n`) === 0, 'every capability is enabled by a business application')
   v.check(await v.one(`MATCH (c:ConfigurationItem {tenant_id: $tenantId}) WHERE c.chain IS NULL RETURN count(c) AS n`) === 0, 'every CI has its chain computed')
+  // The owner's certificate shapes (24 Sep 2026): never a database's — but for the few planted
+  // on purpose as relations no chain admits (healthFindings.ts).
+  const databaseCertificates = await v.one(`MATCH (:Database {tenant_id: $tenantId})-[:USES_CERTIFICATE]->(c:Certificate) RETURN count(c) AS n`)
+  v.check(databaseCertificates === DEMO_RATIOS.healthFindings.relationsNotAdmitted,
+    `a certificate is a database's only where planted (${String(databaseCertificates)}, ${String(DEMO_RATIOS.healthFindings.relationsNotAdmitted)} planted)`)
+  // The infrastructure flag: what serves the whole company is never in an application chain.
+  v.check(await v.one(`MATCH (c:ConfigurationItem {tenant_id: $tenantId}) WHERE c.is_infrastructure = true AND c.chain = 'Application' RETURN count(c) AS n`) === 0,
+    'no CI flagged as infrastructure is in an application chain')
+  v.facts.push(`CIs flagged as infrastructure: ${String(await v.one(`MATCH (c:ConfigurationItem {tenant_id: $tenantId}) WHERE c.is_infrastructure = true RETURN count(c) AS n`))}`)
+  // CMDB Health as the owner reads it (24 Sep 2026): each card shows exactly what was planted
+  // (healthFindings.ts) — the rest of the demo breaks none of its rules — and all of them
+  // together no more than 50 («non più di 50 tra tutte le casistiche»).
+  const expected = expectedHealthCards(DEMO_RATIOS.healthFindings)
+  const health = await cmdbHealthSummary(v.tenantId)
+  for (const c of health.checks) {
+    v.check(c.count === expected[c.key], `CMDB Health: "${c.key}" finds ${String(c.count)} of ${String(c.population)}, ${String(expected[c.key])} planted`)
+  }
+  const total = health.checks.reduce((sum, c) => sum + c.count, 0)
+  v.check(total <= 50, `CMDB Health: ${String(total)} findings across every check, no more than 50 asked`)
+  v.facts.push(`CMDB Health: ${String(total)} findings planted across ${String(health.checks.length)} checks; chains: ${health.chainCoverage.map((c) => `${c.name} ${String(c.complete)}/${String(c.roots)}`).join(', ')}`)
 }
 
 // ── Workflow histories ───────────────────────────────────────────────────────

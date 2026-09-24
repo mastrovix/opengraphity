@@ -7,6 +7,7 @@ import { cache, metamodelCacheKey } from '../../lib/cache.js'
 import { recalculateChainsFrom } from '../../lib/chainCalculator.js'
 import { logger } from '../../lib/logger.js'
 import { notifyCIGraphChanged } from '../../services/serviceImpact/sync.js'
+import { assertRelationAdmitted } from '../../services/cmdbChains/admission.js'
 
 // Structural relation types always available regardless of the metamodel.
 const CORE_REL_TYPES = ['DEPENDS_ON', 'HOSTED_ON', 'USES_CERTIFICATE', 'INSTALLED_ON']
@@ -113,6 +114,10 @@ async function addCIRelationship(
         { key: 'errors.ci.relationNotDeclared', params: { relation: relationType, source, target } },
       )
     }
+
+    // 3b. A CMDB chain must admit it (owner, 24 Sep 2026): the chains say which
+    //     relations between CIs may exist; CMDB Health counts any that got in anyway.
+    await assertRelationAdmitted(session, tenantId, relationType, endpoints.sLabels, endpoints.tLabels)
 
     // 4. Cycle detection (DEPENDS_ON only)
     if (relationType === 'DEPENDS_ON') {

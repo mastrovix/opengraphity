@@ -128,7 +128,7 @@ async function processSyncJob(job: Job<SyncJobPayload>): Promise<void> {
   // ── Stream and reconcile CIs ──────────────────────────────────────────────
   const stats: ReconciliationStats = {
     ciCreated: 0, ciUpdated: 0, ciUnchanged: 0, ciStale: 0,
-    ciConflicts: 0, relationsCreated: 0, relationsRemoved: 0,
+    ciConflicts: 0, relationsCreated: 0, relationsRemoved: 0, relationsRefused: 0,
   }
 
   const seenExternalIds = new Set<string>()
@@ -216,7 +216,7 @@ async function ensureRun(data: SyncJobPayload, startedAtMs: number): Promise<str
         id: $id, source_id: $sourceId, tenant_id: $tenantId,
         sync_type: $syncType, status: 'running',
         ci_created: 0, ci_updated: 0, ci_unchanged: 0, ci_stale: 0, ci_conflicts: 0,
-        relations_created: 0, relations_removed: 0,
+        relations_created: 0, relations_removed: 0, relations_refused: 0,
         started_at: $now, updated_at: $now
       })
     `, { id, sourceId, tenantId, syncType: syncType ?? 'scheduled', now })
@@ -250,6 +250,7 @@ async function updateRunStatus(
            r.ci_conflicts = $ciConflicts,
            r.relations_created = $relCreated,
            r.relations_removed = $relRemoved,
+           r.relations_refused = $relRefused,
            r.updated_at   = $now`,
       {
         runId, tenantId, status, durationMs, now,
@@ -262,6 +263,7 @@ async function updateRunStatus(
         ciConflicts:  stats?.ciConflicts     ?? 0,
         relCreated:   stats?.relationsCreated ?? 0,
         relRemoved:   stats?.relationsRemoved ?? 0,
+        relRefused:   stats?.relationsRefused ?? 0,
       },
     ))
   } finally {

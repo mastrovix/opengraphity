@@ -41,6 +41,7 @@ export const ROUTE_PERMISSIONS: Readonly<Record<string, readonly Permission[]>> 
   'admin/knowledge-base':          ['kb.write'],
 
   'cmdb':                          ['cmdb.read'],
+  'cmdb/health':                   ['cmdb.read'],
   'ci/:typeName':                  ['cmdb.read'],
   'ci/:typeName/:id':              ['cmdb.read'],
   'cis/:id':                       ['cmdb.read'],

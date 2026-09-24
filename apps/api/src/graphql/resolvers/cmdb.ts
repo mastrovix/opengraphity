@@ -44,6 +44,7 @@ function mapCI(tenantId: string, props: Props, label?: string) {
     region:      (props['region']      ?? null) as string | null,
     notes:       (props['notes']       ?? null) as string | null,
     chain:       (props['chain']      ?? null) as string | null,
+    isInfrastructure: props['is_infrastructure'] === true,
     dependencies: [],
     dependents:   [],
   }
@@ -91,13 +92,15 @@ function coerceFieldValue(field: CIFieldDefinition, raw: unknown): unknown {
  * del campo (un numero resta un numero). Exported for tests.
  */
 export function ciInputFromFields(
-  input: { name?: string; status?: string; environment?: string; description?: string; notes?: string; customFields?: string },
+  input: { name?: string; status?: string; environment?: string; description?: string; notes?: string; isInfrastructure?: boolean | null; customFields?: string },
   ciType: CITypeWithDefinitions,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const f of ['name', 'status', 'environment', 'description', 'notes'] as const) {
     if (input[f] !== undefined && input[f] !== null) out[f] = input[f]
   }
+  // The infrastructure flag (24 Sep 2026): a base field, a boolean, validated with the others.
+  if (input.isInfrastructure !== undefined && input.isInfrastructure !== null) out['isInfrastructure'] = input.isInfrastructure
   if (!input.customFields) return out
   let custom: unknown
   try { custom = JSON.parse(input.customFields) }
@@ -133,7 +136,7 @@ async function updateCIFields(
     id: string
     input: {
       name?: string; status?: string; environment?: string
-      description?: string; notes?: string; customFields?: string
+      description?: string; notes?: string; isInfrastructure?: boolean | null; customFields?: string
     }
   },
   ctx: GraphQLContext,

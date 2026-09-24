@@ -148,7 +148,8 @@
     "changeCalendar": "Change calendar",
     "configurationDiagnostics": "Diagnostics",
     "proposals": "Proposals",
-    "dailyWork": "Daily work"
+    "dailyWork": "Daily work",
+    "cmdbHealth": "CMDB Health"
   },
   "pages": {
     "incidents": {
@@ -281,7 +282,9 @@
       "noCiOfType": "No {{type}}",
       "baseEnumsUnavailable": "Status/environment values unavailable from the metamodel (base type)",
       "addOfType": "Add: {{type}}",
-      "allTypes": "All types"
+      "allTypes": "All types",
+      "isInfrastructure": "Infrastructure",
+      "isInfrastructureHint": "Serves the whole company, not one application (backup, monitoring, directory…): it stays out of the application chains."
     },
     "anomalies": {
       "title": "Anomalies",
@@ -2918,6 +2921,134 @@
       },
       "empty": "Nothing to measure yet",
       "emptyHelp": "In the last {{days}} days the log has no human work to aggregate."
+    },
+    "cmdbHealth": {
+      "title": "CMDB Health",
+      "subtitle": "Live checks on the CMDB data: what is missing or does not add up.",
+      "subtitleRetired": "Live checks on the CMDB data: what is missing or does not add up. Retired CIs ({{statuses}}) are left out.",
+      "pickCheck": "Choose a check to see its CIs.",
+      "clean": "Nothing to fix",
+      "cleanOf": "none of {{population}} CIs checked",
+      "countOf": "of {{population}} CIs checked · {{percent}}%",
+      "notChecked": "Not checked: {{types}} (no expiry field).",
+      "found_one": "{{count}} CI",
+      "found_other": "{{count}} CIs",
+      "allTypes": "All types",
+      "allEnvironments": "All environments",
+      "exportCsv": "Export CSV",
+      "emptyCheck": "No CI found: this check has nothing to fix.",
+      "emptyFiltered": "No CI found with these filters.",
+      "col": {
+        "name": "Name",
+        "type": "Type",
+        "environment": "Environment",
+        "status": "Status",
+        "detail": "Detail"
+      },
+      "detail": {
+        "expired_one": "Expired on {{date}} · used by {{count}} CI",
+        "expired_other": "Expired on {{date}} · used by {{count}} CIs",
+        "sameName_one": "Same name as {{count}} other CI",
+        "sameName_other": "Same name as {{count}} other CIs",
+        "missing": "Empty: {{fields}}",
+        "missingLinks": "Lacks: {{links}}",
+        "relation": "{{relation}} → {{name}} ({{type}})",
+        "openRelated": "open",
+        "missingOneOf": "Needs one of: {{links}}",
+        "or": "or"
+      },
+      "checks": {
+        "chain_orphan": {
+          "title": "Outside every chain",
+          "description": "CIs in service that no chain reaches from its root (those flagged Infrastructure aside)."
+        },
+        "missing_owner_group": {
+          "title": "No Owner Group",
+          "description": "CIs nobody owns: no team decides about them."
+        },
+        "missing_support_group": {
+          "title": "No Support Group",
+          "description": "CIs no team supports: an incident on them has no one to go to."
+        },
+        "certificate_unrelated": {
+          "title": "Certificates with no relationship",
+          "description": "Certificates installed nowhere and used by nothing."
+        },
+        "application_without_cis": {
+          "title": "Applications without CIs",
+          "description": "Applications, business applications and capabilities that point to no CI below them."
+        },
+        "certificate_expired_in_use": {
+          "title": "Expired certificates in use",
+          "description": "Certificates past their expiry that CIs in service still use."
+        },
+        "duplicate_name": {
+          "title": "Possible duplicates",
+          "description": "CIs of the same type with the same name."
+        },
+        "required_field_empty": {
+          "title": "Required fields empty",
+          "description": "CIs missing a field their type declares required."
+        },
+        "chain_incomplete": {
+          "title": "Incomplete chains",
+          "description": "CIs in service that follow none of the chains where they stand: an application with neither server nor database, a database without an instance."
+        },
+        "relation_not_admitted": {
+          "title": "Relations not admitted",
+          "description": "Relations between CIs in service that no chain admits: the API refuses them, so they came in another way."
+        }
+      },
+      "tabs": {
+        "checks": "Checks",
+        "chains": "Chains"
+      },
+      "needsChains": "No chain is drawn yet: draw one in the Chains tab.",
+      "cleanOfRelations": "none of {{population}} relations checked",
+      "countOfRelations": "of {{population}} relations checked · {{percent}}%",
+      "foundRelations_one": "{{count}} relation",
+      "foundRelations_other": "{{count}} relations",
+      "chains": {
+        "intro": "A chain says which relations between CIs are admitted: from a root type, which types follow, with which relation and in which direction. Every link of a chain is required, and a chain is used whole: what is optional is another chain, an alternative (an application on servers, or on servers with a certificate, or on databases…). A CI is fine when, where the chains place it, one of them is followed whole. The API refuses any relation no chain admits; the Checks tab counts those that got in anyway, the CIs no chain reaches and the CIs that follow no chain. Two types can be linked only when they share a chain family (CI Type Designer).",
+        "root": "root",
+        "canvas": "Chain drawing",
+        "newChain": "New chain",
+        "noChains": "No chain drawn: the relations between CIs follow the metamodel alone, and CMDB Health cannot judge where a CI belongs.",
+        "name": "Name",
+        "kind": "Kind",
+        "kinds": {
+          "application": "Application",
+          "infrastructure": "Infrastructure",
+          "mixed": "Mixed"
+        },
+        "kindHint": {
+          "application": "Only types of the Application family.",
+          "infrastructure": "Only types of the Infrastructure family.",
+          "mixed": "Types of any family; each link joins two types that share one."
+        },
+        "rootType": "Root type",
+        "save": "Save",
+        "cancel": "Cancel",
+        "delete": "Delete",
+        "deleteTitle": "Delete the chain «{{name}}»?",
+        "deleteBody": "The relations only this chain admits will be refused from now on, and CMDB Health will count the existing ones as not admitted.",
+        "saved": "Chain saved",
+        "deleted": "Chain deleted",
+        "choose": "Choose a type in the drawing to see its link and add links below it.",
+        "addBelow": "Add a link below",
+        "pickLink": "Choose a link…",
+        "addLink": "Add",
+        "noOptions": "The metamodel and the families allow no further link below this type.",
+        "remove": "Remove this type",
+        "removeWithBelow": "Remove this type and what hangs below",
+        "linkFrom": "From {{parent}}: {{link}}",
+        "coverage": "{{complete}} of {{roots}} roots follow it · {{percent}}%",
+        "coverageNone": "No root in service",
+        "types_one": "{{count}} type",
+        "types_other": "{{count}} types",
+        "readOnly": "Only who can change the metamodel draws chains.",
+        "legend": "Every link is required: an alternative is another chain."
+      }
     }
   },
   "filter": {
@@ -4365,7 +4496,8 @@
       "customFieldsNotObject": "The fields of the CI must be a list of name → value.",
       "unknownField": "«{{field}}» is not a field of the type {{type}}.",
       "requiredGroup": "{{group}} is required for CIs of type {{type}}: it can be changed, not removed.",
-      "ambiguousType": "The CI {{ci}} matches more than one CI type ({{types}}): the assessment questions would be arbitrary. Leave one active type for these labels."
+      "ambiguousType": "The CI {{ci}} matches more than one CI type ({{types}}): the assessment questions would be arbitrary. Leave one active type for these labels.",
+      "groupNotDeclared": "CIs of type \"{{type}}\" have no {{group}}: the type does not declare it."
     },
     "portal": {
       "unclassifiedStates": "{{count}} ticket states belong to no class of the active incident workflow ({{states}}): the portal counters would not count them. Fix the steps (initial / terminal / category) in the designer.",
@@ -4907,6 +5039,33 @@
     "users": {
       "tooManyIds": "At most {{max}} people can be named at once.",
       "unknownPermission": "Unknown permission «{{permission}}»."
+    },
+    "cmdbHealth": {
+      "unknownCheck": "Unknown CMDB health check \"{{check}}\".",
+      "unknownType": "Unknown CI type \"{{type}}\"."
+    },
+    "cmdbChain": {
+      "nameRequired": "A chain needs a name.",
+      "nameTooLong": "A chain name is at most {{max}} characters.",
+      "nameTaken": "A chain named «{{name}}» already exists.",
+      "unknownKind": "«{{kind}}» is not a chain kind: application, infrastructure or mixed.",
+      "noRoot": "A chain needs at least its root type.",
+      "oneRoot": "A chain has exactly one root; this one has {{count}}.",
+      "tooManyNodes": "A chain has at most {{max}} types.",
+      "badNodeId": "Every type in a chain needs an id of at most 64 characters.",
+      "duplicateNodeId": "The id «{{id}}» is used twice in the chain.",
+      "unknownParent": "The type above «{{id}}» is not in the chain.",
+      "cycle": "The chain loops back on itself.",
+      "unknownType": "«{{type}}» is not an active CI type of this tenant.",
+      "relationRequired": "The link to {{type}} has no relation.",
+      "unknownDirection": "«{{direction}}» is not a direction.",
+      "typeWithoutFamily": "{{type}} has no chain family: give it one in the CI Type Designer before drawing it in a chain.",
+      "typeNotInKind": "{{type}} does not have the family a chain of kind {{kind}} asks for.",
+      "noSharedFamily": "{{parent}} and {{child}} share no chain family: they cannot be linked.",
+      "relationNotDeclared": "The metamodel declares no {{relation}} from {{source}} to {{target}}.",
+      "duplicateLink": "{{parent}} has the same link to {{child}} twice.",
+      "relationNotAdmitted": "No CMDB chain admits {{relation}} from {{source}} to {{target}}: draw it in a chain in CMDB Health → Chains.",
+      "linkOptional": "The link to {{type}} is optional: every link of a chain is required, and an alternative is another chain."
     }
   },
   "errorBoundary": {
@@ -6725,7 +6884,8 @@
       "tasks_without_team_one": "1 open task has no team ({{codes}}): **nobody knows they have to do it**. This happens when the team chosen in the workflow step was deleted afterwards. Assign it, or fix the step.",
       "tasks_without_team_other": "{{count}} open tasks have no team ({{codes}}): **nobody knows they have to do them**. This happens when the team chosen in the workflow step was deleted afterwards. Assign them, or fix the step.",
       "tasks_waiting_forever_one": "1 task is waiting for a task that does not exist on its ticket ({{examples}}): it will **never start**, and it holds the step too. In the designer, «starts when this is closed» names a task that step does not create.",
-      "tasks_waiting_forever_other": "{{count}} tasks are waiting for tasks that do not exist on their tickets ({{examples}}): they will **never start**, and they hold the steps too. In the designer, «starts when this is closed» names tasks those steps do not create."
+      "tasks_waiting_forever_other": "{{count}} tasks are waiting for tasks that do not exist on their tickets ({{examples}}): they will **never start**, and they hold the steps too. In the designer, «starts when this is closed» names tasks those steps do not create.",
+      "cmdb_chains_missing": "This organization has no CMDB chain: the relations between CIs follow the metamodel alone, and CMDB Health cannot tell a CI outside every chain or an incomplete one. **You draw them in CMDB → CMDB Health → Chains**."
     },
     "gap": {
       "tenant_missing": "no row: the tenant does not exist",
@@ -7811,7 +7971,10 @@
       "incident.assigned_user": "Incident assigned to a person",
       "incident.unassigned_user": "Incident unassigned",
       "proposal.acknowledged": "Improvement proposal noted",
-      "proposal.problem_opened": "Problem opened from an improvement proposal"
+      "proposal.problem_opened": "Problem opened from an improvement proposal",
+      "cmdb_chain.created": "CMDB chain drawn",
+      "cmdb_chain.updated": "CMDB chain changed",
+      "cmdb_chain.deleted": "CMDB chain deleted"
     }
   },
   "tasks": {

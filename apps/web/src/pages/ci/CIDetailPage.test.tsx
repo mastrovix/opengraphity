@@ -23,7 +23,7 @@ const T = (key: string, opts?: Record<string, unknown>) => i18n.t(key, opts) as 
 const DETAIL_QUERY = gql`
   query DynamicDetail_Server($id: ID!) {
     server(id: $id) {
-      id name type status environment description createdAt updatedAt notes
+      id name type status environment description createdAt updatedAt notes isInfrastructure
       ownerGroup { id name }
       supportGroup { id name }
       dependencies { relation ci { id name type environment status } }
@@ -75,7 +75,7 @@ const detailMock: GqlMock = {
   request: { query: DETAIL_QUERY, variables: () => true },
   result: { data: { server: {
     __typename: 'Server', id: 'srv-1', name: 'web-01', type: 'server', status: 'active', environment: 'production',
-    description: 'Front-end web server', createdAt: '2026-01-01T00:00:00Z', updatedAt: null, notes: null,
+    description: 'Front-end web server', createdAt: '2026-01-01T00:00:00Z', updatedAt: null, notes: null, isInfrastructure: false,
     ownerGroup: null, supportGroup: null,
     dependencies: [{ __typename: 'CIRelation', relation: 'DEPENDS_ON', ci: ciRef('db-1', 'db-prod') }],
     dependents:   [{ __typename: 'CIRelation', relation: 'HOSTED_ON',  ci: ciRef('app-1', 'crm-app') }],

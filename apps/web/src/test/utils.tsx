@@ -134,11 +134,22 @@ const TIPI_SPEDITI_COPPIE = [
   ['dynamic_ci_group', 'Dynamic CI Group'],
 ] as const
 
+/**
+ * The groups a type declares, as the seed of the metamodel does: every
+ * shipped type has an Owner Group and a Support Group, but a business
+ * capability has no Support Group (24 Sep 2026).
+ */
+function gruppiDelTipo(name: string) {
+  const owner = { id: `${name}-og`, name: 'ownerGroup', label: 'Owner Group', relationshipType: 'OWNED_BY', targetEntity: 'Team', required: false, order: 1 }
+  const support = { id: `${name}-sg`, name: 'supportGroup', label: 'Support Group', relationshipType: 'SUPPORTED_BY', targetEntity: 'Team', required: false, order: 2 }
+  return name === 'business_capability' ? [owner] : [owner, support]
+}
+
 function tipiDaCoppie(coppie: readonly (readonly [string, string])[]): CITypeDef[] {
   return coppie.map(([name, label]) => ({
     id: name, name, label, labels: [], icon: 'box', color: '#64748b', active: true,
     scope: 'base', tenantId: 'system', validationScript: null, chainFamilies: [],
-    serviceRole: null, fields: [], relations: [], systemRelations: [],
+    serviceRole: null, fields: [], relations: [], systemRelations: gruppiDelTipo(name),
   })) as unknown as CITypeDef[]
 }
 

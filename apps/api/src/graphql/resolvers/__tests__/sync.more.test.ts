@@ -57,6 +57,11 @@ vi.mock('../../../discovery/ciTypeResolution.js', () => ({
 vi.mock('../../../lib/ciLifecycle.js', () => ({ initialCIStatus: vi.fn().mockResolvedValue('in_service') }))
 vi.mock('../../../services/serviceImpact/sync.js', () => ({ notifyCIGraphChanged: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
+// The CMDB chains (24 Sep 2026): RELATED_TO admitted unless a test says otherwise.
+vi.mock('../../../services/cmdbChains/admission.js', () => ({
+  relationAdmission: vi.fn(),
+  notAdmittedError: vi.fn((_a: unknown, relation: string) => Object.assign(new Error(`no chain admits ${relation}`), { extensions: { code: 'BAD_USER_INPUT' } })),
+}))
 
 const { syncResolvers } = await import('../sync.js')
 const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
@@ -65,6 +70,7 @@ const { syncQueue, scheduleSourceSync } = await import('../../../discovery/syncW
 const { CITypeResolver } = await import('../../../discovery/ciTypeResolution.js')
 const { notifyCIGraphChanged } = await import('../../../services/serviceImpact/sync.js')
 const { audit } = await import('../../../lib/audit.js')
+const { relationAdmission } = await import('../../../services/cmdbChains/admission.js')
 
 const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin', permissions: perms('admin') }
 
@@ -80,6 +86,7 @@ beforeEach(() => {
   vi.mocked(runQueryOne).mockReset()
   txRun.mockReset()
   txRun.mockResolvedValue({ records: [] })
+  vi.mocked(relationAdmission).mockResolvedValue({ chains: 1, admits: () => true })
 })
 
 // ── Queries ──────────────────────────────────────────────────────────────────
@@ -372,10 +379,17 @@ describe('resolveConflict', () => {
     expect(txRun.mock.calls[0]![1]).toMatchObject({ name: 'Unknown', externalId: '' })
   })
 
+  /** The existing CI's labels, read before the linked CI is created; the other calls answer nothing. */
+  const existingIsServer = () => txRun.mockImplementation(async (cypher: string) => (cypher.includes('RETURN labels(e) AS labels')
+    ? { records: [{ get: () => ['ConfigurationItem', 'Server'] }] }
+    : { records: [] }))
+  const createCall = () => txRun.mock.calls.find(([c]) => (c as string).includes('CREATE (ci:ConfigurationItem')) as [string, Record<string, unknown>] | undefined
+
   it('linked: creates the CI, links both ways inside the tenant and notifies the service-map engine', async () => {
+    existingIsServer()
     queueReads(conflict())
     await syncResolvers.Mutation.resolveConflict(null, { conflictId: 'c1', resolution: 'linked' }, ctx)
-    const [cypher, params] = txRun.mock.calls[0]! as [string, Record<string, unknown>]
+    const [cypher, params] = createCall()!
     expect(cypher).toContain('CREATE (ci:ConfigurationItem:Server {')
     expect(cypher).toContain('MATCH (existing:ConfigurationItem {id: $existingCiId, tenant_id: $tenantId})')
     expect(cypher).toContain('MERGE (existing)-[:RELATED_TO {created_at: $now}]->(ci)')
@@ -384,16 +398,34 @@ describe('resolveConflict', () => {
   })
 
   it('linked: name falls back to the external id, then to "Unknown"', async () => {
+    existingIsServer()
     queueReads(conflict({ discovered_ci: JSON.stringify({ external_id: 'i-7' }) }))
     await syncResolvers.Mutation.resolveConflict(null, { conflictId: 'c1', resolution: 'linked' }, ctx)
-    expect(txRun.mock.calls[0]![1]).toMatchObject({ name: 'i-7', source: '' })
+    expect(createCall()![1]).toMatchObject({ name: 'i-7', source: '' })
 
     vi.clearAllMocks()
-    txRun.mockResolvedValue({ records: [] })
+    existingIsServer()
+    vi.mocked(relationAdmission).mockResolvedValue({ chains: 1, admits: () => true })
     vi.mocked(CITypeResolver.forSource).mockResolvedValue({ resolve } as never)
     queueReads(conflict({ discovered_ci: '{}' }))
     await syncResolvers.Mutation.resolveConflict(null, { conflictId: 'c1', resolution: 'linked' }, ctx)
-    expect(txRun.mock.calls[0]![1]).toMatchObject({ name: 'Unknown', externalId: '' })
+    expect(createCall()![1]).toMatchObject({ name: 'Unknown', externalId: '' })
+  })
+
+  it('linked: the two RELATED_TO are relations between CIs — no chain admitting them, nothing is created (24 Sep 2026)', async () => {
+    existingIsServer()
+    const asked: Array<[string, readonly string[], readonly string[]]> = []
+    vi.mocked(relationAdmission).mockResolvedValue({ chains: 2, admits: (r, a, b) => { asked.push([r, a, b]); return false } })
+    queueReads(conflict())
+    await expect(syncResolvers.Mutation.resolveConflict(null, { conflictId: 'c1', resolution: 'linked' }, ctx)).rejects.toThrow('no chain admits RELATED_TO')
+    expect(createCall()).toBeUndefined()
+    expect(asked[0]).toEqual(['RELATED_TO', ['ConfigurationItem', 'Server'], ['ConfigurationItem', 'Server']])
+  })
+
+  it('linked: an existing CI that is not in the tenant is not found, and nothing is created', async () => {
+    queueReads(conflict())
+    await expect(syncResolvers.Mutation.resolveConflict(null, { conflictId: 'c1', resolution: 'linked' }, ctx)).rejects.toMatchObject({ extensions: { code: 'NOT_FOUND' } })
+    expect(createCall()).toBeUndefined()
   })
 
   it('an unrecognised resolution only marks the conflict (no CI write)', async () => {

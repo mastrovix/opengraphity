@@ -76,6 +76,8 @@ const BASE_TYPE: CIType = {
     { name: 'updatedAt',   label: 'Updated at',field_type: 'date',   is_system: true, order: 7 },
     { name: 'chain',       label: 'Chain',        field_type: 'enum',   is_system: true, order: 8,
       enum_values: ['Application', 'Infrastructure'] },
+    // Shared infrastructure (backup, monitoring, directory…): out of the application chains (24 Sep 2026).
+    { name: 'isInfrastructure', label: 'Infrastructure', field_type: 'boolean', is_system: true, order: 9 },
   ],
   relations:  [],
   systemRels: [],
@@ -103,9 +105,9 @@ const CI_TYPES: CIType[] = [
       { name: 'parentCapability',  label: 'Parent Capability',   relationship_type: 'PARENT_OF', target_type: 'BusinessCapability',  cardinality: 'one',  direction: 'incoming', order: 2, description: 'Capability padre nella gerarchia' },
       { name: 'enabledBy',         label: 'Enabled By',          relationship_type: 'ENABLED_BY', target_type: 'BusinessApplication', cardinality: 'many', direction: 'outgoing', order: 3, description: 'Business application che abilitano questa capability' },
     ],
+    // No Support Group: a capability is what the business does, no team supports it (owner, 24 Sep 2026).
     systemRels: [
       { name: 'ownerGroup',   label: 'Owner Group',   relationship_type: 'OWNED_BY',     target_entity: 'Team', required: false, order: 1 },
-      { name: 'supportGroup', label: 'Support Group', relationship_type: 'SUPPORTED_BY', target_entity: 'Team', required: false, order: 2 },
     ],
   },
   {
@@ -202,6 +204,8 @@ const CI_TYPES: CIType[] = [
       { name: 'dependents',   label: 'Dependents', relationship_type: 'DEPENDS_ON', target_type: 'any',    cardinality: 'many', direction: 'incoming', order: 2, description: 'Database che girano su questa istanza' },
       { name: 'hostedOn',     label: 'Hosted On',  relationship_type: 'HOSTED_ON',  target_type: 'Server', cardinality: 'many', direction: 'outgoing', order: 3, description: 'Server che ospita questa istanza database' },
       { name: 'certificates', label: 'Installed Certificates', relationship_type: 'INSTALLED_ON', target_type: 'Certificate', cardinality: 'many', direction: 'incoming', order: 4, description: 'Certificates installed on this database instance' },
+      // The owner, 24 Sep 2026: an instance uses a certificate installed on a server (migration 20261011_1090).
+      { name: 'usesCertificates', label: 'Uses Certificate', relationship_type: 'USES_CERTIFICATE', target_type: 'Certificate', cardinality: 'many', direction: 'outgoing', order: 5, description: 'TLS certificates this database instance uses' },
     ],
     systemRels: [
       { name: 'ownerGroup',   label: 'Owner Group',   relationship_type: 'OWNED_BY',     target_entity: 'Team', required: true,  order: 1 },
@@ -262,6 +266,7 @@ const CI_TYPES: CIType[] = [
       { name: 'dependents',   label: 'Dependents', relationship_type: 'USES_CERTIFICATE', target_type: 'Application', cardinality: 'many', direction: 'incoming', order: 2, description: 'Applicazioni che utilizzano questo certificato' },
       { name: 'installedOnInstance', label: 'Installed On Instance', relationship_type: 'INSTALLED_ON',     target_type: 'DatabaseInstance', cardinality: 'many', direction: 'outgoing', order: 3, description: 'Database instances this certificate is installed on' },
       { name: 'usedByDatabases',     label: 'Used By Databases',     relationship_type: 'USES_CERTIFICATE', target_type: 'Database',         cardinality: 'many', direction: 'incoming', order: 4, description: 'Databases that use this certificate' },
+      { name: 'usedByInstances',     label: 'Used By Instances',     relationship_type: 'USES_CERTIFICATE', target_type: 'DatabaseInstance', cardinality: 'many', direction: 'incoming', order: 5, description: 'Database instances that use this certificate' },
     ],
     systemRels: [
       { name: 'ownerGroup',   label: 'Owner Group',   relationship_type: 'OWNED_BY',     target_entity: 'Team', required: true,  order: 1 },

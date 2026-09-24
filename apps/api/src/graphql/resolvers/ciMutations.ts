@@ -16,7 +16,7 @@ import { notifyCIGraphChanged, notifyCIMaintenanceChanged } from '../../services
 import { isMaintenanceLifecycle, isRetiredLifecycle, resolveCILifecycleSemantics } from '../../lib/ciLifecycle.js'
 import { recomputeCIHealth } from '../../services/events/ciHealth.js'
 import { runValidationScript } from '../../lib/metamodelScript.js'
-import { assertGroupRemovable } from '../../lib/ciGroups.js'
+import { assertGroupDeclared, assertGroupRemovable } from '../../lib/ciGroups.js'
 
 export { assertGroupRemovable }
 
@@ -101,6 +101,11 @@ export async function validateCIInput(
       )
       continue
     }
+    // A yes/no field takes a yes or a no (24 Sep 2026, the shared-infrastructure flag): «maybe» is not stored.
+    if (field.fieldType === 'boolean' && value != null && typeof value !== 'boolean') {
+      errors.push(`${field.label || field.name}: "${String(value)}" is not true or false`)
+      continue
+    }
     // A status this type does not offer (G35): «Expired» on a server.
     if (
       field.name === 'status' && value != null && value !== '' && (touched === undefined || touched.has(field.name)) &&
@@ -149,6 +154,8 @@ export function buildCreateMutation(
   return async (_: unknown, args: { input: Record<string, unknown> }, ctx: GraphQLContext) => {
     const { input } = args
     assertRequiredSystemRelations(ciType, input)
+    // A group the type does not declare is refused (a business capability has no Support Group).
+    for (const g of GROUP_INPUTS) if (input[g.input]) assertGroupDeclared(ciType, g.relation)
     await validateCIInput(ciType, input, ctx.tenantId)
 
     return withSession(async (session) => {
@@ -274,6 +281,7 @@ export async function updateCIRecord(
   await validateCIInput(ciType, merged, ctx.tenantId, new Set(Object.keys(input).filter((k) => !groupInputs.has(k))))
   for (const g of GROUP_INPUTS) {
     if (input[g.input] === null || input[g.input] === '') assertGroupRemovable(ciType, g.relation)
+    else if (input[g.input] !== undefined) assertGroupDeclared(ciType, g.relation)
   }
 
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }

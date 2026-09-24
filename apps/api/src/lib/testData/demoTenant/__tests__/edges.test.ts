@@ -141,6 +141,7 @@ describe('the counts the owner asked for', () => {
     expect(() => assertDemoCounts({ ...c, businessApplications: 0 })).toThrow(/at least one business application/)
     expect(() => assertDemoCounts({ ...c, servers: 0 })).toThrow(/at least one server/)
     expect(() => assertDemoCounts({ ...c, databaseInstances: 0 })).toThrow(/at least one database instance/)
+    expect(() => assertDemoCounts({ ...c, databases: c.databaseInstances - 1 })).toThrow(/every database instance hosts at least one database/)
     expect(() => assertDemoCounts({ ...c, catalogItems: 0 })).toThrow(/at least one catalog item/)
   })
 

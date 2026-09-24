@@ -15,6 +15,7 @@ import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { validateStringLength, validateCronExpression } from '../../lib/validation.js'
 import { audit } from '../../lib/audit.js'
 import { notifyCIGraphChanged } from '../../services/serviceImpact/sync.js'
+import { notAdmittedError, relationAdmission } from '../../services/cmdbChains/admission.js'
 import { initialCIStatus } from '../../lib/ciLifecycle.js'
 import { normalizeProperties } from '@opengraphity/discovery'
 
@@ -80,6 +81,8 @@ function mapRun(p: Props) {
     ciConflicts:      toNumber(p['ci_conflicts']),
     relationsCreated: toNumber(p['relations_created']),
     relationsRemoved: toNumber(p['relations_removed']),
+    // Runs before 24 Sep 2026 have no counter: nothing was refused then.
+    relationsRefused: p['relations_refused'] == null ? 0 : toNumber(p['relations_refused']),
     durationMs:       p['duration_ms']    ? toNumber(p['duration_ms'])    : null,
     errorMessage:     p['error_message']  ? toStr(p['error_message'])  : null,
     startedAt:        toStr(p['started_at']),
@@ -425,7 +428,7 @@ export const syncResolvers = {
             id: $runId, source_id: $sourceId, tenant_id: $tenantId,
             sync_type: $syncType, status: 'queued',
             ci_created: 0, ci_updated: 0, ci_unchanged: 0, ci_stale: 0, ci_conflicts: 0,
-            relations_created: 0, relations_removed: 0,
+            relations_created: 0, relations_removed: 0, relations_refused: 0,
             started_at: $now, updated_at: $now
           })`,
           { runId, sourceId: args.sourceId, tenantId: ctx.tenantId, syncType, now },
@@ -577,6 +580,18 @@ export const syncResolvers = {
           ))
 
         } else if (args.resolution === 'linked') {
+          // The two RELATED_TO are relations between CIs like any other: a CMDB chain
+          // must admit them, both ways, before anything is created (owner, 24 Sep 2026).
+          const existing = await session.executeRead((tx) => tx.run(
+            `MATCH (e:ConfigurationItem {id: $id, tenant_id: $tenantId}) RETURN labels(e) AS labels`,
+            { id: conflict.existingCiId, tenantId: ctx.tenantId }))
+          const existingLabels = existing.records[0]?.get('labels') as string[] | undefined
+          if (!existingLabels) throw new NotFoundError('ConfigurationItem', conflict.existingCiId)
+          const newLabels = ['ConfigurationItem', ciLabel]
+          const admission = await relationAdmission(session, ctx.tenantId)
+          for (const [from, to] of [[newLabels, existingLabels], [existingLabels, newLabels]] as const) {
+            if (!admission.admits('RELATED_TO', from, to)) throw notAdmittedError(admission, 'RELATED_TO', from, to)
+          }
           // Create new CI from discovered data AND link it bidirectionally to existing CI
           const newCiId = randomUUID()
           const initialStatus = await initialCIStatus(ctx.tenantId)

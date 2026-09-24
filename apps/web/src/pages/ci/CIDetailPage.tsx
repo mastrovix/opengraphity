@@ -62,6 +62,8 @@ interface CIDetail {
   status: string | null; environment: string | null
   description: string | null; createdAt: string
   updatedAt: string | null; notes: string | null
+  /** The infrastructure flag of every CI (24 Sep 2026). */
+  isInfrastructure: boolean
   ownerGroup: Team | null; supportGroup: Team | null
   dependencies: CIRelation[]; dependents: CIRelation[]
   [key: string]: unknown
@@ -295,6 +297,27 @@ function EditField({ label, value, onChange, enumValues, enumTypeName, multiline
 /** Form «aggiungi relazione» vuoto: nessun tipo cablato (F-31). */
 const EMPTY_REL_FORM = { relationType: '', direction: 'outgoing' as const, search: '', targetCI: null }
 
+/** The infrastructure flag of every CI (24 Sep 2026), on its own: a yes or a no, not the text of the edit form. */
+function InfrastructureFlag({ ciId, value, onSaved }: { ciId: string; value: boolean; onSaved: () => void }) {
+  const { t } = useTranslation()
+  const [save] = useMutation(UPDATE_CI)
+  const toggle = async (next: boolean) => {
+    try {
+      await save({ variables: { id: ciId, input: { isInfrastructure: next } } })
+      toast.success(t('toast.ci.saved'))
+      onSaved()
+    } catch (e) {
+      showError(e)
+    }
+  }
+  return (
+    <label title={t('pages.cmdb.isInfrastructureHint')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+      <input type="checkbox" checked={value} aria-label={t('pages.cmdb.isInfrastructure')} onChange={(e) => void toggle(e.target.checked)} />
+      {value ? t('common.yes') : t('common.no')}
+    </label>
+  )
+}
+
 export function CIDetailPage() {
   const { typeName, id } = useParams<{ typeName: string; id: string }>()
   const navigate = useNavigate()
@@ -304,8 +327,11 @@ export function CIDetailPage() {
 
   const ciType = typeName ? getCIType(typeName) : undefined
   const ciLabels = useCILabels()
-  /** Il tipo dichiara obbligatorio questo gruppo (`systemRelations[].required`, lo stesso che l'API controlla). */
-  const groupRequired = (name: 'ownerGroup' | 'supportGroup') => (ciType?.systemRelations ?? []).some((r) => r.name === name && r.required)
+  /**
+   * The group as the type declares it (`systemRelations`, what the API enforces): absent = the CI has no such
+   * group and no field (a business capability has no Support Group, 24 Sep 2026); `required` = it cannot be removed.
+   */
+  const groupOf = (name: 'ownerGroup' | 'supportGroup') => (ciType?.systemRelations ?? []).find((r) => r.name === name)
 
   // id per le coppie label/controllo (a11y)
   const baseId = useId()
@@ -396,7 +422,7 @@ export function CIDetailPage() {
     return gql`
       query DynamicDetail_${pascal}($id: ID!) {
         ${typeName}(id: $id) {
-          id name type status environment description createdAt updatedAt notes
+          id name type status environment description createdAt updatedAt notes isInfrastructure
           ownerGroup { id name }
           supportGroup { id name }
           dependencies { relation ci { id name type environment status } }
@@ -673,24 +699,28 @@ export function CIDetailPage() {
                   <DetailField label={t('pages.cmdb.environment')} value={ci.environment ? (labelOf('environment', ci.environment) ?? ci.environment) : null} />
                   <DetailField label={t('pages.cmdb.createdAt')} value={formatDate(ci.createdAt)} />
                   <DetailField label={t('detail.updatedAt')} value={ci.updatedAt ? formatDate(ci.updatedAt) : null} />
-                  <DetailField label={t('pages.cmdb.ownerGroup')} value={
+                  {/* The infrastructure flag (24 Sep 2026): saved on the click, like the groups. */}
+                  <DetailField label={t('pages.cmdb.isInfrastructure')} value={
+                    <InfrastructureFlag ciId={ci.id} value={ci.isInfrastructure === true} onSaved={() => void refetch()} />
+                  } />
+                  {groupOf('ownerGroup') && <DetailField label={t('pages.cmdb.ownerGroup')} value={
                     <CIGroupSelect
                       label={t('pages.cmdb.ownerGroup')}
                       role={TEAM_TYPE.OWNER}
-                      required={groupRequired('ownerGroup')}
+                      required={groupOf('ownerGroup')?.required ?? false}
                       value={(ci.ownerGroup as Team | null) ?? null}
                       onChange={(teamId) => void assignOwner({ variables: { ciId: ci.id, teamId } })}
                     />
-                  } />
-                  <DetailField label={t('pages.ci.supportGroup')} value={
+                  } />}
+                  {groupOf('supportGroup') && <DetailField label={t('pages.ci.supportGroup')} value={
                     <CIGroupSelect
                       label={t('pages.ci.supportGroup')}
                       role={TEAM_TYPE.SUPPORT}
-                      required={groupRequired('supportGroup')}
+                      required={groupOf('supportGroup')?.required ?? false}
                       value={(ci.supportGroup as Team | null) ?? null}
                       onChange={(teamId) => void assignSupport({ variables: { ciId: ci.id, teamId } })}
                     />
-                  } />
+                  } />}
                   {specificFields.map(f => (
                     <DetailField
                       key={f.name}

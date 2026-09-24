@@ -454,6 +454,14 @@ export function CIDynamicForm({
         <label htmlFor={fieldId('description')} style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>{t('common.description')}</label>
         <textarea id={fieldId('description')} value={String(formValues['description'] ?? '')} onChange={e => handleChange('description', e.target.value)} rows={2} style={{ ...inputBase, resize: 'vertical' }} />
       </div>
+      {/* The infrastructure flag, a field of every CI (24 Sep 2026): out of the application chains. */}
+      <div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 500, color: 'var(--color-slate)' }}>
+          <input type="checkbox" checked={formValues['isInfrastructure'] === true} onChange={e => handleChange('isInfrastructure', e.target.checked)} />
+          {t('pages.cmdb.isInfrastructure')}
+        </label>
+        <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>{t('pages.cmdb.isInfrastructureHint')}</p>
+      </div>
 
       {sortedFields.map(field => {
         // Render only when visibility is confirmed true. No fallback: a field

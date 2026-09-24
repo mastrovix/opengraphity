@@ -120,3 +120,22 @@ export const ASSIGN_CI_SUPPORT_GROUP = gql`
     assignCISupportGroup(ciId: $ciId, teamId: $teamId) { id }
   }
 `
+
+/** The CMDB chains (CMDB Health → Chains): drawn, redrawn, removed — the whole tree at once. */
+export const CREATE_CMDB_CHAIN = gql`
+  mutation CreateCmdbChain($input: CmdbChainInput!) {
+    createCmdbChain(input: $input) { id name kind createdAt updatedAt nodes { id parentId ciType relationType direction required } }
+  }
+`
+
+export const UPDATE_CMDB_CHAIN = gql`
+  mutation UpdateCmdbChain($id: ID!, $input: CmdbChainInput!) {
+    updateCmdbChain(id: $id, input: $input) { id name kind createdAt updatedAt nodes { id parentId ciType relationType direction required } }
+  }
+`
+
+export const DELETE_CMDB_CHAIN = gql`
+  mutation DeleteCmdbChain($id: ID!) {
+    deleteCmdbChain(id: $id)
+  }
+`

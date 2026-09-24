@@ -85,7 +85,7 @@ const NOTE = new Map([
   // quale CI in quale istante: spezzarla vorrebbe dire passare quello stato
   // fra cinque funzioni. Le due chiuse interne (decide, bearIncident) sono la
   // pipeline stessa, e si leggono accanto a chi le usa.
-  ['apps/api/src/lib/testData/demoTenant/cmdb.ts#planCMDB', 230], // 24 Sep 2026: an application's primary business application, word-bounded database names (G34)
+  ['apps/api/src/lib/testData/demoTenant/cmdb.ts#planCMDB', 226], // 24 Sep 2026: an application's primary business application, word-bounded database names (G34); the chains' rules, their steps moved out; a capability's status drawn before its enablers (one in service when it is)
   ['apps/api/src/lib/testData/demoTenant/incidents.ts#simulateIncident', 88],
   ['apps/api/src/lib/testData/demoTenant/problems.ts#simulateProblem', 71],
   ['apps/web/src/pages/settings/catalogForm/FormBuilderPanel.tsx#FormBuilderPanel', 188],

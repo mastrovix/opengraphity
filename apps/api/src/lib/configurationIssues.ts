@@ -42,6 +42,7 @@ import { TENANT_DI_PIATTAFORMA } from './serverLogEvents.js'
 import { serviceMapsWithIncidentProblem } from './serviceIncidentProblems.js'
 import type { Session } from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
+import { cmdbChainCount } from './cmdbStartingChains.js'
 import { getScriptingPlan } from './scriptingPlan.js'
 import { formFieldsWithFormula } from './catalogForm.js'
 import { PORTAL_SEVERITY_VOCABULARY, portalSeverityOptions } from './portalSeverityOptions.js'
@@ -100,6 +101,7 @@ export type ConfigurationIssueKind =
   | 'value_labels_partial'
   | 'default_language_not_set'
   | 'timezone_not_set'
+  | 'cmdb_chains_missing'
   | 'service_calendar_not_set'
   | 'portal_severities_not_set'
   | 'portal_severities_stale'
@@ -183,7 +185,7 @@ async function computeConfigurationIssues(tenantId: string): Promise<Configurati
   const out: ConfigurationIssue[] = []
   const session = getSession()
   try {
-    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkCatalogItemTeams, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkRedundantVocabularyCopies, checkSlaWarnings, checkStepDeadlines, checkSlackChannels, checkServiceIncidentProblems, checkCustomFieldSteps, checkOLAContracts, checkFormulasScripting, checkDuplicateFields, checkCatalogForms, checkStuckChanges, checkTaskIntegrity, checkAutoanalisiGitHub]) {
+    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkCmdbChains, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkCatalogItemTeams, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkRedundantVocabularyCopies, checkSlaWarnings, checkStepDeadlines, checkSlackChannels, checkServiceIncidentProblems, checkCustomFieldSteps, checkOLAContracts, checkFormulasScripting, checkDuplicateFields, checkCatalogForms, checkStuckChanges, checkTaskIntegrity, checkAutoanalisiGitHub]) {
       try {
         out.push(...await check(tenantId, session))
       } catch (err) {
@@ -388,6 +390,17 @@ async function checkLanguage(tenantId: string): Promise<ConfigurationIssue[]> {
  * date dei messaggi falliscono, e nessun ripiego è giusto (il fuso del server
  * non è quello del cliente). Si sceglie dalla pagina Organizzazione.
  */
+/**
+ * NO CMDB CHAIN (24 Sep 2026): the chains say which relations between CIs are
+ * admitted and where each CI belongs. With none, the relations follow the
+ * metamodel alone and CMDB Health cannot tell a CI outside every chain or an
+ * incomplete one. The chains are drawn in CMDB Health → Chains.
+ */
+async function checkCmdbChains(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  if (await cmdbChainCount(session, tenantId) > 0) return []
+  return [{ kind: 'cmdb_chains_missing', severity: 'warning', where: '/cmdb/health', params: {} }]
+}
+
 async function checkTimezone(tenantId: string): Promise<ConfigurationIssue[]> {
   if (await tenantTimezone(tenantId) !== null) return []
   return [{ kind: 'timezone_not_set', severity: 'error', where: '/settings/organization', params: {} }]

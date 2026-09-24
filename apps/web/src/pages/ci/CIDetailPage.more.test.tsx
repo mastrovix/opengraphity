@@ -84,7 +84,16 @@ const SERVER = baseType({
     // A duplicate declaration must not produce a second identical option.
     { id: 'r3', name: 'runsOn2', label: 'Runs on again', relationshipType: 'HOSTED_ON', targetType: 'server', cardinality: 'many', direction: 'outgoing', order: 3 },
   ],
+  // The groups the type declares: the detail shows only these.
+  systemRelations: [
+    { id: 'sr-og', name: 'ownerGroup', label: 'Owner Group', relationshipType: 'OWNED_BY', targetEntity: 'Team', required: false, order: 1 },
+    { id: 'sr-sg', name: 'supportGroup', label: 'Support Group', relationshipType: 'SUPPORTED_BY', targetEntity: 'Team', required: false, order: 2 },
+  ],
 })
+/** A business capability has no Support Group (24 Sep 2026): its type declares only the owner. */
+const CAPABILITY = baseType({ id: 'ct-bc', name: 'business_capability', label: 'Business Capability', icon: 'target', systemRelations: [
+  { id: 'sr-og', name: 'ownerGroup', label: 'Owner Group', relationshipType: 'OWNED_BY', targetEntity: 'Team', required: false, order: 1 },
+] })
 const GROUP = baseType({ id: 'ct-g', name: 'dynamic_ci_group', label: 'Dynamic group', icon: 'layers' })
 const BARE = baseType({ id: 'ct-b', name: 'rack', label: 'Rack', icon: 'box' })
 
@@ -95,7 +104,7 @@ const VOCAB: DomainVocabularies = {
 } as unknown as DomainVocabularies
 
 function Metamodel({ children, loading = false, error = null }: { children: ReactNode; loading?: boolean; error?: Error | null }) {
-  const types = [SERVER, GROUP, BARE]
+  const types = [SERVER, GROUP, BARE, CAPABILITY]
   return (
     <MetamodelContext.Provider value={{ ciTypes: types, loading, error, getCIType: (n: string) => types.find((t) => t.name === n) }}>
       <DomainVocabularyContext.Provider value={VOCAB}>{children}</DomainVocabularyContext.Provider>
@@ -231,12 +240,42 @@ describe('editing', () => {
   })
 })
 
+describe('the infrastructure flag of every CI (24 Sep 2026)', () => {
+  it('shows the flag and saves it on the click, as a boolean, on its own', async () => {
+    const { user } = show()
+    const flag = screen.getByRole('checkbox', { name: 'Infrastructure' })
+    expect(flag).not.toBeChecked()
+    await user.click(flag)
+    await waitFor(() => expect(apolloFinto.chiamata('UpdateCI')).toEqual({ id: 'srv-1', input: { isInfrastructure: true } }))
+    expect(toast.success).toHaveBeenCalledWith('Changes saved')
+  })
+
+  it('a flagged CI shows it ticked; a refused save is shown', async () => {
+    apolloFinto.risposte['DynamicDetail_Server'] = { server: { ...SRV, isInfrastructure: true } }
+    apolloFinto.esiti['UpdateCI'] = { error: new Error('not allowed') }
+    const { user } = show()
+    const flag = screen.getByRole('checkbox', { name: 'Infrastructure' })
+    expect(flag).toBeChecked()
+    await user.click(flag)
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('not allowed'))
+    expect(apolloFinto.chiamata('UpdateCI')).toEqual({ id: 'srv-1', input: { isInfrastructure: false } })
+  })
+})
+
 describe('owner and support groups', () => {
   /** D34: a searchable picker — open it, then choose a name. */
   async function pick(user: ReturnType<typeof show>['user'], group: string, name: string) {
     await user.click(screen.getByRole('combobox', { name: group }))
     await user.click(await screen.findByRole('option', { name }))
   }
+
+  it('a group the type does not declare has no field: a business capability shows its Owner Group, no Support Group', () => {
+    apolloFinto.risposte['DynamicDetail_BusinessCapability'] = { business_capability: { ...SRV, id: 'bc-1', name: 'Payments', type: 'business_capability' } }
+    show('/ci/business_capability/bc-1')
+    expect(screen.getByRole('combobox', { name: 'Owner Group' })).toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Support Group' })).toBeNull()
+    expect(screen.queryByText('Support Group')).toBeNull()
+  })
 
   it('each group offers the teams of its type: owner teams for the owner, support teams for the support', async () => {
     const { user } = show()

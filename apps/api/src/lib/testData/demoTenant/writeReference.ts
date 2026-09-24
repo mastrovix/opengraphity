@@ -163,6 +163,8 @@ export async function writeCMDB(w: DemoWriter, rng: Rng, clock: DemoClock, cmdb:
       id: c.id, name: c.name, name_key: c.name.trim().toLowerCase(), status: c.status, environment: c.environment,
       description: c.description, notes: null,
       created_at: clock.iso(c.createdAtMs), updated_at: clock.iso(c.updatedAtMs),
+      // The infrastructure flag of every CI (owner, 24 Sep 2026).
+      is_infrastructure: c.isInfrastructure === true,
       ...c.fields,
     })))
   }

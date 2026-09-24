@@ -527,6 +527,7 @@ type ${typeName} implements CIBase {
   environment: String
   description: String
   chain: String
+  isInfrastructure: Boolean!
   createdAt: String!
   updatedAt: String
   notes: String
@@ -598,6 +599,7 @@ input Create${typeName}Input {
   environment: String
   description: String
   notes: String
+  isInfrastructure: Boolean
   ownerGroupId: ID
   supportGroupId: ID
 ${inputFields}
@@ -609,6 +611,7 @@ input Update${typeName}Input {
   environment: String
   description: String
   notes: String
+  isInfrastructure: Boolean
   ownerGroupId: ID
   supportGroupId: ID
 ${inputFields}

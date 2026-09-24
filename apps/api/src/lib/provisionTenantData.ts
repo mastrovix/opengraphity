@@ -43,6 +43,7 @@ import type { DomainMatrixKind } from './domainMatrix.js'
 import { seedFactoryRoles } from './roles.js'
 import { seedPortalSeverityOptions } from './portalSeverityOptions.js'
 import { seedDefaultLanguage } from './tenantLanguage.js'
+import { seedStartingChains } from './cmdbStartingChains.js'
 
 /** I tipi di entità che devono avere una definizione di workflow attiva. */
 export const REQUIRED_WORKFLOW_ENTITY_TYPES = ['incident', 'problem', 'kb_article', 'change', 'service_request'] as const
@@ -64,6 +65,8 @@ export interface TenantProvisioningResult {
   portalSeveritiesSeeded: readonly string[] | null
   /** La lingua dichiarata adesso, `null` se il cliente l'aveva già scelta. */
   defaultLanguageSeeded: string | null
+  /** The starting CMDB chains written now (0 when the tenant already had its own). */
+  cmdbChainsCreated: number
   /**
    * Una riga per definizione di workflow. `created` è `null` per i seeder che
    * non lo dicono (tornano solo l'id): quello che conta è che dopo la chiamata
@@ -146,6 +149,8 @@ export async function provisionTenantData(
    * non un ripiego, e che la pagina Organizzazione la mostra come tale.
    */
   const lingua = await seedDefaultLanguage(session, tenantId)
+  // The CMDB chains (24 Sep 2026): without one, every relation between CIs is refused.
+  const cmdbChainsCreated = await seedStartingChains(session, tenantId)
 
   // Ogni tipo di ticket vuole la sua definizione PRIMA del primo create*:
   // `createInstance` fallisce a voce alta senza (packages/workflow/engine.ts).
@@ -209,6 +214,7 @@ export async function provisionTenantData(
     matricesCreated,
     portalSeveritiesSeeded: severita.seeded,
     defaultLanguageSeeded: lingua.seeded,
+    cmdbChainsCreated,
     workflows,
     gapsLeft: gaps.filter((g) => GAP_DA_PERSONA.includes(g.kind)),
   }

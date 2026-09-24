@@ -14,6 +14,7 @@ import { FIELD_NAME_RE } from '../lib/cypherIdentifiers.js'
 import { ValidationError } from '../lib/errors.js'
 import { ciNameKey } from '../lib/ciNameKey.js'
 import { notifyCIGraphChanged } from '../services/serviceImpact/sync.js'
+import { notAdmittedError, relationAdmission, type RelationAdmission } from '../services/cmdbChains/admission.js'
 import { toNum } from './connectors/normalize.js'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -26,6 +27,8 @@ export interface ReconciliationStats {
   ciConflicts:      number
   relationsCreated: number
   relationsRemoved: number
+  /** Relations the source reports that no CMDB chain admits: not written (owner, 24 Sep 2026). */
+  relationsRefused: number
 }
 
 /** Tipo di conflitto su `SyncConflict.conflict_kind` (ondata 6 · A-11). */
@@ -75,10 +78,12 @@ export async function reconcileBatch(
     // lotto. Se il metamodello non si legge il run fallisce: continuare
     // significherebbe inventare etichette, che è il difetto che si sta chiudendo.
     const ciTypes = await CITypeResolver.forSource(tenantId, source)
+    // The relations the tenant's CMDB chains admit, once per batch too.
+    const admission = await relationAdmission(session, tenantId)
     for (const raw of batch) {
       const ci = applyMappingRules(raw, source.mapping_rules ?? [])
       try {
-        await reconcileOne(ci, source, runId, tenantId, stats, session, touched, ciTypes)
+        await reconcileOne(ci, source, runId, tenantId, stats, session, touched, ciTypes, admission)
       } catch (err) {
         /**
          * Un CI che non si può scrivere è UN conflitto, non la fine del run
@@ -110,6 +115,7 @@ async function reconcileOne(
   session:    Session,
   touched:    Set<string>,
   ciTypes:    CITypeResolver,
+  admission:  RelationAdmission,
 ): Promise<void> {
   const rawType = discovered.ci_type ?? inferCIType(discovered)
   // A-11 — LA PORTA. Prima l'etichetta era il PascalCase della stringa in
@@ -178,10 +184,11 @@ async function reconcileOne(
    * carry THIS source's marker: those written by hand are never touched.
    */
   const delta = discovered.relationships?.length
-    ? await syncRelations(session, discovered, source, tenantId, touched)
-    : await removeAllSourceRelations(session, discovered, source, tenantId, touched)
+    ? await syncRelations(session, discovered, source, tenantId, touched, admission)
+    : { ...await removeAllSourceRelations(session, discovered, source, tenantId, touched), refused: 0 }
   stats.relationsCreated += delta.created
   stats.relationsRemoved += delta.removed
+  stats.relationsRefused += delta.refused
 }
 
 /** The source reports no relation for this CI: the ones it had created go away. */
@@ -568,31 +575,48 @@ async function syncRelations(
   source:     SyncSourceConfig,
   tenantId:   string,
   touched:    Set<string>,
-): Promise<{ created: number; removed: number }> {
+  admission:  RelationAdmission,
+): Promise<{ created: number; removed: number; refused: number }> {
   let created = 0
   let removed = 0
+  let refused = 0
   /** Le relazioni che la sorgente riporta ora: quelle del suo marcatore che non ci sono più vanno via (D-9). */
   const reported: Array<{ toId: string; relType: string; direction: string }> = []
 
   const ciResult = await session.executeRead(tx => tx.run(
     `MATCH (ci:ConfigurationItem {discovery_external_id: $externalId, discovery_source_id: $sourceId, tenant_id: $tenantId})
-     RETURN ci.id AS id`,
+     RETURN ci.id AS id, labels(ci) AS labels`,
     { externalId: ci.external_id, sourceId: source.id, tenantId },
   ))
-  if (!ciResult.records.length) return { created, removed }
+  if (!ciResult.records.length) return { created, removed, refused }
   const fromId = ciResult.records[0]!.get('id') as string
+  const fromLabels = ciResult.records[0]!.get('labels') as string[]
 
   for (const rel of ci.relationships ?? []) {
     const targetResult = await session.executeRead(tx => tx.run(
       `MATCH (ci:ConfigurationItem {discovery_external_id: $externalId, discovery_source_id: $sourceId, tenant_id: $tenantId})
-       RETURN ci.id AS id`,
+       RETURN ci.id AS id, labels(ci) AS labels`,
       { externalId: rel.target_external_id, sourceId: source.id, tenantId },
     ))
     if (!targetResult.records.length) continue
     const toId = targetResult.records[0]!.get('id') as string
+    const toLabels = targetResult.records[0]!.get('labels') as string[]
 
     const relType = rel.relation_type.toUpperCase().replace(/[^A-Z0-9_]/g, '_')
     if (!SAFE_LABEL_RE.test(relType)) continue
+    /*
+     * A relation no CMDB chain admits is not written (owner, 24 Sep 2026): it
+     * is counted on the run, and — not being «reported» — one this source had
+     * written before goes in the removal pass below, so the CMDB keeps only
+     * admitted relations.
+     */
+    const [sourceLabels, targetLabels] = rel.direction === 'outgoing' ? [fromLabels, toLabels] : [toLabels, fromLabels]
+    if (!admission.admits(relType, sourceLabels, targetLabels)) {
+      refused++
+      logger.warn({ fromId, toId, relType, direction: rel.direction, sourceId: source.id, tenantId, reason: notAdmittedError(admission, relType, sourceLabels, targetLabels).message },
+        '[reconcile] relation refused: no CMDB chain admits it')
+      continue
+    }
 
     if (rel.direction === 'outgoing') {
       const r = await session.executeWrite(tx => tx.run(
@@ -643,7 +667,7 @@ async function syncRelations(
   ))
   removed += toNum(removeResult.records[0]?.get('n')) ?? 0
 
-  return { created, removed }
+  return { created, removed, refused }
 }
 
 // ── Stale detection ───────────────────────────────────────────────────────────

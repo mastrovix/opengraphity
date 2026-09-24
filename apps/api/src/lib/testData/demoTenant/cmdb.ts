@@ -57,6 +57,10 @@ export interface PlannedCI {
   site?: string
   /** Servers: what the server is for (`SERVER_ROLE_MIX`); not written. */
   role?: string
+  /** The infrastructure flag of every CI (owner, 24 Sep 2026): written as `is_infrastructure`. */
+  isInfrastructure?: boolean
+  /** Planted for CMDB Health (healthFindings.ts): the check it feeds; no ticket picks it. Not written. */
+  healthFinding?: string
 }
 
 export type CIRelationType = 'REALIZES' | 'ENABLED_BY' | 'PARENT_OF' | 'HOSTED_ON' | 'DEPENDS_ON' | 'INSTALLED_ON' | 'USES_CERTIFICATE'
@@ -65,6 +69,25 @@ export interface PlannedCIRelation {
   fromId: string
   type: CIRelationType
   toId: string
+}
+
+/**
+ * THE INFRASTRUCTURE FLAG (owner, 24 Sep 2026): what serves the whole company
+ * and no application — flagged `is_infrastructure`, out of the chains. The
+ * servers of the `infra` group carry it from their creation; here the
+ * certificates no application uses, installed only on flagged CIs — a
+ * certificate follows where it is installed, as its chain does. An instance
+ * is never flagged: every one hosts a database an application uses.
+ */
+export function flagSharedInfrastructure(byLabel: Record<CILabel, PlannedCI[]>, relations: readonly PlannedCIRelation[]): void {
+  const flaggedIds = new Set(Object.values(byLabel).flat().filter((c) => c.isInfrastructure === true).map((c) => c.id))
+  const usedCertificates = new Set(relations.filter((x) => x.type === 'USES_CERTIFICATE').map((x) => x.toId))
+  const hostsOf = new Map<string, string[]>()
+  for (const x of relations) if (x.type === 'INSTALLED_ON') hostsOf.set(x.fromId, [...(hostsOf.get(x.fromId) ?? []), x.toId])
+  for (const cert of byLabel.Certificate) {
+    const hosts = hostsOf.get(cert.id) ?? []
+    if (!usedCertificates.has(cert.id) && hosts.length && hosts.every((h) => flaggedIds.has(h))) cert.isInfrastructure = true
+  }
 }
 
 /** The prefix every CI name carries, by kind (the owner's convention). */
@@ -98,8 +121,8 @@ export const DECLARED_EDGES: ReadonlyArray<readonly [CILabel, CIRelationType, CI
   ['Database', 'DEPENDS_ON', 'DatabaseInstance'],
   ['DatabaseInstance', 'HOSTED_ON', 'Server'],
   ['Certificate', 'INSTALLED_ON', 'Server'],
-  ['Certificate', 'INSTALLED_ON', 'DatabaseInstance'],
   ['Application', 'USES_CERTIFICATE', 'Certificate'],
+  ['DatabaseInstance', 'USES_CERTIFICATE', 'Certificate'],
   ['Database', 'USES_CERTIFICATE', 'Certificate'],
 ]
 
@@ -111,6 +134,18 @@ function statusOf(rng: Rng, label: CILabel): string {
 }
 
 const ENV_CODE: Record<Environment, string> = { production: 'prd', staging: 'stg', development: 'dev', testing: 'tst', dr: 'dr' }
+
+/** The enablers drawn, the first one swapped for a business application in service when the capability runs and none of them does. */
+function withRunningEnabler(rng: Rng, drawn: PlannedCI[], bas: readonly PlannedCI[], running: boolean): PlannedCI[] {
+  if (!running || drawn.some(isRunning)) return drawn
+  const live = bas.filter(isRunning)
+  return live.length ? [rng.pick(live), ...drawn.slice(1)] : drawn
+}
+
+/** The status drawn, or `active` when the CI must run and the draw says otherwise. */
+function runningIf(mustRun: boolean, drawn: string): string {
+  return mustRun && !isRunning({ status: drawn } as PlannedCI) ? 'active' : drawn
+}
 
 /** A running CI (it can host or be used by an active one). */
 function isRunning(ci: PlannedCI): boolean {
@@ -253,6 +288,102 @@ class NameRegistry {
   }
 }
 
+/**
+ * Where a certificate goes, in one of the owner's shapes: an application's, or
+ * on an instance, or on a server alone (24 Sep 2026):
+ *  - one in service stands on something that runs: an active one on a
+ *    decommissioned server alone was in no chain;
+ *  - an expired one stays where it was when that was retired with it, on a
+ *    server or an instance that no longer runs: an expired certificate still
+ *    on something in service is a finding of CMDB Health, and the demo plants
+ *    its few on purpose (healthFindings.ts) — they were 271 by chance.
+ */
+function certificatePlace(
+  rng: Rng, byLabel: Record<CILabel, PlannedCI[]>, status: string, instanceServers: ReadonlyMap<string, string[]>, byId: ReadonlyMap<string, PlannedCI>,
+): { target: CILabel; on: PlannedCI } {
+  // Retired all the way: an instance's certificate is also on the instance's servers.
+  const retiredWithHosts = (c: PlannedCI): boolean =>
+    !isRunning(c) && (c.label !== 'DatabaseInstance' || (instanceServers.get(c.id) ?? []).every((id) => !isRunning(byId.get(id)!)))
+  // An estate with nothing retired (a test's one server) keeps its expired certificate on what
+  // runs: CMDB Health then shows it as in use, as it would in a real CMDB.
+  const retiredSomewhere = byLabel.Server.some(retiredWithHosts) || byLabel.DatabaseInstance.some(retiredWithHosts)
+  const expired = status === 'expired' && retiredSomewhere
+  const fits = (c: PlannedCI): boolean => (status === 'active' ? isRunning(c) : expired ? retiredWithHosts(c) : true)
+  const candidates = (label: CILabel): PlannedCI[] => (label === 'Application' && expired ? [] : byLabel[label].filter(fits))
+  const weights: Array<[CILabel, number]> = [['Application', 55], ['Server', 25], ['DatabaseInstance', 20]]
+  // Only where such a certificate can go: a small estate may have no retired instance.
+  const open = weights.map(([label, w]): [CILabel, number] => [label, candidates(label).length ? w : 0])
+  if (open.every(([, w]) => w === 0)) throw new Error(`planCMDB: there is nothing to put an ${status} certificate on`)
+  const target = rng.weighted<CILabel>(open)
+  return { target, on: rng.pick(candidates(target)) }
+}
+
+/**
+ * The relations of a certificate, in the owner's shapes (24 Sep 2026): used by
+ * an application or by an instance and installed on the servers it runs on, or
+ * installed on a server alone — never a database's, never on the instance.
+ */
+function certificateRelations(
+  certId: string, target: CILabel, on: PlannedCI, appServers: ReadonlyMap<string, string[]>, instanceServers: ReadonlyMap<string, string[]>,
+): PlannedCIRelation[] {
+  if (target === 'Server') return [{ fromId: certId, type: 'INSTALLED_ON', toId: on.id }]
+  const servers = target === 'Application' ? appServers.get(on.id) : target === 'DatabaseInstance' ? instanceServers.get(on.id) : undefined
+  if (!servers) throw new Error(`planCMDB: a certificate on a ${target} is not one of the owner's shapes`)
+  return [{ fromId: on.id, type: 'USES_CERTIFICATE', toId: certId }, ...servers.map((s): PlannedCIRelation => ({ fromId: certId, type: 'INSTALLED_ON', toId: s }))]
+}
+
+/**
+ * A database server in service that no instance drew still hosts one of its
+ * environment, in service (owner, 24 Sep 2026: a server hosting nothing is in
+ * no chain). Before the databases are planned: an instance moved later in
+ * time still comes before its databases.
+ */
+function hostIdleDatabaseServers(
+  rng: Rng, clock: DemoClock, servers: readonly PlannedCI[], instances: readonly PlannedCI[],
+  instanceServers: Map<string, string[]>, relations: PlannedCIRelation[],
+): void {
+  const live = instances.filter(isRunning)
+  if (!live.length) return
+  const hosted = new Set([...instanceServers.values()].flat())
+  for (const s of servers) {
+    if (hosted.has(s.id) || !isRunning(s) || SERVER_ROLE_MIX.find(([x]) => x === s.role)?.[2] !== 'db') continue
+    const ofEnv = live.filter((i) => i.environment === s.environment)
+    const inst = rng.pick(ofEnv.length ? ofEnv : live)
+    relations.push({ fromId: inst.id, type: 'HOSTED_ON', toId: s.id })
+    push(instanceServers, inst.id, s.id)
+    // An instance cannot stand on a server created after it: it is created later.
+    if (inst.createdAtMs < s.createdAtMs + DAY) inst.createdAtMs = Math.min(s.createdAtMs + DAY, clock.nowMs - DAY)
+    if (inst.updatedAtMs < inst.createdAtMs) inst.updatedAtMs = inst.createdAtMs
+  }
+}
+
+/**
+ * A server of the application group that no application drew still serves one
+ * of its environment: outside every chain it would be an orphan (owner, 24
+ * Sep 2026: only the infrastructure flag keeps a CI out). A retired server
+ * takes a retired application — one in service never stands on a retired
+ * server (HostPool) — and stays empty when there is none.
+ */
+function hostIdleApplicationServers(
+  rng: Rng, clock: DemoClock, servers: readonly PlannedCI[], apps: readonly PlannedCI[],
+  appServers: Map<string, string[]>, relations: PlannedCIRelation[],
+): void {
+  if (!apps.length) return
+  const hosted = new Set([...appServers.values()].flat())
+  for (const s of servers) {
+    if (hosted.has(s.id) || SERVER_ROLE_MIX.find(([x]) => x === s.role)?.[2] !== 'app') continue
+    const fit = isRunning(s) ? apps : apps.filter((a) => !isRunning(a))
+    const ofEnv = fit.filter((a) => a.environment === s.environment)
+    if (!fit.length) continue
+    const app = rng.pick(ofEnv.length ? ofEnv : fit)
+    relations.push({ fromId: app.id, type: 'HOSTED_ON', toId: s.id })
+    push(appServers, app.id, s.id)
+    // An application cannot stand on a server created after it: it is created later.
+    if (app.createdAtMs < s.createdAtMs + DAY) app.createdAtMs = Math.min(s.createdAtMs + DAY, clock.nowMs - DAY)
+    if (app.updatedAtMs < app.createdAtMs) app.updatedAtMs = app.createdAtMs
+  }
+}
+
 export function planCMDB(rng: Rng, clock: DemoClock, counts: DemoCounts, people: PeoplePlan): CMDBPlan {
   const r = {
     names: rng.fork('names'), status: rng.fork('status'), env: rng.fork('env'), links: rng.fork('links'),
@@ -325,11 +456,14 @@ export function planCMDB(rng: Rng, clock: DemoClock, counts: DemoCounts, people:
   if (capabilities.length && !bas.length) throw new Error('planCMDB: capabilities are enabled by business applications, and there is none')
   for (const n of capabilities) {
     if (!names.take(n.name)) throw new Error(`planCMDB: capability name "${n.name}" is already used`)
-    // Enabled by 1-5 business applications (random, as the owner asked), which exist before it.
-    const enablers = r.links.sample(bas, r.links.int(1, Math.min(5, bas.length)))
+    // Enabled by 1-5 business applications (random, as the owner asked), which exist before it;
+    // one in service when it is (24 Sep 2026: every link of a chain is required, and a capability
+    // in service follows «Capabilities enabled by business applications» with one that runs).
+    const status = statusOf(r.status, 'BusinessCapability')
+    const enablers = withRunningEnabler(r.links, r.links.sample(bas, r.links.int(1, Math.min(5, bas.length))), bas, isRunning({ status } as PlannedCI))
     const created = Math.min(Math.max(createdAt(0.9), ...enablers.map((b) => b.createdAtMs + DAY)), clock.nowMs - DAY)
     const ci = add({
-      id: r.ids.uuid(), label: 'BusinessCapability', name: n.name, status: statusOf(r.status, 'BusinessCapability'),
+      id: r.ids.uuid(), label: 'BusinessCapability', name: n.name, status,
       environment: 'production',
       description: `${n.name}: level ${String(n.level)} business capability.`,
       fields: {
@@ -378,6 +512,9 @@ export function planCMDB(rng: Rng, clock: DemoClock, counts: DemoCounts, people:
         ? ['Linux Operations', 'Virtualization', 'Cloud Operations', 'Kubernetes Platform']
         : ['Windows Server Operations', 'Virtualization', 'Cloud Operations']).id,
       site: siteCode, role,
+      // Backup, monitoring, directory and jump hosts serve the whole company, not one
+      // application: flagged as infrastructure, out of the chains (owner, 24 Sep 2026).
+      isInfrastructure: SERVER_ROLE_MIX.find(([x]) => x === role)?.[2] === 'infra',
     })
   }
   const hostPool = new HostPool(r.links, byLabel.Server)
@@ -414,6 +551,7 @@ export function planCMDB(rng: Rng, clock: DemoClock, counts: DemoCounts, people:
     instanceServers.set(ci.id, hosts.map((h) => h.id))
   }
   const instances = byLabel.DatabaseInstance
+  hostIdleDatabaseServers(r.links, clock, byLabel.Server, instances, instanceServers, relations)
 
   // ── Applications: each realizes at least one business application ──────────
   const appServers = new Map<string, string[]>()
@@ -460,7 +598,9 @@ export function planCMDB(rng: Rng, clock: DemoClock, counts: DemoCounts, people:
     family.set(stem, (family.get(stem) ?? 0) + 1)
     if (!name) throw new Error(`planCMDB: no free application name for "${primary.name}"`)
     const env = r.env.weighted(ENVIRONMENT_MIX)
-    const status = statusOf(r.status, 'Application')
+    // A business application in service has an application in service: its first one runs
+    // (the starting chain «Application services» requires it — 24 Sep 2026: 151 did not).
+    const status = runningIf(i < bas.length && isRunning(primary), statusOf(r.status, 'Application'))
     const hosts = hostPool.take('app', env, isRunning({ status } as PlannedCI), r.links.weighted(APP_HOSTS))
     const realized = [primary, ...(r.links.chance(0.15) ? r.links.sample(bas.filter((b) => b.id !== primary.id), 1) : [])]
     const created = Math.max(createdAt(0.7), ...hosts.map((h) => h.createdAtMs + DAY), ...realized.map((b) => b.createdAtMs + DAY))
@@ -483,6 +623,7 @@ export function planCMDB(rng: Rng, clock: DemoClock, counts: DemoCounts, people:
     appServers.set(ci.id, hosts.map((h) => h.id))
   }
   const apps = byLabel.Application
+  hostIdleApplicationServers(r.links, clock, byLabel.Server, apps, appServers, relations)
 
   // ── Databases: on one instance, used by 1-3 applications of the same environment ──
   const appDatabases = new Map<string, string[]>()
@@ -493,11 +634,17 @@ export function planCMDB(rng: Rng, clock: DemoClock, counts: DemoCounts, people:
   for (const d of instances) push(instancesByEnv, d.environment, d)
   // A database stands on an instance and is used by applications: without them it would have neither.
   if (counts.databases > 0 && (!instances.length || !apps.length)) throw new Error('planCMDB: databases need a database instance to stand on and applications to use them')
+  // Every instance in service hosts at least one database first, then the rest go at
+  // random: an instance no application uses is in no valid chain, and it is not
+  // infrastructure either (owner, 24 Sep 2026). Any database may stand on a running
+  // instance, so the statuses keep their mix.
+  const covering = r.links.shuffle(instances.filter(isRunning))
   for (let i = 0; i < counts.databases; i++) {
-    const env = r.env.weighted(ENVIRONMENT_MIX)
+    const cover = covering[i]
+    const env = cover ? cover.environment : r.env.weighted(ENVIRONMENT_MIX)
     const status = statusOf(r.status, 'Database')
     const running = isRunning({ status } as PlannedCI)
-    const instance = instanceFor(r.links, instances, instancesByEnv, env, running)
+    const instance = cover ?? instanceFor(r.links, instances, instancesByEnv, env, running)
     const appPool = appsByEnv.get(instance.environment) ?? apps
     // A database is its application's; another one uses it only when it serves
     // the same business application (tour of 24 Sep 2026, G34: «Buckthorn
@@ -544,16 +691,14 @@ export function planCMDB(rng: Rng, clock: DemoClock, counts: DemoCounts, people:
   }
 
   // ── Certificates ───────────────────────────────────────────────────────────
-  const databases = byLabel.Database
   for (let i = 0; i < counts.certificates; i++) {
-    const target = r.links.weighted<CILabel>([
-      ['Application', apps.length ? 45 : 0], ['Server', 20], ['DatabaseInstance', instances.length ? 20 : 0], ['Database', databases.length ? 15 : 0],
-    ])
-    const on = r.links.pick(byLabel[target])
+    // The owner's rule (24 Sep 2026): a certificate is used by an application or by an instance
+    // (and installed on the servers it runs on), or installed on a server alone — never a database's.
+    const status = statusOf(r.status, 'Certificate')
+    const { target, on } = certificatePlace(r.links, byLabel, status, instanceServers, byId)
     const host = target === 'Server' ? `${on.name}.infra.${CERTIFICATE_DOMAIN}`
       : target === 'Application' ? (on.fields['url'] ?? '').replace(/^https?:\/\//, '').split('/')[0]!
       : `${on.name.replace(/_/g, '-')}.db.${CERTIFICATE_DOMAIN}`
-    const status = statusOf(r.status, 'Certificate')
     const created = Math.max(createdAt(0.4), on.createdAtMs + DAY)
     const createdMs = Math.min(created, clock.nowMs - DAY)
     // D39: a renewed certificate has the same common name — the CI is told
@@ -585,18 +730,10 @@ export function planCMDB(rng: Rng, clock: DemoClock, counts: DemoCounts, people:
       supportTeamId: supportFor(['PKI & Certificates', 'Security Operations']).id,
     })
     ci.updatedAtMs = updatedAfter(ci.createdAtMs)
-    if (target === 'Application') {
-      relate(on.id, 'USES_CERTIFICATE', ci.id)
-      // The owner's rule: the same certificate is on the servers the application runs on.
-      for (const s of appServers.get(on.id) ?? []) relate(ci.id, 'INSTALLED_ON', s)
-    } else if (target === 'Server') {
-      relate(ci.id, 'INSTALLED_ON', on.id)
-    } else if (target === 'DatabaseInstance') {
-      relate(ci.id, 'INSTALLED_ON', on.id)
-    } else {
-      relate(on.id, 'USES_CERTIFICATE', ci.id)
-    }
+    relations.push(...certificateRelations(ci.id, target, on, appServers, instanceServers))
   }
+
+  flagSharedInfrastructure(byLabel, relations)
 
   assignInfrastructureOwners(r.teams, people, byLabel, byId, relations, appServers, instanceServers, appDatabases, databaseInstance)
 

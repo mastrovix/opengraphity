@@ -5,6 +5,11 @@ import type { SyncSourceConfig } from '@opengraphity/discovery'
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: vi.fn(),
 }))
+// The CMDB chains (24 Sep 2026): here every relation is admitted; the refusal has its own tests.
+vi.mock('../../services/cmdbChains/admission.js', () => ({
+  relationAdmission: vi.fn().mockResolvedValue({ chains: 1, admits: () => true }),
+  notAdmittedError: vi.fn((_a: unknown, rel: string) => new Error(`not admitted: ${rel}`)),
+}))
 vi.mock('@opengraphity/discovery', () => ({
   applyMappingRules: vi.fn((ci: unknown) => ci),
   ciTypeAliases: vi.fn(() => new Map<string, string>()),
@@ -52,7 +57,7 @@ const source: SyncSourceConfig = {
   last_sync_status: null, last_sync_duration_ms: null,
   created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
 }
-const stats = () => ({ ciCreated: 0, ciUpdated: 0, ciUnchanged: 0, ciStale: 0, ciConflicts: 0, relationsCreated: 0, relationsRemoved: 0 })
+const stats = () => ({ ciCreated: 0, ciUpdated: 0, ciUnchanged: 0, ciStale: 0, ciConflicts: 0, relationsCreated: 0, relationsRemoved: 0, relationsRefused: 0 })
 
 describe('assertDiscoveredPropertyKeys (B-04)', () => {
   it.each([

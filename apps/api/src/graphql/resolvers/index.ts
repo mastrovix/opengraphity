@@ -66,6 +66,8 @@ import { collaborationResolvers } from './collaboration.js'
 import { whatifResolvers } from './whatif.js'
 import { similarityResolvers } from './similarity.js'
 import { impactResolvers } from './impact.js'
+import { cmdbHealthResolvers } from './cmdbHealth.js'
+import { cmdbChainsResolvers } from './cmdbChains.js'
 import { ciRelationshipResolvers } from './ciRelationships.js'
 import { cmdbResolvers } from './cmdb.js'
 import { tenantLanguageResolvers } from './tenantLanguage.js'
@@ -364,6 +366,8 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...whatifResolvers.Query,
       ...similarityResolvers.Query,
       ...impactResolvers.Query,
+      ...cmdbHealthResolvers.Query,
+      ...cmdbChainsResolvers.Query,
       ...tenantLanguageResolvers.Query,
       ...tenantTimezoneResolvers.Query,
       ...organizationSettingsResolvers.Query,
@@ -386,6 +390,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       user: userById,
     },
     Mutation: {
+      ...cmdbChainsResolvers.Mutation,
       claimTicketTask,
       completeTicketTask,
       cancelTicketTask,

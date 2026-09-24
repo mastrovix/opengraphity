@@ -49,7 +49,7 @@ describe('dependents / dependencies', () => {
   it('CM-5: il firewall vede l\'applicazione che dipende da lui, anche se il suo tipo non dichiara niente', async () => {
     edges.splice(0, edges.length, { props: { id: 'app-1', name: 'App portale' }, label: 'Application', relation: 'DEPENDS_ON' })
     const out = await buildFieldResolvers(firewall, TYPES).dependents({ id: 'fw-1' }, null, ctx)
-    expect(out).toEqual([{ ci: { id: 'app-1', name: 'App portale', type: 'application', status: null, environment: null, chain: null }, relation: 'DEPENDS_ON' }])
+    expect(out).toEqual([{ ci: { id: 'app-1', name: 'App portale', type: 'application', status: null, environment: null, chain: null, isInfrastructure: false }, relation: 'DEPENDS_ON' }])
     // la query non interpola tipi di relazione e resta nel tenant
     expect(seen.at(-1)!.cypher).toContain('(n)<-[rel]-(d)')
     expect(seen.at(-1)!.params).toMatchObject({ id: 'fw-1', tenantId: 't1', labels: ['Application', 'Server', 'Firewall'] })

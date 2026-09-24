@@ -20,6 +20,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { DiscoveredCI, SyncSourceConfig } from '@opengraphity/discovery'
 
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn() }))
+// The CMDB chains (24 Sep 2026): here every relation is admitted; the refusal has its own tests.
+vi.mock('../../services/cmdbChains/admission.js', () => ({
+  relationAdmission: vi.fn().mockResolvedValue({ chains: 1, admits: () => true }),
+  notAdmittedError: vi.fn((_a: unknown, rel: string) => new Error(`not admitted: ${rel}`)),
+}))
 vi.mock('@opengraphity/discovery', () => ({
   applyMappingRules: vi.fn((ci: unknown) => ci),
   inferCIType: vi.fn(() => 'server'),
@@ -41,6 +46,7 @@ const { reconcileBatch, assertDiscoveredPropertyKeys, CONFLICT_INVALID_PROPERTIE
 const { getSession } = await import('@opengraphity/neo4j')
 const { notifyCIGraphChanged } = await import('../../services/serviceImpact/sync.js')
 const { logger } = await import('../../lib/logger.js')
+const { relationAdmission } = await import('../../services/cmdbChains/admission.js')
 
 type Row = Record<string, unknown>
 type Handler = (cypher: string, params: Row) => Row[] | Promise<Row[]>
@@ -66,7 +72,7 @@ function sessionFor(handler: Handler) {
 }
 
 const source = { id: 'src-1', mapping_rules: [] } as unknown as SyncSourceConfig
-const stats = () => ({ ciCreated: 0, ciUpdated: 0, ciUnchanged: 0, ciStale: 0, ciConflicts: 0, relationsCreated: 0, relationsRemoved: 0 })
+const stats = () => ({ ciCreated: 0, ciUpdated: 0, ciUnchanged: 0, ciStale: 0, ciConflicts: 0, relationsCreated: 0, relationsRemoved: 0, relationsRefused: 0 })
 const ci = (over: Partial<DiscoveredCI> = {}): DiscoveredCI => ({
   external_id: 'ext-1', source: 'csv', ci_type: 'server', name: 'web-01',
   properties: {}, tags: {}, relationships: [], ...over,
@@ -234,6 +240,46 @@ describe('relationships', () => {
     expect(st.relationsCreated).toBe(2)
     // Both ends of every relation are reported to the service maps, once per batch.
     expect(notifyCIGraphChanged).toHaveBeenCalledWith('tenant-1', expect.arrayContaining(['ci-self', 'ci-db', 'ci-lb']), 'discovery.reconciled:src-1')
+  })
+
+  /*
+   * The CMDB chains (owner, 24 Sep 2026): a relation no chain admits is not
+   * written. It is counted on the run and logged with the reason; not being
+   * «reported», one this source had written before goes in the removal pass.
+   */
+  it('a relation no CMDB chain admits is not written: counted as refused, logged, and left out of what the source reports', async () => {
+    vi.mocked(relationAdmission).mockResolvedValueOnce({
+      chains: 2,
+      admits: (relationType, sourceLabels, targetLabels) => relationType === 'DEPENDS_ON' && sourceLabels.includes('Application') && targetLabels.includes('Database'),
+    })
+    const s = sessionFor((c, p) => {
+      if (isFind(c)) return []
+      if (c.startsWith('MERGE (ci:ConfigurationItem')) return [{ created: true }]
+      if (isIdLookup(c)) {
+        if (p['externalId'] === 'ext-1') return [{ id: 'ci-self', labels: ['ConfigurationItem', 'Application'] }]
+        if (p['externalId'] === 'db-1') return [{ id: 'ci-db', labels: ['ConfigurationItem', 'Database'] }]
+        if (p['externalId'] === 'lb-1') return [{ id: 'ci-lb', labels: ['ConfigurationItem', 'Server'] }]
+        return []
+      }
+      if (c.includes('MERGE (a)-[r:')) return [{ isNew: true }]
+      if (c.includes('DELETE r')) return [{ n: 1 }]
+      return []
+    })
+    const st = stats()
+    await reconcileBatch([ci({ relationships: [rel('db-1', 'DEPENDS_ON'), rel('lb-1', 'USES_CERTIFICATE')] })], source, 'run-1', 'tenant-1', st)
+    const merges = s.calls.filter((x) => x.cypher.includes('MERGE (a)-[r:'))
+    expect(merges.map((m) => m.cypher.match(/\[r:(\w+)\]/)?.[1])).toEqual(['DEPENDS_ON'])
+    expect(st.relationsCreated).toBe(1)
+    expect(st.relationsRefused).toBe(1)
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(expect.objectContaining({ fromId: 'ci-self', toId: 'ci-lb', relType: 'USES_CERTIFICATE' }),
+      '[reconcile] relation refused: no CMDB chain admits it')
+    // Only the admitted one is «reported»: the refused one, if this source had written it, goes.
+    expect(s.calls.find((x) => x.cypher.includes('DELETE r'))!.params['reported']).toEqual([['DEPENDS_ON', 'ci-db', 'outgoing']])
+    // An incoming relation is judged the other way round: the target is its source.
+    vi.mocked(relationAdmission).mockResolvedValueOnce({ chains: 2, admits: (_r, sourceLabels) => sourceLabels.includes('Server') })
+    const st2 = stats()
+    await reconcileBatch([ci({ relationships: [rel('lb-1', 'HOSTED_ON', 'incoming')] })], source, 'run-1', 'tenant-1', st2)
+    expect(st2.relationsRefused).toBe(0)
   })
 
   it('a relation that already existed is not counted as created again', async () => {

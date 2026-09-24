@@ -17,7 +17,7 @@ import { audit } from '../../lib/audit.js'
 import { cache } from '../../lib/cache.js'
 import { loadMetamodel } from '@opengraphity/schema-generator'
 import { ENUM_SCOPE } from '../../lib/enumScope.js'
-import { assertGroupRemovable } from '../../lib/ciGroups.js'
+import { assertGroupDeclared, assertGroupRemovable } from '../../lib/ciGroups.js'
 import { backfillChangeManagerApprovals } from '../../services/change/approvalCreation.js'
 
 type Props = Record<string, unknown>
@@ -202,18 +202,19 @@ async function setCITeamRelation(
     // team a un CI di un tipo del cliente non trovava il nodo e rispondeva
     // «ConfigurationItem or Team» (A-9).
     const ciPredicate = await ciLabelPredicateForTenant('ci', ctx.tenantId)
-    if (args.teamId == null) {
-      // CM-6 (revisione del 15 set 2026): togliere un gruppo che il tipo del
-      // CI dichiara obbligatorio lasciava il CI senza owner, e le change su di
-      // lui fallivano dopo, lontano da chi l'aveva tolto.
-      const found = await runQueryOne<{ label: string | null }>(session, `
-        MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId}) WHERE ${ciPredicate}
-        RETURN head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS label
-      `, { ciId: args.ciId, tenantId: ctx.tenantId })
-      if (!found) throw new NotFoundError('ConfigurationItem', args.ciId)
-      const ciType = (await loadMetamodel(ctx.tenantId, ENUM_SCOPE)).find((t) => t.neo4jLabel === found.label)
-      if (ciType) assertGroupRemovable(ciType, relType === 'OWNED_BY' ? 'ownerGroup' : 'supportGroup')
-    }
+    // The type decides: CM-6 (revisione del 15 set 2026) — togliere un gruppo
+    // che il tipo dichiara obbligatorio lasciava il CI senza owner, e le change
+    // su di lui fallivano dopo; and a group the type does not declare cannot be
+    // assigned (24 Sep 2026: a business capability has no Support Group).
+    const found = await runQueryOne<{ label: string | null }>(session, `
+      MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId}) WHERE ${ciPredicate}
+      RETURN head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS label
+    `, { ciId: args.ciId, tenantId: ctx.tenantId })
+    if (!found) throw new NotFoundError('ConfigurationItem', args.ciId)
+    const ciType = (await loadMetamodel(ctx.tenantId, ENUM_SCOPE)).find((t) => t.neo4jLabel === found.label)
+    const relation = relType === 'OWNED_BY' ? 'ownerGroup' : 'supportGroup'
+    if (ciType && args.teamId == null) assertGroupRemovable(ciType, relation)
+    if (ciType && args.teamId != null) assertGroupDeclared(ciType, relation)
     // The relation is single-valued: drop any existing edge before setting the
     // new one, otherwise re-assigning would leave the CI with multiple owners
     // (breaks change creation, which assumes exactly one owner team).
