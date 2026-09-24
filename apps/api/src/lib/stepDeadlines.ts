@@ -29,7 +29,7 @@
  */
 import type { Session } from 'neo4j-driver'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
-import { workflowEngine } from '@opengraphity/workflow'
+import { checkTicketTransition, transitionTicket, type TicketTransitionRequest, type TransitionGuard } from '../services/ticketTransition.js'
 import { calculateDeadline, getServiceCalendarById, getTenantTimezone, minutesOfDay, type ServiceCalendar } from '@opengraphity/sla'
 import {
   AUTOMATION_ACTOR, STEP_DEADLINE_ACTOR, parseStepDeadline, stepDeadlineMinutes,
@@ -159,23 +159,6 @@ export async function runStepDeadlineSweep(tenantId: string, now = new Date()): 
   return summary
 }
 
-/**
- * A deadline is not a person, nor an approver: it never counts as the
- * approval decision of a request, and a named approval holds the ticket
- * (lib/ticketApprovalGate.ts). The reason it is refused, or null.
- */
-async function approvalHoldsDeadline(
-  session: Session, c: StepDeadlineCandidate, toStep: string,
-): Promise<'request_approval' | 'approval_request' | null> {
-  if (c.entityType === 'service_request') {
-    const { requestApprovalWouldBeSkipped } = await import('./requestApproval.js')
-    if (await requestApprovalWouldBeSkipped(session, c.tenantId, c.instanceId, toStep, { byPerson: false })) return 'request_approval'
-  }
-  const { APPROVAL_GATED_TICKETS, ticketApprovalRefusal } = await import('./ticketApprovalGate.js')
-  if (APPROVAL_GATED_TICKETS.includes(c.entityType) && await ticketApprovalRefusal(session, c.tenantId, c.instanceId, toStep)) return 'approval_request'
-  return null
-}
-
 /** Scrive l'esito sull'esecuzione del passo, lo conta e lo dice (a voce alta solo la prima volta). */
 async function recordOutcome(
   c: StepDeadlineCandidate, outcome: Exclude<StepDeadlineOutcome, 'skipped'>, reason: string, detail: string | null,
@@ -204,6 +187,21 @@ async function recordOutcome(
   else if (c.previousOutcome === outcome) log.debug(fields, `[step-deadline] ancora ${outcome}: si riprova fra un'ora`)
   else if (outcome === 'refused') log.warn(fields, '[step-deadline] scadenza rifiutata: il ticket resta nel passo, si riprova ogni ora')
   else log.error(fields, '[step-deadline] scadenza non eseguita: configurazione da correggere, si riprova ogni ora')
+}
+
+/**
+ * The reason a deadline records for each guard that holds the ticket: the
+ * three the deadline checked on its own keep their names (the diagnostics
+ * show them), the rest are the guards it gained with the pipeline.
+ */
+export const DEADLINE_REASON: Readonly<Record<TransitionGuard, string>> = {
+  change_window:    'approval_gate',
+  request_approval: 'request_approval',
+  named_approval:   'approval_request',
+  required_fields:  'required_fields',
+  step_metadata:    'step_metadata',
+  type_permission:  'type_permission',
+  workflow:         'transition',
 }
 
 /** Sposta UN ticket. Prende la scadenza in carico prima di toccarlo, così due passate non la eseguono due volte. */
@@ -255,22 +253,18 @@ export async function fireStepDeadline(c: StepDeadlineCandidate, now: Date): Pro
       return 'failed'
     }
 
-    const entity = (state['entity'] ?? {}) as Record<string, unknown>
-
-    // IL VARCO: una scadenza è un cammino automatico come gli altri.
-    if (c.entityType === 'change') {
-      const { automaticTransitionAllowed } = await import('../graphql/resolvers/change/windowGate.js')
-      const allowed = await automaticTransitionAllowed(session, {
-        tenantId: c.tenantId, changeId: c.entityId, changeType: String(entity['change_type'] ?? ''), currentStep: c.stepName, toStep,
-      }, 'step_deadline')
-      if (!allowed) {
-        await recordOutcome(c, 'refused', 'approval_gate', null, toStep, now)
-        return 'refused'
-      }
+    // Every guard of a move is the pipeline's (services/ticketTransition.ts,
+    // wave 7 · B1): the release window of a change, the approvals, the
+    // required fields and the metadata of the step. Checked BEFORE the fields
+    // of the deadline are written: a move that will be refused must not
+    // leave them written.
+    const request: TicketTransitionRequest = {
+      tenantId: c.tenantId, instanceId: c.instanceId, toStep, triggerType: 'timer',
+      actor: { kind: 'system', path: 'step_deadline', userId: STEP_DEADLINE_ACTOR },
     }
-    const approvalReason = await approvalHoldsDeadline(session, c, toStep)
-    if (approvalReason) {
-      await recordOutcome(c, 'refused', approvalReason, null, toStep, now)
+    const held = await checkTicketTransition(session, request)
+    if (held) {
+      await recordOutcome(c, 'refused', DEADLINE_REASON[held.guard], held.guard === 'workflow' ? held.message : null, toStep, now)
       return 'refused'
     }
 
@@ -318,24 +312,13 @@ export async function fireStepDeadline(c: StepDeadlineCandidate, now: Date): Pro
       return 'failed'
     }
 
-    const result = await workflowEngine.transition(
-      session,
-      { instanceId: c.instanceId, toStepName: toStep, triggeredBy: STEP_DEADLINE_ACTOR, triggerType: 'timer', tenantId: c.tenantId },
-      {
-        userId: AUTOMATION_ACTOR,
-        entityData: { ...entity, ...writtenFields, assigned_to: state['assignedTo'] ?? null, assigned_team: state['assignedTeam'] ?? null },
-        updateField: async (entityId, field, value) => {
-          assertStepFieldValue(metas, c.entityType, field, value, `update_field of step "${toStep}"`, { allowTemplate: false })
-          await writeTicketField(session, c.tenantId, c.entityType, entityId, field, value)
-        },
-      },
-    )
-    if (!result.success) {
-      await recordOutcome(c, 'failed', 'transition', result.error ?? 'unknown', toStep, now)
-      return 'failed'
-    }
-    if (result.actionErrors?.length) {
-      log.error({ tenantId: c.tenantId, entityId: c.entityId, toStep, actionErrors: result.actionErrors }, '[step-deadline] ticket spostato, ma alcune azioni del passo di arrivo non sono riuscite')
+    const outcome = await transitionTicket(session, { ...request, extraEntityData: writtenFields })
+    if (!outcome.moved) {
+      // The engine's no (the arc's condition) or a guard that changed in the
+      // meantime: the ticket stays, the pass retries in an hour.
+      await recordOutcome(c, outcome.refusal.guard === 'workflow' ? 'failed' : 'refused',
+        outcome.refusal.guard === 'workflow' ? 'transition' : DEADLINE_REASON[outcome.refusal.guard], outcome.refusal.message, toStep, now)
+      return outcome.refusal.guard === 'workflow' ? 'failed' : 'refused'
     }
 
     await recordOutcome(c, 'moved', 'deadline', null, toStep, now)

@@ -70,7 +70,7 @@ export const PAVIMENTI = {
     'src/auth/**':       { lines: 98, statements: 98, functions: 98, branches: 96 },  // 100.0/100.0/100.0/98.3
     'src/consumers/**':  { lines: 98, statements: 98, functions: 98, branches: 90 },  // 100.0/100.0/100.0/92.9
     'src/workers/**':    { lines: 98, statements: 98, functions: 98, branches: 98 },  // 100.0/100.0/100.0/100.0
-    'src/workflow/**':   { lines: 95, statements: 92, functions: 98, branches: 91 },  // 97.1/94.3/100.0/93.1 (step hook tests, 23 Sep 2026)
+    'src/workflow/**':   { lines: 96, statements: 95, functions: 98, branches: 91 },  // 98.5/97.1/100.0/93.9 (step action handlers, wave 7 · B1)
     'src/*.ts':          { lines: 97, statements: 96, functions: 96, branches: 92 },  // 99.2/98.2/98.4/94.7
   },
 

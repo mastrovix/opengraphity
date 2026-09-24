@@ -77,15 +77,18 @@ vi.mock('../../../lib/audit.js', () => ({
   audit: vi.fn().mockResolvedValue(undefined),
 }))
 
-vi.mock('../../../lib/validateRequiredFields.js', () => ({
-  validateRequiredFields: vi.fn().mockResolvedValue(undefined),
+// The pipeline of the transitions (wave 7 · B1) checks the guards and moves the
+// ticket; it is tested on its own (services/__tests__/ticketTransition.test.ts).
+vi.mock('../../../services/ticketTransition.js', () => ({
+  transitionTicket: vi.fn().mockResolvedValue({ moved: true, entityType: 'incident', entityId: 'inc-1', fromStep: 'new', actionErrors: [], result: { success: true, instance: { id: 'wi-1' } } }),
+  personActor: (c: { userId: string; permissions: unknown }) => ({ kind: 'person', userId: c.userId, permissions: c.permissions }),
+  refusalError: vi.fn(),
 }))
 
 // ── Import after mocks ────────────────────────────────────────────────────────
 
 const { executeWorkflowTransition, updateWorkflowStep, assertStepActions } = await import('../workflowMutations.js')
-const { workflowEngine } = await import('@opengraphity/workflow')
-const { validateRequiredFields } = await import('../../../lib/validateRequiredFields.js')
+const { transitionTicket } = await import('../../../services/ticketTransition.js')
 
 // ── Test context ──────────────────────────────────────────────────────────────
 
@@ -95,15 +98,9 @@ const makeRecord = (map: Record<string, unknown>) => ({
   get: (key: string) => (key in map ? map[key] : null),
 })
 
-/** Configura le prime due executeRead per il caso "istanza valida del tenant". */
+/** The instance of the tenant exists, and is an incident. */
 function primeValidInstance() {
-  mockSession.executeRead
-    // pre-fetch guard: WorkflowInstance {id, tenant_id} trovata
-    .mockResolvedValueOnce({
-      records: [makeRecord({ entityData: { id: 'inc-1', title: 'Incident 1' }, assigned_to: null, assigned_team: null, entityType: 'incident' })],
-    })
-    // lookup entity_type per validateRequiredFields
-    .mockResolvedValueOnce({ records: [makeRecord({ et: 'incident' })] })
+  mockSession.executeRead.mockResolvedValueOnce({ records: [makeRecord({ entityType: 'incident' })] })
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -115,7 +112,7 @@ describe('executeWorkflowTransition — tenant isolation guard', () => {
     mockSession.executeWrite.mockResolvedValue({ records: [] })
   })
 
-  it('istanza di un altro tenant (0 record) → lancia e NON chiama workflowEngine.transition', async () => {
+  it('istanza di un altro tenant (0 record) → lancia e NON chiede niente alla pipeline', async () => {
     // Il pre-fetch matcha WorkflowInstance {id, tenant_id}: 0 record = istanza
     // inesistente o appartenente a un altro tenant.
     mockSession.executeRead.mockResolvedValueOnce({ records: [] })
@@ -124,8 +121,7 @@ describe('executeWorkflowTransition — tenant isolation guard', () => {
       executeWorkflowTransition(null, { instanceId: 'wi-other-tenant', toStep: 'assigned' }, ctx),
     ).rejects.toThrow('Workflow instance not found: wi-other-tenant')
 
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
-    expect(validateRequiredFields).not.toHaveBeenCalled()
+    expect(transitionTicket).not.toHaveBeenCalled()
   })
 
   it('il guard lancia GraphQLError con code NOT_FOUND', async () => {
@@ -138,9 +134,8 @@ describe('executeWorkflowTransition — tenant isolation guard', () => {
     expect((error as GraphQLError).extensions['code']).toBe('NOT_FOUND')
   })
 
-  it('istanza valida → workflowEngine.transition chiamato con i parametri corretti', async () => {
+  it('istanza valida → la pipeline riceve il tenant del contesto, la persona, l\'arco manuale e le note', async () => {
     primeValidInstance()
-    vi.mocked(workflowEngine.transition).mockResolvedValueOnce({ success: true, instance: { id: 'wi-1' } } as never)
 
     const result = await executeWorkflowTransition(
       null,
@@ -148,36 +143,16 @@ describe('executeWorkflowTransition — tenant isolation guard', () => {
       ctx,
     )
 
-    expect(workflowEngine.transition).toHaveBeenCalledOnce()
-    expect(workflowEngine.transition).toHaveBeenCalledWith(
-      mockSession,
-      {
-        instanceId:  'wi-1',
-        toStepName:  'assigned',
-        triggeredBy: 'user-1',
-        triggerType: 'manual',
-        notes:       'presa in carico',
-        tenantId:    'tenant-1',
-      },
-      expect.any(Object),
-    )
+    expect(transitionTicket).toHaveBeenCalledOnce()
+    expect(transitionTicket).toHaveBeenCalledWith(mockSession, {
+      tenantId:    'tenant-1',
+      instanceId:  'wi-1',
+      toStep:      'assigned',
+      notes:       'presa in carico',
+      triggerType: 'manual',
+      actor:       { kind: 'person', userId: 'user-1', permissions: ctx.permissions },
+    })
     expect(result).toEqual({ success: true, error: null, errorKey: null, errorParams: null, instance: { id: 'wi-1' }, actionErrors: null })
-  })
-
-  it('istanza valida → valida i required fields con il tenant del contesto', async () => {
-    primeValidInstance()
-
-    await executeWorkflowTransition(null, { instanceId: 'wi-1', toStep: 'resolved' }, ctx)
-
-    expect(validateRequiredFields).toHaveBeenCalledOnce()
-    expect(validateRequiredFields).toHaveBeenCalledWith(
-      mockSession,
-      expect.objectContaining({
-        entityType: 'incident',
-        tenantId:   'tenant-1',
-        toStep:     'resolved',
-      }),
-    )
   })
 })
 

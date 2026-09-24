@@ -56,7 +56,7 @@
  * storto non deve fermare gli altri.
  */
 import { getSession, runQueryOne } from '@opengraphity/neo4j'
-import { workflowEngine } from '@opengraphity/workflow'
+import { transitionTicket } from '../services/ticketTransition.js'
 import { logger } from './logger.js'
 
 /** Lo scopo del passo in cui un Problem è «in analisi». */
@@ -204,13 +204,14 @@ async function muovi(
      */
     let passoCorrente = row.passoAttuale
     for (const prossimo of row.passi) {
-      const esito = await workflowEngine.transition(
-        session,
-        { instanceId: row.instanceId, toStepName: prossimo, triggeredBy: userId, triggerType: 'automatic', tenantId },
-        { userId, entityData: {} },
-      )
-      if (!esito.success) {
-        const dettaglio = esito.error ?? 'unknown reason'
+      // The pipeline of the transitions (wave 7 · B1): a refusal is also
+      // noted on the problem, once per reason.
+      const esito = await transitionTicket(session, {
+        tenantId, instanceId: row.instanceId, toStep: prossimo,
+        actor: { kind: 'system', path: 'investigation', userId }, triggerType: 'automatic',
+      })
+      if (!esito.moved) {
+        const dettaglio = esito.refusal.message
         logger.error(
           { module: 'proposals', tenantId, problem: problemNumber, from: passoCorrente, to: prossimo, walked: percorsi, reason: dettaglio },
           m.rifiutata,

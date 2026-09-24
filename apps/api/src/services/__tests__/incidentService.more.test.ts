@@ -49,7 +49,7 @@ const h = vi.hoisted(() => {
 
 vi.mock('@opengraphity/neo4j', () => ({ runQuery: vi.fn(), runQueryOne: vi.fn(), getSession: vi.fn() }))
 vi.mock('@opengraphity/workflow', () => ({
-  workflowEngine: { createInstance: vi.fn(), transition: vi.fn(), getAvailableTransitions: vi.fn() },
+  workflowEngine: { createInstance: vi.fn(), getAvailableTransitions: vi.fn() },
 }))
 vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
   withSession: vi.fn(async (fn: (s: unknown) => unknown) => fn(h.session)),
@@ -73,8 +73,17 @@ vi.mock('../../lib/systemText.js', () => ({
 }))
 vi.mock('../../lib/domainMatrix.js', () => ({ assertDomainValue: vi.fn() }))
 vi.mock('../../lib/ticketCIExclusions.js', () => ({ assertCIsLinkable: vi.fn() }))
-vi.mock('../../lib/validateRequiredFields.js', () => ({ validateStepRequirements: vi.fn(async () => undefined) }))
-vi.mock('../../lib/stepMetadataPreflight.js', () => ({ preflightStepMetadata: vi.fn(async () => undefined) }))
+// The pipeline of the transitions (wave 7 · B1): its guards are tested on their own
+// (services/__tests__/ticketTransition.test.ts); here, what the service asks and what it does with the answer.
+const pipe = vi.hoisted(() => ({ transitionTicket: vi.fn() }))
+vi.mock('../ticketTransition.js', async () => {
+  const { GraphQLError: GqlError } = await import('graphql')
+  return {
+    transitionTicket: (...a: unknown[]) => pipe.transitionTicket(...a),
+    refusalError: (r: { message: string; code: string }) => new GqlError(r.message, { extensions: { code: r.code } }),
+  }
+})
+const refused = (message: string, guard = 'workflow') => ({ moved: false, refusal: { guard, final: true, code: 'CONFLICT', message } })
 vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn() }))
 vi.mock('../../lib/stepEnteredPublisher.js', () => ({ publishStepEnteredForEntity: vi.fn() }))
 vi.mock('../../jobs/embeddingWorker.js', () => ({ enqueueEmbedding: vi.fn(async () => undefined) }))
@@ -119,7 +128,7 @@ beforeEach(() => {
     { name: 'working', isInitial: false, isTerminal: false, isOpen: true, category: null },
     { name: 'resolved', isInitial: false, isTerminal: true, isOpen: false, category: 'resolved', stepOrder: 9 },
   ] as never)
-  vi.mocked(workflowEngine.transition).mockResolvedValue({ success: true } as never)
+  pipe.transitionTicket.mockResolvedValue({ moved: true, actionErrors: [] })
   vi.mocked(workflowEngine.createInstance).mockResolvedValue({ id: 'wi-1' } as never)
   vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([] as never)
 })
@@ -292,7 +301,7 @@ describe('createIncident — paths not covered elsewhere', () => {
       expect(q[2]).toEqual({ tenantId: 't-1', ciIds: ['ci-1', 'ci-2'] })
       expect(setTicketTeam).toHaveBeenCalledWith(h.session, 'Incident', 'inc-1', 'team-sup', 't-1')
       // it stays in the group's queue: leaving the first step is the SLA response, a person's (packages/sla)
-      expect(workflowEngine.transition).not.toHaveBeenCalled()
+      expect(pipe.transitionTicket).not.toHaveBeenCalled()
       const row = writesMatching('STEP_HISTORY')[0]!.params
       expect(row).toMatchObject({ incidentId: 'inc-1', tenantId: 't-1', notes: 'incident.autoAssignedTeam|{"team":"DBA","ci":"db-01"}' })
       // one note on the ticket, which says why this team
@@ -311,7 +320,7 @@ describe('createIncident — paths not covered elsewhere', () => {
       await svc.createIncident({ title: 'T', affectedCIIds: ['ci-1'], teamId: 'team-x' }, ctx)
       expect(setTicketTeam).toHaveBeenCalledWith(h.session, 'Incident', 'inc-1', 'team-x', 't-1')
       expect(queryWith('SUPPORTED_BY')).toBeUndefined()
-      expect(workflowEngine.transition).not.toHaveBeenCalled()
+      expect(pipe.transitionTicket).not.toHaveBeenCalled()
       expect(writesMatching('STEP_HISTORY')[0]!.params['notes']).toBe('incident.assignedTeam|{"team":"DBA"}')
 
       vi.clearAllMocks()
@@ -373,28 +382,32 @@ describe('resolveIncident', () => {
   it('without a workflow instance in the tenant the incident is "not found"', async () => {
     vi.mocked(runQueryOne).mockResolvedValue(null)
     await expect(svc.resolveIncident('inc-x', ctx)).rejects.toThrow(/not found/i)
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
+    expect(pipe.transitionTicket).not.toHaveBeenCalled()
   })
 
   it('moves to the step of category "resolved" and stores the notes as root cause', async () => {
     primeResolve()
     await svc.resolveIncident('inc-1', ctx, 'bad cable')
-    expect(vi.mocked(workflowEngine.transition).mock.calls[0]![1]).toMatchObject({ instanceId: 'wi-1', toStepName: 'resolved', notes: 'bad cable', tenantId: 't-1' })
+    // A person without the permissions of the app: the entry point checked its own (Slack).
+    expect(pipe.transitionTicket.mock.calls[0]![1]).toEqual({
+      tenantId: 't-1', instanceId: 'wi-1', toStep: 'resolved', notes: 'bad cable',
+      actor: { kind: 'person', userId: 'u-1' }, triggerType: 'manual',
+    })
     expect(vi.mocked(runQuery).mock.calls[0]![2]).toMatchObject({ rootCause: 'bad cable', tenantId: 't-1' })
     // incident.resolved comes from the step hook, not from here (review of 23 Sep 2026).
     expect(vi.mocked(publishEvent).mock.calls.map((c) => c[0])).not.toContain('incident.resolved')
   })
 
-  // Review of 23 Sep 2026: the bulk resolve and Slack skipped the rules «field required entering Resolved».
-  it('the rules of the resolved step, on the stored incident plus the notes, stop the resolve before the engine', async () => {
-    const { validateStepRequirements } = await import('../../lib/validateRequiredFields.js')
-    vi.mocked(runQueryOne).mockResolvedValue({ instanceId: 'wi-1', props: { category: null } })
-    vi.mocked(validateStepRequirements).mockRejectedValueOnce(new Error('Field "category" is required for step "resolved"'))
-    await expect(svc.resolveIncident('inc-1', ctx, 'bad cable')).rejects.toThrow(/category/)
-    expect(vi.mocked(validateStepRequirements).mock.calls[0]![1]).toEqual({
-      entityType: 'incident', entityProps: { category: null }, notes: 'bad cable', tenantId: 't-1', toStep: 'resolved',
-    })
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
+  // Wave 7 · B1: who moves, by the context. The app's person carries the permissions,
+  // a rule its name, the monitoring its path.
+  it.each([
+    [{ permissions: new Set(['incident.write']) }, { kind: 'person', userId: 'u-1', permissions: new Set(['incident.write']) }],
+    [{ actorLabel: 'Night shift' }, { kind: 'system', path: 'rule', userId: 'u-1', label: 'Night shift' }],
+    [{ path: 'service_monitoring' as const }, { kind: 'system', path: 'service_monitoring', userId: 'u-1', label: null }],
+  ])('the actor of the move follows the context (%o)', async (extra, actor) => {
+    primeResolve()
+    await svc.resolveIncident('inc-1', { ...ctx, ...extra } as never)
+    expect(pipe.transitionTicket.mock.calls[0]![1]).toMatchObject({ actor })
   })
 
   it('without a "resolved" category it falls back to the first terminal step; no notes keep the old root cause', async () => {
@@ -404,7 +417,7 @@ describe('resolveIncident', () => {
       { name: 'done', isTerminal: true, category: 'closed' },
     ] as never)
     await svc.resolveIncident('inc-1', ctx)
-    expect(vi.mocked(workflowEngine.transition).mock.calls[0]![1]).toMatchObject({ toStepName: 'done', notes: undefined })
+    expect(pipe.transitionTicket.mock.calls[0]![1]).toMatchObject({ toStep: 'done', notes: null })
     // null → coalesce keeps whatever root cause was there.
     expect(vi.mocked(runQuery).mock.calls[0]![2]).toMatchObject({ rootCause: null })
   })
@@ -415,9 +428,9 @@ describe('resolveIncident', () => {
     await expect(svc.resolveIncident('inc-1', ctx)).rejects.toThrow(/No resolved\/terminal step/)
   })
 
-  it('a transition refused by the engine stops everything: no resolved_at, no event', async () => {
+  it('a refused transition (a guard, the engine) stops everything: no resolved_at, no event', async () => {
     primeResolve()
-    vi.mocked(workflowEngine.transition).mockResolvedValue({ success: false, error: 'condition not met' } as never)
+    pipe.transitionTicket.mockResolvedValue(refused('condition not met'))
     const err = await svc.resolveIncident('inc-1', ctx).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(GraphQLError)
     expect((err as GraphQLError).message).toBe('condition not met')
@@ -448,14 +461,14 @@ describe('assignIncidentToTeam', () => {
     ] as never)
     const out = await svc.assignIncidentToTeam('inc-1', 'team-1', ctx)
     // resolved is terminal, ghost does not exist, working has no order (last).
-    expect(vi.mocked(workflowEngine.transition).mock.calls[0]![1]).toMatchObject({ toStepName: 'assigned', triggerType: 'automatic', tenantId: 't-1' })
+    expect(pipe.transitionTicket.mock.calls[0]![1]).toMatchObject({ toStep: 'assigned', triggerType: 'automatic', tenantId: 't-1' })
     expect(out).toMatchObject({ teamName: 'Network', previousTeamName: 'Desk', unassignedUserName: null, incident: { id: 'inc-1' } })
     expect(eventTypes()).toEqual(['incident.assigned', 'ticket.team_assigned'])
     expect(vi.mocked(publishEvent).mock.calls[0]![3]).toMatchObject({ assignedTo: 'Network' })
     expect(vi.mocked(publishEvent).mock.calls[1]![3]).toEqual({ entity_type: 'incident', entity_id: 'inc-1', team_id: 'team-1' })
     // D12: the transition carries the note, and the step-entered trace writes it on
     // the ticket («Workflow: <step> — <note>»): the service must not write it again.
-    expect(String(vi.mocked(workflowEngine.transition).mock.calls[0]![1].notes)).toContain('incident.reassignedTeam')
+    expect(String(pipe.transitionTicket.mock.calls[0]![1].notes)).toContain('incident.reassignedTeam')
     expect(writesMatching('CREATE (c:Comment')).toHaveLength(0)
   })
 
@@ -464,7 +477,7 @@ describe('assignIncidentToTeam', () => {
     vi.mocked(setTicketTeam).mockResolvedValue({ teamName: 'Network', previousTeamName: null, unassignedUserName: null })
     vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'assigned' }] as never)
     await svc.assignIncidentToTeam('inc-1', 'team-1', ctx)
-    const notes = String(vi.mocked(workflowEngine.transition).mock.calls[0]![1].notes)
+    const notes = String(pipe.transitionTicket.mock.calls[0]![1].notes)
     expect(notes).toContain('incident.assignedTeam')
     expect(notes).not.toContain('reassigned')
     // a person's assignment is a response for the SLA: no routing marker
@@ -480,13 +493,13 @@ describe('assignIncidentToTeam', () => {
     ] as never)
     vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'zeta' }, { toStep: 'alpha' }] as never)
     await svc.assignIncidentToTeam('inc-1', 'team-1', ctx)
-    expect(vi.mocked(workflowEngine.transition).mock.calls[0]![1]).toMatchObject({ toStepName: 'alpha' })
+    expect(pipe.transitionTicket.mock.calls[0]![1]).toMatchObject({ toStep: 'alpha' })
   })
 
   it('from the initial step with no transition available nothing moves, the note is still written', async () => {
     h.state.wi = { instanceId: 'wi-1', currentStep: 'new' }
     await svc.assignIncidentToTeam('inc-1', 'team-1', ctx)
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
+    expect(pipe.transitionTicket).not.toHaveBeenCalled()
     expect(writesMatching('CREATE (c:Comment')).toHaveLength(1)
   })
 
@@ -494,13 +507,13 @@ describe('assignIncidentToTeam', () => {
     h.state.wi = { instanceId: 'wi-1', currentStep: 'new' }
     vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'resolved' }] as never)
     await svc.assignIncidentToTeam('inc-1', 'team-1', ctx)
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
+    expect(pipe.transitionTicket).not.toHaveBeenCalled()
   })
 
   it('a refused auto-advance: the assignment and its events stand, then the error names the step', async () => {
     h.state.wi = { instanceId: 'wi-1', currentStep: 'new' }
     vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'assigned' }] as never)
-    vi.mocked(workflowEngine.transition).mockResolvedValue({ success: false, error: 'missing field' } as never)
+    pipe.transitionTicket.mockResolvedValue(refused('missing field', 'required_fields'))
     await expect(svc.assignIncidentToTeam('inc-1', 'team-1', ctx))
       .rejects.toThrow(/assignment was saved, but the incident did not move to "assigned": missing field/)
     expect(eventTypes()).toEqual(['incident.assigned', 'ticket.team_assigned'])
@@ -512,7 +525,7 @@ describe('assignIncidentToTeam', () => {
     h.state.wi = { instanceId: 'wi-1', currentStep: 'working' }
     vi.mocked(setTicketTeam).mockResolvedValue({ teamName: 'Network', previousTeamName: null, unassignedUserName: 'Mario' })
     await svc.assignIncidentToTeam('inc-1', 'team-1', { ...ctx, actorLabel: 'Rule X' })
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
+    expect(pipe.transitionTicket).not.toHaveBeenCalled()
     expect(writesMatching('STEP_HISTORY')[0]!.params).toMatchObject({ incidentId: 'inc-1', tenantId: 't-1' })
     const comments = writesMatching('CREATE (c:Comment').map((r) => r.params)
     expect(comments).toHaveLength(2)
@@ -562,8 +575,8 @@ describe('assignIncidentToUser', () => {
     h.state.wi = { instanceId: 'wi-1', currentStep: 'new' }
     vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'triage' }] as never)
     const out = await svc.assignIncidentToUser('inc-1', 'u-2', ctx)
-    const t = vi.mocked(workflowEngine.transition).mock.calls[0]![1]
-    expect(t).toMatchObject({ toStepName: 'triage', triggerType: 'automatic' })
+    const t = pipe.transitionTicket.mock.calls[0]![1]
+    expect(t).toMatchObject({ toStep: 'triage', triggerType: 'automatic' })
     expect(String(t.notes)).toContain('incident.reassignedUser')
     expect(out).toMatchObject({ userName: 'Anna', previousUserName: 'Bruno' })
     expect(eventTypes()).toEqual(['incident.assigned'])
@@ -586,7 +599,7 @@ describe('assignIncidentToUser', () => {
     vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'resolved' }] as never)
     await svc.assignIncidentToUser('inc-1', 'u-2', ctx)
     expect(workflowEngine.getAvailableTransitions).not.toHaveBeenCalled()
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
+    expect(pipe.transitionTicket).not.toHaveBeenCalled()
     expect(String(writesMatching('STEP_HISTORY')[0]!.params['notes'])).toContain('incident.reassignedUser')
   })
 
@@ -601,8 +614,8 @@ describe('assignIncidentToUser', () => {
   it('a refused auto-advance surfaces after the assignment event', async () => {
     h.state.wi = { instanceId: 'wi-1', currentStep: 'new' }
     vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'triage' }] as never)
-    vi.mocked(workflowEngine.transition).mockResolvedValue({ success: false } as never)
-    await expect(svc.assignIncidentToUser('inc-1', 'u-2', ctx)).rejects.toThrow(/did not move to "triage": the workflow refused the transition/)
+    pipe.transitionTicket.mockResolvedValue(refused('The workflow refused the transition'))
+    await expect(svc.assignIncidentToUser('inc-1', 'u-2', ctx)).rejects.toThrow(/did not move to "triage": The workflow refused the transition/)
     expect(eventTypes()).toEqual(['incident.assigned'])
   })
 
@@ -637,14 +650,14 @@ describe('in progress / close / escalate', () => {
   it('a successful escalation goes to the target step and publishes incident.escalated', async () => {
     vi.mocked(runQueryOne).mockResolvedValue({ instanceId: 'wi-1' })
     await svc.escalateIncident('inc-1', ctx)
-    expect(vi.mocked(workflowEngine.transition).mock.calls[0]![1]).toMatchObject({ instanceId: 'wi-1', toStepName: 'escalated', tenantId: 't-1' })
+    expect(pipe.transitionTicket.mock.calls[0]![1]).toMatchObject({ instanceId: 'wi-1', toStep: 'escalated', tenantId: 't-1', triggerType: 'manual' })
     expect(eventTypes()).toEqual(['incident.escalated'])
   })
 
-  it('an escalation refused by the engine publishes nothing', async () => {
+  it('a refused escalation publishes nothing, and says why', async () => {
     vi.mocked(runQueryOne).mockResolvedValue({ instanceId: 'wi-1' })
-    vi.mocked(workflowEngine.transition).mockResolvedValue({ success: false } as never)
-    await expect(svc.escalateIncident('inc-1', ctx)).rejects.toThrow(/refused the escalation to "escalated"/)
+    pipe.transitionTicket.mockResolvedValue(refused('The ticket is waiting for an approval in step "triage"', 'named_approval'))
+    await expect(svc.escalateIncident('inc-1', ctx)).rejects.toThrow(/waiting for an approval/)
     expect(publishEvent).not.toHaveBeenCalled()
   })
 })

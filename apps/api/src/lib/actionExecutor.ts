@@ -261,59 +261,44 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
     case 'transition_workflow': {
       const toStep = String(p['to_step'] ?? '')
       if (!toStep) throw new Error('transition_workflow: to_step is required')
-      const { workflowEngine } = await import('@opengraphity/workflow')
       // Import differito come quello sopra: `lib/` non deve dipendere da
-      // `graphql/resolvers/` al caricamento del modulo.
-      const { assertAutomaticTransitionAllowed } = await import('../graphql/resolvers/change/windowGate.js')
+      // `services/` al caricamento del modulo.
+      const { transitionTicket } = await import('../services/ticketTransition.js')
       await withSession(async (session) => {
         const wiRes = await session.executeRead(tx => tx.run(`
           ${matchById('e', { labels: 'entities', id: '$entityId' })}
           MATCH (e)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-          OPTIONAL MATCH (wi)-[:CURRENT_STEP]->(cur:WorkflowStep)
-          // Serve al varco della finestra di rilascio: questa azione transisce
-          // QUALUNQUE entita con un workflow, change comprese.
-          RETURN wi.id AS instanceId, cur.name AS currentStep,
-                 CASE WHEN 'Change' IN labels(e) THEN e.id          ELSE null END AS changeId,
-                 CASE WHEN 'Change' IN labels(e) THEN e.change_type ELSE null END AS changeType
+          RETURN wi.id AS instanceId
         `, { entityId: ctx.entityId, tenantId: ctx.tenantId }))
         if (wiRes.records.length === 0) throw new Error('No workflow instance found')
         const instanceId = wiRes.records[0].get('instanceId') as string
 
+        // The pipeline of the transitions (wave 7 · B1), signed by the rule.
         // IL VARCO DELLA FINESTRA DI RILASCIO (terza revisione * C1, quarto
-        // cammino). Questa azione e configurabile dall'interfaccia — pagine
-        // «Business Rules» e «Trigger Automatici» — e il suo `to_step` arriva
-        // dai parametri: una regola con bersaglio il passo programmato
-        // spingeva qualunque change dentro la finestra di rilascio senza
-        // approvazioni. Nessuno dei due revisori l'aveva visto; l'ho trovato
-        // contando i chiamanti di `workflowEngine.transition` (erano 14, non 3).
-        const changeId   = wiRes.records[0].get('changeId')   as string | null
-        const changeType = wiRes.records[0].get('changeType') as string | null
-        if (changeId) {
-          await assertAutomaticTransitionAllowed(session, {
-            tenantId:    ctx.tenantId,
-            changeId,
-            changeType:  changeType ?? '',
-            currentStep: (wiRes.records[0].get('currentStep') as string | null) ?? '',
-            toStep,
-          }, 'rule_action')
-        }
-        const result = await workflowEngine.transition(session, {
-          instanceId, toStepName: toStep,
-          triggeredBy: 'system', triggerType: 'automatic',
-          notes: `Auto: ${ctx.sourceName}`,
-          tenantId: ctx.tenantId,
-        }, { userId: ctx.userId, entityData: ctx.entity })
+        // cammino) is one of its guards: this action is configurable from the
+        // interface — «Business Rules» and «Trigger Automatici» — and a rule
+        // aimed at the scheduled step pushed any change into the release
+        // window without approvals. So are the approval named by the step and
+        // its required fields, which a rule walked past.
+        const outcome = await transitionTicket(session, {
+          tenantId: ctx.tenantId, instanceId, toStep, notes: `Auto: ${ctx.sourceName}`,
+          actor: { kind: 'system', path: 'rule', label: ctx.sourceName }, triggerType: 'automatic',
+        })
         // B-18: l'esito del motore era IGNORATO. Un `to_step` che non esiste
         // più (passo rinominato o tolto dal disegnatore), o un arco non
         // percorribile, faceva risultare l'azione eseguita e la regola sana:
         // il ticket non si muoveva e nessuno lo sapeva. Ora è un errore
         // dell'azione, che nomina il bersaglio e finisce nel risultato della
-        // regola (`matched + error`) e nei log.
-        if (!result.success) {
-          throw new Error(
-            `transition_workflow: the transition to "${toStep}" did not happen (${result.error ?? 'unknown engine error'}). ` +
-            `Check that "${toStep}" is still a step of the ${ctx.entityType} workflow and that an edge leaves the current step.`,
-          )
+        // regola (`matched + error`) e nei log; the ticket carries the note.
+        if (!outcome.moved) {
+          // What to change, by guard: the rule's own configuration, where it can be the fix.
+          const hint = outcome.refusal.guard === 'workflow'
+            ? ` Check that "${toStep}" is still a step of the ${ctx.entityType} workflow and that an edge leaves the current step.`
+            : outcome.refusal.guard === 'change_window'
+              ? ' If this move must be automatic, add the change type to the pre-approved types (Settings -> Domain matrices), '
+                + 'or let the rule run only after the assessment; otherwise remove this action from the rule.'
+              : ''
+          throw new Error(`transition_workflow: the transition to "${toStep}" did not happen (${outcome.refusal.guard}: ${outcome.refusal.message}).${hint}`)
         }
       }, true)
       break

@@ -520,15 +520,21 @@ export async function afterEnterStep(session: SessionOrTx, changeId: string, ten
     const ct = await runQueryOne<{ t: string }>(session, `MATCH (c:Change {id: $changeId, tenant_id: $tenantId}) RETURN c.change_type AS t`, { changeId, tenantId })
     const { isPreApprovedChangeType } = await import('../../../lib/changePolicy.js')
     if (ct?.t != null && await isPreApprovedChangeType(tenantId, ct.t)) {
-      const { workflowEngine } = await import('@opengraphity/workflow')
+      const { transitionTicket } = await import('../../../services/ticketTransition.js')
       const instanceId = await getInstanceId(session as Session, changeId, tenantId)
       const toStep = await targetStepByPurpose(session as Session, tenantId, 'change', ['scheduled'],
         'pre-approval of a standard change')
-      const res = await workflowEngine.transition(session as Session, { instanceId, toStepName: toStep, triggeredBy: 'system', triggerType: 'automatic', notes: await systemText(tenantId, 'change.preApproved'), tenantId }, { userId: 'system', entityData: {} })
+      // The pre-approval is the approval's outcome (wave 7 · B1): the pipeline
+      // checks the guards of the step, and notes a refusal on the change.
+      const outcome = await transitionTicket(session as Session, {
+        tenantId, instanceId, toStep, notes: await systemText(tenantId, 'change.preApproved'),
+        actor: { kind: 'system', path: 'approval' }, triggerType: 'automatic',
+      })
       // Fail-loud: una pre-approvata ferma in approvazione senza requisiti non
       // si sbloccherebbe mai (nessun record da approvare).
-      if (!res.success) {
-        throw new GraphQLError(`Pre-approved change type "${ct.t}": pre-approval failed (${res.error ?? 'transition failed'})`, { extensions: { code: 'CONFLICT', i18n: { key: 'errors.change.preApprovalFailed', params: { type: ct.t, reason: res.error ?? '' } } } })
+      if (!outcome.moved) {
+        const reason = outcome.refusal.message
+        throw new GraphQLError(`Pre-approved change type "${ct.t}": pre-approval failed (${reason})`, { extensions: { code: 'CONFLICT', i18n: { key: 'errors.change.preApprovalFailed', params: { type: ct.t, reason } } } })
       }
       await afterEnterStep(session, changeId, tenantId, toStep)
     }

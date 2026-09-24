@@ -9,8 +9,9 @@
  *    must not block the retry, and the read must be tenant-scoped.
  *  - The OLA sweep must FAIL the job when a contract could not be evaluated:
  *    a green job with a silent failure means an OLA alert that never arrives.
- *  - timer_wait on a change must pass the approval gate, and a refusal (by the
- *    gate or by a transition guard) must be written on the step execution so
+ *  - timer_wait moves through the pipeline of the transitions (wave 7 · B1),
+ *    whose guards include the approval gate of a change; a refusal (by the
+ *    gate or by any other guard) must be written on the step execution so
  *    the diagnostics list the ticket — not a thrown error that exhausts
  *    retries and leaves the ticket waiting forever without a signal.
  *  - The three periodic sweeps must be registered with fixed ids, and an
@@ -50,21 +51,22 @@ vi.mock('@opengraphity/neo4j', () => ({
   runQuery: (...args: unknown[]) => runQuery(...args),
 }))
 
+vi.mock('@opengraphity/workflow', () => ({ WAIT_EXIT_TRIGGERS: ['automatic', 'timer'] }))
 const transition = vi.fn()
-vi.mock('@opengraphity/workflow', () => ({ WAIT_EXIT_TRIGGERS: ['automatic', 'timer'], workflowEngine: { transition: (...a: unknown[]) => transition(...a) } }))
+vi.mock('../../services/ticketTransition.js', () => ({ transitionTicket: (...a: unknown[]) => transition(...a) }))
+const refused = (guard: string, message: string, final = true) => ({ moved: false, refusal: { guard, final, message } })
 
 const runStepDeadlineSweep = vi.fn()
-vi.mock('../../lib/stepDeadlines.js', () => ({ runStepDeadlineSweep: (...a: unknown[]) => runStepDeadlineSweep(...a) }))
+vi.mock('../../lib/stepDeadlines.js', async (orig) => ({
+  DEADLINE_REASON: (await orig<typeof import('../../lib/stepDeadlines.js')>()).DEADLINE_REASON,
+  runStepDeadlineSweep: (...a: unknown[]) => runStepDeadlineSweep(...a),
+}))
 const runOLASweep = vi.fn()
 vi.mock('../../lib/olaSweep.js', () => ({ runOLASweep: (...a: unknown[]) => runOLASweep(...a) }))
 const runSLASweep = vi.fn()
 vi.mock('@opengraphity/sla', () => ({ runSLASweep: (...a: unknown[]) => runSLASweep(...a) }))
 const riprendiTransizioniDi = vi.fn()
 vi.mock('../../lib/riprendiTransizioni.js', () => ({ riprendiTransizioniDi: (...a: unknown[]) => riprendiTransizioniDi(...a) }))
-const automaticTransitionAllowed = vi.fn()
-vi.mock('../../graphql/resolvers/change/windowGate.js', () => ({
-  automaticTransitionAllowed: (...a: unknown[]) => automaticTransitionAllowed(...a),
-}))
 const loadAutomationEntity = vi.fn()
 vi.mock('../../lib/automationEntity.js', () => ({ loadAutomationEntity: (...a: unknown[]) => loadAutomationEntity(...a) }))
 const executeActions = vi.fn()
@@ -97,7 +99,7 @@ const job = (name: string, data: Record<string, unknown>): Job =>
 beforeEach(() => {
   vi.clearAllMocks()
   readRows = []
-  transition.mockResolvedValue({ success: true })
+  transition.mockResolvedValue({ moved: true, actionErrors: [] })
   fetchMock.mockResolvedValue({ ok: true, status: 200, body: { cancel: async () => undefined } })
 })
 
@@ -254,56 +256,40 @@ describe('trigger_timer', () => {
 describe('timer_wait', () => {
   const data = { instanceId: 'wi-1', toStep: 'implement', tenantId: 't1' }
 
-  it('a change passes through the approval gate before moving', async () => {
-    readRows = [{ currentStep: 'wait', toStep: 'implement', changeId: 'chg-1', changeType: 'normal' }]
-    automaticTransitionAllowed.mockResolvedValue(true)
+  it('moves through the pipeline, as the timer, on an automatic arc', async () => {
+    readRows = [{ currentStep: 'wait', toStep: 'implement' }]
     await notificationProcessor(job('timer_wait', data))
-    expect(automaticTransitionAllowed).toHaveBeenCalledWith(expect.anything(), {
-      tenantId: 't1', changeId: 'chg-1', changeType: 'normal', currentStep: 'wait', toStep: 'implement',
-    }, 'timer_job')
-    expect(transition).toHaveBeenCalledOnce()
+    expect(transition).toHaveBeenCalledWith(expect.anything(), {
+      tenantId: 't1', instanceId: 'wi-1', toStep: 'implement', triggerType: 'automatic',
+      actor: { kind: 'system', path: 'timer', userId: 'timer' },
+    })
   })
 
-  it('a change without a type is still gated (empty type), not skipped', async () => {
-    readRows = [{ currentStep: 'wait', toStep: 'implement', changeId: 'chg-1', changeType: null }]
-    automaticTransitionAllowed.mockResolvedValue(true)
-    await notificationProcessor(job('timer_wait', { instanceId: 'wi-1', tenantId: 't1' }))
-    expect(automaticTransitionAllowed.mock.calls[0]![1]).toMatchObject({ changeType: '' })
-  })
-
-  it('refused by the gate: no transition, and the refusal is written on the open step execution', async () => {
-    readRows = [{ currentStep: 'wait', toStep: 'implement', changeId: 'chg-1', changeType: 'normal' }]
-    automaticTransitionAllowed.mockResolvedValue(false)
+  it('refused by the gate of a change: no throw, and the refusal is written on the open step execution', async () => {
+    readRows = [{ currentStep: 'wait', toStep: 'implement' }]
+    transition.mockResolvedValue(refused('change_window', 'needs approvals'))
     await expect(notificationProcessor(job('timer_wait', data))).resolves.toBeUndefined()
-    expect(transition).not.toHaveBeenCalled()
     const [, q, p] = runQuery.mock.calls[0]! as [unknown, string, Record<string, unknown>]
-    expect(q).toContain("ex.deadline_reason     = 'approval_gate'")
+    expect(q).toContain('ex.deadline_reason     = $reason')
     expect(q).toContain('ex.exited_at IS NULL')
-    expect(p).toMatchObject({ instanceId: 'wi-1', tenantId: 't1', toStep: 'implement' })
+    expect(p).toMatchObject({ instanceId: 'wi-1', tenantId: 't1', toStep: 'implement', reason: 'approval_gate' })
     expect(sessionClose).toHaveBeenCalled()
   })
 
-  it('refused by a transition guard: no throw (the timer would never re-arm), the refusal is recorded', async () => {
-    readRows = [{ currentStep: 'wait', toStep: 'closed', changeId: null, changeType: null }]
-    transition.mockResolvedValue({ success: false, refusedByCondition: 'tasks_done', error: 'open tasks' })
+  it('refused by any other guard: no throw (the timer would never re-arm), the refusal is recorded with the guard', async () => {
+    readRows = [{ currentStep: 'wait', toStep: 'closed' }]
+    transition.mockResolvedValue(refused('workflow', 'open tasks'))
     await expect(notificationProcessor(job('timer_wait', data))).resolves.toBeUndefined()
-    const [, q, p] = runQuery.mock.calls[0]! as [unknown, string, Record<string, unknown>]
-    expect(q).toContain("ex.deadline_reason     = 'transition_condition'")
-    expect(String(p['detail'])).toContain('"tasks_done"')
-    expect(String(p['detail'])).toContain('(open tasks)')
+    const [, , p] = runQuery.mock.calls[0]! as [unknown, string, Record<string, unknown>]
+    expect(p['reason']).toBe('transition')
+    expect(String(p['detail'])).toBe('timer_wait: the automatic transition to "closed" was refused (workflow): open tasks')
   })
 
-  it('a guard refusal without an error text still records the detail', async () => {
+  it('an error that may be transient fails the job, for the queue to retry, and records nothing', async () => {
     readRows = [{ currentStep: 'wait', toStep: 'closed' }]
-    transition.mockResolvedValue({ success: false, refusedByCondition: 'tasks_done' })
-    await notificationProcessor(job('timer_wait', data))
-    expect(String((runQuery.mock.calls[0]![2] as Record<string, unknown>)['detail'])).toMatch(/\(\)$/)
-  })
-
-  it('a failure that is not a guard refusal fails the job; without an error it says unknown', async () => {
-    readRows = [{ currentStep: 'wait', toStep: 'closed' }]
-    transition.mockResolvedValue({ success: false })
-    await expect(notificationProcessor(job('timer_wait', data))).rejects.toThrow('closed: unknown')
+    transition.mockResolvedValue(refused('workflow', 'concurrent move', false))
+    await expect(notificationProcessor(job('timer_wait', data))).rejects.toThrow('closed: concurrent move')
+    expect(runQuery).not.toHaveBeenCalled()
   })
 
   it('no automatic edge and no scheduled step: the error says n/a', async () => {

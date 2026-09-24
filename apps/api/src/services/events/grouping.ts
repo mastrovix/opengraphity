@@ -281,8 +281,11 @@ export async function correlateFiringEvent(session: Session, tenantId: string, e
   interface Grouped { outcome: CorrelationOutcome; incidentId: string; created: boolean }
   const joinIncident = async (open: OpenIncidentRow): Promise<Grouped> => {
     if (open.step === info.resolvedStep) {
-      await reopenIncident(session, tenantId, open, info, await systemText(tenantId, 'event.alarmReturned', { title: toStr(ev.props['title']), resource: toStr(ev.props['resource']) }))
+      const reopened = await reopenIncident(session, tenantId, open, info, await systemText(tenantId, 'event.alarmReturned', { title: toStr(ev.props['title']), resource: toStr(ev.props['resource']) }), 'event_reopen')
       const created = await attachEventToIncident(session, tenantId, eventId, open.incidentId, false, now)
+      // A reopening a guard refused (wave 7 · B1): the alarm is still the
+      // incident's, which says on itself why it stays resolved.
+      if (!reopened) return { outcome: 'attached', incidentId: open.incidentId, created }
       incidentsReopenedTotal.inc({})
       return { outcome: 'reopened', incidentId: open.incidentId, created }
     }
@@ -362,8 +365,10 @@ export async function correlateIntoStorm(session: Session, tenantId: string, ev:
     await withRedisLock(stormLockKey(tenantId, sourceId), STORM_LOCK_OPTS, async () => {
       const fresh = await incidentStep(session, tenantId, inc.incidentId)
       if (fresh?.step === info.resolvedStep) {
-        await reopenIncident(session, tenantId, fresh, info, await systemText(tenantId, 'event.stormStillRunning', { source: storm.sourceName, title: toStr(ev.props['title']) }))
-        incidentsReopenedTotal.inc({})
+        // A refused reopening leaves it resolved, with the reason on it; the event is attached all the same.
+        if (await reopenIncident(session, tenantId, fresh, info, await systemText(tenantId, 'event.stormStillRunning', { source: storm.sourceName, title: toStr(ev.props['title']) }), 'event_reopen')) {
+          incidentsReopenedTotal.inc({})
+        }
       }
     })
   } else if (info.terminalSteps.includes(inc.step)) {

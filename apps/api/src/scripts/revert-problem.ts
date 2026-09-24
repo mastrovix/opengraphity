@@ -7,7 +7,9 @@
  *   pnpm --filter @opengraphity/api revert-problem -- --tenant=<slug> PRB00000001
  */
 import { getSession } from '@opengraphity/neo4j'
-import { workflowEngine } from '@opengraphity/workflow'
+// The conditions and the step action handlers the engine needs (workflow/conditions.ts).
+import '../workflow/conditions.js'
+import { transitionTicket } from '../services/ticketTransition.js'
 import { getStepPurpose } from '../lib/workflowHelpers.js'
 import { targetStepByPurpose } from '../lib/workflowTargets.js'
 import { ScriptArgError, resolveTenantArg } from './lib/scriptArgs.js'
@@ -41,12 +43,12 @@ async function main(): Promise<void> {
 
     const toStep = await targetStepByPurpose(session, TENANT, 'problem', ['investigation'],
       'problem return to investigation (revert-problem)')
-    const t = await workflowEngine.transition(
-      session,
-      { instanceId, toStepName: toStep, triggeredBy: 'system', triggerType: 'automatic', notes: 'Change risolutiva scollegata (fix retroattivo)', tenantId: TENANT },
-      { userId: 'system', entityData: {} },
-    )
-    if (!t.success) throw new Error(`[revert] fallito: ${t.error}`)
+    // The pipeline of the transitions (wave 7 · B1): the guards hold for a script too.
+    const t = await transitionTicket(session, {
+      tenantId: TENANT, instanceId, toStep, notes: 'Change risolutiva scollegata (fix retroattivo)',
+      actor: { kind: 'system', path: 'script' }, triggerType: 'automatic',
+    })
+    if (!t.moved) throw new Error(`[revert] fallito (${t.refusal.guard}): ${t.refusal.message}`)
     console.log(`[revert] ${number} → ${toStep} ✅`)
   } finally {
     await session.close()

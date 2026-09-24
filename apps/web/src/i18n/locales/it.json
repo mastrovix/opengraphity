@@ -4089,6 +4089,7 @@
       "deleted": "La change è stata eliminata: non è più possibile nessuna operazione.",
       "preApprovalFailed": "Change di tipo pre-approvato «{{type}}»: la pre-approvazione non è riuscita ({{reason}}).",
       "assessmentsIncomplete": "La change non può uscire dall'analisi: completa prima tutte le valutazioni e il piano di deploy (dopo l'analisi il piano non si può più modificare).",
+      "windowNeedsApprovals": "La change non può entrare nella finestra di rilascio senza le sue approvazioni.",
       "autoTransitionCycle": "Il workflow delle change ha un ciclo di transizioni automatiche ({{from}} → {{to}}): correggilo nel disegnatore.",
       "chooseAssessmentsToReopen": "Scegli quali assessment riaprire, oppure «tutti».",
       "onlyInInitialStep": "Si può fare solo nel passo iniziale; la change è in «{{current}}».",

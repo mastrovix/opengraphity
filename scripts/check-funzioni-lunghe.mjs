@@ -116,14 +116,14 @@ const NOTE = new Map([
   ['apps/web/src/pages/tasks/TaskViewPage.tsx#TaskViewPage', 106],
   ['apps/api/src/rest/attachments.ts#handleUpload', 137],
   ['apps/web/src/pages/incidents/CreateIncidentPage.tsx#CreateIncidentPage', 112],
-  ['apps/api/src/lib/actionExecutor.ts#executeSingleAction', 128],
+  ['apps/api/src/lib/actionExecutor.ts#executeSingleAction', 124],
   ['apps/web/src/pages/monitoring/serviceMapLayout.ts#layoutServiceMap', 123],
   ['apps/web/src/pages/analysis/WhatIfPage.tsx#WhatIfPage', 95],
   // 23 Sep 2026: +5, the delay of a timed wait is edited here (it could not be set anywhere).
   // 23 Sep 2026, review wave 6: +1, a notification switched on without its title blocks the save and says why.
   ['apps/web/src/pages/workflow/WorkflowStepPanel.tsx#WorkflowStepPanel', 125],
   ['apps/api/src/lib/reportDesignProposal.ts#validaPropostaReport', 118],
-  ['packages/workflow/src/actions.ts#runAction', 113],
+  ['packages/workflow/src/actions.ts#runAction', 109],
   ['apps/web/src/pages/monitoring/ServiceMapCanvas.tsx#ServiceMapCanvas', 115],
   ['apps/web/src/pages/settings/catalogForm/FormBuilderPanel.tsx#useTrascinamento', 115],
   ['apps/api/src/scripts/seed-demo-incidents.ts#main', 113],
@@ -165,7 +165,6 @@ const NOTE = new Map([
   ['apps/web/src/pages/requests/ServiceRequestDetailPage.tsx#ServiceRequestDetailPage', 68],
   ['apps/api/src/graphql/resolvers/enumType.ts#updateEnumType', 76],
   ['apps/web/src/pages/monitoring/EditSourcePage.tsx#EditSourcePage', 76],
-  ['apps/api/src/graphql/resolvers/workflowMutations.ts#executeWorkflowTransition', 73],
   ['apps/api/src/scripts/seed-ci-relations.ts#seed', 75],
   ['apps/web/src/hooks/useNotifications.ts#useNotifications', 73],
   ['apps/web/src/pages/settings/useITILTypeDesigner.ts#useITILTypeDesigner', 74],
@@ -185,7 +184,6 @@ const NOTE = new Map([
   ['apps/api/src/scripts/seed-relations.ts#seed', 65],
   // 23 Sep 2026: +3, the initial step must survive a save and a timed wait keeps a valid delay.
   ['apps/api/src/graphql/resolvers/workflowMutations.ts#saveWorkflowChanges', 67],
-  ['apps/api/src/lib/stepDeadlines.ts#fireStepDeadline', 63],
   ['apps/api/src/lib/reportQueryBuilder.ts#validateReportSection', 63],
   ['packages/web-core/src/tokenRefresh.ts#createTokenRefresh', 63],
   ['apps/api/src/lib/reportValueLabels.ts#loadReportValueLabeler', 62],

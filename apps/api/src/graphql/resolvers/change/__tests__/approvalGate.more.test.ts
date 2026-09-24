@@ -28,7 +28,11 @@ vi.mock('../../ci-utils.js', () => ({
   runQuery: vi.fn(),
   runQueryOne: vi.fn(),
 }))
-vi.mock('@opengraphity/workflow', () => ({ workflowEngine: { transition: vi.fn(), getAvailableTransitions: vi.fn() } }))
+vi.mock('@opengraphity/workflow', () => ({ workflowEngine: { getAvailableTransitions: vi.fn() } }))
+// The pipeline of the transitions (wave 7 · B1): the outcome of the approvals moves the change through it.
+const transition = vi.hoisted(() => vi.fn())
+vi.mock('../../../../services/ticketTransition.js', () => ({ transitionTicket: transition }))
+const refused = (message: string, i18n?: { key: string }) => ({ moved: false, refusal: { guard: 'workflow', final: true, code: 'CONFLICT', message, ...(i18n ? { i18n } : {}) } })
 vi.mock('../queries.js', () => ({ change: vi.fn(async (_p: unknown, a: { id: string }) => ({ id: a.id })) }))
 vi.mock('../autoTransitions.js', () => ({ evaluateAutoTransitions: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../helpers.js', () => ({
@@ -77,7 +81,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   withSessionWrite.length = 0
   vi.mocked(areAllApprovalsSatisfied).mockResolvedValue(false)
-  vi.mocked(workflowEngine.transition).mockResolvedValue({ success: true } as never)
+  transition.mockResolvedValue({ moved: true, actionErrors: [] })
   vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'in_calendar' }] as never)
 })
 
@@ -140,7 +144,7 @@ describe('approveChangeApproval — eligibility and state', () => {
   it('with requirements still pending the change does not move', async () => {
     gate()
     await approveChangeApproval(null, { changeId: 'chg-1', teamId: 'team-cab' }, admin)
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
+    expect(transition).not.toHaveBeenCalled()
   })
 })
 
@@ -149,9 +153,10 @@ describe('approveChangeApproval — the last approval advances the change', () =
     gate()
     vi.mocked(areAllApprovalsSatisfied).mockResolvedValue(true)
     await approveChangeApproval(null, { changeId: 'chg-1', teamId: 'team-cab' }, admin)
-    expect(workflowEngine.transition).toHaveBeenCalledWith(session,
-      expect.objectContaining({ instanceId: 'wi-1', toStepName: 'in_calendar', triggeredBy: 'u-admin', notes: 'text:change.approvalsComplete', tenantId: 't1' }),
-      { userId: 'u-admin', entityData: {} })
+    expect(transition).toHaveBeenCalledWith(session, {
+      tenantId: 't1', instanceId: 'wi-1', toStep: 'in_calendar', notes: 'text:change.approvalsComplete',
+      actor: { kind: 'system', path: 'approval', userId: 'u-admin' }, triggerType: 'manual',
+    })
     expect(afterEnterStep).toHaveBeenCalledWith(session, 'chg-1', 't1', 'in_calendar')
     expect(evaluateAutoTransitions).toHaveBeenCalled()
   })
@@ -159,20 +164,19 @@ describe('approveChangeApproval — the last approval advances the change', () =
   it('a failed transition after the last approval is a CONFLICT naming the step and the reason', async () => {
     gate()
     vi.mocked(areAllApprovalsSatisfied).mockResolvedValue(true)
-    vi.mocked(workflowEngine.transition).mockResolvedValue({ success: false, error: 'guard failed' } as never)
+    transition.mockResolvedValue(refused('guard failed'))
     const err = await caught(approveChangeApproval(null, { changeId: 'chg-1', teamId: 'team-cab' }, admin))
     expect(err.extensions).toMatchObject({ code: 'CONFLICT', i18n: { key: 'errors.approval.didNotAdvance', params: { step: 'in_calendar', reason: 'guard failed' } } })
     expect(afterEnterStep).not.toHaveBeenCalled()
   })
 
-  it('without an engine message the failure still says the transition failed', async () => {
+  it('a guard of the scheduled step (its required fields) holds the change in approval, and says so', async () => {
     gate()
     vi.mocked(areAllApprovalsSatisfied).mockResolvedValue(true)
-    vi.mocked(workflowEngine.transition).mockResolvedValue({ success: false } as never)
-    const err = await caught(approveChangeApproval(null, { changeId: 'chg-1', teamId: 'team-cab' }, { ...(admin as object), userId: undefined } as never))
-    expect(err.message).toContain('transition failed')
-    // No user in the context: the transition is attributed to "system".
-    expect(workflowEngine.transition).toHaveBeenCalledWith(session, expect.objectContaining({ triggeredBy: 'system' }), { userId: 'system', entityData: {} })
+    transition.mockResolvedValue({ moved: false, refusal: { guard: 'required_fields', final: true, code: 'BAD_USER_INPUT', message: 'Field "window" is required' } })
+    const err = await caught(approveChangeApproval(null, { changeId: 'chg-1', teamId: 'team-cab' }, admin))
+    expect(err.message).toBe('Approvals complete but the change did not move to "in_calendar": Field "window" is required')
+    expect(afterEnterStep).not.toHaveBeenCalled()
   })
 })
 
@@ -202,25 +206,27 @@ describe('rejectChangeApproval', () => {
     expect(deriveChangePriority).toHaveBeenCalledWith('t1', 'normal', null)
     const params = (txRun.mock.calls[0] as unknown[])[1] as Record<string, unknown>
     expect(params).toMatchObject({ changeId: 'chg-1', tenantId: 't1', all: false, ids: ['a1', 'a2'], priority: 'medium' })
-    expect(workflowEngine.transition).toHaveBeenCalledWith(session, expect.objectContaining({ toStepName: 'evaluation', notes: 'text:change.approvalRejected' }), expect.anything())
+    expect(transition).toHaveBeenCalledWith(session, expect.objectContaining({
+      toStep: 'evaluation', notes: 'text:change.approvalRejected', actor: { kind: 'system', path: 'approval', userId: 'u-op' },
+    }))
     expect(writeAudit).toHaveBeenCalledWith(session, 'chg-1', 't1', 'change_rejected', 'u-op', 'CAB: no rollback')
     expect(afterEnterStep).toHaveBeenCalledWith(session, 'chg-1', 't1', 'evaluation')
   })
 
   it('a refused return transition is a CONFLICT carrying the engine i18n, and nothing is audited', async () => {
     gate()
-    vi.mocked(workflowEngine.transition).mockResolvedValue({ success: false, error: 'locked', errorI18n: { key: 'errors.workflow.locked' } } as never)
+    transition.mockResolvedValue(refused('locked', { key: 'errors.workflow.locked' }))
     const err = await caught(rejectChangeApproval(null, { changeId: 'chg-1', teamId: 'team-cab', note: 'x', reopenAll: true }, admin))
     expect(err.message).toBe('locked')
     expect(err.extensions).toMatchObject({ code: 'CONFLICT', i18n: { key: 'errors.workflow.locked' } })
     expect(writeAudit).not.toHaveBeenCalled()
   })
 
-  it('without engine details the refusal falls back to a generic rejection error', async () => {
+  it('a refusal without a translation key falls back to the generic rejection key', async () => {
     gate()
-    vi.mocked(workflowEngine.transition).mockResolvedValue({ success: false } as never)
-    const err = await caught(rejectChangeApproval(null, { changeId: 'chg-1', teamId: 'team-cab', note: 'x', reopenAll: true }, { ...(admin as object), userId: undefined } as never))
-    expect(err.message).toBe('Rejection failed')
+    transition.mockResolvedValue(refused('The workflow refused the transition'))
+    const err = await caught(rejectChangeApproval(null, { changeId: 'chg-1', teamId: 'team-cab', note: 'x', reopenAll: true }, admin))
+    expect(err.message).toBe('The workflow refused the transition')
     expect(err.extensions['i18n']).toEqual({ key: 'errors.approval.rejectFailed' })
   })
 })

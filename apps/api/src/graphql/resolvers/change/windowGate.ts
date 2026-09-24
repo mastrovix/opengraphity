@@ -244,33 +244,3 @@ export async function automaticTransitionAllowed(
   return false
 }
 
-/**
- * Come sopra, ma LANCIA invece di rispondere `false`.
- *
- * Serve all'esecutore delle azioni (`lib/actionExecutor.ts`, azione
- * `transition_workflow`): la cosa mal configurata e la REGOLA, non l'azione di
- * un operatore, e in quel file un'azione che non riesce e gia un errore che
- * finisce nel risultato della regola (`matched + error`) e nei log. Fermarla
- * in silenzio la farebbe risultare eseguita, che e il difetto B-18 che quel
- * file ha appena finito di correggere per il caso gemello.
- */
-export async function assertAutomaticTransitionAllowed(
-  session: Session, input: ChangeGateInput, path: GatePath,
-): Promise<void> {
-  if (await automaticTransitionAllowed(session, input, path)) return
-  const outcome = await changeGateOutcome(session, input)
-  if (outcome.kind === 'needs_assessments') {
-    throw new Error(
-      `Change "${input.changeId}" (type "${input.changeType}") cannot move from "${input.currentStep}" to `
-      + `"${input.toStep}": its assessment tasks or deploy plan are not complete yet. Remove this action from the `
-      + `rule, or let it run only after the assessment.`,
-    )
-  }
-  throw new Error(
-    `Change "${input.changeId}" (type "${input.changeType}") cannot move from "${input.currentStep}" to `
-    + `"${input.toStep}": it would enter the release window without its approvals being satisfied. `
-    + `If this move must be automatic, add "${input.changeType}" to the pre-approved types `
-    + `(Settings -> Domain matrices); otherwise remove this action from the rule.`,
-  )
-}
-

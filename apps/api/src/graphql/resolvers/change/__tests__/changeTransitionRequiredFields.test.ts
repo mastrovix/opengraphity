@@ -27,6 +27,19 @@ vi.mock('../../ci-utils.js', () => ({
 vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: { transition: vi.fn(async () => ({ success: true })), getAvailableTransitions: vi.fn(async () => []) },
 }))
+// The pipeline of the transitions (wave 7 · B1) is real here: the required
+// fields are one of its guards, on the change as it is stored.
+vi.mock('@opengraphity/neo4j', () => ({
+  runQueryOne: vi.fn(async () => ({
+    entityType: 'change', entityId: 'chg-1', currentStep: 'valutazione',
+    props: { id: 'chg-1', change_type: 'normal', title: 'Aggiornamento firmware', planned_start: null },
+    assignedTo: null, assignedTeam: null, refusalNoted: null,
+  })),
+  runQuery: vi.fn(async () => []),
+  getSession: vi.fn(() => session),
+}))
+vi.mock('../../../../lib/stepMetadataPreflight.js', () => ({ preflightStepMetadata: vi.fn(async () => {}) }))
+vi.mock('../../../../lib/onEnterFields.js', () => ({ applyOnEnterFields: vi.fn(async () => {}) }))
 vi.mock('../queries.js', () => ({ change: vi.fn(async () => ({ id: 'chg-1' })) }))
 vi.mock('../autoTransitions.js', () => ({
   evaluateAutoTransitions: vi.fn().mockResolvedValue(undefined),

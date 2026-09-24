@@ -35,6 +35,7 @@ vi.stubGlobal('fetch', fetchMock)
 
 process.env['LOG_LEVEL'] = 'silent'
 const { runAction, evaluateConditions } = await import('../actions.js')
+const { registerStepActionHandlers, clearStepActionHandlers } = await import('../stepActionHandlers.js')
 const { publish, UnsafeUrlError } = await import('@opengraphity/events')
 const publishMock = vi.mocked(publish)
 
@@ -310,67 +311,98 @@ describe('schedule_job / cancel_job ritirate', () => {
   })
 })
 
-// ── Entity callbacks ─────────────────────────────────────────────────────────
+// ── The graph-writing actions: the registered handlers (wave 7 · B1) ───────
+
+/**
+ * The fake handlers of the process, registered like the API does at start.
+ * `actor` is always the tenant of the instance, the user of the context and
+ * the step being entered; `entity` is the instance's entity.
+ */
+function registerHandlers() {
+  const h = {
+    createEntity:          vi.fn(async () => 'new-1'),
+    assignTo:              vi.fn(async () => {}),
+    updateField:           vi.fn(async () => {}),
+    createApprovalRequest: vi.fn(async () => 'apr-1'),
+    publishEvent:          vi.fn(async () => {}),
+  }
+  registerStepActionHandlers(h)
+  return h
+}
+const ACTOR  = { tenantId: 't1', userId: 'user-1', stepName: 'in_progress' }
+const ENTITY = { id: 'inc-1', type: 'incident' }
+
+afterEach(() => { clearStepActionHandlers() })
+
+describe('the graph-writing actions need the registered handlers', () => {
+  it('without handlers in the process each of them fails, naming itself (it must not look done)', async () => {
+    for (const [type, params] of [
+      ['create_entity', { entity_type: 'problem' }], ['assign_to', { target_type: 'team', target_id: 'team-1' }],
+      ['update_field', { field: 'severity', value: 'low' }], ['create_approval_request', { title_template: 'x' }],
+    ] as const) {
+      await expect(runAction(action(type, params), instance, ctx()), type)
+        .rejects.toThrow(`${type}: nobody registered the step action handlers in this process (registerStepActionHandlers)`)
+    }
+  })
+
+  it('a POOR context — no entity data, as the escalation and the automatic paths had — still assigns: the path no longer matters', async () => {
+    const h = registerHandlers()
+    await runAction(action('assign_to', { target_type: 'team', target_id: 'team-net' }), instance, { userId: 'system', entityData: {} })
+    expect(h.assignTo).toHaveBeenCalledWith({ ...ACTOR, userId: 'system' }, ENTITY, 'team', 'team-net')
+  })
+})
 
 describe('create_entity', () => {
   const params = { entity_type: 'problem', title_template: 'Problem from {incident.title}', link_to_current: true, copy_fields: ['severity', 'category', 'nope'] }
 
-  it('without the createEntity callback → error (the derived entity would silently not exist)', async () => {
-    await expect(runAction(action('create_entity', params), instance, ctx())).rejects.toThrow('create_entity: createEntity callback not provided')
-  })
-
-  it('unsupported entity_type → error, callback not called', async () => {
-    const createEntity = vi.fn(async () => 'x')
-    await expect(runAction(action('create_entity', { ...params, entity_type: 'task' }), instance, ctx({ createEntity })))
+  it('unsupported entity_type → error, handler not called', async () => {
+    const h = registerHandlers()
+    await expect(runAction(action('create_entity', { ...params, entity_type: 'task' }), instance, ctx()))
       .rejects.toThrow('create_entity: unsupported entity_type "task"')
-    expect(createEntity).not.toHaveBeenCalled()
+    expect(h.createEntity).not.toHaveBeenCalled()
   })
 
   // WA-2: l'evento di creazione lo pubblica il servizio che crea il ticket, non l'azione (era duplicato).
   it('creates with resolved title, parent link, copied fields; the creation event is left to the creator', async () => {
-    const createEntity = vi.fn(async () => 'prb-9')
-    const publishEvent = vi.fn(async () => {})
-    await runAction(action('create_entity', params), instance, ctx({ createEntity, publishEvent }))
-    expect(createEntity).toHaveBeenCalledWith('problem', {
+    const h = registerHandlers()
+    await runAction(action('create_entity', params), instance, ctx())
+    expect(h.createEntity).toHaveBeenCalledWith(ACTOR, 'problem', {
       title: 'Problem from DB down', tenant_id: 't1', parent_id: 'inc-1', parent_type: 'incident', severity: 'critical', category: 'database',
-    })
-    expect(publishEvent).not.toHaveBeenCalled()
+    }, ENTITY)
+    expect(h.publishEvent).not.toHaveBeenCalled()
   })
 
-  it('link_to_current=false → no parent fields; publishEvent optional', async () => {
-    const createEntity = vi.fn(async () => 'chg-1')
-    await runAction(action('create_entity', { entity_type: 'change', title_template: '{title}', link_to_current: false }), instance, ctx({ createEntity }))
-    expect(createEntity).toHaveBeenCalledWith('change', { title: 'DB down', tenant_id: 't1' })
+  it('link_to_current=false → no parent fields', async () => {
+    const h = registerHandlers()
+    await runAction(action('create_entity', { entity_type: 'change', title_template: '{title}', link_to_current: false }), instance, ctx())
+    expect(h.createEntity).toHaveBeenCalledWith(ACTOR, 'change', { title: 'DB down', tenant_id: 't1' }, ENTITY)
   })
 })
 
 describe('assign_to', () => {
-  it('without callback → error; without any target → error, nothing assigned', async () => {
-    await expect(runAction(action('assign_to', { target_type: 'team', target_id: 'team-1' }), instance, ctx())).rejects.toThrow('assign_to: assignTo callback not provided')
-    const assignTo = vi.fn(async () => {})
-    await expect(runAction(action('assign_to', { target_type: 'team' }), instance, ctx({ assignTo }))).rejects.toThrow('assign_to: no target_id or target_name resolved')
-    expect(assignTo).not.toHaveBeenCalled()
+  it('without any target → error, nothing assigned', async () => {
+    const h = registerHandlers()
+    await expect(runAction(action('assign_to', { target_type: 'team' }), instance, ctx())).rejects.toThrow('assign_to: no target_id or target_name resolved')
+    expect(h.assignTo).not.toHaveBeenCalled()
   })
 
   it('target_id wins; target_name is a template; publishes <entityType>.assigned', async () => {
-    const assignTo = vi.fn(async () => {})
-    const publishEvent = vi.fn(async () => {})
-    await runAction(action('assign_to', { target_type: 'team', target_id: 'team-1' }), instance, ctx({ assignTo, publishEvent }))
-    expect(assignTo).toHaveBeenCalledWith('inc-1', 'team', 'team-1')
-    expect(publishEvent).toHaveBeenCalledWith('incident.assigned', { entity_id: 'inc-1', target_type: 'team', target_id: 'team-1', assigned_by: 'user-1' })
+    const h = registerHandlers()
+    await runAction(action('assign_to', { target_type: 'team', target_id: 'team-1' }), instance, ctx())
+    expect(h.assignTo).toHaveBeenCalledWith(ACTOR, ENTITY, 'team', 'team-1')
+    expect(h.publishEvent).toHaveBeenCalledWith(ACTOR, 'incident.assigned', { entity_id: 'inc-1', target_type: 'team', target_id: 'team-1', assigned_by: 'user-1' })
 
-    await runAction(action('assign_to', { target_type: 'team', target_name: 'team-{incident.category}' }), instance, ctx({ assignTo }))
-    expect(assignTo).toHaveBeenLastCalledWith('inc-1', 'team', 'team-database')
+    await runAction(action('assign_to', { target_type: 'team', target_name: 'team-{incident.category}' }), instance, ctx())
+    expect(h.assignTo).toHaveBeenLastCalledWith(ACTOR, ENTITY, 'team', 'team-database')
   })
 })
 
 describe('update_field', () => {
-  it('without callback → error; a reserved field → error with the reason, the callback is not called', async () => {
-    await expect(runAction(action('update_field', { field: 'severity', value: 'low' }), instance, ctx())).rejects.toThrow('update_field: updateField callback not provided')
-    const updateField = vi.fn(async () => {})
-    await expect(runAction(action('update_field', { field: 'tenant_id', value: 'evil' }), instance, ctx({ updateField })))
+  it('a reserved field → error with the reason, the handler is not called', async () => {
+    const h = registerHandlers()
+    await expect(runAction(action('update_field', { field: 'tenant_id', value: 'evil' }), instance, ctx()))
       .rejects.toThrow('The field "tenant_id" identifies or traces the ticket and cannot be set by a step.')
-    expect(updateField).not.toHaveBeenCalled()
+    expect(h.updateField).not.toHaveBeenCalled()
   })
 
   // Ondata 8 · B-9: `status` era scrivibile, e il pannello del disegnatore
@@ -378,79 +410,73 @@ describe('update_field', () => {
   // scavalca il motore: `entity.status` e `WorkflowInstance.current_step`
   // divergono, il ticket si mostra chiuso mentre il processo è aperto.
   it('status (e gli altri campi del motore) non sono scrivibili: il rifiuto indica la transizione', async () => {
-    const updateField = vi.fn(async () => {})
+    const h = registerHandlers()
     for (const field of ['status', 'workflow_step', 'workflow_instance_id', 'resolved_at']) {
-      const err = await runAction(action('update_field', { field, value: 'closed' }), instance, ctx({ updateField }))
+      const err = await runAction(action('update_field', { field, value: 'closed' }), instance, ctx())
         .then(() => null, (e: unknown) => e as Error)
       expect(err?.message, field).toContain(`The field "${field}" is written by the workflow engine`)
       expect(err?.message, field).toContain('use a transition')
     }
-    expect(updateField).not.toHaveBeenCalled()
+    expect(h.updateField).not.toHaveBeenCalled()
   })
 
-  // Ondata 3: «ogni campo non riservato». Un campo del cliente arriva al callback,
+  // Ondata 3: «ogni campo non riservato». Un campo del cliente arriva al gestore,
   // che è chi conosce il metamodello e il vocabolario.
-  it('a customer field passes to the callback', async () => {
-    const updateField = vi.fn(async () => {})
-    await runAction(action('update_field', { field: 'outcome', value: 'successful' }), instance, ctx({ updateField }))
-    expect(updateField).toHaveBeenCalledWith('inc-1', 'outcome', 'successful')
+  it('a customer field passes to the handler', async () => {
+    const h = registerHandlers()
+    await runAction(action('update_field', { field: 'outcome', value: 'successful' }), instance, ctx())
+    expect(h.updateField).toHaveBeenCalledWith(ACTOR, ENTITY, 'outcome', 'successful')
   })
 
   it('string values are templates, non-strings pass through; publishes <entityType>.updated', async () => {
-    const updateField = vi.fn(async () => {})
-    const publishEvent = vi.fn(async () => {})
-    await runAction(action('update_field', { field: 'description', value: 'Escalated: {title}' }), instance, ctx({ updateField, publishEvent }))
-    expect(updateField).toHaveBeenCalledWith('inc-1', 'description', 'Escalated: DB down')
-    expect(publishEvent).toHaveBeenCalledWith('incident.updated', { entity_id: 'inc-1', field: 'description', value: 'Escalated: DB down', updated_by: 'user-1' })
+    const h = registerHandlers()
+    await runAction(action('update_field', { field: 'description', value: 'Escalated: {title}' }), instance, ctx())
+    expect(h.updateField).toHaveBeenCalledWith(ACTOR, ENTITY, 'description', 'Escalated: DB down')
+    expect(h.publishEvent).toHaveBeenCalledWith(ACTOR, 'incident.updated', { entity_id: 'inc-1', field: 'description', value: 'Escalated: DB down', updated_by: 'user-1' })
 
-    await runAction(action('update_field', { field: 'priority', value: 1 }), instance, ctx({ updateField }))
-    expect(updateField).toHaveBeenLastCalledWith('inc-1', 'priority', 1)
+    await runAction(action('update_field', { field: 'priority', value: 1 }), instance, ctx())
+    expect(h.updateField).toHaveBeenLastCalledWith(ACTOR, ENTITY, 'priority', 1)
   })
 })
 
 describe('create_approval_request', () => {
-  it('without callback → error', async () => {
-    await expect(runAction(action('create_approval_request', { title_template: 'x' }), instance, ctx()))
-      .rejects.toThrow('create_approval_request: callback not provided')
-  })
-
-  it('passes entity, resolved title, approver role and type', async () => {
-    const createApprovalRequest = vi.fn(async () => 'apr-1')
+  it('passes the entity, the resolved title, the approver role and type', async () => {
+    const h = registerHandlers()
     await runAction(
       action('create_approval_request', { title_template: 'Approve {incident.title}', approver_role: 'APPROVER', approval_type: 'all' }),
-      instance, ctx({ createApprovalRequest }),
+      instance, ctx(),
     )
-    expect(createApprovalRequest).toHaveBeenCalledWith({
-      entityId: 'inc-1', entityType: 'incident', title: 'Approve DB down', approverRole: 'APPROVER', approvalType: 'all',
+    expect(h.createApprovalRequest).toHaveBeenCalledWith(ACTOR, ENTITY, {
+      title: 'Approve DB down', approverRole: 'APPROVER', approvalType: 'all',
       // Moduli del catalogo, ondata 3: senza persone né squadre indicate sono
       // liste vuote, e vale il ruolo — come prima.
       approverUserIds: [], approverTeamIds: [],
     })
   })
 
-  it('persone e squadre indicate arrivano al chiamante, in entrambe le forme (lista o stringa)', async () => {
-    const createApprovalRequest = vi.fn(async () => 'apr-1')
+  it('persone e squadre indicate arrivano al gestore, in entrambe le forme (lista o stringa)', async () => {
+    const h = registerHandlers()
     // Il disegnatore scrive una STRINGA separata da virgola: il suo editor tiene
     // i parametri come testo e non può produrre un array.
     await runAction(
       action('create_approval_request', {
         title_template: 'X', approver_user_ids: 'u-1, u-2', approver_team_ids: 'team-9',
       }),
-      instance, ctx({ createApprovalRequest }),
+      instance, ctx(),
     )
-    expect(createApprovalRequest).toHaveBeenCalledWith(expect.objectContaining({
+    expect(h.createApprovalRequest).toHaveBeenCalledWith(ACTOR, ENTITY, expect.objectContaining({
       approverUserIds: ['u-1', 'u-2'], approverTeamIds: ['team-9'],
     }))
 
     // L'API scrive una LISTA: stesso risultato.
-    createApprovalRequest.mockClear()
+    h.createApprovalRequest.mockClear()
     await runAction(
       action('create_approval_request', {
         title_template: 'X', approver_user_ids: ['u-3'], approver_team_ids: [],
       }),
-      instance, ctx({ createApprovalRequest }),
+      instance, ctx(),
     )
-    expect(createApprovalRequest).toHaveBeenCalledWith(expect.objectContaining({
+    expect(h.createApprovalRequest).toHaveBeenCalledWith(ACTOR, ENTITY, expect.objectContaining({
       approverUserIds: ['u-3'], approverTeamIds: [],
     }))
   })
@@ -511,18 +537,18 @@ describe('fallbacks: parameters the designer may have left empty', () => {
   })
 
   it('create_entity with no title_template creates with an empty title, and change_type is passed only when configured', async () => {
-    const createEntity = vi.fn(async () => 'chg-1')
-    await runAction(action('create_entity', { entity_type: 'change', change_type: 'standard' }), instance, ctx({ createEntity }))
-    expect(createEntity).toHaveBeenCalledWith('change', expect.objectContaining({ title: '', change_type: 'standard' }))
+    const { createEntity } = registerHandlers()
+    await runAction(action('create_entity', { entity_type: 'change', change_type: 'standard' }), instance, ctx())
+    expect(createEntity).toHaveBeenCalledWith(ACTOR, 'change', expect.objectContaining({ title: '', change_type: 'standard' }), ENTITY)
 
     createEntity.mockClear()
-    await runAction(action('create_entity', { entity_type: 'problem' }), instance, ctx({ createEntity }))
-    expect(createEntity.mock.calls[0]![1]).not.toHaveProperty('change_type')
+    await runAction(action('create_entity', { entity_type: 'problem' }), instance, ctx())
+    expect(createEntity.mock.calls[0]![2]).not.toHaveProperty('change_type')
   })
 
   it('create_approval_request with no title_template passes an empty title to the caller', async () => {
-    const createApprovalRequest = vi.fn(async () => 'ap-1')
-    await runAction(action('create_approval_request', { approver_role: 'APPROVER' }), instance, ctx({ createApprovalRequest }))
-    expect(createApprovalRequest).toHaveBeenCalledWith(expect.objectContaining({ title: '' }))
+    const { createApprovalRequest } = registerHandlers()
+    await runAction(action('create_approval_request', { approver_role: 'APPROVER' }), instance, ctx())
+    expect(createApprovalRequest).toHaveBeenCalledWith(ACTOR, ENTITY, expect.objectContaining({ title: '' }))
   })
 })

@@ -1,15 +1,15 @@
 import type { Job, Queue } from 'bullmq'
 import type { TenantWorkerPool } from '@opengraphity/events'
 import { getSession, runQuery } from '@opengraphity/neo4j'
-import { WAIT_EXIT_TRIGGERS, workflowEngine } from '@opengraphity/workflow'
+import { WAIT_EXIT_TRIGGERS } from '@opengraphity/workflow'
 import { logger } from '../lib/logger.js'
 import { createTenantWorkers, getTenantQueue } from '../lib/bullmq.js'
 import { evaluateConditions, parseConditions } from '../lib/conditionEvaluator.js'
 import { executeActions, parseActions, type ActionExecutionContext } from '../lib/actionExecutor.js'
 import { assertSafeOutboundUrl, loggableUrl } from '../lib/safeUrl.js'
-import { automaticTransitionAllowed } from '../graphql/resolvers/change/windowGate.js'
+import { transitionTicket } from '../services/ticketTransition.js'
 import { loadAutomationEntity } from '../lib/automationEntity.js'
-import { runStepDeadlineSweep } from '../lib/stepDeadlines.js'
+import { DEADLINE_REASON, runStepDeadlineSweep } from '../lib/stepDeadlines.js'
 import { runOLASweep } from '../lib/olaSweep.js'
 import { runSLASweep } from '@opengraphity/sla'
 import { AUTOMATION_ACTOR, type AutomationEntityType } from '@opengraphity/types'
@@ -300,14 +300,10 @@ async function processNotificationJob(job: Job): Promise<void> {
           // su un arco che esce da un'attesa, ed era inerte: nessun consumatore
           // lo percorreva (revisione · B-M-4). Adesso conclude l'attesa come
           // "automatic" — e' la stessa cosa, detta meglio.
-          // Se l'istanza e di una change, servono id e tipo per il varco
-          // della finestra di rilascio (terza revisione * C1).
-          OPTIONAL MATCH (c:Change {tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi)
           OPTIONAL MATCH (cur)-[tr:TRANSITIONS_TO]->(next:WorkflowStep)
             WHERE tr.trigger IN $exitTriggers
-          WITH cur, c, next ORDER BY coalesce(next.step_order, 999), next.name
-          RETURN cur.name AS currentStep, collect(next.name)[0] AS toStep,
-                 c.id AS changeId, c.change_type AS changeType
+          WITH cur, next ORDER BY coalesce(next.step_order, 999), next.name
+          RETURN cur.name AS currentStep, collect(next.name)[0] AS toStep
         `, { instanceId, tenantId, exitTriggers: [...WAIT_EXIT_TRIGGERS] }))
         if (fresh.records.length === 0) {
           throw new Error(`timer_wait: instance ${instanceId} of tenant ${tenantId} no longer exists or has no current step — the timer cannot complete`)
@@ -323,96 +319,47 @@ async function processNotificationJob(job: Job): Promise<void> {
         if (scheduledToStep && scheduledToStep !== toStep) {
           logger.warn({ instanceId, scheduledToStep, toStep, currentStep }, '[notification-jobs] timer_wait: il passo di arrivo è cambiato dopo la partenza del timer — si usa quello di adesso')
         }
-        // IL VARCO, anche a orologeria. L'ondata 2 aveva ALLARGATO questo
-        // match da `automatic` a `automatic|timer` senza portarsi dietro il
-        // varco: un passo `timer_wait` in un workflow delle change — ora
-        // aggiungibile dall'interfaccia — con un arco `timer` verso il passo
-        // programmato era lo stesso scavalcamento, differito. Se il varco
-        // rifiuta, il job finisce senza transire: la change resta nell'attesa
-        // e il rifiuto e nel log e nel contatore. Rilanciare non servirebbe a
-        // niente — le approvazioni non compaiono ritentando.
-        const changeId   = fresh.records[0]!.get('changeId') as string | null
-        const changeType = fresh.records[0]!.get('changeType') as string | null
-        if (changeId) {
-          const allowed = await automaticTransitionAllowed(session, {
-            tenantId, changeId, changeType: changeType ?? '', currentStep, toStep,
-          }, 'timer_job')
-          if (!allowed) {
-            /**
-             * Un'attesa RIFIUTATA dal varco lascia una traccia visibile
-             * (revisione totale · C-30): il job risultava completato, la
-             * change restava nell'attesa per sempre e solo un log e un
-             * contatore lo dicevano. Ora l'esito si scrive sull'esecuzione del
-             * passo, esattamente come fanno le scadenze, quindi la
-             * diagnostica lo elenca fra i ticket bloccati e l'admin lo vede.
-             */
-            await runQuery(session, `
-              MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})-[:STEP_HISTORY]->(ex:WorkflowStepExecution)
-              WHERE ex.exited_at IS NULL
-              SET ex.deadline_outcome    = 'refused',
-                  ex.deadline_reason     = 'approval_gate',
-                  ex.deadline_detail     = $detail,
-                  ex.deadline_to_step    = $toStep,
-                  ex.deadline_checked_at = $now
-            `, {
-              instanceId, tenantId, toStep,
-              // Il dettaglio finisce sul nodo e lo legge la diagnostica: inglese, come tutti i testi dell'API.
-              detail: `timer_wait: the approval gate does not allow the automatic transition to "${toStep}"`,
-              now: new Date().toISOString(),
-            })
-            logger.warn({ instanceId, currentStep, toStep, changeId },
-              '[notification-jobs] timer_wait rifiutato dal varco delle approvazioni: la change resta nell-attesa (visibile nella diagnostica)')
-            break
-          }
-        }
-        const result = await workflowEngine.transition(
-          session,
-          { instanceId, toStepName: toStep, triggeredBy: 'timer', triggerType: 'automatic', tenantId },
-          { userId: 'system', entityData: {} },
-        )
-        if (!result.success) {
+        // The pipeline of the transitions (wave 7 · B1), with the guards of every
+        // path. IL VARCO, anche a orologeria, is one of them: l'ondata 2 aveva
+        // ALLARGATO questo match da `automatic` a `automatic|timer` senza
+        // portarsi dietro il varco, e un arco `timer` verso il passo
+        // programmato di una change era lo stesso scavalcamento, differito.
+        const outcome = await transitionTicket(session, {
+          tenantId, instanceId, toStep, actor: { kind: 'system', path: 'timer', userId: 'timer' }, triggerType: 'automatic',
+        })
+        if (!outcome.moved) {
+          const { refusal } = outcome
           /**
-           * RIFIUTATA DA UNA GUARDIA ≠ ANDATA STORTA (rimedio, 20 set 2026).
-           *
-           * Qui era peggio che altrove: rilanciando, BullMQ ritentava, i
-           * tentativi si esaurivano e **il timer non veniva più riarmato**,
-           * quindi il ticket restava nel passo di attesa per sempre senza un
-           * segnale. Una guardia però non dipende dal tempo che passa ma da
-           * qualcuno che chiuda un compito: ritentare subito è inutile,
-           * riprovare PIÙ TARDI è esattamente la cosa giusta.
-           *
-           * Quindi si riarma il timer con lo stesso ritardo e si dice perché.
+           * RIFIUTATA DA UNA GUARDIA ≠ ANDATA STORTA (rimedio, 20 set 2026;
+           * revisione totale · C-30). Rilanciando, BullMQ ritentava, i
+           * tentativi si esaurivano e il ticket restava nel passo di attesa
+           * per sempre senza un segnale: una guardia non dipende dal tempo che
+           * passa ma da qualcuno che chiuda un compito o dia un'approvazione.
+           * L'esito si scrive sull'esecuzione del passo, come fanno le
+           * scadenze, così la diagnostica elenca il ticket fra quelli
+           * bloccati; the pipeline notes it on the ticket. Only an error that
+           * may be transient is thrown, for the queue to retry.
            */
-          if (result.refusedByCondition) {
-            /**
-             * Stessa forma del varco delle approvazioni qui sopra (C-30):
-             * l'esito si scrive sull'esecuzione del passo, così la
-             * diagnostica elenca il ticket fra quelli bloccati e
-             * l'amministratore lo vede. Prima si rilanciava: BullMQ
-             * ritentava, i tentativi si esaurivano, il timer non veniva più
-             * riarmato e il ticket restava nell'attesa per sempre senza un
-             * segnale — che è il difetto che C-30 aveva chiuso per il varco
-             * e che la guardia nuova riapriva da un'altra porta.
-             */
+          if (refusal.final) {
             await runQuery(session, `
               MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})-[:STEP_HISTORY]->(ex:WorkflowStepExecution)
               WHERE ex.exited_at IS NULL
               SET ex.deadline_outcome    = 'refused',
-                  ex.deadline_reason     = 'transition_condition',
+                  ex.deadline_reason     = $reason,
                   ex.deadline_detail     = $detail,
                   ex.deadline_to_step    = $toStep,
                   ex.deadline_checked_at = $now
             `, {
-              instanceId, tenantId, toStep,
-              detail: `timer_wait: the transition guard "${result.refusedByCondition}" refused the automatic transition to "${toStep}" (${result.error ?? ''})`,
+              instanceId, tenantId, toStep, reason: DEADLINE_REASON[refusal.guard],
+              // Il dettaglio finisce sul nodo e lo legge la diagnostica: inglese, come tutti i testi dell'API.
+              detail: `timer_wait: the automatic transition to "${toStep}" was refused (${refusal.guard}): ${refusal.message}`,
               now: new Date().toISOString(),
             })
-            logger.warn({ instanceId, toStep, condition: result.refusedByCondition, error: result.error },
-              '[notification-jobs] timer_wait rifiutato da una guardia: il ticket resta nell-attesa (visibile nella diagnostica)')
+            logger.warn({ instanceId, toStep, guard: refusal.guard, reason: refusal.message },
+              '[notification-jobs] timer_wait refused: the ticket stays in the wait (shown in the diagnostics)')
             break
           }
-          logger.error({ instanceId, toStep, error: result.error }, '[notification-jobs] timer_wait transition failed')
-          throw new Error(`timer_wait transition failed for instance ${instanceId} → ${toStep}: ${result.error ?? 'unknown'}`)
+          throw new Error(`timer_wait transition failed for instance ${instanceId} → ${toStep}: ${refusal.message}`)
         }
         logger.info({ instanceId, toStep }, '[notification-jobs] timer_wait transition completed')
       } finally {

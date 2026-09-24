@@ -10,7 +10,7 @@
  *        all_deployments_complete → …HAS_VALIDATION… + …HAS_DEPLOYMENT…
  *        all_reviews_confirmed    → …HAS_REVIEW…
  *      (tutte ritornano un conteggio `pending`: 0 = condizione soddisfatta)
- *   4. workflowEngine.transition + afterEnterStep se la condizione passa.
+ *   4. the pipeline of the transitions (wave 7 · B1) + afterEnterStep se la condizione passa.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GraphQLContext } from '../../../../context.js'
@@ -27,9 +27,10 @@ vi.mock('@opengraphity/workflow', () => ({
   // `conditions.js` registra anche chi scrive i compiti (20 set 2026): senza
   // questa, importarlo fa fallire tutta la suite prima del primo test.
   registerTaskCreator: vi.fn(),
+  // And the step action handlers (wave 7 · B1).
+  registerStepActionHandlers: vi.fn(),
   workflowEngine: {
     createInstance:    vi.fn().mockResolvedValue({ id: 'wi-1' }),
-    transition:        vi.fn().mockResolvedValue({ success: true }),
     registerCondition: vi.fn(),
     onStepEntered:     vi.fn(),
     hasCondition:      vi.fn(),
@@ -69,11 +70,13 @@ vi.mock('../../../../jobs/eventCorrelateWorker.js', () => ({
 }))
 // Servizi monitorati (revisione 2 · D6.1): ingresso e uscita dalla finestra
 // accodano la valutazione delle mappe che includono i CI della change.
-// Il varco della finestra di rilascio ha i suoi test (`windowGate.test.ts`):
-// qui si prova il CAMMINATORE, quindi il varco e un doppio. Il test in fondo
-// («il varco rifiuta») prova che il camminatore lo ascolta.
-const automaticTransitionAllowed = vi.fn<() => Promise<boolean>>()
-vi.mock('../windowGate.js', () => ({ automaticTransitionAllowed }))
+// The pipeline of the transitions (wave 7 · B1) moves the tickets, with the
+// release window among its guards: it has its own tests
+// (services/__tests__/ticketTransition.test.ts). Here the WALKER is tested,
+// so the pipeline is a double; the tests at the bottom («il varco rifiuta»)
+// prove that the walker listens to its refusals.
+const transitionTicket = vi.fn()
+vi.mock('../../../../services/ticketTransition.js', () => ({ transitionTicket: (...a: unknown[]) => transitionTicket(...a) }))
 
 vi.mock('../../../../services/serviceImpact/sync.js', () => ({
   notifyChangeWindowChanged: vi.fn().mockResolvedValue(1),
@@ -82,7 +85,6 @@ vi.mock('../../../../services/serviceImpact/sync.js', () => ({
 // ── Import after mocks ────────────────────────────────────────────────────────
 
 const { evaluateAutoTransitions } = await import('../autoTransitions.js')
-const { workflowEngine } = await import('@opengraphity/workflow')
 const { runQuery, runQueryOne } = await import('../../ci-utils.js')
 const { logger } = await import('../../../../lib/logger.js')
 const { reevaluateSuppressedEvents } = await import('../../../../services/eventCorrelation.js')
@@ -108,7 +110,6 @@ function mockDb(opts: { transitions: Array<{ toStep: string; condition: string |
     return { pending: opts.pending ?? 0 } as never
   })
   let transitionsCall = 0
-  automaticTransitionAllowed.mockResolvedValue(true)
   vi.mocked(runQuery).mockImplementation(async () => {
     transitionsCall += 1
     return (transitionsCall === 1 ? opts.transitions : []) as never
@@ -123,7 +124,7 @@ const conditionQueries = () =>
 describe('evaluateAutoTransitions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(workflowEngine.transition).mockResolvedValue({ success: true } as never)
+    transitionTicket.mockResolvedValue({ moved: true })
   })
 
   describe('all_assessments_complete', () => {
@@ -133,13 +134,11 @@ describe('evaluateAutoTransitions', () => {
 
       await evaluateAutoTransitions(mockSession, 'chg-1', ctx, afterEnterStep)
 
-      expect(workflowEngine.transition).toHaveBeenCalledOnce()
-      expect(workflowEngine.transition).toHaveBeenCalledWith(
-        mockSession,
-        // CONTRATTO RINEGOZIATO (revisione totale · E-31): tenant obbligatorio sul motore.
-        { instanceId: 'wi-1', toStepName: 'planning', triggeredBy: 'system', triggerType: 'automatic', tenantId: 'tenant-1' },
-        { userId: 'user-1', entityData: { id: 'chg-1', code: 'CHG00000001' } },
-      )
+      expect(transitionTicket).toHaveBeenCalledOnce()
+      expect(transitionTicket).toHaveBeenCalledWith(mockSession, {
+        tenantId: 'tenant-1', instanceId: 'wi-1', toStep: 'planning',
+        actor: { kind: 'system', path: 'change_auto' }, triggerType: 'automatic',
+      })
       expect(afterEnterStep).toHaveBeenCalledWith(mockSession, 'chg-1', 'tenant-1', 'planning')
       // la condition interroga assessment + deploy plan
       expect(conditionQueries()[0]).toContain('HAS_ASSESSMENT')
@@ -151,7 +150,7 @@ describe('evaluateAutoTransitions', () => {
 
       await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
 
-      expect(workflowEngine.transition).not.toHaveBeenCalled()
+      expect(transitionTicket).not.toHaveBeenCalled()
     })
   })
 
@@ -161,7 +160,7 @@ describe('evaluateAutoTransitions', () => {
 
       await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
 
-      expect(workflowEngine.transition).toHaveBeenCalledOnce()
+      expect(transitionTicket).toHaveBeenCalledOnce()
       const q = conditionQueries()[0]!
       expect(q).toContain('HAS_VALIDATION')
       expect(q).toContain('HAS_DEPLOYMENT')
@@ -176,7 +175,7 @@ describe('evaluateAutoTransitions', () => {
 
       await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
 
-      expect(workflowEngine.transition).not.toHaveBeenCalled()
+      expect(transitionTicket).not.toHaveBeenCalled()
     })
   })
 
@@ -186,7 +185,7 @@ describe('evaluateAutoTransitions', () => {
 
       await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
 
-      expect(workflowEngine.transition).toHaveBeenCalledOnce()
+      expect(transitionTicket).toHaveBeenCalledOnce()
       const q = conditionQueries()[0]!
       expect(q).toContain('HAS_REVIEW')
       const params = vi.mocked(runQueryOne).mock.calls
@@ -199,7 +198,7 @@ describe('evaluateAutoTransitions', () => {
 
       await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
 
-      expect(workflowEngine.transition).not.toHaveBeenCalled()
+      expect(transitionTicket).not.toHaveBeenCalled()
     })
   })
 
@@ -208,7 +207,7 @@ describe('evaluateAutoTransitions', () => {
 
     await expect(evaluateAutoTransitions(mockSession, 'chg-1', ctx)).rejects.toThrow(/sconosciuta/)
 
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
+    expect(transitionTicket).not.toHaveBeenCalled()
     expect(logger.error).toHaveBeenCalledOnce()
     const [meta] = vi.mocked(logger.error).mock.calls[0]! as [Record<string, unknown>, string]
     expect(meta['condition']).toBe('does_not_exist')
@@ -219,18 +218,18 @@ describe('evaluateAutoTransitions', () => {
 
     await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
 
-    expect(workflowEngine.transition).toHaveBeenCalledOnce()
+    expect(transitionTicket).toHaveBeenCalledOnce()
   })
 
-  it('workflowEngine.transition fallisce → logga e si ferma senza afterEnterStep', async () => {
+  it('a move the pipeline refuses (it logs and notes it) → the walk stops without afterEnterStep', async () => {
     mockDb({ transitions: [{ toStep: 'planning', condition: 'all_assessments_complete' }], pending: 0 })
-    vi.mocked(workflowEngine.transition).mockResolvedValue({ success: false, error: 'guard failed' } as never)
+    transitionTicket.mockResolvedValue({ moved: false, refusal: { guard: 'workflow', final: true, message: 'guard failed' } })
     const afterEnterStep = vi.fn()
 
     await expect(evaluateAutoTransitions(mockSession, 'chg-1', ctx, afterEnterStep)).resolves.toBeUndefined()
 
+    expect(transitionTicket).toHaveBeenCalledOnce()
     expect(afterEnterStep).not.toHaveBeenCalled()
-    expect(logger.error).toHaveBeenCalledOnce()
   })
 
   it('change senza WorkflowInstance → nessuna transition', async () => {
@@ -241,7 +240,7 @@ describe('evaluateAutoTransitions', () => {
 
     await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
 
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
+    expect(transitionTicket).not.toHaveBeenCalled()
     expect(enqueueChangeWindowReevaluation).not.toHaveBeenCalled()
   })
 
@@ -401,7 +400,7 @@ describe('sincronizzazione con problem e incident su workflow rinominati (A4-2/A
 
   beforeEach(async () => {
     vi.clearAllMocks()
-    vi.mocked(workflowEngine.transition).mockResolvedValue({ success: true } as never)
+    transitionTicket.mockResolvedValue({ moved: true })
     const { invalidateWorkflowCache } = await import('../../../../lib/workflowHelpers.js')
     invalidateWorkflowCache()
   })
@@ -409,31 +408,32 @@ describe('sincronizzazione con problem e incident su workflow rinominati (A4-2/A
   it('change nel passo di scopo implementation → il problem in «attesa_change» passa a «change_in_corso»', async () => {
     mockDb2('rilascio_notturno', { problemStep: 'attesa_change' })
     await evaluateAutoTransitions(session, 'chg-1', ctx)
-    expect(workflowEngine.transition).toHaveBeenCalledWith(
-      session, expect.objectContaining({ instanceId: 'pw-1', toStepName: 'change_in_corso' }), expect.anything())
+    // The problem follows its change, signed by who moved the change (wave 7 · B1).
+    expect(transitionTicket).toHaveBeenCalledWith(
+      session, expect.objectContaining({ instanceId: 'pw-1', toStep: 'change_in_corso', actor: { kind: 'system', path: 'change_follow', userId: 'user-1' } }))
   })
 
   it('change nel passo di categoria closed → problem risolto (categoria resolved) e incident risolto', async () => {
     mockDb2('archiviata', { problemStep: 'change_in_corso', incidentStep: 'lavorazione' })
     await evaluateAutoTransitions(session, 'chg-1', ctx)
-    const targets = vi.mocked(workflowEngine.transition).mock.calls.map((c) => (c[1] as { instanceId: string; toStepName: string }))
+    const targets = transitionTicket.mock.calls.map((c) => (c[1] as { instanceId: string; toStep: string }))
     expect(targets).toEqual(expect.arrayContaining([
-      expect.objectContaining({ instanceId: 'pw-1', toStepName: 'risolto' }),
-      expect.objectContaining({ instanceId: 'iw-1', toStepName: 'sistemato' }),
+      expect.objectContaining({ instanceId: 'pw-1', toStep: 'risolto' }),
+      expect.objectContaining({ instanceId: 'iw-1', toStep: 'sistemato' }),
     ]))
   })
 
   it('incident in un passo non lavorabile (categoria resolved) → nessun auto-resolve, e lo dice', async () => {
     mockDb2('archiviata', { incidentStep: 'sistemato' })
     await evaluateAutoTransitions(session, 'chg-1', ctx)
-    expect(vi.mocked(workflowEngine.transition).mock.calls.filter((c) => (c[1] as { instanceId: string }).instanceId === 'iw-1')).toHaveLength(0)
+    expect(transitionTicket.mock.calls.filter((c) => (c[1] as { instanceId: string }).instanceId === 'iw-1')).toHaveLength(0)
     expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({ incidentStep: 'sistemato' }), expect.stringContaining('nessun auto-resolve'))
   })
 
   it('change in un passo che non è né rilascio né chiusura → nessuna sincronizzazione', async () => {
     mockDb2('cab_settimanale', { problemStep: 'attesa_change', incidentStep: 'lavorazione' })
     await evaluateAutoTransitions(session, 'chg-1', ctx)
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
+    expect(transitionTicket).not.toHaveBeenCalled()
   })
 })
 
@@ -444,11 +444,11 @@ describe('il varco della finestra di rilascio (terza revisione * C1)', () => {
   // sbagliato.
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(workflowEngine.transition).mockResolvedValue({ success: true } as never)
+    transitionTicket.mockResolvedValue({ moved: true })
   })
 
   /** Lo scenario del difetto: un arco automatico senza condizione verso il passo programmato. */
-  const scenarioC1 = () => mockDb({ transitions: [{ toStep: 'rilascio_programmato', condition: null }] })
+  const scenarioC1 = (transitions = [{ toStep: 'rilascio_programmato', condition: null }]) => mockDb({ transitions })
 
   /**
    * Le transizioni della CHANGE, non quelle che `evaluateAutoTransitions` fa a
@@ -456,45 +456,40 @@ describe('il varco della finestra di rilascio (terza revisione * C1)', () => {
    * quelle partono comunque e non c'entrano col varco.
    */
   const transizioniDellaChange = () =>
-    vi.mocked(workflowEngine.transition).mock.calls
-      .filter((c) => (c[1] as { toStepName: string }).toStepName === 'rilascio_programmato')
+    transitionTicket.mock.calls.filter((c) => (c[1] as { instanceId: string }).instanceId === 'wi-1')
+  const refusedByTheWindow = { moved: false, refusal: { guard: 'change_window', final: true, message: 'needs approvals' } }
 
-  it('senza varco questo scenario FAREBBE la transizione (cosi era il difetto)', async () => {
-    // Questo test esiste per non lasciare vacui i due che seguono: dimostra che
-    // lo scenario arriva davvero a chiamare il motore quando il varco dice si.
+  it('the walker asks the pipeline, whose guards include the release window, for the arc it found', async () => {
     scenarioC1()
-    automaticTransitionAllowed.mockResolvedValue(true)
     await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
     expect(transizioniDellaChange()).toHaveLength(1)
-    expect(transizioniDellaChange()[0]![1]).toEqual(
-      // CONTRATTO RINEGOZIATO (revisione totale · E-31): tenant obbligatorio sul motore.
-      { instanceId: 'wi-1', toStepName: 'rilascio_programmato', triggeredBy: 'system', triggerType: 'automatic', tenantId: 'tenant-1' },
-    )
+    expect(transizioniDellaChange()[0]![1]).toEqual({
+      tenantId: 'tenant-1', instanceId: 'wi-1', toStep: 'rilascio_programmato',
+      actor: { kind: 'system', path: 'change_auto' }, triggerType: 'automatic',
+    })
   })
 
-  it('se il varco rifiuta, la transizione NON parte', async () => {
-    scenarioC1()
-    automaticTransitionAllowed.mockResolvedValue(false)
+  it('se il varco rifiuta, la change non entra: no afterEnterStep, and the next arc is tried', async () => {
+    scenarioC1([{ toStep: 'rilascio_programmato', condition: null }, { toStep: 'valutazione_bis', condition: null }])
+    transitionTicket.mockResolvedValueOnce(refusedByTheWindow).mockResolvedValue({ moved: true })
     const afterEnterStep = vi.fn()
 
     await evaluateAutoTransitions(mockSession, 'chg-1', ctx, afterEnterStep)
-    expect(transizioniDellaChange()).toEqual([])
-    expect(afterEnterStep).not.toHaveBeenCalled()
+    expect(transizioniDellaChange().map((c) => (c[1] as { toStep: string }).toStep)).toEqual(['rilascio_programmato', 'valutazione_bis'])
+    expect(afterEnterStep).toHaveBeenCalledTimes(1)
+    expect(afterEnterStep).toHaveBeenCalledWith(mockSession, 'chg-1', 'tenant-1', 'valutazione_bis')
   })
 
   it('e non lancia: l\'azione che ha innescato il cammino resta valida', async () => {
     scenarioC1()
-    automaticTransitionAllowed.mockResolvedValue(false)
+    transitionTicket.mockResolvedValue(refusedByTheWindow)
     await expect(evaluateAutoTransitions(mockSession, 'chg-1', ctx)).resolves.toBeUndefined()
   })
 
-  it('il varco riceve tenant, change e passi giusti, e l\'etichetta del cammino', async () => {
-    scenarioC1()
-    automaticTransitionAllowed.mockResolvedValue(true)
+  it('a refusal by another guard stops the walk: the next arc is not tried', async () => {
+    scenarioC1([{ toStep: 'rilascio_programmato', condition: null }, { toStep: 'valutazione_bis', condition: null }])
+    transitionTicket.mockResolvedValue({ moved: false, refusal: { guard: 'required_fields', final: true, message: 'fields' } })
     await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
-    const [, input, path] = vi.mocked(automaticTransitionAllowed).mock.calls[0] as unknown as [unknown, Record<string, unknown>, string]
-    expect(input).toMatchObject({ tenantId: 'tenant-1', changeId: 'chg-1', currentStep: 'assessment', toStep: 'rilascio_programmato' })
-    expect(input).toHaveProperty('changeType')
-    expect(path).toBe('auto_transition')
+    expect(transizioniDellaChange()).toHaveLength(1)
   })
 })

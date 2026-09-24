@@ -14,7 +14,7 @@ import type { GraphQLContext } from '../../context.js'
 import { toNumber } from '@opengraphity/neo4j'
 import { getStepNamesByClass, getWorkflowSteps, isEntityClosed, TICKET_STATUS_CLASSES, type TicketStatusClass } from '../../lib/workflowHelpers.js'
 import { systemText } from '../../lib/systemText.js'
-import { transitionErrorI18n } from '../../lib/transitionError.js'
+import { transitionTicket } from '../../services/ticketTransition.js'
 import * as incidentService from '../../services/incidentService.js'
 import { writeTicketComment } from '../../lib/ticketComments.js'
 import { localizedLabel } from '@opengraphity/types'
@@ -696,13 +696,14 @@ async function reopenTicket(
       )
     }
 
-    const result = await workflowEngine.transition(
-      session,
-      { instanceId, toStepName: reopenTo.name, triggeredBy: ctx.userId, triggerType: 'manual', notes: await systemText(ctx.tenantId, 'portal.reopened'), tenantId: ctx.tenantId },
-      { userId: ctx.userId, entityData: {} },
-    )
-    if (!result.success) {
-      throw new ValidationError(`Reopen failed: ${result.error ?? 'transition rejected by the workflow'}`, transitionErrorI18n(result))
+    // The pipeline of the transitions (wave 7 · B1), as the requester: the
+    // guards of the step (its required fields, its approval) hold here too.
+    const outcome = await transitionTicket(session, {
+      tenantId: ctx.tenantId, instanceId, toStep: reopenTo.name, notes: await systemText(ctx.tenantId, 'portal.reopened'),
+      actor: { kind: 'requester', userId: ctx.userId }, triggerType: 'manual',
+    })
+    if (!outcome.moved) {
+      throw new ValidationError(`Reopen failed: ${outcome.refusal.message}`, outcome.refusal.i18n)
     }
 
     void audit(ctx, 'portal.ticket.reopened', PORTAL_TICKET_SHAPE[kind].label, ticketId, { fromStep: status, toStep: reopenTo.name })
@@ -772,13 +773,12 @@ async function confirmTicketResolution(
         extensions: { code: 'CONFLICT', i18n: { key: 'errors.portal.cannotConfirmResolution' } },
       })
     }
-    const result = await workflowEngine.transition(
-      session,
-      { instanceId, toStepName: closeTo, triggeredBy: ctx.userId, triggerType: 'manual', notes: await systemText(ctx.tenantId, 'portal.confirmed'), tenantId: ctx.tenantId },
-      { userId: ctx.userId, entityData: {} },
-    )
-    if (!result.success) {
-      throw new ValidationError(`Confirmation failed: ${result.error ?? 'transition rejected by the workflow'}`, transitionErrorI18n(result))
+    const outcome = await transitionTicket(session, {
+      tenantId: ctx.tenantId, instanceId, toStep: closeTo, notes: await systemText(ctx.tenantId, 'portal.confirmed'),
+      actor: { kind: 'requester', userId: ctx.userId }, triggerType: 'manual',
+    })
+    if (!outcome.moved) {
+      throw new ValidationError(`Confirmation failed: ${outcome.refusal.message}`, outcome.refusal.i18n)
     }
     void audit(ctx, 'portal.ticket.resolution_confirmed', PORTAL_TICKET_SHAPE[kind].label, ticketId, { fromStep: status, toStep: closeTo })
 

@@ -23,9 +23,10 @@ vi.mock('@opengraphity/workflow', () => ({
   // `conditions.js` registra anche chi scrive i compiti (20 set 2026): senza
   // questa, importarlo fa fallire tutta la suite prima del primo test.
   registerTaskCreator: vi.fn(),
+  // And the step action handlers (wave 7 · B1).
+  registerStepActionHandlers: vi.fn(),
   workflowEngine: {
     createInstance: vi.fn().mockResolvedValue({ id: 'wi-1' }),
-    transition:     vi.fn().mockResolvedValue({ success: true }),
     registerCondition: vi.fn(),
     onStepEntered:     vi.fn(),
   },

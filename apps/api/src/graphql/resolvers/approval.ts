@@ -2,7 +2,6 @@ import { GraphQLError } from 'graphql'
 import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
-import type { ActionContext } from '@opengraphity/workflow'
 import { sseManager } from '@opengraphity/notifications'
 import type { GraphQLContext } from '../../context.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
@@ -12,6 +11,7 @@ import { pendingTicketApprovals } from './pendingTicketApprovals.js'
 import { systemText } from '../../lib/systemText.js'
 import { hasPermission } from '../../lib/permissions.js'
 import type { Session } from 'neo4j-driver'
+import { transitionTicket, type TicketTransitionOutcome } from '../../services/ticketTransition.js'
 
 const approvalLog = logger.child({ module: 'approval' })
 
@@ -43,17 +43,15 @@ interface ApprovalRequest {
  * notifica diceva «pubblicato» e l'articolo restava in revisione. Il motore
  * non lancia, RESTITUISCE l'esito — chi lo ignora sta dicendo una cosa falsa.
  */
-function assertTransitionApplied(
-  result: { success: boolean; error?: string; errorI18n?: { key: string; params?: Record<string, string> } },
-  what: string,
-): void {
-  if (result.success) return
+function assertTransitionApplied(outcome: TicketTransitionOutcome, what: string): void {
+  if (outcome.moved) return
+  const { refusal } = outcome
   throw new GraphQLError(
-    `${what}: the knowledge base workflow refused the transition — ${result.error ?? 'no reason given'}`,
+    `${what}: the knowledge base workflow refused the transition — ${refusal.message}`,
     {
       extensions: {
         code: 'CONFLICT',
-        ...(result.errorI18n ? { i18n: result.errorI18n } : { i18n: { key: 'errors.approval.transitionRefused' } }),
+        i18n: refusal.i18n ?? { key: 'errors.approval.transitionRefused' },
       },
     },
   )
@@ -300,11 +298,14 @@ export async function createApprovalRequest(
 /**
  * A decided request moves its ticket (owner's decision, review of 23 Sep
  * 2026): approved → the one way forward, rejected → the one step of category
- * `failed`. Through the same mutation a person uses, so required fields and
- * every other gate still apply. When there is no single way, or the move is
+ * `failed`. Through the pipeline of the transitions (wave 7 · B1) as the
+ * outcome of an approval: the required fields and every other gate still
+ * apply, but not the approver's write permission on the type — the decision
+ * is what moves the ticket. When there is no single way, or the move is
  * refused, the decision stands and a person moves the ticket — the gate is
- * open for an approval, and a rejection still lets it be closed. That is
- * written in the log, never swallowed.
+ * open for an approval, and a rejection still lets it be closed. A refusal
+ * leaves its note on the ticket; an error is written in the log, never
+ * swallowed.
  */
 async function moveTicketAfterDecision(
   session: Session, ctx: GraphQLContext, approvalId: string, entityType: string, entityId: string,
@@ -331,8 +332,14 @@ async function moveTicketAfterDecision(
     return
   }
   try {
-    const { executeWorkflowTransition } = await import('./workflowMutations.js')
-    await executeWorkflowTransition(null, { instanceId, toStep: target, notes: note }, ctx)
+    const outcome = await transitionTicket(session, {
+      tenantId: ctx.tenantId, instanceId, toStep: target, notes: note ?? null,
+      actor: { kind: 'system', path: 'approval', userId: ctx.userId },
+      triggerType: 'manual',
+    })
+    if (!outcome.moved) {
+      approvalLog.info({ tenantId: ctx.tenantId, entityId, approvalId, decision, target, guard: outcome.refusal.guard }, 'Approval decided, but the move was refused: a person moves the ticket')
+    }
   } catch (err) {
     approvalLog.error({ err, tenantId: ctx.tenantId, entityId, approvalId, decision, target }, 'Approval decided, but the ticket could not be moved: a person moves it')
   }
@@ -457,7 +464,6 @@ export async function approveRequest(
         )
         if (wiRes.records.length > 0) {
           const instanceId = wiRes.records[0].get('instanceId') as string
-          const actionCtx: ActionContext = { userId: ctx.userId, entityData: { id: entityId } }
           /**
            * L'articolo approvato va nel passo PUBBLICATO, riconosciuto dalla
            * sua categoria (revisione totale · B-30). Prima si prendeva «la
@@ -479,11 +485,11 @@ export async function approveRequest(
               { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.approval.noPublishedStep' } } },
             )
           }
-          const applied = await workflowEngine.transition(
-            session,
-            { instanceId, toStepName: forward.toStep, triggeredBy: ctx.userId, triggerType: 'manual', tenantId: ctx.tenantId },
-            actionCtx,
-          )
+          // The approver, in person: a refusal is the error on their screen.
+          const applied = await transitionTicket(session, {
+            tenantId: ctx.tenantId, instanceId, toStep: forward.toStep,
+            actor: { kind: 'person', userId: ctx.userId }, triggerType: 'manual',
+          })
           // M-15: se il workflow rifiuta, l'articolo NON è pubblicato — e non
           // si manda la notifica «pubblicato» né si lascia l'approvazione
           // concessa: la mutation fallisce e la transazione dell'approvazione
@@ -602,14 +608,12 @@ export async function rejectRequest(
       )
       if (wiRes.records.length > 0) {
         const instanceId = wiRes.records[0].get('instanceId') as string
-        const actionCtx: ActionContext = { userId: ctx.userId, entityData: { id: entityId } }
         const { getInitialStepName } = await import('../../lib/workflowHelpers.js')
         const initialStep = await getInitialStepName(session, ctx.tenantId, 'kb_article')
-        const applied = await workflowEngine.transition(
-          session,
-          { instanceId, toStepName: initialStep, triggeredBy: ctx.userId, triggerType: 'manual', notes: args.note, tenantId: ctx.tenantId },
-          actionCtx,
-        )
+        const applied = await transitionTicket(session, {
+          tenantId: ctx.tenantId, instanceId, toStep: initialStep, notes: args.note,
+          actor: { kind: 'person', userId: ctx.userId }, triggerType: 'manual',
+        })
         // M-15: lo stesso sul rifiuto — «rimandato in bozza» deve essere vero;
         // and the rejection is given back when it is not (review of 23 Sep 2026).
         try {

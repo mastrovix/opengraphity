@@ -19,6 +19,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: { registerCondition: vi.fn(), onStepEntered: vi.fn() },
   registerTaskCreator: vi.fn(),
+  registerStepActionHandlers: vi.fn(),
 }))
 vi.mock('./stepEnteredEvents.js', () => ({}))
 vi.mock('../stepEnteredEvents.js', () => ({}))

@@ -1,6 +1,6 @@
 /**
  * A-08 / A-19 — portal resolvers:
- *  - reopenTicket goes through workflowEngine.transition (never `SET i.status`),
+ *  - reopenTicket goes through the pipeline of the transitions (never `SET i.status`),
  *    picking a transition the workflow actually offers from the current step;
  *  - no transition back to an open step → ValidationError;
  *  - (createTicket: the priority checks moved with the creation into incidentService — portalCreateTicket.test.ts);
@@ -26,10 +26,11 @@ vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), 
 vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: {
     createInstance:          vi.fn().mockResolvedValue({ id: 'wi-1' }),
-    transition:              vi.fn(),
     getAvailableTransitions: vi.fn(),
   },
 }))
+// The pipeline of the transitions (wave 7 · B1): the requester moves the ticket through it.
+vi.mock('../../../services/ticketTransition.js', () => ({ transitionTicket: vi.fn() }))
 vi.mock('../ci-utils.js', () => ({
   withSession: vi.fn().mockImplementation(async (fn: (s: unknown) => Promise<unknown>) => fn(mockSession)),
 }))
@@ -42,6 +43,7 @@ vi.mock('../../../lib/workflowHelpers.js', () => ({
 
 const { portalResolvers } = await import('../portal.js')
 const { workflowEngine } = await import('@opengraphity/workflow')
+const { transitionTicket } = await import('../../../services/ticketTransition.js')
 const { getWorkflowSteps } = await import('../../../lib/workflowHelpers.js')
 
 const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'u@test.io', role: 'end_user', permissions: perms('end_user') }
@@ -66,20 +68,19 @@ describe('reopenTicket', () => {
       .mockResolvedValueOnce({ records: [rec({ props: ticketProps, labels: ['Incident'] })] })
   })
 
-  it('transitions via the engine to an open step the workflow allows (prefers non-initial active)', async () => {
+  it('transitions via the pipeline, as the requester, to an open step the workflow allows (prefers non-initial active)', async () => {
     vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValueOnce([
       { toStep: 'closed',      label: 'Chiudi',  requiresInput: false, inputField: null, condition: null },
       { toStep: 'new',         label: 'Riapri',  requiresInput: false, inputField: null, condition: null },
       { toStep: 'in_progress', label: 'Riapri',  requiresInput: false, inputField: null, condition: null },
     ])
-    vi.mocked(workflowEngine.transition).mockResolvedValueOnce({ success: true } as never)
+    vi.mocked(transitionTicket).mockResolvedValueOnce({ moved: true } as never)
 
     const result = await portalResolvers.Mutation.reopenTicket(null, { ticketId: 'inc-1' }, ctx)
 
-    expect(workflowEngine.transition).toHaveBeenCalledWith(
+    expect(transitionTicket).toHaveBeenCalledWith(
       mockSession,
-      expect.objectContaining({ instanceId: 'wi-1', toStepName: 'in_progress', triggerType: 'manual', triggeredBy: 'user-1', tenantId: 'tenant-1' }),
-      expect.objectContaining({ userId: 'user-1' }),
+      expect.objectContaining({ instanceId: 'wi-1', toStep: 'in_progress', triggerType: 'manual', actor: { kind: 'requester', userId: 'user-1' }, tenantId: 'tenant-1' }),
     )
     // The status is synced by the engine — the resolver never writes it itself.
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
@@ -95,15 +96,15 @@ describe('reopenTicket', () => {
     expect(err).toBeInstanceOf(GraphQLError)
     expect((err as GraphQLError).extensions['code']).toBe('BAD_USER_INPUT')
     expect((err as GraphQLError).message).toMatch(/no transition from "resolved"/)
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
+    expect(transitionTicket).not.toHaveBeenCalled()
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
 
-  it('engine failure (concurrent transition) surfaces as ValidationError with the engine message', async () => {
+  it('a refusal (a concurrent transition) surfaces as ValidationError with its message', async () => {
     vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValueOnce([
       { toStep: 'in_progress', label: 'Riapri', requiresInput: false, inputField: null, condition: null },
     ])
-    vi.mocked(workflowEngine.transition).mockResolvedValueOnce({ success: false, error: 'Concurrent transition' } as never)
+    vi.mocked(transitionTicket).mockResolvedValueOnce({ moved: false, refusal: { guard: 'workflow', final: false, code: 'CONFLICT', message: 'Concurrent transition' } } as never)
 
     await expect(portalResolvers.Mutation.reopenTicket(null, { ticketId: 'inc-1' }, ctx)).rejects.toThrow(/Concurrent transition/)
   })

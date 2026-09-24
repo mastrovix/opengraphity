@@ -36,6 +36,18 @@ vi.mock('../../ci-utils.js', () => ({
 vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: { transition: vi.fn(async () => ({ success: true })), getAvailableTransitions: vi.fn(async () => []) },
 }))
+// The pipeline of the transitions (wave 7 · B1) is real here: the gate is one of its
+// guards, and this is the change's own button reaching it. The ticket as the pipeline reads it:
+vi.mock('@opengraphity/neo4j', () => ({
+  runQueryOne: vi.fn(async () => ({
+    entityType: 'change', entityId: 'chg-1', currentStep: 'cab_acme',
+    props: { id: 'chg-1', change_type: 'normal', title: 'Aggiornamento firmware' }, assignedTo: null, assignedTeam: null, refusalNoted: null,
+  })),
+  runQuery: vi.fn(async () => []),
+  getSession: vi.fn(() => session),
+}))
+vi.mock('../../../../lib/stepMetadataPreflight.js', () => ({ preflightStepMetadata: vi.fn(async () => {}) }))
+vi.mock('../../../../lib/onEnterFields.js', () => ({ applyOnEnterFields: vi.fn(async () => {}) }))
 vi.mock('../queries.js', () => ({ change: vi.fn(async () => ({ id: 'chg-1' })) }))
 vi.mock('../autoTransitions.js', () => ({
   evaluateAutoTransitions: vi.fn().mockResolvedValue(undefined),
@@ -128,7 +140,8 @@ describe('il varco vale anche quando il passo di partenza non ha scopo', () => {
   it('…e il ruolo admin è richiesto, come sul varco di prima', async () => {
     await executeChangeTransition(null, { changeId: 'chg-1', toStep: 'in_calendario' }, operator)
       .catch(() => null)
-    expect(requirePermission).toHaveBeenCalledWith(operator, 'approval.override')
+    // The gate sees the person's role and permissions (its refusal names the role).
+    expect(requirePermission).toHaveBeenCalledWith({ role: 'operator', permissions: operator.permissions }, 'approval.override')
   })
 
   it('vale anche entrando nella finestra APERTA (implementation), non solo in quella programmata', async () => {

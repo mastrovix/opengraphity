@@ -16,15 +16,13 @@ import { publishEvent } from '../lib/publishEvent.js'
 import { publishStepEnteredForEntity } from '../lib/stepEnteredPublisher.js'
 import { getInitialStepName, getWorkflowSteps } from '../lib/workflowHelpers.js'
 import { targetStepByCategory } from '../lib/workflowTargets.js'
-import { TICKET_TEAM_ASSIGNED_EVENT, type TicketTeamAssignedPayload } from '@opengraphity/types'
+import { TICKET_TEAM_ASSIGNED_EVENT, type Permission, type TicketTeamAssignedPayload } from '@opengraphity/types'
 import { ciLabelPredicateForTenant } from '../lib/ciLabelsForTenant.js'
 import { assertUserInAssignedTeam, setTicketTeam, setTicketUser } from './ticketAssignment.js'
 import { systemText } from '../lib/systemText.js'
 import { assertDomainValue } from '../lib/domainMatrix.js'
 import { assertCIsLinkable } from '../lib/ticketCIExclusions.js'
-import { transitionFailed } from '../lib/transitionError.js'
-import { validateStepRequirements } from '../lib/validateRequiredFields.js'
-import { preflightStepMetadata } from '../lib/stepMetadataPreflight.js'
+import { refusalError, transitionTicket, type SystemPath, type TransitionActor, type TransitionRefusal } from './ticketTransition.js'
 
 export interface IncidentEventPayload {
   id: string; title: string; severity: string; status: string
@@ -48,6 +46,22 @@ export interface ServiceCtx {
    * di una regola compariva come «Automation:» senza nome e con l'avatar «?».
    */
   actorLabel?: string
+  /** The permissions of a person in the app (a GraphQL request): the pipeline checks the write permission of the type. */
+  permissions?: ReadonlySet<Permission>
+  /** Who moves the ticket when it is not a person (the monitoring): the name of the path, for the note of a refusal. */
+  path?: SystemPath
+}
+
+/**
+ * Who moves the incident, for the pipeline of the transitions (wave 7 · B1):
+ * a path by its name, a rule by its label, else a person — with the
+ * permissions of their role when the call comes from the app, without them
+ * when the entry point checked its own (Slack).
+ */
+function transitionActorOf(ctx: ServiceCtx): TransitionActor {
+  if (ctx.path) return { kind: 'system', path: ctx.path, userId: ctx.userId, label: ctx.actorLabel ?? null }
+  if (ctx.actorLabel) return { kind: 'system', path: 'rule', userId: ctx.userId, label: ctx.actorLabel }
+  return { kind: 'person', userId: ctx.userId, ...(ctx.permissions ? { permissions: ctx.permissions } : {}) }
 }
 
 type Session = ReturnType<typeof getSession>
@@ -471,9 +485,9 @@ export async function resolveIncident(
     // if none, the first terminal step). The engine syncs entity.status
     // and records the step history; we only handle fields the engine
     // doesn't know about (resolved_at, root_cause).
-    const instanceRow = await runQueryOne<{ instanceId: string; props: Props }>(session, `
+    const instanceRow = await runQueryOne<{ instanceId: string }>(session, `
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-      RETURN wi.id AS instanceId, properties(i) AS props
+      RETURN wi.id AS instanceId
     `, { id, tenantId: ctx.tenantId })
     if (!instanceRow) throw new NotFoundError('Incident', id)
 
@@ -483,25 +497,19 @@ export async function resolveIncident(
       steps.find((s) => s.isTerminal)
     if (!resolvedStep) throw new ValidationError('No resolved/terminal step in incident workflow')
 
-    // The rules of the resolved step hold here too: the bulk resolve, Slack and
-    // the service monitoring come this way (review of 23 Sep 2026).
-    await validateStepRequirements(session, {
-      entityType: 'incident', entityProps: instanceRow.props, notes, tenantId: ctx.tenantId, toStep: resolvedStep.name,
+    // The pipeline of the transitions (wave 7 · B1): the rules of the resolved
+    // step, its metadata and the approval named by the step hold here too —
+    // the bulk resolve, Slack and the service monitoring come this way.
+    const outcome = await transitionTicket(session, {
+      tenantId: ctx.tenantId, instanceId: instanceRow.instanceId, toStep: resolvedStep.name, notes: notes ?? null,
+      actor: transitionActorOf(ctx), triggerType: 'manual',
     })
-    await preflightStepMetadata(session, instanceRow.instanceId, resolvedStep.name, ctx.tenantId)
-
-    const result = await workflowEngine.transition(
-      session,
-      { instanceId: instanceRow.instanceId, toStepName: resolvedStep.name,
-        triggeredBy: ctx.userId, triggerType: 'manual', notes: notes ?? undefined, tenantId: ctx.tenantId },
-      { userId: ctx.userId, notes, entityData: {} },
-    )
     // Revisione del 14 set 2026 · IT-2: l'esito era ignorato. Un rifiuto del
     // motore (condizione, arco mancante, transizione concorrente) lasciava
     // l'incident nel passo di prima ma con `resolved_at` scritto e
     // `incident.resolved` pubblicato: risolto per SLA e notifiche, aperto per
     // chi ci lavora.
-    if (!result.success) throw transitionFailed(result, `Incident ${id}: the workflow refused the transition to "${resolvedStep.name}"`)
+    if (!outcome.moved) throw refusalError(outcome.refusal)
 
     // Fields the engine doesn't touch.
     const rows = await runQuery<{ props: Props }>(session, `
@@ -551,7 +559,7 @@ export async function assignIncidentToTeam(
   // dal motore senza che nessuno lo sapesse. L'assegnazione resta (è ciò che
   // la persona ha chiesto, ed è già scritta), l'evento parte, e poi l'errore
   // dice che il ticket non è avanzato e perché.
-  let advanceRefused: { result: Awaited<ReturnType<typeof workflowEngine.transition>>; toStep: string } | null = null
+  let advanceRefused: AdvanceRefused | null = null
   /*
    * I nomi escono dal servizio perché il REGISTRO li vuole (20 set 2026,
    * ondata 2): `incident.assigned` non diceva né a chi né da chi, e le due
@@ -592,12 +600,11 @@ export async function assignIncidentToTeam(
         // the post-assignment step, not this service.
         const next = await assignmentAdvanceTarget(session, ctx.tenantId, instanceId)
         if (next) {
-          const result = await workflowEngine.transition(
-            session,
-            { instanceId, toStepName: next.toStep, triggeredBy: ctx.userId, triggerType: 'automatic', notes: transitionNotes, actorLabel: ctx.actorLabel ?? null, tenantId: ctx.tenantId },
-            { userId: ctx.userId, entityData: {} },
-          )
-          if (!result.success) advanceRefused = { result, toStep: next.toStep }
+          const outcome = await transitionTicket(session, {
+            tenantId: ctx.tenantId, instanceId, toStep: next.toStep, notes: transitionNotes,
+            actor: transitionActorOf(ctx), triggerType: 'automatic',
+          })
+          if (!outcome.moved) advanceRefused = { refusal: outcome.refusal, toStep: next.toStep }
           else advanced = true
         }
       } else {
@@ -672,16 +679,16 @@ async function assignmentAdvanceTarget(session: Session, tenantId: string, insta
 }
 
 /** L'assegnazione è avvenuta, l'avanzamento automatico no: l'errore lo dice. */
-function assignedButNotAdvanced(
-  id: string,
-  refused: { result: Awaited<ReturnType<typeof workflowEngine.transition>>; toStep: string },
-) {
-  const reason = transitionFailed(refused.result, 'the workflow refused the transition')
+function assignedButNotAdvanced(id: string, refused: AdvanceRefused) {
+  const reason = refused.refusal.message
   return new ValidationError(
-    `Incident ${id}: the assignment was saved, but the incident did not move to "${refused.toStep}": ${reason.message}`,
-    { key: 'errors.incident.assignedButNotAdvanced', params: { step: refused.toStep, reason: reason.message } },
+    `Incident ${id}: the assignment was saved, but the incident did not move to "${refused.toStep}": ${reason}`,
+    { key: 'errors.incident.assignedButNotAdvanced', params: { step: refused.toStep, reason } },
   )
 }
+
+/** The move after an assignment, refused: the assignment stays, the error says why. */
+interface AdvanceRefused { refusal: TransitionRefusal; toStep: string }
 
 export async function assignIncidentToUser(
   id: string,
@@ -689,7 +696,7 @@ export async function assignIncidentToUser(
   ctx: ServiceCtx,
 ) {
   const now = new Date().toISOString()
-  let advanceRefused: { result: Awaited<ReturnType<typeof workflowEngine.transition>>; toStep: string } | null = null
+  let advanceRefused: AdvanceRefused | null = null
   // I nomi escono dal servizio perché il registro li vuole: vedi
   // `assignIncidentToTeam`.
   let nomi: { userName: string | null; previousUserName: string | null } = { userName: null, previousUserName: null }
@@ -733,12 +740,11 @@ export async function assignIncidentToUser(
       const note = await systemText(ctx.tenantId, previousUserName ? 'incident.reassignedUser' : 'incident.assignedUser', { user: userName })
       const next = currentStep === initialStep ? await assignmentAdvanceTarget(session, ctx.tenantId, instanceId) : null
       if (currentStep === initialStep && next) {
-        const result = await workflowEngine.transition(
-          session,
-          { instanceId, toStepName: next.toStep, triggeredBy: ctx.userId, triggerType: 'automatic', notes: note, actorLabel: ctx.actorLabel ?? null, tenantId: ctx.tenantId },
-          { userId: ctx.userId, entityData: {} },
-        )
-        if (!result.success) advanceRefused = { result, toStep: next.toStep }
+        const outcome = await transitionTicket(session, {
+          tenantId: ctx.tenantId, instanceId, toStep: next.toStep, notes: note,
+          actor: transitionActorOf(ctx), triggerType: 'automatic',
+        })
+        if (!outcome.moved) advanceRefused = { refusal: outcome.refusal, toStep: next.toStep }
         else advanced = true
       } else {
         await session.executeWrite((tx) => tx.run(`
@@ -846,9 +852,9 @@ export async function escalateIncident(
 ) {
   const now = new Date().toISOString()
   await withSession(async (session) => {
-    const instanceRow = await runQueryOne<{ instanceId: string; props: Props }>(session, `
+    const instanceRow = await runQueryOne<{ instanceId: string }>(session, `
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-      RETURN wi.id AS instanceId, properties(i) AS props
+      RETURN wi.id AS instanceId
     `, { id, tenantId: ctx.tenantId })
     if (!instanceRow) throw new Error(`Incident ${id}: no workflow instance to escalate`)
     // Revisione · B·N-4: era un `find` su una lista senza ordine (due passi di
@@ -856,19 +862,13 @@ export async function escalateIncident(
     // prima). `targetStepByCategory` ordina per `step_order` e dice cosa manca.
     const target = await targetStepByCategory(session, ctx.tenantId, 'incident', ['escalated'],
       `escalation of incident ${id}`)
-    await validateStepRequirements(session, {
-      entityType: 'incident', entityProps: instanceRow.props, tenantId: ctx.tenantId, toStep: target,
+    const outcome = await transitionTicket(session, {
+      tenantId: ctx.tenantId, instanceId: instanceRow.instanceId, toStep: target,
+      actor: transitionActorOf(ctx), triggerType: 'manual',
     })
-    await preflightStepMetadata(session, instanceRow.instanceId, target, ctx.tenantId)
-    const result = await workflowEngine.transition(
-      session,
-      { instanceId: instanceRow.instanceId, toStepName: target,
-        triggeredBy: ctx.userId, triggerType: 'manual', tenantId: ctx.tenantId },
-      { userId: ctx.userId, entityData: {} },
-    )
     // IT-2: senza questo controllo `incident.escalated` partiva anche quando
     // il motore aveva rifiutato l'escalation.
-    if (!result.success) throw transitionFailed(result, `Incident ${id}: the workflow refused the escalation to "${target}"`)
+    if (!outcome.moved) throw refusalError(outcome.refusal)
   }, true)
 
   const payload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))

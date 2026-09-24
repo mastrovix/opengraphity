@@ -18,6 +18,7 @@ const registerTaskCreator = vi.fn()
 vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: { registerCondition: (...a: unknown[]) => registerCondition(...a) as unknown },
   registerTaskCreator: (...a: unknown[]) => registerTaskCreator(...a) as unknown,
+  registerStepActionHandlers: vi.fn(),
 }))
 const runQueryOne = vi.fn()
 vi.mock('../../graphql/resolvers/ci-utils.js', () => ({

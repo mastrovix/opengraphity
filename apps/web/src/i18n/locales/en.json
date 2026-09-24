@@ -4089,6 +4089,7 @@
       "deleted": "The change was deleted: no operation is possible any more.",
       "preApprovalFailed": "Pre-approved change type \"{{type}}\": the pre-approval failed ({{reason}}).",
       "assessmentsIncomplete": "The change cannot leave the assessment: complete every assessment task and the deploy plan first (after the assessment the plan can no longer be edited).",
+      "windowNeedsApprovals": "The change cannot enter the release window without its approvals.",
       "autoTransitionCycle": "The change workflow has a cycle of automatic transitions ({{from}} → {{to}}): fix it in the designer.",
       "chooseAssessmentsToReopen": "Choose which assessments to reopen, or choose «all».",
       "onlyInInitialStep": "This can be done only in the initial step; the change is in «{{current}}».",

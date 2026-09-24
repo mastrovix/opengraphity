@@ -31,13 +31,15 @@ vi.mock('@opengraphity/neo4j', () => ({
 }))
 
 const getAvailableTransitions = vi.fn()
-const transition = vi.fn()
 vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: {
     getAvailableTransitions: (...a: unknown[]) => getAvailableTransitions(...a),
-    transition: (...a: unknown[]) => transition(...a),
   },
 }))
+// The pipeline of the transitions (wave 7 · B1): the article and the ticket move through it.
+const transition = vi.fn()
+vi.mock('../../../services/ticketTransition.js', () => ({ transitionTicket: (...a: unknown[]) => transition(...a) }))
+const refused = (message: string, i18n?: { key: string }) => ({ moved: false, refusal: { guard: 'workflow', final: true, code: 'CONFLICT', message, ...(i18n ? { i18n } : {}) } })
 
 const sendToUser = vi.fn()
 vi.mock('@opengraphity/notifications', () => ({ sseManager: { sendToUser: (...a: unknown[]) => sendToUser(...a) } }))
@@ -50,10 +52,6 @@ vi.mock('../../../lib/workflowHelpers.js', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   getWorkflowSteps: (...a: unknown[]) => getWorkflowSteps(...a),
 }))
-
-// The mutation a person uses: a decided request moves its ticket through it (review of 23 Sep 2026).
-const executeWorkflowTransition = vi.fn()
-vi.mock('../workflowMutations.js', () => ({ executeWorkflowTransition: (...a: unknown[]) => executeWorkflowTransition(...a) }))
 
 const { approveRequest, rejectRequest, cancelApprovalRequest, createApprovalRequest, approvalRequests } =
   await import('../approval.js')
@@ -195,13 +193,16 @@ describe('a decided request moves its ticket', () => {
     read.mockResolvedValueOnce({ records: ticket ? [rec(ticket)] : [] })
     getWorkflowSteps.mockResolvedValue(STEPS)
     getAvailableTransitions.mockResolvedValue([{ toStep: 'in_progress' }, { toStep: 'rejected' }])
-    executeWorkflowTransition.mockResolvedValue({})
+    transition.mockResolvedValue({ moved: true })
   }
 
-  it('approved → the one way forward, through the mutation a person uses, as the approver', async () => {
+  it('approved → the one way forward, through the pipeline, as the outcome of the approval signed by the approver', async () => {
     richiesta({})
     await approveRequest(null, { id: 'a1', note: 'budget ok' }, ctx('u1'))
-    expect(executeWorkflowTransition).toHaveBeenCalledWith(null, { instanceId: 'wi1', toStep: 'in_progress', notes: 'budget ok' }, expect.objectContaining({ userId: 'u1', tenantId: 't1' }))
+    expect(transition).toHaveBeenCalledWith(expect.anything(), {
+      tenantId: 't1', instanceId: 'wi1', toStep: 'in_progress', notes: 'budget ok',
+      actor: { kind: 'system', path: 'approval', userId: 'u1' }, triggerType: 'manual',
+    })
   })
 
   it('rejected → the step of category failed', async () => {
@@ -209,9 +210,9 @@ describe('a decided request moves its ticket', () => {
     read.mockResolvedValueOnce({ records: [rec({ instanceId: 'wi1', current: 'budget_approval', stepName: 'budget_approval' })] })
     getWorkflowSteps.mockResolvedValue(STEPS)
     getAvailableTransitions.mockResolvedValue([{ toStep: 'in_progress' }, { toStep: 'rejected' }])
-    executeWorkflowTransition.mockResolvedValue({})
+    transition.mockResolvedValue({ moved: true })
     await rejectRequest(null, { id: 'a1', note: 'no budget' }, ctx('u1'))
-    expect(executeWorkflowTransition).toHaveBeenCalledWith(null, { instanceId: 'wi1', toStep: 'rejected', notes: 'no budget' }, expect.anything())
+    expect(transition).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ instanceId: 'wi1', toStep: 'rejected', notes: 'no budget' }))
   })
 
   it('a ticket that already left the step, or a request with no step, moves nothing', async () => {
@@ -219,12 +220,19 @@ describe('a decided request moves its ticket', () => {
     await approveRequest(null, { id: 'a1' }, ctx('u1'))
     richiesta({}, { instanceId: 'wi1', current: 'budget_approval', stepName: null })
     await approveRequest(null, { id: 'a1' }, ctx('u1'))
-    expect(executeWorkflowTransition).not.toHaveBeenCalled()
+    expect(transition).not.toHaveBeenCalled()
   })
 
   it('a refused move does not undo the decision: the approval stands and a person moves the ticket', async () => {
     richiesta({})
-    executeWorkflowTransition.mockRejectedValue(new Error('field "cost_center" is required'))
+    transition.mockResolvedValue({ moved: false, refusal: { guard: 'required_fields', final: true, code: 'BAD_USER_INPUT', message: 'field "cost_center" is required' } })
+    await expect(approveRequest(null, { id: 'a1' }, ctx('u1'))).resolves.toBeTruthy()
+    expect(write.mock.calls[0]![1]).toMatchObject({ status: 'approved' })
+  })
+
+  it('an error of the move (the database) does not undo the decision either', async () => {
+    richiesta({})
+    transition.mockRejectedValue(new Error('neo4j down'))
     await expect(approveRequest(null, { id: 'a1' }, ctx('u1'))).resolves.toBeTruthy()
     expect(write.mock.calls[0]![1]).toMatchObject({ status: 'approved' })
   })
@@ -232,7 +240,7 @@ describe('a decided request moves its ticket', () => {
   it('a change is not moved from here: it has its own approvals', async () => {
     statoDiPartenza({ approvalType: 'any', approvers: '["u1"]', approvedBy: '[]' })
     await approveRequest(null, { id: 'a1' }, ctx('u1'))
-    expect(executeWorkflowTransition).not.toHaveBeenCalled()
+    expect(transition).not.toHaveBeenCalled()
   })
 })
 
@@ -250,9 +258,10 @@ describe('approveRequest — l\'articolo della base di conoscenza', () => {
       [{ name: 'archiviato', category: 'closed' }, { name: 'pubblicato', category: 'published' }],
       [{ toStep: 'archiviato' }, { toStep: 'pubblicato' }],
     )
-    transition.mockResolvedValue({ success: true })
+    transition.mockResolvedValue({ moved: true })
     await approveRequest(null, { id: 'a1' }, ctx('u1'))
-    expect((transition.mock.calls[0]![1] as Record<string, unknown>)['toStepName']).toBe('pubblicato')
+    // The approver in person: a refusal is the error on their screen, not a note.
+    expect(transition.mock.calls[0]![1]).toMatchObject({ toStep: 'pubblicato', actor: { kind: 'person', userId: 'u1' }, triggerType: 'manual' })
   })
 
   it('se nessun passo raggiungibile è «published» non si inventa una strada', async () => {
@@ -270,7 +279,7 @@ describe('approveRequest — l\'articolo della base di conoscenza', () => {
 
   it('se il motore RIFIUTA, la mutation fallisce: non si dice «pubblicato» a vuoto', async () => {
     articoloApprovato([{ name: 'pubblicato', category: 'published' }], [{ toStep: 'pubblicato' }])
-    transition.mockResolvedValue({ success: false, error: 'una guardia non passa' })
+    transition.mockResolvedValue(refused('una guardia non passa'))
     const r = await codice(() => approveRequest(null, { id: 'a1' }, ctx('u1')))
     expect(r.code).toBe('CONFLICT')
     expect(r.message).toContain('una guardia non passa')
@@ -282,7 +291,7 @@ describe('approveRequest — l\'articolo della base di conoscenza', () => {
 
   it('pubblicato davvero: la notifica dice «pubblicato», non «approvato»', async () => {
     articoloApprovato([{ name: 'pubblicato', category: 'published' }], [{ toStep: 'pubblicato' }])
-    transition.mockResolvedValue({ success: true })
+    transition.mockResolvedValue({ moved: true })
     await approveRequest(null, { id: 'a1' }, ctx('u1'))
     expect((sendToUser.mock.calls[0]![2] as Record<string, unknown>)['type']).toBe('kb.published')
   })

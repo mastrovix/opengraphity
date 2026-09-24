@@ -17,6 +17,8 @@ import { matchById } from '../lib/cypherLookups.js'
 // Ogni processo che registra le condizioni esegue transizioni: deve anche
 // pubblicare l'ingresso nei passi (workflow.step_entered).
 import './stepEnteredEvents.js'
+// … and do the step actions that write the graph, on every path (wave 7 · B1).
+import './stepActions.js'
 
 /** Missing row = the entity was not found: report 1 pending so the guard stays closed. */
 function pendingCount(row: { pending?: unknown } | null | undefined): number {

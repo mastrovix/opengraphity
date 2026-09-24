@@ -2,9 +2,13 @@
  * Verifica «Cosa resta cablato», ondata 3: lo scatto delle scadenze dei passi.
  *
  *  - quando scade: 24×7 o con un calendario (un giorno = una giornata di servizio);
- *  - chi la esegue la prende in carico, rilegge tutto, passa dal varco, valida i
- *    campi PRIMA di spostare, sposta come «step_deadline», poi imposta i campi;
- *  - l'esito resta sull'esecuzione del passo: moved, refused, failed.
+ *  - chi la esegue la prende in carico, rilegge tutto, chiede le guardie alla
+ *    pipeline delle transizioni (ondata 7 · B1) PRIMA di scrivere i campi,
+ *    valida e scrive i campi, poi sposta come «step_deadline»;
+ *  - l'esito resta sull'esecuzione del passo: moved, refused, failed. Le
+ *    guardie stesse (varco, approvazioni, campi obbligatori) sono provate in
+ *    services/__tests__/ticketTransition.test.ts: qui conta che la scadenza le
+ *    chieda, nell'ordine giusto, e che registri l'esito con il motivo giusto.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { StepDeadline } from '@opengraphity/types'
@@ -30,19 +34,14 @@ vi.mock('@opengraphity/sla', async () => {
   }
 })
 
-const transition = vi.fn()
-vi.mock('@opengraphity/workflow', () => ({ workflowEngine: { transition: (...a: unknown[]) => transition(...a) } }))
-
-const automaticTransitionAllowed = vi.fn(async () => true)
-vi.mock('../../graphql/resolvers/change/windowGate.js', () => ({ automaticTransitionAllowed: (...a: unknown[]) => automaticTransitionAllowed(...a) }))
-const requestApprovalWouldBeSkipped = vi.fn(async () => false)
-vi.mock('../requestApproval.js', () => ({ requestApprovalWouldBeSkipped: (...a: unknown[]) => requestApprovalWouldBeSkipped(...a) }))
-// The named-approval gate (ticketApprovalGate.test.ts): open unless a test closes it.
-const ticketApprovalRefusal = vi.fn(async (..._a: unknown[]): Promise<unknown> => null)
-vi.mock('../ticketApprovalGate.js', () => ({
-  APPROVAL_GATED_TICKETS: ['incident', 'problem', 'service_request'],
-  ticketApprovalRefusal: (...a: unknown[]) => ticketApprovalRefusal(...a),
+// The pipeline of the transitions (wave 7 · B1): the guards and the move.
+const checkTicketTransition = vi.fn(async (..._a: unknown[]): Promise<unknown> => null)
+const transitionTicket = vi.fn(async (..._a: unknown[]): Promise<unknown> => ({ moved: true, actionErrors: [] }))
+vi.mock('../../services/ticketTransition.js', () => ({
+  checkTicketTransition: (...a: unknown[]) => checkTicketTransition(...a),
+  transitionTicket: (...a: unknown[]) => transitionTicket(...a),
 }))
+const refusal = (guard: string, message = 'held') => ({ guard, message, code: 'CONFLICT', final: true })
 
 vi.mock('../stepFieldWrites.js', async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -90,10 +89,14 @@ beforeEach(() => {
   runQueryOne.mockReset()
   runQuery.mockReset()
   runQuery.mockResolvedValue([])
-  transition.mockResolvedValue({ success: true })
-  automaticTransitionAllowed.mockResolvedValue(true)
-  requestApprovalWouldBeSkipped.mockResolvedValue(false)
-  ticketApprovalRefusal.mockResolvedValue(null)
+  checkTicketTransition.mockResolvedValue(null)
+  transitionTicket.mockResolvedValue({ moved: true, actionErrors: [] })
+})
+
+/** What the deadline asks the pipeline: the system, on the deadline's path, with the timer trigger. */
+const deadlineRequest = (toStep = 'closed') => ({
+  tenantId: 'c-test', instanceId: 'wi-1', toStep, triggerType: 'timer',
+  actor: { kind: 'system', path: 'step_deadline', userId: 'step_deadline' },
 })
 
 describe('stepDeadlineDueAt', () => {
@@ -120,11 +123,11 @@ describe('fireStepDeadline', () => {
     scriptReads()
     await expect(fireStepDeadline(candidate(), NOW)).resolves.toBe('moved')
 
-    expect(automaticTransitionAllowed).toHaveBeenCalledWith(session, expect.objectContaining({ changeId: 'chg-1', changeType: 'normal', currentStep: 'review', toStep: 'closed' }), 'step_deadline')
-    expect(transition).toHaveBeenCalledWith(session,
-      { instanceId: 'wi-1', toStepName: 'closed', triggeredBy: 'step_deadline', triggerType: 'timer', tenantId: 'c-test' },
-      expect.objectContaining({ userId: 'automation' }))
+    // The guards first, then the fields, then the move — with the fields the conditions must see.
+    expect(checkTicketTransition).toHaveBeenCalledWith(session, deadlineRequest())
+    expect(transitionTicket).toHaveBeenCalledWith(session, { ...deadlineRequest(), extraEntityData: { outcome: 'successful' } })
     expect(writeTicketField).toHaveBeenCalledWith(session, 'c-test', 'change', 'chg-1', 'outcome', 'successful')
+    expect(checkTicketTransition.mock.invocationCallOrder[0]!).toBeLessThan(writeTicketField.mock.invocationCallOrder[0]!)
     /**
      * CONTRATTO RINEGOZIATO (revisione totale · C-13): i campi si scrivono
      * PRIMA di spostare. Nell'ordine vecchio una scrittura fallita lasciava il
@@ -132,7 +135,7 @@ describe('fireStepDeadline', () => {
      * mai ritentata, e invisibile nella diagnostica, che guarda solo le
      * esecuzioni aperte. Restava un log.
      */
-    expect(writeTicketField.mock.invocationCallOrder[0]!).toBeLessThan(transition.mock.invocationCallOrder[0]!)
+    expect(writeTicketField.mock.invocationCallOrder[0]!).toBeLessThan(transitionTicket.mock.invocationCallOrder[0]!)
     expect(lastOutcome()).toMatchObject({ outcome: 'moved', toStep: 'closed', retryAt: null })
     // Dal vivo: senza `userEmail` la scrittura dell'audit falliva (parametro mancante) e la voce spariva.
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'c-test', userId: 'automation', userEmail: 'automation' }), 'workflow.step_deadline_moved', 'Change', 'chg-1', expect.objectContaining({ fromStep: 'review', toStep: 'closed' }))
@@ -141,13 +144,13 @@ describe('fireStepDeadline', () => {
   it('già presa da un\'altra passata (o il ticket è uscito dal passo) → non fa nulla', async () => {
     scriptReads({ claimed: false })
     await expect(fireStepDeadline(candidate(), NOW)).resolves.toBe('skipped')
-    expect(transition).not.toHaveBeenCalled()
+    expect(transitionTicket).not.toHaveBeenCalled()
   })
 
   it('la scadenza è stata tolta mentre la passata girava → rilascia la presa, nessuno spostamento', async () => {
     scriptReads({ state: { currentStep: 'review', deadline: null, entity: {} } })
     await expect(fireStepDeadline(candidate(), NOW)).resolves.toBe('skipped')
-    expect(transition).not.toHaveBeenCalled()
+    expect(transitionTicket).not.toHaveBeenCalled()
     expect(runQuery.mock.calls.some((c) => String(c[1]).includes("WHERE ex.deadline_outcome = 'running'"))).toBe(true)
   })
 
@@ -158,41 +161,52 @@ describe('fireStepDeadline', () => {
       .mockResolvedValueOnce({ currentStep: 'review', deadline: JSON.stringify(changed), entity: { change_type: 'normal' } })
       .mockResolvedValueOnce({ name: 'cancelled' })
     await fireStepDeadline(candidate(), NOW)
-    expect(transition).toHaveBeenCalledWith(session, expect.objectContaining({ toStepName: 'cancelled' }), expect.anything())
+    expect(transitionTicket).toHaveBeenCalledWith(session, expect.objectContaining({ toStep: 'cancelled' }))
   })
 
   it('senza più l\'arco → failed, con la ragione; si riprova fra un\'ora', async () => {
     scriptReads({ arc: false })
     await expect(fireStepDeadline(candidate(), NOW)).resolves.toBe('failed')
     expect(lastOutcome()).toMatchObject({ outcome: 'failed', reason: 'no_arc', retryAt: '2026-09-20T11:00:00.000Z' })
-    expect(transition).not.toHaveBeenCalled()
+    expect(transitionTicket).not.toHaveBeenCalled()
   })
 
   it('il varco rifiuta → refused, la change resta dov\'è', async () => {
     scriptReads()
-    automaticTransitionAllowed.mockResolvedValue(false)
+    checkTicketTransition.mockResolvedValue(refusal('change_window'))
     await expect(fireStepDeadline(candidate(), NOW)).resolves.toBe('refused')
     expect(lastOutcome()).toMatchObject({ outcome: 'refused', reason: 'approval_gate' })
-    expect(transition).not.toHaveBeenCalled()
+    expect(transitionTicket).not.toHaveBeenCalled()
     expect(outcomes).toHaveBeenCalledWith({ outcome: 'refused', reason: 'approval_gate' })
   })
 
   it('una richiesta che salterebbe l\'approvazione → refused', async () => {
     scriptReads()
-    requestApprovalWouldBeSkipped.mockResolvedValue(true)
+    checkTicketTransition.mockResolvedValue(refusal('request_approval'))
     await expect(fireStepDeadline(candidate({ entityType: 'service_request' }), NOW)).resolves.toBe('refused')
     expect(lastOutcome()).toMatchObject({ reason: 'request_approval' })
-    // A deadline is not a person: it never counts as the approval decision.
-    expect((requestApprovalWouldBeSkipped.mock.calls[0] as unknown[]).at(-1)).toEqual({ byPerson: false })
   })
 
   // Owner's decision, review of 23 Sep 2026: a deadline is not the approver either.
   it('a ticket held by a named approval → refused, and the engine is not called', async () => {
     scriptReads()
-    ticketApprovalRefusal.mockResolvedValue({ status: 'pending', approvalId: 'ap-1', stepName: 'review' })
+    checkTicketTransition.mockResolvedValue(refusal('named_approval'))
     await expect(fireStepDeadline(candidate({ entityType: 'incident' }), NOW)).resolves.toBe('refused')
     expect(lastOutcome()).toMatchObject({ outcome: 'refused', reason: 'approval_request' })
-    expect(transition).not.toHaveBeenCalled()
+    expect(transitionTicket).not.toHaveBeenCalled()
+  })
+
+  // Wave 7 · B1: the guards a deadline did not check before — the required
+  // fields and the metadata of the step — hold it now too, before anything is written.
+  it('the required fields or the metadata of the step hold it → refused with their name, nothing written', async () => {
+    for (const [guard, reason] of [['required_fields', 'required_fields'], ['step_metadata', 'step_metadata']]) {
+      scriptReads()
+      checkTicketTransition.mockResolvedValueOnce(refusal(guard!))
+      await expect(fireStepDeadline(candidate(), NOW)).resolves.toBe('refused')
+      expect(lastOutcome()).toMatchObject({ outcome: 'refused', reason, detail: null })
+    }
+    expect(writeTicketField).not.toHaveBeenCalled()
+    expect(transitionTicket).not.toHaveBeenCalled()
   })
 
   it('un valore uscito dal vocabolario → failed PRIMA di spostare', async () => {
@@ -203,13 +217,13 @@ describe('fireStepDeadline', () => {
       .mockResolvedValueOnce({ name: 'closed' })
     await expect(fireStepDeadline(candidate({ deadline: JSON.stringify(bad) }), NOW)).resolves.toBe('failed')
     expect(lastOutcome()).toMatchObject({ outcome: 'failed', reason: 'field' })
-    expect(transition).not.toHaveBeenCalled()
+    expect(transitionTicket).not.toHaveBeenCalled()
     expect(writeTicketField).not.toHaveBeenCalled()
   })
 
   it('il motore rifiuta la transizione → failed con il suo errore; i campi erano già scritti (C-13)', async () => {
     scriptReads()
-    transition.mockResolvedValue({ success: false, error: 'condition not met' })
+    transitionTicket.mockResolvedValue({ moved: false, refusal: refusal('workflow', 'condition not met') })
     await expect(fireStepDeadline(candidate(), NOW)).resolves.toBe('failed')
     expect(lastOutcome()).toMatchObject({ reason: 'transition', detail: 'condition not met' })
     // I campi sono già scritti: il ticket non si è mosso, l'esecuzione è
@@ -226,7 +240,7 @@ describe('fireStepDeadline', () => {
     scriptReads()
     writeTicketField.mockRejectedValueOnce(new Error('vincolo violato'))
     await expect(fireStepDeadline(candidate(), NOW)).resolves.toBe('failed')
-    expect(transition).not.toHaveBeenCalled()
+    expect(transitionTicket).not.toHaveBeenCalled()
     expect(lastOutcome()).toMatchObject({ reason: 'field_write', detail: 'vincolo violato' })
     expect(lastOutcome()!['retryAt']).not.toBeNull()
   })
@@ -241,7 +255,7 @@ describe('runStepDeadlineSweep', () => {
     scriptReads()
     const summary = await runStepDeadlineSweep('t1', NOW)
     expect(summary).toMatchObject({ candidates: 2, moved: 1, notDue: 1 })
-    expect(transition).toHaveBeenCalledTimes(1)
+    expect(transitionTicket).toHaveBeenCalledTimes(1)
   })
 
   it('un calendario che non si trova → failed, e la passata continua', async () => {

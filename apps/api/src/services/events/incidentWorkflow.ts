@@ -1,20 +1,23 @@
 /**
  * Workflow dell'incident per conto del monitoraggio (Event Management):
  * passi della definizione, transizioni eseguite dall'attore `monitoring`,
- * riapertura. Ogni scrittura sull'incident passa da incidentService /
- * workflowEngine (mai Cypher diretto sull'incident) con `userId: 'monitoring'`.
+ * riapertura. Ogni scrittura sull'incident passa da incidentService / the
+ * pipeline of the transitions (mai Cypher diretto sull'incident) con
+ * `userId: 'monitoring'`, each move under the name of its path.
  */
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import type { Session } from 'neo4j-driver'
-import { logger } from '../../lib/logger.js'
 import { getWorkflowSteps } from '../../lib/workflowHelpers.js'
-import { engine, incidents } from './deps.js'
+import { engine, incidents, ticketMoves } from './deps.js'
+import type { SystemPath } from '../ticketTransition.js'
+import { isFinalRefusal, TransitionRefusedError } from '../../lib/transitionRefused.js'
+import { logger } from '../../lib/logger.js'
+
+const log = logger.child({ module: 'event-correlation' })
 import { MONITORING_ACTOR } from './shared.js'
 import { systemText } from '../../lib/systemText.js'
 import { loadStepFacts } from '../../lib/stepEvent.js'
 import { parseLocalizedLabels, localizedLabel } from '@opengraphity/types'
-
-const log = logger.child({ module: 'event-correlation' })
 
 export interface IncidentStepInfo {
   resolvedStep: string
@@ -132,14 +135,16 @@ export async function loadDefinitionTransitions(session: Session, instanceId: st
  * (es. orologi SLA) girano come per un utente; un loro errore è già
  * persistito dal motore e viene loggato, non nascosto.
  */
-export async function runMonitoringTransition(session: Session, tenantId: string, incidentId: string, instanceId: string, toStep: string, triggerType: 'manual' | 'automatic', notes: string, what: string, comment = true): Promise<void> {
-  const res = await (await engine()).transition(
-    session,
-    { instanceId, toStepName: toStep, triggeredBy: MONITORING_ACTOR, triggerType, notes, tenantId },
-    { userId: MONITORING_ACTOR, notes, entityData: {} },
-  )
-  if (!res.success) throw new Error(`Incident ${incidentId}: ${what} transition to "${toStep}" failed: ${res.error ?? 'unknown error'}`)
-  if (res.actionErrors?.length) log.error({ tenantId, incidentId, toStep, actionErrors: res.actionErrors }, `Incident moved to "${toStep}" by monitoring but step actions failed`)
+export async function runMonitoringTransition(session: Session, tenantId: string, incidentId: string, instanceId: string, toStep: string, triggerType: 'manual' | 'automatic', notes: string, what: string, path: SystemPath, comment = true): Promise<void> {
+  // The pipeline of the transitions (wave 7 · B1): the guards of every path,
+  // the note of a refusal on the incident, the errors of the step's actions
+  // in the log.
+  const outcome = await (await ticketMoves()).transitionTicket(session, {
+    tenantId, instanceId, toStep, notes, actor: { kind: 'system', path, userId: MONITORING_ACTOR }, triggerType,
+  })
+  // Thrown with the refusal: a final one is an answer the caller closes on
+  // (isFinalRefusal), anything else fails the job and its queue retries.
+  if (!outcome.moved) throw new TransitionRefusedError(outcome.refusal, `Incident ${incidentId}: ${what} transition to "${toStep}" failed: ${outcome.refusal.message}`)
   const ctx = { tenantId, userId: MONITORING_ACTOR }
   const incidentService = await incidents()
   if (comment) {
@@ -161,8 +166,14 @@ export async function runMonitoringTransition(session: Session, tenantId: string
  * workflow rinominato poteva riaprire l'incident in un passo che non c'entrava
  * niente (ondata 4 · A4-3, rinegoziazione dichiarata nel rapporto).
  * Nessuna transizione manuale verso un passo di lavorazione → errore.
+ *
+ * A reopening one of the guards refuses (wave 7 · B1: the approval named by
+ * the step, its required fields) is an answer, not a failure: the incident
+ * stays resolved with the pipeline's note saying why, and the answer is
+ * `null` — the caller goes on (the alarm is still attached) instead of
+ * failing a job that retrying would not change.
  */
-export async function reopenIncident(session: Session, tenantId: string, inc: OpenIncidentRow, info: IncidentStepInfo, notes: string): Promise<string> {
+export async function reopenIncident(session: Session, tenantId: string, inc: OpenIncidentRow, info: IncidentStepInfo, notes: string, path: SystemPath): Promise<string | null> {
   const transitions = await (await engine()).getAvailableTransitions(session, inc.instanceId, tenantId)
   const toStep = info.reopenSteps.find((name) => transitions.some((t) => t.toStep === name))
   if (!toStep) {
@@ -172,6 +183,13 @@ export async function reopenIncident(session: Session, tenantId: string, inc: Op
       `available: ${transitions.map((t) => t.toStep).join(', ') || 'none'})`,
     )
   }
-  await runMonitoringTransition(session, tenantId, inc.incidentId, inc.instanceId, toStep, 'manual', notes, 'reopen')
+  try {
+    await runMonitoringTransition(session, tenantId, inc.incidentId, inc.instanceId, toStep, 'manual', notes, 'reopen', path)
+  } catch (err) {
+    if (!isFinalRefusal(err)) throw err
+    log.warn({ tenantId, incidentId: inc.incidentId, toStep, path, guard: err.refusal.guard, reason: err.refusal.message },
+      'The incident could not be reopened: it stays resolved, with the reason noted on it')
+    return null
+  }
   return toStep
 }

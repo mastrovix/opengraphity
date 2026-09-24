@@ -10,7 +10,8 @@
  *   assignment on an entity that cannot have a team);
  * - a form answer on a service request goes through the form (its vocabulary
  *   and validation), not through the ITIL field writer;
- * - an automatic transition of a change passes the release-window gate.
+ * - a transition goes through the pipeline of the transitions (wave 7 · B1),
+ *   whose guards — the release window of a change among them — are its own.
  *
  * The sibling files pin the scripting plan, the engine outcome and the
  * incident/problem assignment paths; this one covers the remaining branches.
@@ -62,12 +63,8 @@ vi.mock('../../services/ticketAssignment.js', () => ({
 }))
 vi.mock('../../services/incidentService.js', () => ({ assignIncidentToTeam: vi.fn(), assignIncidentToUser: vi.fn() }))
 
-const transition = vi.fn<(...a: unknown[]) => Promise<{ success: boolean; error?: string }>>(async () => ({ success: true }))
-vi.mock('@opengraphity/workflow', () => ({ workflowEngine: { transition: (...a: unknown[]) => transition(...a) } }))
-const assertAutomaticTransitionAllowed = vi.fn<(...a: unknown[]) => Promise<void>>(async () => {})
-vi.mock('../../graphql/resolvers/change/windowGate.js', () => ({
-  assertAutomaticTransitionAllowed: (...a: unknown[]) => assertAutomaticTransitionAllowed(...a),
-}))
+const transition = vi.fn<(...a: unknown[]) => Promise<unknown>>(async () => ({ moved: true }))
+vi.mock('../../services/ticketTransition.js', () => ({ transitionTicket: (...a: unknown[]) => transition(...a) }))
 
 const runScript = vi.fn<(...a: unknown[]) => Promise<{ success: boolean; error?: string }>>(async () => ({ success: true }))
 vi.mock('@opengraphity/scripting', () => ({ runScript: (...a: unknown[]) => runScript(...a) }))
@@ -98,7 +95,7 @@ beforeEach(() => {
   runQuery.mockImplementation(async () => [{ ok: 1 }])
   formFieldsByName.mockImplementation(async () => new Map())
   writeTicketComment.mockImplementation(async () => ({ id: 'c1' }))
-  transition.mockImplementation(async () => ({ success: true }))
+  transition.mockImplementation(async () => ({ moved: true }))
   runScript.mockImplementation(async () => ({ success: true }))
   assertSafeOutboundUrl.mockImplementation(async (u) => new URL(u))
   fetchMock.mockImplementation(async () => ({ ok: true, status: 200, body: { cancel: async () => {} } }))
@@ -241,35 +238,21 @@ describe('transition_workflow', () => {
     const r = await executeActions([{ type: 'transition_workflow', params: { to_step: 'done' } }], ctx('incident'))
     expect(r[0]!.error).toBe('No workflow instance found')
   })
-  it('a non-change skips the release-window gate and transitions as the system', async () => {
-    wiRecords = [{ instanceId: 'wi-1', currentStep: 'new' }]
+  it('asks the pipeline as the rule, by name, on an automatic arc', async () => {
+    wiRecords = [{ instanceId: 'wi-1' }]
     const r = await executeActions([{ type: 'transition_workflow', params: { to_step: 'done' } }], ctx('incident'))
     expect(r[0]!.success).toBe(true)
-    expect(assertAutomaticTransitionAllowed).not.toHaveBeenCalled()
-    expect(transition).toHaveBeenCalledWith(session, expect.objectContaining({
-      instanceId: 'wi-1', toStepName: 'done', triggerType: 'automatic', tenantId: 't1', notes: 'Auto: Rule A',
-    }), { userId: 'u1', entityData: { id: 'x-1', title: 'Printer down' } })
+    expect(transition).toHaveBeenCalledWith(session, {
+      tenantId: 't1', instanceId: 'wi-1', toStep: 'done', notes: 'Auto: Rule A',
+      actor: { kind: 'system', path: 'rule', label: 'Rule A' }, triggerType: 'automatic',
+    })
   })
-  it('a change goes through the release-window gate first; a refusal blocks the transition', async () => {
-    wiRecords = [{ instanceId: 'wi-1', currentStep: 'assessment', changeId: 'c-1', changeType: 'normal' }]
-    assertAutomaticTransitionAllowed.mockRejectedValueOnce(new Error('outside window'))
-    const r = await executeActions([{ type: 'transition_workflow', params: { to_step: 'scheduled' } }], ctx('change'))
-    expect(assertAutomaticTransitionAllowed).toHaveBeenCalledWith(session, {
-      tenantId: 't1', changeId: 'c-1', changeType: 'normal', currentStep: 'assessment', toStep: 'scheduled',
-    }, 'rule_action')
-    expect(r[0]!.error).toBe('outside window')
-    expect(transition).not.toHaveBeenCalled()
-  })
-  it('a change with no type/current step is still gated (empty strings, not a crash)', async () => {
-    wiRecords = [{ instanceId: 'wi-1', changeId: 'c-1' }]
-    await executeActions([{ type: 'transition_workflow', params: { to_step: 'scheduled' } }], ctx('change'))
-    expect(assertAutomaticTransitionAllowed).toHaveBeenCalledWith(session, expect.objectContaining({ changeType: '', currentStep: '' }), 'rule_action')
-  })
-  it('an engine failure without a message still fails the action', async () => {
+  it('a change refused by the release window fails the action, naming the guard', async () => {
     wiRecords = [{ instanceId: 'wi-1' }]
-    transition.mockResolvedValueOnce({ success: false })
-    const r = await executeActions([{ type: 'transition_workflow', params: { to_step: 'done' } }], ctx('incident'))
-    expect(r[0]!.error).toMatch(/unknown engine error/)
+    transition.mockResolvedValueOnce({ moved: false, refusal: { guard: 'change_window', final: true, message: 'outside window' } })
+    const r = await executeActions([{ type: 'transition_workflow', params: { to_step: 'scheduled' } }], ctx('change'))
+    expect(r[0]!.success).toBe(false)
+    expect(r[0]!.error).toMatch(/^transition_workflow: the transition to "scheduled" did not happen \(change_window: outside window\)\. If this move must be automatic/)
   })
 })
 

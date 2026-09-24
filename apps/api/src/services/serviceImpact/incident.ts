@@ -79,6 +79,7 @@ import { MONITORING_ACTOR, monitoringContext, toStr } from '../events/shared.js'
 import { GROUP_LOCK_OPTS } from '../events/grouping.js'
 import { engine, incidents } from '../events/deps.js'
 import { incidentStepInfo, loadDefinitionTransitions, reopenIncident, runMonitoringTransition, type IncidentStepInfo, type OpenIncidentRow } from '../events/incidentWorkflow.js'
+import { isFinalRefusal } from '../../lib/transitionRefused.js'
 import { findAutoResolvePath } from '../events/autoResolve.js'
 import { causeIdsOf, sameCauseIds, type StoredCause } from './history.js'
 import { systemTextIn } from '../../lib/systemText.js'
@@ -465,8 +466,11 @@ async function reconcile(session: Session, input: ServiceIncidentInput): Promise
         log.debug({ ...logCtx, incidentId: open.incidentId }, 'Service map is not active: resolved incident not reopened')
         return done('inactive')
       }
-      await reopenIncident(session, tenantId, open, info,
-        systemTextIn(lingua, 'service.reopenNote', { service: input.serviceName, health: serviceHealthLabel(lingua, health), score: input.impactScore }))
+      const reopened = await reopenIncident(session, tenantId, open, info,
+        systemTextIn(lingua, 'service.reopenNote', { service: input.serviceName, health: serviceHealthLabel(lingua, health), score: input.impactScore }), 'service_monitoring')
+      // A guard refused (wave 7 · B1): the incident says why on itself, and the
+      // next evaluation asks again — no retry of this one.
+      if (!reopened) return done('none')
       // Giro UI del 15 set · U-6 (scelta del proprietario): il titolo segue la
       // salute di adesso; quello di prima resta nel commento di riapertura.
       await (await incidents()).setIncidentTitle(open.incidentId, monitoringCtx(tenantId), serviceIncidentTitle(lingua, input.serviceName, health))
@@ -771,13 +775,24 @@ async function resolveServiceIncident(session: Session, input: ServiceIncidentIn
     return skipped
   }
 
-  for (const hop of path) {
-    await runMonitoringTransition(session, tenantId, open.incidentId, open.instanceId, hop.toStep, hop.trigger,
-      systemTextIn(lingua, 'autoResolve.hop', { step: hop.toLabel ?? hop.toStep }), 'service auto-resolve', false)
+  try {
+    for (const hop of path) {
+      await runMonitoringTransition(session, tenantId, open.incidentId, open.instanceId, hop.toStep, hop.trigger,
+        systemTextIn(lingua, 'autoResolve.hop', { step: hop.toLabel ?? hop.toStep }), 'service auto-resolve', 'service_monitoring', false)
+    }
+    // La transizione "Risolvi" richiede la causa (rootCause = notes), costruita
+    // dalla salute vera.
+    await incidentService.resolveIncident(open.incidentId, { ...ctx, path: 'service_monitoring' }, serviceResolveCause(lingua, health))
+  } catch (err) {
+    // A guard refused a step of the closure (wave 7 · B1): the incident stays
+    // where it got to, with the reason noted on it once, and this evaluation
+    // ends without a retry that would not change the answer. Anything else
+    // fails the job, and its queue retries.
+    if (!isFinalRefusal(err)) throw err
+    log.warn({ tenantId, mapId, jobId: input.jobId, incidentId: open.incidentId, guard: err.refusal.guard, reason: err.refusal.message },
+      'Service is back but a guard refused to resolve its incident: the reason is noted on it')
+    return { outcome: 'resolve_skipped', incidentId: open.incidentId, incidentNumber: open.number }
   }
-  // La transizione "Risolvi" richiede la causa (rootCause = notes), costruita
-  // dalla salute vera.
-  await incidentService.resolveIncident(open.incidentId, ctx, serviceResolveCause(lingua, health))
   const via = path.length ? systemTextIn(lingua, 'autoResolve.via', { steps: path.map((h) => h.toLabel ?? h.toStep).join(', ') }) : ''
   await incidentService.addIncidentComment(open.incidentId, ctx, systemTextIn(lingua, 'service.resolvedComment', { back, via }))
   await linkServiceIncident(session, tenantId, mapId, open.incidentId, causeIdsOf(input.causes), NO_NOTES, input.now)

@@ -38,8 +38,9 @@ const session = {
 const getSession = vi.fn(() => session)
 vi.mock('@opengraphity/neo4j', () => ({ getSession: (...a: unknown[]) => getSession(...(a as [])) }))
 
+// The pipeline of the transitions (wave 7 · B1): the guards and the note of a refusal are its own.
 const transition = vi.fn()
-vi.mock('@opengraphity/workflow', () => ({ workflowEngine: { transition: (...a: unknown[]) => transition(...a) } }))
+vi.mock('../../services/ticketTransition.js', () => ({ transitionTicket: (...a: unknown[]) => transition(...a) }))
 
 const logError = vi.fn()
 const logWarn = vi.fn()
@@ -69,7 +70,7 @@ beforeEach(() => {
   rows = []
   readError = null
   reads.length = 0
-  transition.mockResolvedValue({ success: true })
+  transition.mockResolvedValue({ moved: true })
   publish.mockResolvedValue(undefined)
 })
 
@@ -86,14 +87,12 @@ describe('EscalationConsumer — sla.breached', () => {
     expect(reads[0]!.q).toContain('{id: $entityId, tenant_id: $tenantId}')
 
     expect(transition).toHaveBeenCalledOnce()
-    expect(transition).toHaveBeenCalledWith(
-      session,
-      // CONTRATTO RINEGOZIATO (revisione totale · E-31): il tenant sul motore
-      // non è più facoltativo — ogni chiamante dice per quale organizzazione
-      // sta transizionando, così la query filtra sempre per tenant.
-      { instanceId: 'wi-1', toStepName: 'escalated', triggeredBy: 'sla-engine', triggerType: 'sla_breach', tenantId: 't1' },
-      { userId: 'system', entityData: {} },
-    )
+    // Wave 7 · B1: the pipeline, as the escalation path, with the guards of every path.
+    expect(transition).toHaveBeenCalledWith(session, {
+      tenantId: 't1', instanceId: 'wi-1', toStep: 'escalated',
+      actor: { kind: 'system', path: 'escalation', userId: 'sla-engine' },
+      triggerType: 'sla_breach',
+    })
 
     expect(publish).toHaveBeenCalledOnce()
     expect(publish).toHaveBeenCalledWith(expect.objectContaining({
@@ -122,7 +121,7 @@ describe('EscalationConsumer — sla.breached', () => {
   it('ola.breached → stesso meccanismo, reason=ola_breach', async () => {
     rows = [ESCALATABLE]
     await consumer.process(event('ola.breached', { entity_id: 'inc-1' }))
-    expect(transition).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ triggerType: 'sla_breach' }), expect.anything())
+    expect(transition).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ triggerType: 'sla_breach' }))
     expect(publish).toHaveBeenCalledWith(expect.objectContaining({ payload: expect.objectContaining({ reason: 'ola_breach' }) }))
   })
 
@@ -223,9 +222,10 @@ describe('EscalationConsumer — errori', () => {
     await expect(consumer.process(event('sla.breached', { entity_id: 'inc-1' }))).rejects.toThrow('redis down')
   })
 
-  it('transizione con success:false dovrebbe far rigettare process() — BUG (da confermare): escalationConsumer.ts:65-68 ritorna dopo il log, BaseConsumer marca l\'evento come processato e l\'escalation è persa in silenzio (in contrasto con il commento a riga 97)', async () => {
+  it('un errore del motore che non è un rifiuto (può essere passeggero) → rilanciato: la coda ritenta', async () => {
     rows = [ESCALATABLE]
-    transition.mockResolvedValue({ success: false, error: 'guard rejected' })
-    await expect(consumer.process(event('sla.breached', { entity_id: 'inc-1' }))).rejects.toThrow()
+    transition.mockResolvedValue({ moved: false, refusal: { guard: 'workflow', final: false, message: 'concurrent move' } })
+    await expect(consumer.process(event('sla.breached', { entity_id: 'inc-1' }))).rejects.toThrow('concurrent move')
+    expect(publish).not.toHaveBeenCalled()
   })
 })

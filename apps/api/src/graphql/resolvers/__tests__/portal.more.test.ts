@@ -50,8 +50,12 @@ const sev = vi.hoisted(() => ({
 vi.mock('../../../lib/portalSeverityOptions.js', () => ({ PORTAL_SEVERITY_VOCABULARY: 'severity', ...sev }))
 const loadVocabularyEntries = vi.fn()
 vi.mock('../../../lib/vocabularyEntries.js', () => ({ loadVocabularyEntries: (...a: unknown[]) => loadVocabularyEntries(...a) }))
-const wf = vi.hoisted(() => ({ transition: vi.fn(), getAvailableTransitions: vi.fn(), createInstance: vi.fn() }))
+const wf = vi.hoisted(() => ({ getAvailableTransitions: vi.fn(), createInstance: vi.fn() }))
 vi.mock('@opengraphity/workflow', () => ({ workflowEngine: wf }))
+// The pipeline of the transitions (wave 7 · B1): the requester's moves go through it.
+const pipe = vi.hoisted(() => vi.fn())
+vi.mock('../../../services/ticketTransition.js', () => ({ transitionTicket: (...a: unknown[]) => pipe(...a) }))
+const refused = (message: string) => ({ moved: false, refusal: { guard: 'workflow', final: true, code: 'CONFLICT', message } })
 const audit = vi.fn()
 vi.mock('../../../lib/audit.js', () => ({ audit: (...a: unknown[]) => audit(...a) }))
 vi.mock('../../../lib/publishEvent.js', () => ({ publishEvent: vi.fn() }))
@@ -71,7 +75,7 @@ vi.mock('../../../lib/ticketComments.js', () => ({ writeTicketComment: (...a: un
 const notifyWatchers = vi.fn()
 vi.mock('../collaboration.js', () => ({ notifyWatchers: (...a: unknown[]) => notifyWatchers(...a) }))
 const logError = vi.fn()
-vi.mock('../../../lib/logger.js', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: (...a: unknown[]) => logError(...a) } }))
+vi.mock('../../../lib/logger.js', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: (...a: unknown[]) => logError(...a), child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }))
 const createIncident = vi.fn()
 vi.mock('../../../services/incidentService.js', () => ({ createIncident: (...a: unknown[]) => createIncident(...a) }))
 vi.mock('../../../lib/systemText.js', () => ({ systemText: vi.fn(async () => 'Reopened from the portal') }))
@@ -358,7 +362,7 @@ describe('reopenTicket — guards and target choice', () => {
   it('someone else\'s ticket is FORBIDDEN and no transition is attempted', async () => {
     h.routes = [check({ createdBy: 'other' })]
     expect(await code(() => M.reopenTicket(null, { ticketId: 'inc-1' }, ctx))).toBe('FORBIDDEN')
-    expect(wf.transition).not.toHaveBeenCalled()
+    expect(pipe).not.toHaveBeenCalled()
   })
 
   it('a ticket without a workflow instance cannot be reopened', async () => {
@@ -369,9 +373,12 @@ describe('reopenTicket — guards and target choice', () => {
   it('when the only way back is the initial step, it goes there', async () => {
     h.routes = [check(), after]
     wf.getAvailableTransitions.mockResolvedValue([{ toStep: 'new' }, { toStep: 'closed' }, { toStep: 'no-such-step' }])
-    wf.transition.mockResolvedValue({ success: true })
+    pipe.mockResolvedValue({ moved: true })
     const out = await M.reopenTicket(null, { ticketId: 'inc-1' }, ctx)
-    expect(wf.transition.mock.calls[0]?.[1]).toMatchObject({ instanceId: 'wi-1', toStepName: 'new', tenantId: 't1', notes: 'Reopened from the portal' })
+    expect(pipe.mock.calls[0]?.[1]).toEqual({
+      tenantId: 't1', instanceId: 'wi-1', toStep: 'new', notes: 'Reopened from the portal',
+      actor: { kind: 'requester', userId: 'user-1' }, triggerType: 'manual',
+    })
     expect(out).toMatchObject({ id: 'inc-1', status: 'new', priorityLabel: 'Urgent' })
     expect(audit).toHaveBeenCalledWith(ctx, 'portal.ticket.reopened', 'Incident', 'inc-1', { fromStep: 'resolved', toStep: 'new' })
   })
@@ -379,24 +386,25 @@ describe('reopenTicket — guards and target choice', () => {
   it('with no active step reachable, any open step will do', async () => {
     h.routes = [check(), after]
     wf.getAvailableTransitions.mockResolvedValue([{ toStep: 'waiting' }])
-    wf.transition.mockResolvedValue({ success: true })
+    pipe.mockResolvedValue({ moved: true })
     await M.reopenTicket(null, { ticketId: 'inc-1' }, ctx)
-    expect(wf.transition.mock.calls[0]?.[1]).toMatchObject({ toStepName: 'waiting' })
+    expect(pipe.mock.calls[0]?.[1]).toMatchObject({ toStep: 'waiting' })
   })
 
-  it('a rejected transition without a reason still says why in plain words', async () => {
+  it('a refused reopening says why, with the refusal\'s key', async () => {
     h.routes = [check()]
     wf.getAvailableTransitions.mockResolvedValue([{ toStep: 'in_progress' }])
-    wf.transition.mockResolvedValue({ success: false })
+    pipe.mockResolvedValue({ moved: false, refusal: { guard: 'required_fields', final: true, code: 'BAD_USER_INPUT', message: 'Field "cause" is required', i18n: { key: 'errors.workflow.requiredFields' } } })
     let err: GraphQLError | undefined
     try { await M.reopenTicket(null, { ticketId: 'inc-1' }, ctx) } catch (e) { err = e as GraphQLError }
-    expect(err?.message).toBe('Reopen failed: transition rejected by the workflow')
+    expect(err?.message).toBe('Reopen failed: Field "cause" is required')
+    expect(err?.extensions['i18n']).toEqual({ key: 'errors.workflow.requiredFields' })
   })
 
   it('a ticket that vanishes after the transition fails loud', async () => {
     h.routes = [check({ labels: ['ServiceRequest'] })]
     wf.getAvailableTransitions.mockResolvedValue([{ toStep: 'in_progress' }])
-    wf.transition.mockResolvedValue({ success: true })
+    pipe.mockResolvedValue({ moved: true })
     expect(await code(() => M.reopenTicket(null, { ticketId: 'sr-1' }, ctx))).toMatch(/ServiceRequest sr-1 vanished after reopen transition/)
   })
 })
@@ -412,9 +420,9 @@ describe('confirmTicketResolution — the requester closes a resolved ticket now
   it('closes along the manual move to the closed step, with the requester\'s words, and says so in the Audit Log', async () => {
     h.routes = [check(), after]
     wf.getAvailableTransitions.mockResolvedValue([{ toStep: 'in_progress' }, { toStep: 'closed' }])
-    wf.transition.mockResolvedValue({ success: true })
+    pipe.mockResolvedValue({ moved: true })
     const out = await M.confirmTicketResolution(null, { ticketId: 'inc-1' }, ctx)
-    expect(wf.transition.mock.calls[0]?.[1]).toMatchObject({ instanceId: 'wi-1', toStepName: 'closed', triggerType: 'manual', triggeredBy: 'user-1', tenantId: 't1' })
+    expect(pipe.mock.calls[0]?.[1]).toMatchObject({ instanceId: 'wi-1', toStep: 'closed', triggerType: 'manual', actor: { kind: 'requester', userId: 'user-1' }, tenantId: 't1' })
     expect(out).toMatchObject({ id: 'inc-1', status: 'closed' })
     expect(audit).toHaveBeenCalledWith(ctx, 'portal.ticket.resolution_confirmed', 'Incident', 'inc-1', { fromStep: 'resolved', toStep: 'closed' })
   })
@@ -422,7 +430,7 @@ describe('confirmTicketResolution — the requester closes a resolved ticket now
   it('someone else\'s ticket is FORBIDDEN, and nothing moves', async () => {
     h.routes = [check({ createdBy: 'other' })]
     expect(await code(() => M.confirmTicketResolution(null, { ticketId: 'inc-1' }, ctx))).toBe('FORBIDDEN')
-    expect(wf.transition).not.toHaveBeenCalled()
+    expect(pipe).not.toHaveBeenCalled()
   })
 
   it('a ticket not in the tenant is FORBIDDEN', async () => {
@@ -433,14 +441,14 @@ describe('confirmTicketResolution — the requester closes a resolved ticket now
     h.routes = [check({ status: 'in_progress' })]
     wf.getAvailableTransitions.mockResolvedValue([{ toStep: 'closed' }])
     expect(await code(() => M.confirmTicketResolution(null, { ticketId: 'inc-1' }, ctx))).toBe('CONFLICT')
-    expect(wf.transition).not.toHaveBeenCalled()
+    expect(pipe).not.toHaveBeenCalled()
   })
 
   it('a workflow that closes only by its timer (no manual move to a closed step) is a CONFLICT, not a forced close', async () => {
     h.routes = [check()]
     wf.getAvailableTransitions.mockResolvedValue([{ toStep: 'in_progress' }])
     expect(await code(() => M.confirmTicketResolution(null, { ticketId: 'inc-1' }, ctx))).toBe('CONFLICT')
-    expect(wf.transition).not.toHaveBeenCalled()
+    expect(pipe).not.toHaveBeenCalled()
   })
 
   it('a ticket without a workflow instance cannot be confirmed', async () => {
@@ -451,7 +459,7 @@ describe('confirmTicketResolution — the requester closes a resolved ticket now
   it('a transition the engine refuses says why', async () => {
     h.routes = [check()]
     wf.getAvailableTransitions.mockResolvedValue([{ toStep: 'closed' }])
-    wf.transition.mockResolvedValue({ success: false, error: 'condition not met' })
+    pipe.mockResolvedValue(refused('condition not met'))
     let err: GraphQLError | undefined
     try { await M.confirmTicketResolution(null, { ticketId: 'inc-1' }, ctx) } catch (e) { err = e as GraphQLError }
     expect(err?.message).toBe('Confirmation failed: condition not met')
@@ -460,7 +468,7 @@ describe('confirmTicketResolution — the requester closes a resolved ticket now
   it('a ticket that vanishes after the confirmation fails loud', async () => {
     h.routes = [check({ labels: ['ServiceRequest'] })]
     wf.getAvailableTransitions.mockResolvedValue([{ toStep: 'closed' }])
-    wf.transition.mockResolvedValue({ success: true })
+    pipe.mockResolvedValue({ moved: true })
     expect(await code(() => M.confirmTicketResolution(null, { ticketId: 'sr-1' }, ctx))).toMatch(/ServiceRequest sr-1 vanished after the confirmation/)
   })
 })

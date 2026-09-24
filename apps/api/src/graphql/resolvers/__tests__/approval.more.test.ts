@@ -31,8 +31,10 @@ vi.mock('@opengraphity/neo4j', () => ({
     close,
   })),
 }))
+vi.mock('@opengraphity/workflow', () => ({ workflowEngine: { getAvailableTransitions: vi.fn() } }))
+// The pipeline of the transitions (wave 7 · B1): the article moves through it.
 const transition = vi.fn()
-vi.mock('@opengraphity/workflow', () => ({ workflowEngine: { transition: (...a: unknown[]) => transition(...a), getAvailableTransitions: vi.fn() } }))
+vi.mock('../../../services/ticketTransition.js', () => ({ transitionTicket: (...a: unknown[]) => transition(...a) }))
 const sendToUser = vi.fn()
 vi.mock('@opengraphity/notifications', () => ({ sseManager: { sendToUser: (...a: unknown[]) => sendToUser(...a) } }))
 const audit = vi.fn()
@@ -66,7 +68,7 @@ beforeEach(() => {
   read.mockResolvedValue({ records: [] })
   write.mockResolvedValue({ records: [row({ status: 'rejected' })] })
   getInitialStepName.mockResolvedValue('draft')
-  transition.mockResolvedValue({ success: true })
+  transition.mockResolvedValue({ moved: true })
 })
 
 describe('myPendingApprovals', () => {
@@ -134,7 +136,10 @@ describe('rejectRequest — a knowledge base article', () => {
     const out = await rejectRequest(null, { id: 'a1', note: 'sources missing' }, ctx('u1'))
     expect(out.status).toBe('rejected')
     expect(getInitialStepName).toHaveBeenCalledWith(expect.anything(), 't1', 'kb_article')
-    expect(transition.mock.calls[0]![1]).toMatchObject({ instanceId: 'wi-1', toStepName: 'draft', notes: 'sources missing', tenantId: 't1', triggeredBy: 'u1' })
+    expect(transition.mock.calls[0]![1]).toEqual({
+      tenantId: 't1', instanceId: 'wi-1', toStep: 'draft', notes: 'sources missing',
+      actor: { kind: 'person', userId: 'u1' }, triggerType: 'manual',
+    })
     expect(audit).toHaveBeenCalledWith(expect.anything(), 'kb_article.publication_rejected', 'KBArticle', 'kb-1')
   })
 
@@ -151,7 +156,7 @@ describe('rejectRequest — a knowledge base article', () => {
 
   it('if the workflow refuses, the rejection fails with CONFLICT and nobody is told otherwise', async () => {
     articleUnderReview()
-    transition.mockResolvedValue({ success: false, error: 'guard failed', errorI18n: { key: 'workflow.guard.x' } })
+    transition.mockResolvedValue({ moved: false, refusal: { guard: 'workflow', final: true, code: 'CONFLICT', message: 'guard failed', i18n: { key: 'workflow.guard.x' } } })
     const r = await codeOf(() => rejectRequest(null, { id: 'a1', note: 'no' }, ctx('u1')))
     expect(r.code).toBe('CONFLICT')
     expect(r.message).toContain('could not go back to draft')
@@ -161,11 +166,11 @@ describe('rejectRequest — a knowledge base article', () => {
     expect(sendToUser).not.toHaveBeenCalled()
   })
 
-  it('a refusal without a reason still says so, with the generic key', async () => {
+  it('a refusal without a translation key still says so, with the generic key', async () => {
     articleUnderReview()
-    transition.mockResolvedValue({ success: false })
+    transition.mockResolvedValue({ moved: false, refusal: { guard: 'workflow', final: true, code: 'CONFLICT', message: 'The workflow refused the transition' } })
     const r = await codeOf(() => rejectRequest(null, { id: 'a1', note: 'no' }, ctx('u1')))
-    expect(r.message).toContain('no reason given')
+    expect(r.message).toContain('The workflow refused the transition')
     expect(r.i18n).toEqual({ key: 'errors.approval.transitionRefused' })
   })
 

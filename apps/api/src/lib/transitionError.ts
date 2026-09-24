@@ -1,6 +1,4 @@
-import { GraphQLError } from 'graphql'
 import type { TransitionResult } from '@opengraphity/workflow'
-import type { ErrorI18n } from './errors.js'
 
 /**
  * Una transizione rifiutata dal motore, per chi la mostra a una persona.
@@ -9,16 +7,11 @@ import type { ErrorI18n } from './errors.js'
  * causa è nota, `errorI18n` (la chiave della frase). Prima i resolver
  * rilanciavano solo `error`: la persona leggeva il messaggio tecnico, e fino a
  * settembre 2026 in italiano anche con il prodotto in inglese.
+ *
+ * The refusals thrown as errors are the pipeline's (services/ticketTransition.ts,
+ * `refusalError`, wave 7 · B1); what stays here is the shape of the result of
+ * `executeWorkflowTransition`, which returns the engine's no instead of throwing it.
  */
-export function transitionErrorI18n(result: Pick<TransitionResult, 'errorI18n'>): ErrorI18n | undefined {
-  return result.errorI18n ? { key: result.errorI18n.key, ...(result.errorI18n.params ? { params: result.errorI18n.params } : {}) } : undefined
-}
-
-/** L'errore GraphQL di una transizione manuale rifiutata. */
-export function transitionFailed(result: Pick<TransitionResult, 'error' | 'errorI18n'>, fallback: string): GraphQLError {
-  const i18n = transitionErrorI18n(result)
-  return new GraphQLError(result.error ?? fallback, { extensions: i18n ? { code: 'CONFLICT', i18n } : { code: 'CONFLICT' } })
-}
 
 /** I campi dell'esito `TransitionResult` di GraphQL: messaggio, chiave e parametri. */
 export function transitionErrorFields(result: Pick<TransitionResult, 'error' | 'errorI18n'>): {

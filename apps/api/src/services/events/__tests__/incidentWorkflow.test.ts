@@ -6,6 +6,8 @@
  * tests pin, and what a user would see if they regressed:
  *  - `incidentTerminalSteps` answers with a (possibly empty) list and never
  *    throws: throwing here once locked a tenant out of deleting its own CIs;
+ *  - every move goes through the pipeline of the transitions (wave 7 · B1)
+ *    under the name of its path, which the note of a refusal shows;
  *  - a refused transition is an ERROR (the job retries and stays visible),
  *    not a silently half-closed incident;
  *  - a reopen targets a step by CATEGORY and only through a transition the
@@ -18,17 +20,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 let steps: Array<Record<string, unknown>> = []
 vi.mock('../../../lib/workflowHelpers.js', () => ({ getWorkflowSteps: vi.fn(async () => steps) }))
 vi.mock('@opengraphity/neo4j', () => ({ runQuery: vi.fn(), runQueryOne: vi.fn() }))
-vi.mock('../../../lib/logger.js', () => {
-  const error = vi.fn()
-  return { logger: { child: () => ({ error, warn: vi.fn(), info: vi.fn() }) }, __error: error }
-})
+const logWarn = vi.hoisted(() => vi.fn())
+vi.mock('../../../lib/logger.js', () => ({ logger: { child: () => ({ warn: logWarn, error: vi.fn(), info: vi.fn(), debug: vi.fn() }) } }))
 
 const transition = vi.fn()
 const getAvailableTransitions = vi.fn()
 const addIncidentComment = vi.fn()
 vi.mock('../deps.js', () => ({
-  engine: async () => ({ transition, getAvailableTransitions }),
+  engine: async () => ({ getAvailableTransitions }),
   incidents: async () => ({ addIncidentComment }),
+  ticketMoves: async () => ({ transitionTicket: transition }),
 }))
 vi.mock('../../../lib/systemText.js', () => ({
   systemText: vi.fn(async (_t: string, key: string, vars: Record<string, string>) => `${key}|${vars['step']}|${vars['notes']}`),
@@ -39,7 +40,6 @@ vi.mock('../../../lib/stepEvent.js', () => ({
 
 const wf = await import('../incidentWorkflow.js')
 const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
-const loggerMod = await import('../../../lib/logger.js') as unknown as { __error: ReturnType<typeof vi.fn> }
 
 const step = (name: string, category: string | null, extra: Record<string, unknown> = {}) =>
   ({ name, label: null, isInitial: false, isTerminal: false, isOpen: true, category, purpose: null, stepOrder: null, ...extra })
@@ -117,34 +117,30 @@ describe('tenant-scoped reads', () => {
 })
 
 describe('runMonitoringTransition', () => {
-  it('transitions as the monitoring actor and comments with the step LABEL', async () => {
-    transition.mockResolvedValue({ success: true })
-    await wf.runMonitoringTransition(session, 't1', 'INC1', 'wi1', 'resolved', 'automatic', 'alarm cleared', 'resolve')
-    expect(transition.mock.calls[0]![1]).toMatchObject({ instanceId: 'wi1', toStepName: 'resolved', triggeredBy: 'monitoring', triggerType: 'automatic', tenantId: 't1' })
+  it('moves through the pipeline as the monitoring actor, under its path, and comments with the step LABEL', async () => {
+    transition.mockResolvedValue({ moved: true, actionErrors: [] })
+    await wf.runMonitoringTransition(session, 't1', 'INC1', 'wi1', 'resolved', 'automatic', 'alarm cleared', 'resolve', 'event_auto_resolve')
+    expect(transition.mock.calls[0]![1]).toEqual({
+      tenantId: 't1', instanceId: 'wi1', toStep: 'resolved', notes: 'alarm cleared', triggerType: 'automatic',
+      actor: { kind: 'system', path: 'event_auto_resolve', userId: 'monitoring' },
+    })
     expect(addIncidentComment).toHaveBeenCalledWith('INC1', { tenantId: 't1', userId: 'monitoring' }, 'workflow.transitionCommentNotes|Label of resolved|alarm cleared')
   })
 
   it('comment=false leaves no comment (intermediate steps of an auto-close)', async () => {
-    transition.mockResolvedValue({ success: true })
-    await wf.runMonitoringTransition(session, 't1', 'INC1', 'wi1', 'resolved', 'automatic', 'n', 'resolve', false)
+    transition.mockResolvedValue({ moved: true, actionErrors: [] })
+    await wf.runMonitoringTransition(session, 't1', 'INC1', 'wi1', 'resolved', 'automatic', 'n', 'resolve', 'service_monitoring', false)
     expect(addIncidentComment).not.toHaveBeenCalled()
   })
 
-  it('a refused transition throws with the engine reason, and without one says "unknown error"', async () => {
-    transition.mockResolvedValueOnce({ success: false, error: 'guard failed' })
-    await expect(wf.runMonitoringTransition(session, 't1', 'INC1', 'wi1', 'resolved', 'automatic', 'n', 'resolve'))
-      .rejects.toThrow('Incident INC1: resolve transition to "resolved" failed: guard failed')
-    transition.mockResolvedValueOnce({ success: false })
-    await expect(wf.runMonitoringTransition(session, 't1', 'INC1', 'wi1', 'resolved', 'automatic', 'n', 'resolve'))
-      .rejects.toThrow(/failed: unknown error/)
+  it('a refused transition throws with the refusal\'s reason and the refusal itself, and writes no comment', async () => {
+    transition.mockResolvedValueOnce({ moved: false, refusal: { guard: 'workflow', final: true, code: 'CONFLICT', message: 'guard failed' } })
+    const err = await wf.runMonitoringTransition(session, 't1', 'INC1', 'wi1', 'resolved', 'automatic', 'n', 'resolve', 'event_auto_resolve')
+      .then(() => null, (e: unknown) => e as { message: string; refusal: { guard: string } })
+    expect(err!.message).toBe('Incident INC1: resolve transition to "resolved" failed: guard failed')
+    // The caller tells an answer from a failure by it (lib/transitionRefused.ts).
+    expect(err!.refusal).toMatchObject({ guard: 'workflow' })
     expect(addIncidentComment).not.toHaveBeenCalled()
-  })
-
-  it('step action errors are logged, not hidden, and the transition still counts', async () => {
-    transition.mockResolvedValue({ success: true, actionErrors: ['sla clock failed'] })
-    await wf.runMonitoringTransition(session, 't1', 'INC1', 'wi1', 'resolved', 'automatic', 'n', 'resolve')
-    expect(loggerMod.__error).toHaveBeenCalledWith(expect.objectContaining({ actionErrors: ['sla clock failed'] }), expect.stringContaining('step actions failed'))
-    expect(addIncidentComment).toHaveBeenCalled()
   })
 })
 
@@ -153,16 +149,31 @@ describe('reopenIncident', () => {
 
   it('picks the first reopen candidate the engine actually offers', async () => {
     getAvailableTransitions.mockResolvedValue([{ toStep: 'closed' }, { toStep: 'work_b' }])
-    transition.mockResolvedValue({ success: true })
+    transition.mockResolvedValue({ moved: true, actionErrors: [] })
     const info = { resolvedStep: 'resolved', terminalSteps: ['closed'], reopenSteps: ['work_a', 'work_b'] }
-    await expect(wf.reopenIncident(session, 't1', inc, info, 'alarm is back')).resolves.toBe('work_b')
-    expect(transition.mock.calls[0]![1]).toMatchObject({ toStepName: 'work_b', triggerType: 'manual' })
+    await expect(wf.reopenIncident(session, 't1', inc, info, 'alarm is back', 'event_reopen')).resolves.toBe('work_b')
+    expect(transition.mock.calls[0]![1]).toMatchObject({ toStep: 'work_b', triggerType: 'manual', actor: { path: 'event_reopen' } })
+  })
+
+  it('a reopening a guard refuses (wave 7 · B1) is an answer: null, a warning, the incident stays resolved', async () => {
+    getAvailableTransitions.mockResolvedValue([{ toStep: 'work_a' }])
+    transition.mockResolvedValue({ moved: false, refusal: { guard: 'named_approval', final: true, code: 'CONFLICT', message: 'Waiting for an approval' } })
+    const info = { resolvedStep: 'resolved', terminalSteps: ['closed'], reopenSteps: ['work_a'] }
+    await expect(wf.reopenIncident(session, 't1', inc, info, 'alarm is back', 'event_reopen')).resolves.toBeNull()
+    expect(logWarn).toHaveBeenCalledWith(expect.objectContaining({ incidentId: 'INC1', guard: 'named_approval', path: 'event_reopen' }), expect.stringContaining('could not be reopened'))
+  })
+
+  it('an error of the reopening that may be transient is thrown: the job retries', async () => {
+    getAvailableTransitions.mockResolvedValue([{ toStep: 'work_a' }])
+    transition.mockResolvedValue({ moved: false, refusal: { guard: 'workflow', final: false, code: 'CONFLICT', message: 'Concurrent transition' } })
+    const info = { resolvedStep: 'resolved', terminalSteps: ['closed'], reopenSteps: ['work_a'] }
+    await expect(wf.reopenIncident(session, 't1', inc, info, 'n', 'event_reopen')).rejects.toThrow(/reopen transition to "work_a" failed: Concurrent transition/)
   })
 
   it('no transition to a working step: error naming candidates and what is available', async () => {
     getAvailableTransitions.mockResolvedValue([{ toStep: 'closed' }])
     const info = { resolvedStep: 'resolved', terminalSteps: ['closed'], reopenSteps: ['work_a'] }
-    await expect(wf.reopenIncident(session, 't1', inc, info, 'n'))
+    await expect(wf.reopenIncident(session, 't1', inc, info, 'n', 'event_reopen'))
       .rejects.toThrow('candidates: work_a; available: closed')
     expect(transition).not.toHaveBeenCalled()
   })
@@ -170,7 +181,7 @@ describe('reopenIncident', () => {
   it('with nothing on either side the message says "none" twice', async () => {
     getAvailableTransitions.mockResolvedValue([])
     const info = { resolvedStep: 'resolved', terminalSteps: [], reopenSteps: [] }
-    await expect(wf.reopenIncident(session, 't1', inc, info, 'n'))
+    await expect(wf.reopenIncident(session, 't1', inc, info, 'n', 'service_monitoring'))
       .rejects.toThrow('candidates: none; available: none')
   })
 })

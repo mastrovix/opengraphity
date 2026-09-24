@@ -10,4 +10,5 @@
  */
 export const engine    = async () => (await import('@opengraphity/workflow')).workflowEngine
 export const incidents = () => import('../incidentService.js')
+export const ticketMoves = () => import('../ticketTransition.js')
 export const queue     = () => import('../../jobs/eventCorrelateWorker.js')

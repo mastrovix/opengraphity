@@ -43,6 +43,8 @@ import type { EventRecord, PipelineMode, PipelineOutcome, PipelineResult } from 
 import { systemTextIn } from '../../lib/systemText.js'
 import { languageFor } from '../../lib/tenantLanguage.js'
 import type { Lingua } from '../../lib/enumValueLabels.js'
+import { isFinalRefusal } from '../../lib/transitionRefused.js'
+import type { TransitionRefusal } from '../ticketTransition.js'
 
 const log = logger.child({ module: 'event-correlation' })
 
@@ -176,6 +178,35 @@ async function resolveAgainstIncidents(session: Session, tenantId: string, ev: E
   return best ? done(best.outcome, best.incidentId) : done('none', first.incidentId)
 }
 
+/**
+ * Walks the incident to its resolved step: the intermediate steps, then the
+ * resolution. Ogni passo intermedio è una transizione vera (storia del
+ * workflow, evento incident.<step>, senza commento: un solo commento
+ * riassuntivo alla fine): le sue enter/exit action possono avviare o fermare
+ * gli orologi SLA (seed: assigned avvia il response, in_progress lo ferma e
+ * avvia il resolve) — è accettato, l'incident risulta preso in carico e
+ * risolto dal monitoraggio. The answer is the refusal of a guard, if one held
+ * the incident (the steps already done stay: each is atomic and consistent);
+ * any other failure is thrown, and the job retries.
+ */
+async function walkToResolved(session: Session, tenantId: string, linked: LinkedIncident, path: readonly AutoResolveHop[], lingua: Lingua, title: string): Promise<TransitionRefusal | null> {
+  const incidentService = await incidents()
+  try {
+    for (const hop of path) {
+      await runMonitoringTransition(session, tenantId, linked.incidentId, linked.instanceId, hop.toStep, hop.trigger,
+        systemTextIn(lingua, 'autoResolve.hop', { step: hop.toLabel ?? hop.toStep }), 'auto-resolve', 'event_auto_resolve', false)
+    }
+    // La transizione "Risolvi" richiede la causa (rootCause = notes).
+    await incidentService.resolveIncident(linked.incidentId, { tenantId, userId: MONITORING_ACTOR, path: 'event_auto_resolve' }, systemTextIn(lingua, 'autoResolve.cause', { title }))
+    return null
+  } catch (err) {
+    if (!isFinalRefusal(err)) throw err
+    log.warn({ tenantId, incidentId: linked.incidentId, guard: err.refusal.guard, reason: err.refusal.message },
+      'A cleared alarm could not resolve its incident: a guard refused, the reason is noted on it')
+    return err.refusal
+  }
+}
+
 /** Frase "N allarmi silenziati da CHG-…" (1.18); null se nessun allarme è silenziato. */
 export function suppressedSummary(lingua: Lingua, suppressed: number, changeCodes: readonly string[]): string | null {
   if (suppressed <= 0) return null
@@ -207,20 +238,14 @@ async function resolveAgainstIncident(session: Session, tenantId: string, ev: Ev
 
   let outcome: ResolveOutcome
   let historyNote: string | null
-  if (path) {
-    // Ogni passo intermedio è una transizione vera (storia del workflow,
-    // evento incident.<step>, senza commento: un solo commento riassuntivo
-    // alla fine): le sue enter/exit action possono avviare o fermare gli
-    // orologi SLA (seed: assigned avvia il response, in_progress lo ferma e
-    // avvia il resolve) — è accettato, l'incident risulta preso in carico e
-    // risolto dal monitoraggio. Un passo rifiutato → errore: i passi già
-    // fatti restano (ciascuno è atomico e coerente), il job ritenta.
-    for (const hop of path) {
-      await runMonitoringTransition(session, tenantId, linked.incidentId, linked.instanceId, hop.toStep, hop.trigger,
-        systemTextIn(lingua, 'autoResolve.hop', { step: hop.toLabel ?? hop.toStep }), 'auto-resolve', false)
-    }
-    // La transizione "Risolvi" richiede la causa (rootCause = notes).
-    await incidentService.resolveIncident(linked.incidentId, ctx, systemTextIn(lingua, 'autoResolve.cause', { title }))
+  const refused = path ? await walkToResolved(session, tenantId, linked, path, lingua, title) : null
+  if (refused) {
+    // A guard refused a step (wave 7 · B1): the incident stays where it got
+    // to, with the pipeline's note saying why; the alarm's history says it
+    // too, and the job ends — retrying would not change the answer.
+    outcome = 'auto_resolve_skipped'
+    historyNote = systemTextIn(lingua, 'autoResolve.historyRefused', { reason: refused.message })
+  } else if (path) {
     const steps = path.map((h) => h.toLabel ?? h.toStep).join(', ')
     const via = path.length ? systemTextIn(lingua, 'autoResolve.via', { steps }) : ''
     // Il commento sui silenziati (1.18) precede quello di chiusura: una volta per risoluzione.

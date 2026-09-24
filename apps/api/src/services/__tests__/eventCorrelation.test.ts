@@ -58,8 +58,16 @@ const redis = { set: vi.fn(inMemorySet), eval: vi.fn(inMemoryEval), get: vi.fn(a
 vi.mock('../../lib/bullmq.js', () => ({ getSharedRedis: () => redis }))
 vi.mock('@opengraphity/workflow', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@opengraphity/workflow')>()),   // seed reale (INCIDENT_WORKFLOW_BASE)
-  workflowEngine: { transition: vi.fn(), getAvailableTransitions: vi.fn() },
+  workflowEngine: { getAvailableTransitions: vi.fn() },
 }))
+// The pipeline of the transitions (wave 7 · B1): monitoring moves the incident
+// through it, under the name of its path; its guards are tested on their own.
+const transitionTicket = vi.hoisted(() => vi.fn())
+vi.mock('../ticketTransition.js', () => ({ transitionTicket }))
+const refusedBy = (message: string) => ({ moved: false, refusal: { guard: 'workflow', final: false, code: 'CONFLICT', message } })
+/** A refusal retrying does not change (wave 7 · B1): the pipeline noted it on the incident. */
+const refusedFinally = (message: string, guard = 'named_approval') => ({ moved: false, refusal: { guard, final: true, code: 'CONFLICT', message } })
+const { TransitionRefusedError } = await import('../../lib/transitionRefused.js')
 vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../lib/logger.js', () => {
@@ -253,7 +261,7 @@ beforeEach(() => {
   vi.mocked(getStepNamesByPurpose).mockImplementation(async (_s, _t, _e, purposes) =>
     (purposes as readonly string[]).includes('implementation') ? ['deployment'] : ['scheduled'])
   vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([] as never)
-  vi.mocked(workflowEngine.transition).mockResolvedValue({ success: true } as never)
+  transitionTicket.mockResolvedValue({ moved: true, actionErrors: [] })
   vi.mocked(incidentService.createIncident).mockResolvedValue({ id: 'inc-new', number: 'INC00000009' } as never)
   vi.mocked(incidentService.resolveIncident).mockResolvedValue({ id: 'inc-1' } as never)
 })
@@ -662,7 +670,7 @@ describe('raggruppamento per CI', () => {
     expect(a.params).toMatchObject({ eventId: 'ev-1', incidentId: 'inc-1', manual: false, now: NOW })
     expect(incidentService.addIncidentComment).toHaveBeenCalledWith('inc-1', MON, 'Allarme correlato: DiskFull, critical, ricorrenze 3')
     expect(incidentService.createIncident).not.toHaveBeenCalled()
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
+    expect(transitionTicket).not.toHaveBeenCalled()
     expect(callMatching(Q.setCorr)!.params['correlation']).toBe('attached')
     expect(publishEvent).toHaveBeenCalledWith('event.correlated', 't1', 'monitoring', expect.objectContaining({ id: 'ev-1', incident_id: 'inc-1', outcome: 'attached', ci_id: 'ci-1' }), NOW)
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ userId: 'monitoring' }), 'event.attached', 'Event', 'ev-1', expect.objectContaining({ incidentId: 'inc-1' }))
@@ -689,11 +697,10 @@ describe('raggruppamento per CI', () => {
     const out = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
     expect(out).toMatchObject({ outcome: 'reopened', incidentId: 'inc-1' })
     expect(workflowEngine.getAvailableTransitions).toHaveBeenCalledWith(session, 'wi-1', 't1')
-    expect(workflowEngine.transition).toHaveBeenCalledWith(
-      session,
-      { instanceId: 'wi-1', toStepName: 'in_progress', triggeredBy: 'monitoring', triggerType: 'manual', notes: 'Allarme tornato: DiskFull (db-01)', tenantId: 't1' },
-      { userId: 'monitoring', notes: 'Allarme tornato: DiskFull (db-01)', entityData: {} },
-    )
+    expect(transitionTicket).toHaveBeenCalledWith(session, {
+      tenantId: 't1', instanceId: 'wi-1', toStep: 'in_progress', notes: 'Allarme tornato: DiskFull (db-01)', triggerType: 'manual',
+      actor: { kind: 'system', path: 'event_reopen', userId: 'monitoring' },
+    })
     expect(incidentService.addIncidentComment).toHaveBeenCalledWith('inc-1', MON, 'Workflow: in_progress — Allarme tornato: DiskFull (db-01)')
     // Revisione totale · C-1: l'evento di dominio dell'ingresso nel passo lo
     // pubblica l'hook `onStepEntered` del motore (che vede TUTTI i cammini),
@@ -721,11 +728,7 @@ describe('raggruppamento per CI', () => {
     onCypher([...baseRules(), [Q.group, { incidentId: 'inc-1', instanceId: 'wi-1', step: 'risolto' }]])
     const out = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
     expect(out).toMatchObject({ outcome: 'reopened', incidentId: 'inc-1' })
-    expect(workflowEngine.transition).toHaveBeenCalledWith(
-      session,
-      expect.objectContaining({ toStepName: 'lavorazione', triggerType: 'manual' }),
-      expect.anything(),
-    )
+    expect(transitionTicket).toHaveBeenCalledWith(session, expect.objectContaining({ toStep: 'lavorazione', triggerType: 'manual' }))
 
     // Nessuna transizione verso un passo «active» → errore che lo dice, senza
     // ripiegare sul «primo passo non terminale» (era un fallback silenzioso).
@@ -741,9 +744,19 @@ describe('raggruppamento per CI', () => {
     expect(callMatching(Q.setCorr)).toBeUndefined()
 
     vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'in_progress' }] as never)
-    vi.mocked(workflowEngine.transition).mockResolvedValue({ success: false, error: 'guard' } as never)
+    transitionTicket.mockResolvedValue(refusedBy('guard'))
     await expect(runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).rejects.toThrow(/reopen transition to "in_progress" failed: guard/)
     expect(incidentService.addIncidentComment).not.toHaveBeenCalled()
+  })
+
+  it('a reopening a guard refuses is an answer: the alarm is attached to the incident, which stays resolved, and the job does not retry', async () => {
+    vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'in_progress' }] as never)
+    transitionTicket.mockResolvedValue(refusedFinally('Waiting for an approval'))
+    onCypher([...baseRules(), [Q.group, { incidentId: 'inc-1', instanceId: 'wi-1', step: 'resolved' }]])
+    const out = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    expect(out).toMatchObject({ outcome: 'attached', incidentId: 'inc-1' })
+    expect(callMatching(Q.attach)!.params['incidentId']).toBe('inc-1')
+    expect(callMatching(Q.setCorr)!.params['correlation']).toBe('attached')
   })
 
   it('nessun incident → apertura con attore monitoring, CI impattato, priorità/impatto/urgenza dalla policy, CORRELATED_INTO manual=false, opened', async () => {
@@ -883,7 +896,7 @@ describe('chiusura automatica', () => {
     // conteggio dei silenziati con il codice della change che li silenzia
     expect(l.cypher).toContain("OPTIONAL MATCH (s:Event {tenant_id: $tenantId, status: 'suppressed'})-[:CORRELATED_INTO]->(i)")
     expect(l.cypher).toContain('collect(DISTINCT coalesce(c.code, c.id)) AS suppressingChanges')
-    expect(incidentService.resolveIncident).toHaveBeenCalledWith('inc-1', MON, 'Allarme di monitoraggio rientrato: DiskFull')
+    expect(incidentService.resolveIncident).toHaveBeenCalledWith('inc-1', { ...MON, path: 'event_auto_resolve' }, 'Allarme di monitoraggio rientrato: DiskFull')
     expect(incidentService.addIncidentComment).toHaveBeenCalledWith('inc-1', MON, expect.stringMatching(/^Risolto automaticamente: .*DiskFull/))
     expect(publishEvent).toHaveBeenCalledWith('event.correlated', 't1', 'am', expect.objectContaining({ id: 'ev-1', incident_id: 'inc-1', outcome: 'auto_resolved' }), NOW)
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ userId: 'monitoring' }), 'event.auto_resolved', 'Event', 'ev-1', expect.objectContaining({ incidentId: 'inc-1' }))
@@ -930,7 +943,7 @@ describe('chiusura automatica', () => {
     const out = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
     expect(out).toEqual({ outcome: 'auto_resolved', status: 'resolved', suppressedByChangeId: null, incidentId: 'inc-1' })
     expect(incidentService.resolveIncident).toHaveBeenCalledTimes(1)
-    expect(incidentService.resolveIncident).toHaveBeenCalledWith('inc-1', MON, expect.any(String))
+    expect(incidentService.resolveIncident).toHaveBeenCalledWith('inc-1', { ...MON, path: 'event_auto_resolve' }, expect.any(String))
     expect(workflowEngine.getAvailableTransitions).toHaveBeenCalledTimes(1)
     expect(workflowEngine.getAvailableTransitions).toHaveBeenCalledWith(session, 'wi-1', 't1')
     expect(publishEvent).toHaveBeenCalledTimes(1)
@@ -977,7 +990,7 @@ describe('chiusura automatica', () => {
     onCypher([...baseRules({ status: 'resolved' }), [Q.linked, linkedRow({ step: 'in_progress' })]])
     expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).outcome).toBe('auto_resolved')
     expect(callMatching(Q.defTr)).toBeUndefined()
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
+    expect(transitionTicket).not.toHaveBeenCalled()
     expect(incidentService.publishIncidentTransition).not.toHaveBeenCalled()
     expect(incidentService.resolveIncident).toHaveBeenCalledTimes(1)
   })
@@ -986,7 +999,7 @@ describe('chiusura automatica', () => {
     vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'assigned', label: 'Assegna' }] as never)
     onCypher([...baseRules({ status: 'resolved' }), [Q.linked, linkedRow({ step: 'new' })], [Q.defTr, SEED_TRANSITIONS]])
     const order: string[] = []
-    vi.mocked(workflowEngine.transition).mockImplementation((async (_s: unknown, input: { toStepName: string }) => { order.push(`transition:${input.toStepName}`); return { success: true } }) as never)
+    transitionTicket.mockImplementation(async (_s: unknown, input: { toStep: string }) => { order.push(`transition:${input.toStep}`); return { moved: true, actionErrors: [] } })
     vi.mocked(incidentService.resolveIncident).mockImplementation((async () => { order.push('resolveIncident'); return { id: 'inc-1' } }) as never)
     vi.mocked(incidentService.addIncidentComment).mockImplementation((async (_id: string, _c: unknown, text: string) => { order.push(`comment:${text.split(' — ')[0]}`) }) as never)
 
@@ -1001,15 +1014,15 @@ describe('chiusura automatica', () => {
     ])
     expect(incidentService.addIncidentComment).toHaveBeenCalledTimes(1)
     expect(incidentService.addIncidentComment).toHaveBeenCalledWith('inc-1', MON, 'Risolto automaticamente: tutti gli allarmi di monitoraggio correlati sono rientrati (ultimo: DiskFull) — passando per Assegnato, In Lavorazione')
-    expect(workflowEngine.transition).toHaveBeenNthCalledWith(1, session,
-      { instanceId: 'wi-1', toStepName: 'assigned', triggeredBy: 'monitoring', triggerType: 'manual', notes: 'Chiusura automatica dal monitoraggio: passaggio a Assegnato', tenantId: 't1' },
-      { userId: 'monitoring', notes: 'Chiusura automatica dal monitoraggio: passaggio a Assegnato', entityData: {} })
-    expect(workflowEngine.transition).toHaveBeenNthCalledWith(2, session,
-      expect.objectContaining({ toStepName: 'in_progress', triggerType: 'manual', notes: 'Chiusura automatica dal monitoraggio: passaggio a In Lavorazione' }),
-      expect.objectContaining({ userId: 'monitoring' }))
+    expect(transitionTicket).toHaveBeenNthCalledWith(1, session, {
+      tenantId: 't1', instanceId: 'wi-1', toStep: 'assigned', notes: 'Chiusura automatica dal monitoraggio: passaggio a Assegnato', triggerType: 'manual',
+      actor: { kind: 'system', path: 'event_auto_resolve', userId: 'monitoring' },
+    })
+    expect(transitionTicket).toHaveBeenNthCalledWith(2, session,
+      expect.objectContaining({ toStep: 'in_progress', triggerType: 'manual', notes: 'Chiusura automatica dal monitoraggio: passaggio a In Lavorazione' }))
     // C-1: gli eventi dei due passi li pubblica l'hook del motore.
     expect(incidentService.publishIncidentTransition).not.toHaveBeenCalled()
-    expect(incidentService.resolveIncident).toHaveBeenCalledWith('inc-1', MON, 'Allarme di monitoraggio rientrato: DiskFull')
+    expect(incidentService.resolveIncident).toHaveBeenCalledWith('inc-1', { ...MON, path: 'event_auto_resolve' }, 'Allarme di monitoraggio rientrato: DiskFull')
     expect(publishEvent).toHaveBeenCalledWith('event.correlated', 't1', 'monitoring', expect.objectContaining({ outcome: 'auto_resolved', incident_id: 'inc-1' }), NOW)
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ userId: 'monitoring' }), 'event.auto_resolved', 'Event', 'ev-1', expect.objectContaining({ incidentStep: 'new', path: ['assigned', 'in_progress'] }))
   })
@@ -1024,7 +1037,7 @@ describe('chiusura automatica', () => {
     const out = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
     expect(out).toMatchObject({ outcome: 'auto_resolve_skipped', incidentId: 'inc-1' })
     expect(incidentService.resolveIncident).not.toHaveBeenCalled()
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
+    expect(transitionTicket).not.toHaveBeenCalled()
     expect(incidentService.publishIncidentTransition).not.toHaveBeenCalled()
     expect(incidentService.addIncidentComment).toHaveBeenCalledWith('inc-1', MON, expect.stringMatching(/rientrati.*"new".*non può essere risolto automaticamente/))
     expect(publishEvent).toHaveBeenCalledWith('event.correlated', 't1', 'monitoring', expect.objectContaining({ outcome: 'auto_resolve_skipped' }), NOW)
@@ -1037,30 +1050,55 @@ describe('chiusura automatica', () => {
     const long = chain.slice(0, -1).map((from, i) => tr(from, chain[i + 1]!))
     onCypher([...baseRules({ status: 'resolved' }), [Q.linked, linkedRow({ step: 'new' })], [Q.defTr, long]])
     expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).outcome).toBe('auto_resolve_skipped')
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
+    expect(transitionTicket).not.toHaveBeenCalled()
 
     vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
-    vi.mocked(workflowEngine.transition).mockResolvedValue({ success: true } as never)
+    transitionTicket.mockResolvedValue({ moved: true, actionErrors: [] })
     // scorciatoia s2 → s5: il cammino più corto diventa new→s1→s2→s5 (3 passi intermedi) e resolved è raggiungibile da s5
     onCypher([...baseRules({ status: 'resolved' }), [Q.linked, linkedRow({ step: 'new' })], [Q.defTr, [...long, tr('s2', 's5')]]])
     expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).outcome).toBe('auto_resolved')
-    expect(vi.mocked(workflowEngine.transition).mock.calls.map((c) => (c[1] as { toStepName: string }).toStepName)).toEqual(['s1', 's2', 's5'])
+    expect(transitionTicket.mock.calls.map((c) => (c[1] as { toStep: string }).toStep)).toEqual(['s1', 's2', 's5'])
     expect(AUTO_RESOLVE_MAX_HOPS).toBe(4)
   })
 
   it('passo intermedio rifiutato dal motore → errore propagato (il job ritenta): niente resolveIncident, niente esito, niente event.correlated', async () => {
     onCypher([...baseRules({ status: 'resolved' }), [Q.linked, linkedRow({ step: 'new' })], [Q.defTr, SEED_TRANSITIONS]])
-    vi.mocked(workflowEngine.transition)
-      .mockResolvedValueOnce({ success: true } as never)
-      .mockResolvedValueOnce({ success: false, error: 'Concurrent transition' } as never)
+    transitionTicket
+      .mockResolvedValueOnce({ moved: true, actionErrors: [] })
+      .mockResolvedValueOnce(refusedBy('Concurrent transition'))
     await expect(runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).rejects.toThrow(/Incident inc-1: auto-resolve transition to "in_progress" failed: Concurrent transition/)
-    expect(workflowEngine.transition).toHaveBeenCalledTimes(2)
+    expect(transitionTicket).toHaveBeenCalledTimes(2)
     // il primo passo (assigned) è persistito e ha i suoi side effect; il secondo no; nessun commento (arriva solo con la risoluzione)
     expect(incidentService.publishIncidentTransition).not.toHaveBeenCalled()   // C-1: lo fa l'hook del motore
     expect(incidentService.addIncidentComment).not.toHaveBeenCalled()
     expect(incidentService.resolveIncident).not.toHaveBeenCalled()
     expect(publishEvent).not.toHaveBeenCalled()
     expect(audit).not.toHaveBeenCalled()
+  })
+
+  // Wave 7 · B1: a guard's no is an answer — the incident carries the pipeline's note, the alarm's history says it.
+  it('a step a guard refuses → auto_resolve_skipped, the reason in the alarm\'s history, no comment, and the job ends', async () => {
+    onCypher([...baseRules({ status: 'resolved' }), [Q.linked, linkedRow({ step: 'new' })], [Q.defTr, SEED_TRANSITIONS]])
+    transitionTicket
+      .mockResolvedValueOnce({ moved: true, actionErrors: [] })
+      .mockResolvedValueOnce(refusedFinally('Field "cause" is required', 'required_fields'))
+    const out = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    expect(out).toMatchObject({ outcome: 'auto_resolve_skipped', incidentId: 'inc-1' })
+    expect(incidentService.resolveIncident).not.toHaveBeenCalled()
+    expect(incidentService.addIncidentComment).not.toHaveBeenCalled()
+    const history = calls().find((c) => /CREATE \(e\)-\[:HAS_HISTORY\]/.test(c.cypher) && c.params['historyKind'] === 'auto_resolve_skipped')
+    expect(history!.params['historyNote']).toBe('l\'incident non è stato risolto: Field "cause" is required')
+    expect(publishEvent).toHaveBeenCalledWith('event.correlated', 't1', 'monitoring', expect.objectContaining({ outcome: 'auto_resolve_skipped' }), NOW)
+  })
+
+  it('the resolution itself refused by a guard ends the same way; an error of the resolution that is not a refusal is thrown', async () => {
+    vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'resolved' }] as never)
+    onCypher([...baseRules({ status: 'resolved' }), [Q.linked, linkedRow({ step: 'in_progress' })]])
+    vi.mocked(incidentService.resolveIncident).mockRejectedValueOnce(new TransitionRefusedError({ guard: 'named_approval', final: true, code: 'CONFLICT', message: 'Waiting for an approval' }))
+    expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).outcome).toBe('auto_resolve_skipped')
+
+    vi.mocked(incidentService.resolveIncident).mockRejectedValueOnce(new Error('neo4j down'))
+    await expect(runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).rejects.toThrow('neo4j down')
   })
 })
 
@@ -1482,7 +1520,7 @@ describe('lock sul raggruppamento (Redis in memoria)', () => {
     onCypher([...baseRules(), [Q.group, { incidentId: 'inc-1', instanceId: 'wi-1', step: 'resolved' }]])
     const out = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
     expect(out).toMatchObject({ outcome: 'reopened', incidentId: 'inc-1' })
-    expect(workflowEngine.transition).toHaveBeenCalledTimes(1)
+    expect(transitionTicket).toHaveBeenCalledTimes(1)
     expect(redis.set.mock.calls.length).toBeGreaterThanOrEqual(2)
     expect(lockStore.size).toBe(0)
   })
@@ -1765,7 +1803,7 @@ describe('incident di tempesta chiuso o risolto', () => {
     onCypher([...baseRules(), [Q.incStep, () => ({ incidentId: 'inc-storm', instanceId: 'wi-s', step: reads++ < 2 ? 'resolved' : 'in_progress' })]])
     const out = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW, created: true })
     expect(out).toMatchObject({ outcome: 'storm', incidentId: 'inc-storm' })
-    expect(workflowEngine.transition).toHaveBeenCalledWith(session, expect.objectContaining({ instanceId: 'wi-s', toStepName: 'in_progress', notes: expect.stringMatching(/Tempesta ancora in corso.*DiskFull/) }), expect.anything())
+    expect(transitionTicket).toHaveBeenCalledWith(session, expect.objectContaining({ instanceId: 'wi-s', toStep: 'in_progress', notes: expect.stringMatching(/Tempesta ancora in corso.*DiskFull/), actor: expect.objectContaining({ path: 'event_reopen' }) }))
     expect(redis.set).toHaveBeenCalledWith('og:events:storm-open:t1:hook-1', expect.any(String), 'EX', 30, 'NX')
     expect(metrics.incidentsReopenedTotal.inc).toHaveBeenCalledTimes(1)
     expect(replaceClosedStormIncident).not.toHaveBeenCalled()

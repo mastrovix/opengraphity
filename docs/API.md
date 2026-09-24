@@ -202,6 +202,8 @@ Notification links: the in-app panel and the "Vedi dettagli" link of the notific
 
 Every successful mutation leaves an Audit Log entry. Most write their own, with a domain action name; a mutation that did not is recorded by the server as `mutation.<name>` with its arguments (secrets redacted, long values truncated) and `source: audit-registry`. Only read-only or personal mutations are skipped (notifications read/dismissed, watch/unwatch, own e-mail preferences, KB article rating, event previews, report questions and exports).
 
+**Workflow transitions.** Every move of a ticket — a button, the portal, an approval decision, a rule, an escalation, a deadline, a timer, a change pulling its problems and incidents, monitoring — goes through the same checks, in this order: the write permission of the ticket type (for a person in the app), the release window of a change, the approval a service request needs, the approver named by the step, the required fields of the step being entered, the step's configuration, then the workflow's own arc and condition. The step actions (`assign_to`, `update_field`, `create_entity`, `create_approval_request`) and the fields a step writes on entry run on every path too. A person sees a refusal as the error of the mutation, with its translation key. An automatic move that is refused leaves the ticket where it is, with an internal note that names who asked (the rule by its name) and the check that held it — written once per reason — and is not retried; an error that may be transient (a concurrent move) is retried by its queue.
+
 ### Incidents
 
 | Mutation | Description |

@@ -1,9 +1,8 @@
 import { GraphQLError } from 'graphql'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { v4 as uuidv4 } from 'uuid'
-import { workflowEngine, isWorkflowActionType, WORKFLOW_ACTION_TYPES } from '@opengraphity/workflow'
+import { isWorkflowActionType, WORKFLOW_ACTION_TYPES } from '@opengraphity/workflow'
 import { parseLocalizedLabels } from '@opengraphity/types'
-import type { ActionContext } from '@opengraphity/workflow'
 import {
   NOTIFICATION_BASE_TARGETS, isNotificationTarget, isTargetApplicable, applicableNotificationTargets,
   WORKFLOW_STEP_PURPOSES, isWorkflowStepPurpose,
@@ -13,114 +12,23 @@ import {
   stepFieldRejection,
   CHANGE_WINDOW_PURPOSES,
 } from '@opengraphity/types'
-import { publish } from '@opengraphity/events'
-import { sseManager, unroutableChannels, routableChannels, WORKFLOW_STEP_NOTIFY_EVENT } from '@opengraphity/notifications'
+import { unroutableChannels, routableChannels, WORKFLOW_STEP_NOTIFY_EVENT } from '@opengraphity/notifications'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
-import type { Session } from 'neo4j-driver'
 import { loadTransitionRows, mapWorkflowDefinition } from './workflowMapping.js'
 import { workflowLogger } from '../../lib/logger.js'
 import { audit } from '../../lib/audit.js'
-import { hasPermission, requirePermission } from '../../lib/permissions.js'
-import type { Permission } from '@opengraphity/types'
+import { requirePermission } from '../../lib/permissions.js'
 import { assertTimerDelayMinutes } from '../../lib/stepTimerDelay.js'
-import { APPROVAL_GATED_TICKETS, ticketApprovalRefusal } from '../../lib/ticketApprovalGate.js'
-import { validateRequiredFields } from '../../lib/validateRequiredFields.js'
-import { preflightStepMetadata } from '../../lib/stepMetadataPreflight.js'
 import { invalidateWorkflowCache } from '../../lib/workflowHelpers.js'
 import { auditStepEntered} from '../../lib/stepEvent.js'
-import { systemText } from '../../lib/systemText.js'
-import { requestApprovalWouldBeSkipped } from '../../lib/requestApproval.js'
 import { transitionErrorFields } from '../../lib/transitionError.js'
+import { personActor, refusalError, transitionTicket } from '../../services/ticketTransition.js'
 import { assertStepFieldValue, stepFieldMetas } from '../../lib/stepFieldWrites.js'
 import { assertDeadlineFields, assertDefinitionDeadlines, normalizeStepDeadlineInput } from '../../lib/stepDeadlineWrite.js'
 import { assertRolesExist, roleKeysInActions } from '../../lib/roles.js'
 import { labelTranslationsCypher } from '../../lib/workflowLabelTranslations.js'
-import { assignTeamCypher, TEAM_NOW_PARAM } from '../../lib/ticketTeamHistory.js'
 import { workflowChangeDetails, workflowSnapshot } from '../../lib/workflowAuditDetails.js'
-import { matchById } from '../../lib/cypherLookups.js'
-
-// Safe label map — prevents Cypher injection when creating entities dynamically.
-// Le richieste di servizio c'erano nel workflow ma NON qui (revisione totale ·
-// B-28): un `on_enter_fields` su un passo delle richieste veniva saltato in
-// silenzio. Ora ci sono, e un tipo che non conosciamo ferma la transizione
-// invece di far finta di avere applicato i campi del passo.
-const ENTITY_LABELS: Record<string, string> = {
-  incident:        'Incident',
-  problem:         'Problem',
-  change:          'Change',
-  service_request: 'ServiceRequest',
-  kb_article:      'KBArticle',
-}
-
-/**
- * Apply the `on_enter_fields` metadata of the newly-entered step to the
- * underlying entity. Value tokens:
- *   '$now'    → current ISO timestamp
- *   '$userId' → current user id
- *   '$notes'  → transition notes (can be null)
- * Any other string is taken verbatim.
- *
- * The entity label is resolved from the WorkflowInstance.entity_type.
- */
-async function applyOnEnterFields(
-  session: import('neo4j-driver').Session,
-  instanceId: string,
-  stepName: string,
-  userId: string,
-  notes?: string,
-  expectedTenantId?: string,
-): Promise<void> {
-  const fieldsRow = await session.executeRead((tx) => tx.run(`
-    MATCH (wi:WorkflowInstance {id: $instanceId})-[:CURRENT_STEP]->(step:WorkflowStep)
-    WHERE step.name = $stepName AND ($tenantId IS NULL OR wi.tenant_id = $tenantId)
-    RETURN step.on_enter_fields AS fields,
-           wi.entity_id   AS entityId,
-           wi.tenant_id   AS tenantId,
-           wi.entity_type AS entityType
-  `, { instanceId, stepName, tenantId: expectedTenantId ?? null }))
-  if (!fieldsRow.records.length) return
-  const rec       = fieldsRow.records[0]
-  const raw       = rec.get('fields')     as string | null
-  if (!raw) return
-  const entityId   = rec.get('entityId')   as string
-  const tenantId   = rec.get('tenantId')   as string
-  const entityType = rec.get('entityType') as string
-  const label      = ENTITY_LABELS[entityType]
-  // B-28: niente fallback silenzioso. Se il passo dichiara campi da scrivere e
-  // non sappiamo su quale nodo scriverli, la transizione non è riuscita.
-  if (!label) {
-    throw new GraphQLError(`Step "${stepName}" writes fields on enter, but entity type "${entityType}" is not writable`, {
-      extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.onEnterFieldsEntity', params: { step: stepName, entityType } } },
-    })
-  }
-
-  let parsed: Record<string, string>
-  try { parsed = JSON.parse(raw) as Record<string, string> }
-  catch (e) {
-    // Corrupt on_enter_fields must fail the transition, not silently skip the
-    // step's side effects while reporting success.
-    throw new GraphQLError(`Corrupt on_enter_fields JSON on step "${stepName}": ${e instanceof Error ? e.message : String(e)}`)
-  }
-  const keys = Object.keys(parsed)
-  if (keys.length === 0) return
-
-  const nowIso = new Date().toISOString()
-  const resolveValue = (v: string) => {
-    if (v === '$now')    return nowIso
-    if (v === '$userId') return userId
-    if (v === '$notes')  return notes ?? null
-    return v
-  }
-  const setClauses = keys.map((k) => `e.\`${k}\` = $__val_${k}`)
-  const params: Record<string, unknown> = { entityId, tenantId, now: nowIso }
-  for (const [k, v] of Object.entries(parsed)) params[`__val_${k}`] = resolveValue(v)
-  await session.executeWrite((tx) => tx.run(
-    `MATCH (e:${label} {id: $entityId, tenant_id: $tenantId})
-     SET ${setClauses.join(', ')}, e.updated_at = $now`,
-    params,
-  ))
-}
 
 // ── Validazione delle azioni in scrittura (B0-5) ──────────────────────────────
 
@@ -899,40 +807,14 @@ export async function removeWorkflowTransition(
   }, true)
 }
 
-/** The permission that moves each type of ticket with executeWorkflowTransition (changes have their own mutation). */
-const TRANSITION_WRITE_PERMISSION: Readonly<Record<string, Permission>> = {
-  incident:        'incident.write',
-  problem:         'problem.write',
-  service_request: 'request.write',
-  kb_article:      'kb.write',
-}
-
 /**
- * The approval gates of a ticket moved by a person: a request that needs an
- * approval does not skip it, and the approver named by the step decides
- * (lib/ticketApprovalGate.ts), unless the person holds `approval.override`.
+ * A person moves an incident, a problem, a request or an article by hand
+ * (changes have their own mutation, with the phase side effects). Every
+ * check — the write permission of the type, the approvals, the required
+ * fields, the step's metadata — and every step action is the pipeline's
+ * (services/ticketTransition.ts, wave 7 · B1): here only who asks, and what
+ * the answer looks like on the screen.
  */
-async function assertTicketApprovalsAllow(
-  session: Session, ctx: GraphQLContext, entityType: string, instanceId: string, toStep: string,
-): Promise<void> {
-  if (entityType === 'service_request'
-      && await requestApprovalWouldBeSkipped(session, ctx.tenantId, instanceId, toStep, { byPerson: true })) {
-    throw new GraphQLError(
-      'This request needs an approval: send it to approval first',
-      { extensions: { code: 'CONFLICT', i18n: { key: 'errors.request.approvalRequired' } } },
-    )
-  }
-  if (!APPROVAL_GATED_TICKETS.includes(entityType) || hasPermission(ctx, 'approval.override')) return
-  const held = await ticketApprovalRefusal(session, ctx.tenantId, instanceId, toStep)
-  if (!held) return
-  throw new GraphQLError(
-    held.status === 'pending'
-      ? `The ticket is waiting for an approval in step "${held.stepName}": the approvers decide, from the Approvals page`
-      : `The approval in step "${held.stepName}" was rejected: the ticket can only be closed or cancelled`,
-    { extensions: { code: 'CONFLICT', approvalId: held.approvalId, i18n: { key: held.status === 'pending' ? 'errors.approval.pendingOnStep' : 'errors.approval.rejectedOnStep', params: { step: held.stepName } } } },
-  )
-}
-
 export async function executeWorkflowTransition(
   _: unknown,
   { instanceId, toStep, notes }: { instanceId: string; toStep: string; notes?: string },
@@ -940,345 +822,54 @@ export async function executeWorkflowTransition(
 ) {
   return withSession(async (session) => {
     // Tenant-isolation guard: the instance must belong to the caller's tenant.
-    // Everything downstream (engine.transition, re-reads by instanceId) relies
-    // on this check having passed.
-    // Pre-fetch entity data for template/condition evaluation in actions
-    const entityDataResult = await session.executeRead((tx) =>
-      tx.run(`
-        MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})
-        ${matchById('entity', { labels: 'entities', id: 'wi.entity_id', imports: ['wi'], optional: true })}
-        OPTIONAL MATCH (entity)-[:ASSIGNED_TO]->(assignee)
-        OPTIONAL MATCH (entity)-[:ASSIGNED_TO_TEAM]->(team)
-        RETURN properties(entity) AS entityData,
-               assignee.id AS assigned_to,
-               team.id     AS assigned_team,
-               wi.entity_type AS entityType
-      `, { instanceId, tenantId: ctx.tenantId }),
-    )
-    if (entityDataResult.records.length === 0) {
+    const typeRow = await session.executeRead((tx) => tx.run(
+      `MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId}) RETURN wi.entity_type AS entityType`,
+      { instanceId, tenantId: ctx.tenantId },
+    ))
+    if (typeRow.records.length === 0) {
       throw new GraphQLError(`Workflow instance not found: ${instanceId}`, { extensions: { code: 'NOT_FOUND' } })
     }
     // Le change hanno un gate di approvazione multi-parte e side-effect di
     // fase (task, approvazioni, rischio) che vivono in executeChangeTransition:
     // la mutation generica NON deve poter aggirarli.
-    if (entityDataResult.records[0].get('entityType') === 'change') {
+    const entityType = typeRow.records[0]!.get('entityType') as string
+    if (entityType === 'change') {
       throw new GraphQLError('Changes are transitioned with executeChangeTransition (approval gate and phase side effects)', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.workflow.changeUsesChangeTransition' } } })
     }
-    // The write permission of THIS ticket's type (review of 23 Sep 2026): the
-    // mutation is open to any of four, and a custom role with kb.write alone
-    // could resolve incidents by instance id. Roles are per ticket type.
-    const movedType = entityDataResult.records[0].get('entityType') as string
-    const needed = TRANSITION_WRITE_PERMISSION[movedType]
-    if (!needed) {
-      throw new GraphQLError(`Workflow instance ${instanceId} belongs to "${movedType}", which this mutation does not move`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.unknownEntityType', params: { entityType: movedType } } } })
-    }
-    requirePermission(ctx, needed)
-    await assertTicketApprovalsAllow(session, ctx, entityDataResult.records[0].get('entityType') as string, instanceId, toStep)
-    const entityData: Record<string, unknown> = {
-      ...((entityDataResult.records[0].get('entityData') as Record<string, unknown> | null) ?? {}),
-      assigned_to:   entityDataResult.records[0].get('assigned_to') ?? null,
-      assigned_team: entityDataResult.records[0].get('assigned_team') ?? null,
-    }
-
-    const actionCtx: ActionContext = {
-      userId:     ctx.userId,
-      notes,
-      entityData,
-
-      createEntity: async (type, data) => {
-        const { createEntityFromStepAction } = await import('../../lib/stepActionCreateEntity.js')
-        return createEntityFromStepAction(session, { tenantId: ctx.tenantId, userId: ctx.userId }, type, data, {
-          id:   (entityDataResult.records[0]!.get('entityData') as Record<string, unknown> | null)?.['id'] as string | undefined,
-          type: entityDataResult.records[0]!.get('entityType') as string,
-        })
-      },
-
-      assignTo: async (entityId, targetType, targetId) => {
-        // Secondo giro UI del 15 set 2026: per il team era un MERGE senza togliere
-        // quello di prima (il ticket restava con due team). Ora sostituisce, e per
-        // il team scrive anche la storia delle assegnazioni (lib/ticketTeamHistory.ts).
-        const now = new Date().toISOString()
-        if (targetType !== 'team') {
-          const { assertAssignablePerson } = await import('../../services/ticketAssignment.js')
-          await assertAssignablePerson(session, targetId, ctx.tenantId)
-        }
-        await session.executeWrite((tx) =>
-          targetType === 'team'
-            ? tx.run(
-              `${matchById('e', { labels: 'entities', id: '$entityId' })}
-               MATCH (t:Team {id: $targetId, tenant_id: $tenantId})
-               ${assignTeamCypher('e', 't')}
-               SET e.updated_at = $now`,
-              { entityId, tenantId: ctx.tenantId, targetId, now, [TEAM_NOW_PARAM]: now },
-            )
-            : tx.run(
-              `${matchById('e', { labels: 'entities', id: '$entityId' })}
-               MATCH (u:User {id: $targetId, tenant_id: $tenantId})
-               OPTIONAL MATCH (e)-[old:ASSIGNED_TO]->(:User)
-               DELETE old
-               WITH DISTINCT e, u
-               MERGE (e)-[:ASSIGNED_TO]->(u)
-               SET e.updated_at = $now`,
-              { entityId, tenantId: ctx.tenantId, targetId, now },
-            ),
-        )
-      },
-
-      updateField: async (entityId, field, value) => {
-        // Stessa scrittura delle automazioni (lib/ticketFieldWrite.ts, AU-3):
-        // la priorità nella proprietà giusta, l'invariante della matrice. Prima
-        // il campo e il valore contro il metamodello di ADESSO (ondata 3).
-        const entityType = entityDataResult.records[0]!.get('entityType') as string
-        const metas = await stepFieldMetas(session, ctx.tenantId, entityType)
-        const checked = assertStepFieldValue(metas, entityType, field, value, `update_field of step "${toStep}"`, { allowTemplate: false })
-        const { writeTicketField } = await import('../../lib/ticketFieldWrite.js')
-        await writeTicketField(session, ctx.tenantId, entityType, entityId, field, checked)
-      },
-
-      publishEvent: async (type, payload) => {
-        await publish({
-          id:             uuidv4(),
-          type,
-          tenant_id:      ctx.tenantId,
-          timestamp:      new Date().toISOString(),
-          correlation_id: uuidv4(),
-          actor_id:       ctx.userId,
-          payload,
-        })
-      },
-
-      createApprovalRequest: async ({ entityId, entityType, title, approverRole, approverUserIds, approverTeamIds, approvalType }) => {
-        const now = new Date().toISOString()
-
-        /**
-         * CHI APPROVA (moduli del catalogo, ondata 3).
-         *
-         * Prima solo il RUOLO: «tutti gli admin», o tutti quelli di un ruolo.
-         * Per un catalogo servizi non basta — l'approvazione di una spesa è del
-         * responsabile di budget, non di chi amministra il prodotto.
-         *
-         * Ora tre sorgenti che si UNISCONO senza ripetizioni: il ruolo, le
-         * persone indicate, i membri delle squadre indicate. Se non è indicato
-         * niente vale il ruolo `admin`, come prima.
-         *
-         * Le persone e i membri si verificano nel tenant: un id inventato non
-         * diventa un approvatore fantasma che blocca il ticket per sempre.
-         */
-        const perRuolo = approverUserIds?.length || approverTeamIds?.length
-          ? []
-          : (await session.executeRead((tx) => tx.run(
-            // Only active people approve (review of 23 Sep 2026): a deactivated
-            // admin counted, and an «all» approval could never complete.
-            `MATCH (u:User {tenant_id: $tenantId, role: $role}) WHERE coalesce(u.active, true) RETURN u.id AS id`,
-            { tenantId: ctx.tenantId, role: approverRole ?? 'admin' },
-          ))).records.map((r) => r.get('id') as string)
-
-        const perNome = approverUserIds?.length
-          ? (await session.executeRead((tx) => tx.run(
-            `MATCH (u:User {tenant_id: $tenantId}) WHERE u.id IN $ids AND coalesce(u.active, true) RETURN u.id AS id`,
-            { tenantId: ctx.tenantId, ids: approverUserIds },
-          ))).records.map((r) => r.get('id') as string)
-          : []
-
-        const perSquadra = approverTeamIds?.length
-          ? (await session.executeRead((tx) => tx.run(
-            `MATCH (t:Team {tenant_id: $tenantId})<-[:MEMBER_OF]-(u:User {tenant_id: $tenantId})
-             WHERE t.id IN $ids AND coalesce(u.active, true)
-             RETURN DISTINCT u.id AS id`,
-            { tenantId: ctx.tenantId, ids: approverTeamIds },
-          ))).records.map((r) => r.get('id') as string)
-          : []
-
-        const finalApprovers = [...new Set([...perRuolo, ...perNome, ...perSquadra])]
-        if (finalApprovers.length === 0) {
-          // Il messaggio dice QUALE delle tre sorgenti era stata chiesta: «nessun
-          // admin» e «la squadra indicata è vuota» si correggono in due posti diversi.
-          const chiesto = approverUserIds?.length || approverTeamIds?.length
-            ? `the people/teams configured to approve (users: ${(approverUserIds ?? []).length}, teams: ${(approverTeamIds ?? []).length}) have no active member in this organization`
-            : `no user with role "${approverRole ?? 'admin'}" configured to approve`
-          throw new GraphQLError(`Approval cannot start: ${chiesto}`, {
-            extensions: {
-              code: 'NO_APPROVER',
-              i18n: approverUserIds?.length || approverTeamIds?.length
-                ? { key: 'errors.workflow.noApproverTarget', params: {} }
-                : { key: 'errors.workflow.noApprover', params: { role: approverRole ?? 'admin' } },
-            },
-          })
-        }
-
-        const approvalId = uuidv4()
-        await session.executeWrite((tx) =>
-          tx.run(`
-            CREATE (ap:ApprovalRequest {
-              id:              $id,
-              tenant_id:       $tenantId,
-              entity_type:     $entityType,
-              entity_id:       $entityId,
-              title:           $title,
-              description:     null,
-              status:          'pending',
-              requested_by:    $requestedBy,
-              requested_at:    $now,
-              approvers:       $approvers,
-              approved_by:     '[]',
-              rejected_by:     null,
-              approval_type:   $approvalType,
-              due_date:        null,
-              resolved_at:     null,
-              resolution_note: null,
-              step_name:       $stepName
-            })
-          `, {
-            id:           approvalId,
-            // The step it holds: the one being entered (lib/ticketApprovalGate.ts).
-            stepName:     toStep,
-            tenantId:     ctx.tenantId,
-            entityType,
-            entityId,
-            title,
-            requestedBy:  ctx.userId,
-            now,
-            approvers:    JSON.stringify(finalApprovers),
-            approvalType: approvalType ?? 'any',
-          }),
-        )
-
-        // Notify each approver via SSE
-        for (const approverId of finalApprovers) {
-          sseManager.sendToUser(ctx.tenantId, approverId, {
-            id:          uuidv4(),
-            type:        'approval.requested',
-            title:          'notification.approval.requested.title',
-            title_fallback: await systemText(ctx.tenantId, 'approval.requested'),
-            message:     title,
-            severity:    'info',
-            entity_id:   approvalId,
-            entity_type: 'ApprovalRequest',
-            timestamp:   now,
-            read:        false,
-          })
-        }
-
-        return approvalId
-      },
-    }
-
-    // Validate required fields for the destination step before allowing transition.
-    // Merge entity data with transition notes (notes map to resolution_notes/root_cause).
-    if (entityData && Object.keys(entityData).length > 0) {
-      const entityTypeRaw = await session.executeRead((tx) =>
-        tx.run(`MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId}) RETURN wi.entity_type AS et`, { instanceId, tenantId: ctx.tenantId }),
-      )
-      const entityType = entityTypeRaw.records[0]?.get('et') as string | null
-      if (entityType) {
-        const mergedValues = { ...entityData }
-        if (notes) {
-          mergedValues['resolution_notes'] = notes
-          mergedValues['root_cause']       = notes
-        }
-        await validateRequiredFields(session, {
-          entityType,
-          fieldValues: mergedValues,
-          tenantId:    ctx.tenantId,
-          toStep,
-        })
-      }
-    }
-
-    // I metadati dello step di arrivo (on_enter_fields, enter_actions) vengono
-    // validati PRIMA della transizione: un JSON corrotto deve bloccare, non
-    // far fallire la mutation dopo che il workflow è già avanzato.
-    await preflightStepMetadata(session, instanceId, toStep, ctx.tenantId)
 
     workflowLogger.debug({ toStep, instanceId }, 'Transitioning workflow step')
-    const result = await workflowEngine.transition(
-      session,
-      {
-        instanceId,
-        toStepName:  toStep,
-        triggeredBy: ctx.userId,
-        triggerType: 'manual',
-        notes,
-        tenantId:    ctx.tenantId,
-      },
-      actionCtx,
-    )
+    const outcome = await transitionTicket(session, {
+      tenantId: ctx.tenantId, instanceId, toStep, notes: notes ?? null,
+      actor: personActor(ctx), triggerType: 'manual',
+    })
+    if (!outcome.moved) {
+      // A guard refused before the engine: the error on the screen. The engine's
+      // own no (the arc, its condition) comes back as the result, as before.
+      if (outcome.refusal.guard !== 'workflow' || !outcome.refusal.engine) throw refusalError(outcome.refusal)
+      return { success: false, ...transitionErrorFields(outcome.refusal.engine), instance: null, actionErrors: null }
+    }
+    const result = outcome.result
+
     // Side-effect post-commit falliti: la transizione è già persistita, quindi
     // NON si lancia (l'utente vedrebbe "fallito" con il workflow avanzato) ma
     // finiscono in actionErrors, come quelli dell'engine.
     const postErrors: string[] = []
-    const post = async (what: string, fn: () => Promise<unknown>) => {
-      try { await fn() } catch (e) {
-        const msg = `${what}: ${e instanceof Error ? e.message : String(e)}`
-        workflowLogger.error({ instanceId, toStep, err: e }, `[workflow] post-transition side effect failed — ${what}`)
-        postErrors.push(msg)
+    // La NOTA di transizione, l'evento dell'ingresso nel passo, la voce di audit
+    // e le notify_rule li scrive l'hook `onStepEntered` (workflow/stepEnteredEvents.ts),
+    // che vede ogni cammino; i campi del passo li scrive la pipeline. Per gli
+    // articoli resta qui la voce di audit dell'ingresso, che vuole chi l'ha chiesto.
+    if (entityType === 'kb_article') {
+      try {
+        await auditStepEntered(session, ctx, 'kb_article', 'KBArticle', outcome.entityId, toStep)
+      } catch (e) {
+        workflowLogger.error({ instanceId, toStep, err: e }, '[workflow] post-transition side effect failed — audit step entered')
+        postErrors.push(`audit step entered: ${e instanceof Error ? e.message : String(e)}`)
       }
     }
-    workflowLogger.debug({ instanceId, success: result.success }, 'Workflow transition result')
-
-    if (result.success) {
-      const wiResult = await session.executeRead((tx) =>
-        tx.run(`
-          MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})
-          WHERE wi.entity_type = 'incident'
-          MATCH (i:Incident {id: wi.entity_id, tenant_id: wi.tenant_id})
-          OPTIONAL MATCH (i)-[:AFFECTED_BY]->(ci:ConfigurationItem)
-          OPTIONAL MATCH (i)-[:ASSIGNED_TO]->(u:User)
-          OPTIONAL MATCH (i)-[:ASSIGNED_TO_TEAM]->(t:Team)
-          RETURN i.id AS id, i.title AS title, i.severity AS severity, i.status AS status,
-                 wi.tenant_id AS tenantId,
-                 collect(DISTINCT ci.name)[0] AS ciName,
-                 u.name AS assignedTo, t.name AS teamName
-        `, { instanceId, tenantId: ctx.tenantId }),
-      )
-      if (wiResult.records.length > 0) {
-
-        // La NOTA di transizione non si scrive più qui: la scrive l'hook
-        // `onStepEntered` (lib/stepEnteredPublisher.ts), che vede anche i
-        // cammini automatici — prima un incident risolto in blocco o chiuso
-        // da una change non lasciava traccia nella storia (revisione totale ·
-        // B-4). Scriverla anche qui darebbe due note per ogni transizione
-        // manuale.
-
-        // L'evento di dominio dell'ingresso nel passo NON si pubblica qui: lo
-        // pubblica l'hook `onStepEntered` del motore, che vede anche i cammini
-        // automatici (revisione totale · C-1, lib/stepEnteredPublisher.ts).
-        // Pubblicarlo anche qui darebbe due eventi per ogni transizione
-        // manuale, cioè due notifiche e due webhook.
-        // Anche la voce di AUDIT dell'ingresso nel passo viene dall'hook
-        // (B-4): l'azione è stabile e il passo sta nei dettagli (D-22), e ora
-        // la scrivono TUTTI i cammini, non solo questo.
-
-        await post('on_enter_fields', () => applyOnEnterFields(session, instanceId, toStep, ctx.userId, notes, ctx.tenantId))
-
-        // The step's notify_rule actions go out from the engine's onStepEntered
-        // hook, for every path and ticket type (lib/stepNotifyRules.ts).
-      }
-
-      // ── KB Article post-transition ────────────────────────────────────────
-      const kbResult = await session.executeRead((tx) =>
-        tx.run(`
-          MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})
-          WHERE wi.entity_type = 'kb_article'
-          MATCH (a:KBArticle {id: wi.entity_id, tenant_id: wi.tenant_id})
-          RETURN a.id AS id, wi.tenant_id AS tenantId, a.requested_by AS requestedBy
-        `, { instanceId, tenantId: ctx.tenantId }),
-      )
-      if (kbResult.records.length > 0) {
-        const kbId     = kbResult.records[0].get('id')     as string
-        await post('audit step entered', () => auditStepEntered(session, ctx, 'kb_article', 'KBArticle', kbId, toStep))
-        await post('on_enter_fields', () => applyOnEnterFields(session, instanceId, toStep, ctx.userId, notes, ctx.tenantId))
-      }
-    }
-
-    if (result.actionErrors?.length) {
-      workflowLogger.error({ instanceId, actionErrors: result.actionErrors },
-        '[workflow] transition persisted but step actions failed')
-    }
-    const allActionErrors = [...(result.actionErrors ?? []), ...postErrors]
+    const allActionErrors = [...outcome.actionErrors, ...postErrors]
 
     return {
-      success:      result.success,
+      success:      true,
       ...transitionErrorFields(result),
       instance:     result.instance ?? null,
       actionErrors: allActionErrors.length > 0 ? allActionErrors : null,

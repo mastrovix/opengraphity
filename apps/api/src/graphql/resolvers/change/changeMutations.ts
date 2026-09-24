@@ -9,19 +9,16 @@ import { GraphQLError } from 'graphql'
 import type { CustomFieldInput } from '../../../lib/ticketCustomFields.js'
 import { systemText } from '../../../lib/systemText.js'
 import { workflowEngine } from '@opengraphity/workflow'
-import type { ActionContext } from '@opengraphity/workflow'
 import { TASK_STATUS, ASSESSMENT_ROLE } from '../../../lib/taskStatus.js'
 import { withSession, runQuery, runQueryOne, getSession, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
 import { requirePermission } from '../../../lib/permissions.js'
-import { validateStepRequirements } from '../../../lib/validateRequiredFields.js'
 import { stepNamesByPurposeOrdered } from '../../../lib/workflowTargets.js'
 import { createChangeRFC } from '../../../services/changeCreationService.js'
 import { change as getChange } from './queries.js'
 import { evaluateAutoTransitions, revertProblemAfterChangeDetached } from './autoTransitions.js'
-import { assertChangeWindowGate } from './windowGate.js'
-import { transitionFailed } from '../../../lib/transitionError.js'
+import { personActor, refusalError, transitionTicket } from '../../../services/ticketTransition.js'
 import { TASK_KINDS } from './taskKinds.js'
 import { NotFoundError } from '../../../lib/errors.js'
 import { publishEvent } from '../../../lib/publishEvent.js'
@@ -257,14 +254,12 @@ async function linkChangeToRequestingProblem(
         '[createChange] problem collegato ma nessun passo di scopo change_requested è raggiungibile: il problem resta dov\'è')
       return
     }
-    const res = await workflowEngine.transition(
-      session,
-      { instanceId, toStepName: toStep, triggeredBy: ctx.userId, triggerType: 'manual', notes: await systemText(ctx.tenantId, 'change.rfcCreated', { code: changeCode }), tenantId: ctx.tenantId },
-      { userId: ctx.userId, entityData: {} } as ActionContext,
-    )
-    if (!res.success) {
-      logger.warn({ problemId, changeId, toStep, error: res.error }, '[createChange] problem collegato ma transizione al passo di scopo change_requested non riuscita')
-    }
+    // The problem follows its change (wave 7 · B1): a refusal stays on the
+    // problem as a note, written by the pipeline, and the change is created.
+    await transitionTicket(session, {
+      tenantId: ctx.tenantId, instanceId, toStep, notes: await systemText(ctx.tenantId, 'change.rfcCreated', { code: changeCode }),
+      actor: { kind: 'system', path: 'change_follow', userId: ctx.userId }, triggerType: 'manual',
+    })
   }, true)
 }
 
@@ -412,56 +407,23 @@ export async function executeChangeTransition(
   return withSession(async (session) => {
     // Una sola lettura coerente: change non eliminata + istanza + step corrente
     // (dalla relazione CURRENT_STEP, verificata contro wi.current_step).
-    const { instanceId, currentStep, props: entityProps } = await loadChangeWorkflow(session, args.changeId, ctx.tenantId)
-    const changeType = (entityProps['change_type'] as string) ?? 'normal'
+    const { instanceId } = await loadChangeWorkflow(session, args.changeId, ctx.tenantId)
 
-    // ── Gate di approvazione ──────────────────────────────────────────────────
-    // Il varco della finestra di rilascio vive in `windowGate.ts`, non qui.
-    // Terza revisione * C1: stava scritto qui dentro, e il suo commento
-    // affermava di valere «da qualunque passo arrivi e qualunque scopo abbia
-    // quel passo» — mentre valeva per questo cammino e non per i due
-    // automatici (`evaluateAutoTransitions`, job `timer_wait`), dove le cinque
-    // guardie avevano ZERO occorrenze. Ora la regola di dominio sta in un
-    // posto solo e i tre cammini la chiamano; il lint
-    // `__tests__/changeWindowGate.test.ts` pretende che resti cosi.
-    await assertChangeWindowGate(session, ctx, {
-      tenantId: ctx.tenantId, changeId: args.changeId, changeType,
-      currentStep, toStep: args.toStep,
-    })
-
-    // Campi obbligatori del passo di ARRIVO (ondata 8 · B-21). Le regole
-    // `FieldRequirementRule` con `workflow_step` erano valutate solo da
-    // `executeWorkflowTransition` (la mutation generica, che le change non
-    // usano): una regola «la data di rilascio è obbligatoria entrando in
-    // programmata» valeva per un bottone e non per quello delle change, e chi
-    // l'aveva configurata non poteva accorgersene. Le note della transizione
-    // contano come valore, come nella mutation generica.
-    await validateStepRequirements(session, {
-      entityType: 'change', entityProps, notes: args.notes, tenantId: ctx.tenantId, toStep: args.toStep,
-    })
-
+    // The pipeline of the transitions (wave 7 · B1) checks, in its order, the
+    // write permission, IL VARCO DELLA FINESTRA DI RILASCIO (terza revisione *
+    // C1: the manual gate, whose sentences name the two ways out), the
+    // required fields of the step being entered (ondata 8 · B-21: the notes
+    // count as a value) and its metadata — the same guards as every other
+    // path, which is what the gate's own comment used to promise.
+    //
     // Il rollback non è più un campo del change: è valutato (con punteggio)
     // nell'assessment tecnico ("Is a tested rollback plan available?"), che si
     // completa prima del deploy. Nessun gate sul testo qui.
-
-    const actionCtx: ActionContext = {
-      userId:     ctx.userId ?? 'system',
-      notes:      args.notes,
-      entityData: entityProps,
-    }
-    const result = await workflowEngine.transition(session, {
-      instanceId,
-      toStepName:  args.toStep,
-      triggeredBy: ctx.userId ?? 'system',
-      triggerType: 'manual',
-      notes:       args.notes,
-      tenantId:    ctx.tenantId,
-    }, actionCtx)
-    if (!result.success) throw transitionFailed(result, 'Transition failed')
-    if (result.actionErrors?.length) {
-      logger.error({ changeId: args.changeId, actionErrors: result.actionErrors },
-        '[change] transition persisted but step actions failed')
-    }
+    const outcome = await transitionTicket(session, {
+      tenantId: ctx.tenantId, instanceId, toStep: args.toStep, notes: args.notes ?? null,
+      actor: personActor(ctx), triggerType: 'manual',
+    })
+    if (!outcome.moved) throw refusalError(outcome.refusal)
 
     await afterEnterStep(session, args.changeId, ctx.tenantId, args.toStep)
     // Azione STABILE, passo nei dettagli (D-22, applicato a incident e problem
@@ -481,7 +443,7 @@ export async function executeChangeTransition(
     // Le azioni di step fallite dopo il commit (SLA, eventi, timer) non vanno
     // perse: esposte al client come Change.actionErrors (solo su questa mutation).
     const changed = await getChange(null, { id: args.changeId }, ctx)
-    return changed ? { ...changed, actionErrors: result.actionErrors?.length ? result.actionErrors : null } : null
+    return changed ? { ...changed, actionErrors: outcome.actionErrors.length ? outcome.actionErrors : null } : null
   }, true)
 }
 

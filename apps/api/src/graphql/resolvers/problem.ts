@@ -21,14 +21,13 @@ import type { GraphQLContext } from '../../context.js'
 import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
 import { assertCIsLinkable } from '../../lib/ticketCIExclusions.js'
 import * as problemService from '../../services/problemService.js'
-import { validateRequiredFields, validateStepRequirements, propsToFieldValues } from '../../lib/validateRequiredFields.js'
-import { preflightStepMetadata } from '../../lib/stepMetadataPreflight.js'
+import { validateRequiredFields, propsToFieldValues } from '../../lib/validateRequiredFields.js'
 import { resolvePriorityPatch } from '../../lib/priority.js'
 import { assertUserInAssignedTeam, setTicketTeam, setTicketUser } from '../../services/ticketAssignment.js'
 import { assertMayAcknowledgeNoSla } from '../../lib/slaAcknowledgement.js'
 import { ticketSlaStatusResolver } from './ticketSlaStatus.js'
 import { commentAuthorKind, commentAuthorLabel, commentTrace } from '../../lib/commentAuthor.js'
-import { transitionFailed } from '../../lib/transitionError.js'
+import { personActor, refusalError, transitionTicket } from '../../services/ticketTransition.js'
 import { getStepNamesByPurpose } from '../../lib/workflowHelpers.js'
 import { writeTicketComment } from '../../lib/ticketComments.js'
 import { notifyCommentAudience } from './comments.js'
@@ -521,31 +520,19 @@ async function executeProblemTransition(
   return withSession(async (session) => {
     const wiResult = await session.executeRead((tx) => tx.run(`
       MATCH (p:Problem {id: $problemId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-      RETURN wi.id AS instanceId, properties(p) AS props
+      RETURN wi.id AS instanceId
     `, { problemId: args.problemId, tenantId: ctx.tenantId }))
     if (!wiResult.records.length) throw new GraphQLError('Workflow instance not found for this problem')
     const instanceId = wiResult.records[0]!.get('instanceId') as string
 
-    // The rules of the step being entered, and its metadata, before the engine moves anything.
-    await validateStepRequirements(session, {
-      entityType: 'problem', entityProps: wiResult.records[0]!.get('props') as Props, notes: args.notes,
-      tenantId: ctx.tenantId, toStep: args.toStep,
+    // The pipeline of the transitions (wave 7 · B1): the required fields and
+    // the metadata of the step, and the approval named by the step — which the
+    // problem's own mutation did not check — before the engine moves anything.
+    const outcome = await transitionTicket(session, {
+      tenantId: ctx.tenantId, instanceId, toStep: args.toStep, notes: args.notes ?? null,
+      actor: personActor(ctx), triggerType: 'manual',
     })
-    await preflightStepMetadata(session, instanceId, args.toStep, ctx.tenantId)
-
-    const result = await workflowEngine.transition(
-      session,
-      { instanceId, toStepName: args.toStep, triggeredBy: ctx.userId, triggerType: 'manual', notes: args.notes ?? undefined, tenantId: ctx.tenantId },
-      { userId: ctx.userId, entityData: {} },
-    )
-
-    if (!result.success) {
-      throw transitionFailed(result, 'Transition failed')
-    }
-    if (result.actionErrors?.length) {
-      logger.error({ problemId: args.problemId, actionErrors: result.actionErrors },
-        '[problem] transition persisted but step actions failed')
-    }
+    if (!outcome.moved) throw refusalError(outcome.refusal)
 
     // L'ingresso nel passo: l'evento con il tipo STABILE
     // `problem.step_entered` (più l'alias storico `problem.<passo>`) lo
@@ -571,7 +558,7 @@ async function executeProblemTransition(
     `, { id: args.problemId, tenantId: ctx.tenantId })
     if (!row) throw new GraphQLError('Problem not found', { extensions: { code: 'NOT_FOUND' } })
     // Azioni di step fallite dopo il commit: esposte come Problem.actionErrors.
-    return { ...mapProblem(row.props), actionErrors: result.actionErrors?.length ? result.actionErrors : null }
+    return { ...mapProblem(row.props), actionErrors: outcome.actionErrors.length ? outcome.actionErrors : null }
   }, true)
 }
 

@@ -383,7 +383,7 @@ describe('riapertura', () => {
     expect(incidentService.createIncident).not.toHaveBeenCalled()
     expect(reopenIncident).toHaveBeenCalledWith(session, 't1', expect.objectContaining({ incidentId: 'inc-1', instanceId: 'wi-1', step: 'resolved' }),
       { resolvedStep: 'resolved', terminalSteps: ['resolved', 'closed'] },
-      'Il servizio "Enterprise Billing" è di nuovo non disponibile (punteggio 62/100)')
+      'Il servizio "Enterprise Billing" è di nuovo non disponibile (punteggio 62/100)', 'service_monitoring')
     expect(incidentService.addIncidentComment.mock.calls[0]![2]).toContain('Riaperto dal monitoraggio')
   })
 
@@ -391,6 +391,15 @@ describe('riapertura', () => {
     onCypher([[FIND_RE, openRow({ step: 'resolved' })], [LINK_RE, { at: NOW }]])
     await reconcileServiceIncident(input({ health: 'degraded', rules: { ...DEFAULT_SERVICE_IMPACT_RULES, open_incident_from: 'degraded' } }))
     expect(incidentService.setIncidentTitle).toHaveBeenCalledWith('inc-1', { tenantId: 't1', userId: 'monitoring' }, 'Servizio Enterprise Billing: degradato')
+  })
+
+  it('a reopening a guard refuses (wave 7 · B1): nothing more is done, the next evaluation asks again', async () => {
+    onCypher([[FIND_RE, openRow({ step: 'resolved' })], [LINK_RE, { at: NOW }]])
+    vi.mocked(reopenIncident).mockResolvedValueOnce(null)
+    const r = await reconcileServiceIncident(input())
+    expect(r.outcome).toBe('none')
+    expect(incidentService.setIncidentTitle).not.toHaveBeenCalled()
+    expect(incidentService.addIncidentComment).not.toHaveBeenCalled()
   })
 
   it('mappa non attiva → un incident risolto non viene riaperto', async () => {
@@ -410,7 +419,7 @@ describe('chiusura automatica', () => {
     const r = await reconcileServiceIncident(input({ health: 'operational', impactScore: 0, causes: [] }))
     expect(r).toEqual({ outcome: 'resolved', incidentId: 'inc-1', incidentNumber: 'INC00000042' })
     expect(runMonitoringTransition).not.toHaveBeenCalled()
-    expect(incidentService.resolveIncident).toHaveBeenCalledWith('inc-1', { tenantId: 't1', userId: 'monitoring' }, 'Servizio tornato operativo')
+    expect(incidentService.resolveIncident).toHaveBeenCalledWith('inc-1', { tenantId: 't1', userId: 'monitoring', path: 'service_monitoring' }, 'Servizio tornato operativo')
     expect(incidentService.addIncidentComment).toHaveBeenCalledTimes(1)
     expect(incidentService.addIncidentComment.mock.calls[0]![2]).toBe('Risolto automaticamente: Il servizio "Enterprise Billing" è tornato operativo (punteggio 0/100)')
     expect(audit).toHaveBeenCalledWith(expect.anything(), 'service.incident_resolved', 'ServiceMap', 'map-1', expect.objectContaining({ incidentId: 'inc-1', path: [] }))
@@ -426,12 +435,26 @@ describe('chiusura automatica', () => {
     onCypher([[FIND_RE, openRow({ step: 'new' })], [LINK_RE, { at: NOW }]])
     const r = await reconcileServiceIncident(input({ health: 'operational', impactScore: 0, causes: [] }))
     expect(r.outcome).toBe('resolved')
-    expect(vi.mocked(runMonitoringTransition).mock.calls.map((c) => [c[4], c[5], c[8]])).toEqual([
-      ['assigned', 'manual', false],
-      ['in_progress', 'manual', false],
+    // Each hop under the path's name, without its own comment (wave 7 · B1).
+    expect(vi.mocked(runMonitoringTransition).mock.calls.map((c) => [c[4], c[5], c[8], c[9]])).toEqual([
+      ['assigned', 'manual', 'service_monitoring', false],
+      ['in_progress', 'manual', 'service_monitoring', false],
     ])
     expect(incidentService.addIncidentComment).toHaveBeenCalledTimes(1)
     expect(incidentService.addIncidentComment.mock.calls[0]![2]).toContain('passando per Assegnato, In lavorazione')
+  })
+
+  it('a step of the closure a guard refuses (wave 7 · B1) → resolve_skipped, no comment, no retry; any other error is thrown', async () => {
+    const { TransitionRefusedError } = await import('../../lib/transitionRefused.js')
+    workflow.getAvailableTransitions.mockResolvedValue([{ toStep: 'resolved' }])
+    onCypher([[FIND_RE, openRow({ step: 'in_progress' })], [LINK_RE, { at: NOW }]])
+    vi.mocked(incidentService.resolveIncident).mockRejectedValueOnce(new TransitionRefusedError({ guard: 'required_fields', final: true, code: 'BAD_USER_INPUT', message: 'Field "cause" is required' }))
+    const r = await reconcileServiceIncident(input({ health: 'operational', impactScore: 0, causes: [] }))
+    expect(r).toEqual({ outcome: 'resolve_skipped', incidentId: 'inc-1', incidentNumber: 'INC00000042' })
+    expect(incidentService.addIncidentComment).not.toHaveBeenCalled()
+
+    vi.mocked(incidentService.resolveIncident).mockRejectedValueOnce(new Error('neo4j down'))
+    await expect(reconcileServiceIncident(input({ health: 'operational', impactScore: 0, causes: [] }))).rejects.toThrow('neo4j down')
   })
 
   it('nessun cammino percorribile → commento e basta, nessuna transizione forzata', async () => {
@@ -582,7 +605,7 @@ describe('sotto soglia ma non operativo: l\'incident resta aperto (I1)', () => {
     onCypher([[FIND_RE, openRow({ step: 'in_progress' })], [LINK_RE, { at: NOW }]])
     const r = await reconcileServiceIncident(input({ health: 'operational', impactScore: 0, causes: [] }))
     expect(r.outcome).toBe('resolved')
-    expect(incidentService.resolveIncident).toHaveBeenCalledWith('inc-1', { tenantId: 't1', userId: 'monitoring' }, 'Servizio tornato operativo')
+    expect(incidentService.resolveIncident).toHaveBeenCalledWith('inc-1', { tenantId: 't1', userId: 'monitoring', path: 'service_monitoring' }, 'Servizio tornato operativo')
     expect(serviceResolveCause('it', 'operational')).toBe('Servizio tornato operativo')
     expect(serviceResolveCause('it', 'degraded')).toBe('Servizio tornato degradato')
     // e il marcatore d'idempotenza dell'apertura viene ripulito

@@ -30,8 +30,9 @@ vi.mock('../changesStuck.js', () => ({
 vi.mock('../../graphql/resolvers/change/windowGate.js', () => ({
   automaticTransitionOutcome: (...a: unknown[]) => varco(...a),
 }))
-vi.mock('@opengraphity/workflow', () => ({
-  workflowEngine: { transition: (...a: unknown[]) => transition(...a) },
+// The pipeline of the transitions (wave 7 · B1): the guards of every path, and its note on a refusal.
+vi.mock('../../services/ticketTransition.js', () => ({
+  transitionTicket: (...a: unknown[]) => transition(...a),
 }))
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: () => ({ close: async () => { sessioniChiuse.n += 1 } }),
@@ -44,7 +45,7 @@ vi.mock('../logger.js', () => {
 const { riprendiTransizioniDi, ATTORE, MAX_PER_GIRO } =
   await import('../riprendiTransizioni.js')
 
-const ok = { success: true, instance: {}, execution: {}, actionsRun: [] }
+const ok = { moved: true, actionErrors: [] }
 
 beforeEach(() => {
   candidate = []
@@ -59,9 +60,9 @@ describe('riprendiTransizioniDi', () => {
     const esito = await riprendiTransizioniDi('t1')
     expect(esito).toEqual({ mosse: 2, candidate: 2, rifiutateDalVarco: 0 })
     const comando = transition.mock.calls[0]![1] as Record<string, unknown>
-    expect(comando).toMatchObject({
-      instanceId: 'wi-CHG1', toStepName: 'planning',
-      triggeredBy: ATTORE, triggerType: 'automatic', tenantId: 't1',
+    expect(comando).toEqual({
+      tenantId: 't1', instanceId: 'wi-CHG1', toStep: 'planning',
+      actor: { kind: 'system', path: 'change_auto', userId: ATTORE }, triggerType: 'automatic',
     })
     expect(ATTORE).toBe('sistema:ripresa-automatica')
   })
@@ -85,9 +86,16 @@ describe('riprendiTransizioniDi', () => {
 
   it('un rifiuto del MOTORE non è un errore: la change resta dov\'è', async () => {
     candidate = [cambio('CHG1')]
-    transition.mockResolvedValue({ ...ok, success: false, error: 'condizione non soddisfatta' })
+    transition.mockResolvedValue({ moved: false, refusal: { guard: 'workflow', final: true, message: 'condizione non soddisfatta' } })
     const esito = await riprendiTransizioniDi('t1')
     expect(esito).toEqual({ mosse: 0, candidate: 1, rifiutateDalVarco: 0 })
+  })
+
+  it('the window closing between the check and the move is counted as the window\'s refusal', async () => {
+    candidate = [cambio('CHG1')]
+    transition.mockResolvedValue({ moved: false, refusal: { guard: 'change_window', final: true, message: 'fuori finestra' } })
+    const esito = await riprendiTransizioniDi('t1')
+    expect(esito).toEqual({ mosse: 0, candidate: 1, rifiutateDalVarco: 1 })
   })
 
   it('il tetto per giro si rispetta: il resto va al giro dopo', async () => {

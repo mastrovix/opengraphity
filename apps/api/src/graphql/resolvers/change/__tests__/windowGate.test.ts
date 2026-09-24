@@ -194,15 +194,6 @@ describe('i cammini AUTOMATICI: rifiutano, non lanciano', () => {
       .resolves.toBe(false)
     expect(inc).toHaveBeenCalledWith({ path: 'rule_action', reason: 'no_approval_step' })
   })
-
-  it('la variante che LANCIA (azioni delle regole) porta il perché nel messaggio', async () => {
-    const { assertAutomaticTransitionAllowed } = await import('../windowGate.js')
-    const err = await assertAutomaticTransitionAllowed(session, input('assessment', 'scheduled'), 'rule_action')
-      .then(() => null, (e: Error) => e)
-    expect(err).not.toBeNull()
-    expect(err!.message).toMatch(/would enter the release window/)
-    expect(err!.message).toMatch(/remove this action from the rule/)
-  })
 })
 
 /**

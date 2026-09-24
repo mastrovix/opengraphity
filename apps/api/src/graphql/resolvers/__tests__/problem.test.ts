@@ -37,8 +37,18 @@ vi.mock('@opengraphity/neo4j', () => ({
   toNumber:    (v: unknown) => Number(v ?? 0),
 }))
 vi.mock('@opengraphity/workflow', () => ({
-  workflowEngine: { transition: vi.fn(), getAvailableTransitions: vi.fn(async () => [{ toStep: 'closed' }]) },
+  workflowEngine: { getAvailableTransitions: vi.fn(async () => [{ toStep: 'closed' }]) },
 }))
+// The pipeline of the transitions (wave 7 · B1): its guards are tested on their own.
+const pipeline = vi.hoisted(() => ({ transitionTicket: vi.fn() }))
+vi.mock('../../../services/ticketTransition.js', async () => {
+  const { GraphQLError } = await import('graphql')
+  return {
+    transitionTicket: (...a: unknown[]) => pipeline.transitionTicket(...a),
+    personActor: (c: { userId: string; permissions: unknown }) => ({ kind: 'person', userId: c.userId, permissions: c.permissions }),
+    refusalError: (r: { message: string; code: string; i18n?: unknown }) => new GraphQLError(r.message, { extensions: { code: r.code, ...(r.i18n ? { i18n: r.i18n } : {}) } }),
+  }
+})
 vi.mock('../ticketCustomFields.js', () => ({ requestCustomFieldDefs: vi.fn(async () => [{ name: 'cf_vendor' }]) }))
 vi.mock('../ticketSlaStatus.js', () => ({ ticketSlaStatusResolver: vi.fn(() => vi.fn()) }))
 vi.mock('../comments.js', () => ({ notifyCommentAudience: vi.fn(async () => undefined) }))
@@ -52,10 +62,8 @@ vi.mock('../../../lib/priority.js', () => ({
 }))
 vi.mock('../../../lib/validateRequiredFields.js', () => ({
   validateRequiredFields: vi.fn(async () => undefined),
-  validateStepRequirements: vi.fn(async () => undefined),
   propsToFieldValues:     vi.fn((p: Record<string, unknown>) => ({ ...p })),
 }))
-vi.mock('../../../lib/stepMetadataPreflight.js', () => ({ preflightStepMetadata: vi.fn(async () => undefined) }))
 vi.mock('../../../lib/slaAcknowledgement.js', () => ({ assertMayAcknowledgeNoSla: vi.fn() }))
 vi.mock('../../../lib/ciLabelsForTenant.js', () => ({ ciLabelPredicateForTenant: vi.fn(async () => '(ci:Server)') }))
 vi.mock('../../../lib/ticketCIExclusions.js', () => ({ assertCIsLinkable: vi.fn(async () => undefined) }))
@@ -360,57 +368,46 @@ describe('assignment', () => {
 })
 
 describe('Mutation.executeProblemTransition', () => {
-  const transition = vi.mocked(workflowEngine.transition)
+  const transition = pipeline.transitionTicket
+  const moved = (actionErrors: unknown[] = []) => ({ moved: true, actionErrors, entityType: 'problem', entityId: 'p1', fromStep: 'new', result: { success: true } })
 
-  it('without a workflow instance it fails before calling the engine', async () => {
+  it('without a workflow instance it fails before asking the pipeline', async () => {
     await expect(M.executeProblemTransition(undefined, { problemId: 'p1', toStep: 'closed' }, ctx)).rejects.toThrow(/Workflow instance not found/)
     expect(transition).not.toHaveBeenCalled()
   })
 
-  it('a refused transition becomes a CONFLICT with the engine message', async () => {
+  it('a refused transition is the refusal\'s error: its message, code and key', async () => {
     txRun.mockImplementation(async () => ({ records: [rec({ instanceId: 'wi1' })] }))
-    transition.mockResolvedValueOnce({ success: false, error: 'guard failed' } as never)
+    transition.mockResolvedValueOnce({ moved: false, refusal: { guard: 'workflow', final: true, code: 'CONFLICT', message: 'guard failed', i18n: { key: 'errors.workflow.x' } } })
     await expect(M.executeProblemTransition(undefined, { problemId: 'p1', toStep: 'closed' }, ctx))
-      .rejects.toMatchObject({ message: 'guard failed', extensions: { code: 'CONFLICT' } })
+      .rejects.toMatchObject({ message: 'guard failed', extensions: { code: 'CONFLICT', i18n: { key: 'errors.workflow.x' } } })
   })
 
-  it('passes the caller and notes to the engine and returns actionErrors null on a clean transition', async () => {
+  // Review of 23 Sep 2026: the problem page skipped the rules «field required entering step X»,
+  // and the approval named by the step; the pipeline checks them for every path.
+  it('asks the pipeline as the person, with the permissions of the role, on a manual arc, with the notes', async () => {
     txRun.mockImplementation(async () => ({ records: [rec({ instanceId: 'wi1' })] }))
-    transition.mockResolvedValueOnce({ success: true } as never)
+    transition.mockResolvedValueOnce(moved())
     runQueryOne.mockResolvedValueOnce({ props: { ...PROBLEM, status: 'closed' } } as never)
     const res = await M.executeProblemTransition(undefined, { problemId: 'p1', toStep: 'closed', notes: 'done' }, ctx)
     expect(res).toMatchObject({ status: 'closed', actionErrors: null })
-    expect(transition.mock.calls[0]![1]).toMatchObject({ instanceId: 'wi1', toStepName: 'closed', triggeredBy: 'u1', notes: 'done', tenantId: 'tenant-1' })
-    expect(logger.error).not.toHaveBeenCalled()
+    expect(transition).toHaveBeenCalledWith(session, {
+      tenantId: 'tenant-1', instanceId: 'wi1', toStep: 'closed', notes: 'done', triggerType: 'manual',
+      actor: { kind: 'person', userId: 'u1', permissions: ctx.permissions },
+    })
   })
 
-  it('step actions failed after commit: success, logged, and surfaced as actionErrors', async () => {
+  it('step actions failed after commit: success, surfaced as actionErrors (the pipeline logs them)', async () => {
     txRun.mockImplementation(async () => ({ records: [rec({ instanceId: 'wi1' })] }))
-    const actionErrors = [{ action: 'notify', message: 'smtp down' }]
-    transition.mockResolvedValueOnce({ success: true, actionErrors } as never)
+    transition.mockResolvedValueOnce(moved(['notify: smtp down']))
     runQueryOne.mockResolvedValueOnce({ props: PROBLEM } as never)
     const res = await M.executeProblemTransition(undefined, { problemId: 'p1', toStep: 'closed' }, ctx)
-    expect(res.actionErrors).toEqual(actionErrors)
-    expect(logger.error).toHaveBeenCalled()
-  })
-
-  // Review of 23 Sep 2026: the problem page skipped the rules «field required entering step X».
-  it('the rules of the step being entered, on the stored problem plus the notes, before the engine', async () => {
-    const { validateStepRequirements } = await import('../../../lib/validateRequiredFields.js')
-    const { preflightStepMetadata } = await import('../../../lib/stepMetadataPreflight.js')
-    txRun.mockImplementation(async () => ({ records: [rec({ instanceId: 'wi1', props: { root_cause: null } })] }))
-    vi.mocked(validateStepRequirements).mockRejectedValueOnce(new Error('Field "root_cause" is required for step "resolved"'))
-    await expect(M.executeProblemTransition(undefined, { problemId: 'p1', toStep: 'resolved' }, ctx)).rejects.toThrow(/root_cause/)
-    expect(vi.mocked(validateStepRequirements).mock.calls[0]![1]).toEqual({
-      entityType: 'problem', entityProps: { root_cause: null }, notes: undefined, tenantId: 'tenant-1', toStep: 'resolved',
-    })
-    expect(preflightStepMetadata).not.toHaveBeenCalled()
-    expect(transition).not.toHaveBeenCalled()
+    expect(res.actionErrors).toEqual(['notify: smtp down'])
   })
 
   it('NOT_FOUND when the problem cannot be re-read after the transition', async () => {
     txRun.mockImplementation(async () => ({ records: [rec({ instanceId: 'wi1' })] }))
-    transition.mockResolvedValueOnce({ success: true, actionErrors: [] } as never)
+    transition.mockResolvedValueOnce(moved())
     await expect(M.executeProblemTransition(undefined, { problemId: 'p1', toStep: 'closed' }, ctx)).rejects.toMatchObject({ extensions: { code: 'NOT_FOUND' } })
   })
 })

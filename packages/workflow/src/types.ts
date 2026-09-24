@@ -229,20 +229,11 @@ export interface ActionContext {
   notes?:           string
   entityData:       Record<string, unknown>      // entity properties for template/condition eval
   isWebhookRetry?:  boolean
-  createEntity?: (type: string, data: Record<string, unknown>) => Promise<string>
-  assignTo?:    (entityId: string, targetType: string, targetId: string) => Promise<void>
-  updateField?: (entityId: string, field: string, value: unknown) => Promise<void>
-  publishEvent?: (type: string, payload: Record<string, unknown>) => Promise<void>
-  createApprovalRequest?: (params: {
-    entityId:     string
-    entityType:   string
-    title:        string
-    approverRole?: string
-    /** Persone e squadre che approvano (moduli del catalogo, ondata 3): l'insieme è l'unione. */
-    approverUserIds?: string[]
-    approverTeamIds?: string[]
-    approvalType?: string
-  }) => Promise<string>
+  /*
+   * No callbacks any more (wave 7 · B1): the actions that write the graph are
+   * done by the handlers registered in the process (stepActionHandlers.ts),
+   * for every path. The context is who, the notes and the entity's data.
+   */
 }
 
 // ── Step / Transition / Definition ────────────────────────────────────────────

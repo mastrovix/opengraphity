@@ -36,10 +36,10 @@
  * persona ha cliccato, e far finta di sì renderebbe l'audit una bugia.
  */
 import { getSession } from '@opengraphity/neo4j'
-import { workflowEngine } from '@opengraphity/workflow'
 import { changeChePossonoMuoversi } from './changesStuck.js'
 import { automaticTransitionOutcome } from '../graphql/resolvers/change/windowGate.js'
 import { logger } from './logger.js'
+import { transitionTicket } from '../services/ticketTransition.js'
 
 const log = logger.child({ module: 'transizioni-riprese' })
 
@@ -100,24 +100,18 @@ export async function riprendiTransizioniDi(tenantId: string): Promise<EsitoRipr
        * lasciare ferme quelle che vengono dopo. L'errore si scrive per intero.
        */
       try {
-        const esito = await workflowEngine.transition(
-          session,
-          {
-            instanceId:  c.instanceId,
-            toStepName:  c.toStep,
-            triggeredBy: ATTORE,
-            triggerType: 'automatic',
-            tenantId,
-          },
-          { userId: ATTORE, entityData: c.props },
-        )
-        if (esito.success) {
+        // The pipeline of the transitions (wave 7 · B1): the guards of every
+        // path; a refusal is logged and noted on the change by the pipeline.
+        const esito = await transitionTicket(session, {
+          tenantId, instanceId: c.instanceId, toStep: c.toStep,
+          actor: { kind: 'system', path: 'change_auto', userId: ATTORE }, triggerType: 'automatic',
+        })
+        if (esito.moved) {
           mosse++
           log.info({ tenantId, change: c.code, from: c.fromStep, to: c.toStep },
             'a change that had missed its automatic transition was moved on')
-        } else {
-          log.warn({ tenantId, change: c.code, from: c.fromStep, to: c.toStep, reason: esito.error ?? 'unknown' },
-            'the engine refused to move this change: it stays where it is')
+        } else if (esito.refusal.guard === 'change_window') {
+          rifiutateDalVarco++
         }
       } catch (err) {
         log.error({ err, tenantId, change: c.code, from: c.fromStep, to: c.toStep },

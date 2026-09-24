@@ -12,8 +12,10 @@
  *   unlinking a problem must send it back to analysis.
  * - Adding a CI must only draw task codes for tasks that will really be
  *   created, otherwise the numbering gets holes every time a CI is re-added.
- * - A transition that fails must surface as a CONFLICT and never write the
- *   audit entry; step-action errors after the commit must reach the client.
+ * - A transition that fails must surface as the refusal's error and never
+ *   write the audit entry; step-action errors after the commit must reach the
+ *   client. The guards (the release window among them) are the pipeline's
+ *   (services/ticketTransition.ts, wave 7 · B1), tested there.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GraphQLContext } from '../../../../context.js'
@@ -51,7 +53,6 @@ vi.mock('../../ci-utils.js', () => ({
 vi.mock('@opengraphity/workflow', () => ({
   registerTaskCreator: vi.fn(),
   workflowEngine: {
-    transition: vi.fn(async () => ({ success: true })),
     getAvailableTransitions: vi.fn(async () => []),
     registerCondition: vi.fn(),
     onStepEntered: vi.fn(),
@@ -62,7 +63,15 @@ vi.mock('../autoTransitions.js', () => ({
   evaluateAutoTransitions: vi.fn().mockResolvedValue(undefined),
   revertProblemAfterChangeDetached: vi.fn().mockResolvedValue(undefined),
 }))
-vi.mock('../windowGate.js', () => ({ assertChangeWindowGate: vi.fn().mockResolvedValue(undefined) }))
+const pipe = vi.hoisted(() => ({ transitionTicket: vi.fn() }))
+vi.mock('../../../../services/ticketTransition.js', async () => {
+  const { GraphQLError } = await import('graphql')
+  return {
+    transitionTicket: (...a: unknown[]) => pipe.transitionTicket(...a),
+    personActor: (c: { userId: string; permissions: unknown; role: string }) => ({ kind: 'person', userId: c.userId, permissions: c.permissions, role: c.role }),
+    refusalError: (r: { message: string; code: string }) => new GraphQLError(r.message, { extensions: { code: r.code } }),
+  }
+})
 vi.mock('../helpers.js', () => ({
   afterEnterStep: vi.fn().mockResolvedValue(undefined),
   writeAudit: vi.fn().mockResolvedValue(undefined),
@@ -105,13 +114,13 @@ const { revertProblemAfterChangeDetached, evaluateAutoTransitions } = await impo
 const { change: getChange } = await import('../queries.js')
 const { logger } = await import('../../../../lib/logger.js')
 const { assertCIsLinkable } = await import('../../../../lib/ticketCIExclusions.js')
-const { assertChangeWindowGate } = await import('../windowGate.js')
 const sla = await import('@opengraphity/sla')
 
 const ctx: GraphQLContext = { tenantId: 't1', userId: 'u-1', userEmail: 'op@test.io', role: 'admin', permissions: perms('admin') }
 
 beforeEach(() => {
   vi.clearAllMocks()
+  pipe.transitionTicket.mockResolvedValue({ moved: true, actionErrors: [] })
   calls = []
   answer = () => ({ records: [] })
 })
@@ -134,22 +143,24 @@ describe('createChange — RFC raised from a problem', () => {
     expect(link.cypher).toContain('rel.auto = true')
     expect(link.params).toMatchObject({ problemId: 'prb-1', changeId: 'chg-1', tenantId: 't1' })
     // The note tells the problem timeline which RFC moved it.
-    expect(workflowEngine.transition).toHaveBeenCalledWith(session,
-      expect.objectContaining({ instanceId: 'wi-p', toStepName: 'change_requested', tenantId: 't1', notes: 'change.rfcCreated:CHG00000001' }),
-      expect.anything())
+    // The problem follows its change (wave 7 · B1), signed by who raised it.
+    expect(pipe.transitionTicket).toHaveBeenCalledWith(session, {
+      tenantId: 't1', instanceId: 'wi-p', toStep: 'change_requested', notes: 'change.rfcCreated:CHG00000001',
+      actor: { kind: 'system', path: 'change_follow', userId: 'u-1' }, triggerType: 'manual',
+    })
   })
 
   it('a missing problem is NOT_FOUND: no silent link to an id that does not exist', async () => {
     await expect(mod.createChange(null, { input: { ...baseInput, problemId: 'ghost' } }, ctx))
       .rejects.toMatchObject({ extensions: { code: 'NOT_FOUND' } })
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
+    expect(pipe.transitionTicket).not.toHaveBeenCalled()
   })
 
   it('a problem without workflow instance is linked but not transitioned', async () => {
     answer = (c) => (c.includes('MERGE (p)') ? { records: [rec({ id: 'prb-1' })] } : { records: [] })
     await mod.createChange(null, { input: { ...baseInput, problemId: 'prb-1' } }, ctx)
     expect(workflowEngine.getAvailableTransitions).not.toHaveBeenCalled()
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
+    expect(pipe.transitionTicket).not.toHaveBeenCalled()
   })
 
   it('no reachable change_requested step: the problem stays put and it is logged, not swallowed', async () => {
@@ -160,20 +171,19 @@ describe('createChange — RFC raised from a problem', () => {
     }
     vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValueOnce([{ toStep: 'closed' }] as never)
     await mod.createChange(null, { input: { ...baseInput, problemId: 'prb-1' } }, ctx)
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
+    expect(pipe.transitionTicket).not.toHaveBeenCalled()
     expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({ problemId: 'prb-1', available: ['closed'] }), expect.any(String))
   })
 
-  it('a refused problem transition does not undo the change, but is logged', async () => {
+  it('a refused problem transition does not undo the change (the pipeline logs and notes it)', async () => {
     answer = (c) => {
       if (c.includes('MERGE (p)')) return { records: [rec({ id: 'prb-1' })] }
       if (c.includes('HAS_WORKFLOW')) return { records: [rec({ id: 'wi-p' })] }
       return { records: [] }
     }
     vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValueOnce([{ toStep: 'change_requested' }] as never)
-    vi.mocked(workflowEngine.transition).mockResolvedValueOnce({ success: false, error: 'guard' } as never)
+    pipe.transitionTicket.mockResolvedValueOnce({ moved: false, refusal: { guard: 'required_fields', final: true, message: 'guard' } })
     await expect(mod.createChange(null, { input: { ...baseInput, problemId: 'prb-1' } }, ctx)).resolves.toMatchObject({ id: 'chg-1' })
-    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({ toStep: 'change_requested', error: 'guard' }), expect.any(String))
   })
 })
 
@@ -184,7 +194,7 @@ describe('createChange — RFC raised from an incident', () => {
     const link = calls.find((c) => c.cypher.includes('MERGE (i)'))!
     expect(link.cypher).toContain('rel.auto = true')
     expect(link.params).toMatchObject({ incidentId: 'inc-1', changeId: 'chg-1', tenantId: 't1' })
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
+    expect(pipe.transitionTicket).not.toHaveBeenCalled()
   })
 
   it('a missing incident is NOT_FOUND', async () => {
@@ -353,13 +363,16 @@ describe('removeCIFromChange', () => {
 // ── executeChangeTransition ──────────────────────────────────────────────────
 
 describe('executeChangeTransition', () => {
-  it('passes the default change type "normal" to the window gate when the change has none', async () => {
-    await mod.executeChangeTransition(null, { changeId: 'chg-1', toStep: 'scheduled' }, ctx)
-    expect(assertChangeWindowGate).toHaveBeenCalledWith(session, ctx, expect.objectContaining({ changeType: 'normal', currentStep: 'assessment', toStep: 'scheduled', tenantId: 't1' }))
+  it('asks the pipeline as the person, with the role and its permissions, on a manual arc', async () => {
+    await mod.executeChangeTransition(null, { changeId: 'chg-1', toStep: 'scheduled', notes: 'go' }, ctx)
+    expect(pipe.transitionTicket).toHaveBeenCalledWith(session, {
+      tenantId: 't1', instanceId: 'wi-1', toStep: 'scheduled', notes: 'go', triggerType: 'manual',
+      actor: { kind: 'person', userId: 'u-1', permissions: ctx.permissions, role: 'admin' },
+    })
   })
 
-  it('a refused transition is a CONFLICT and writes no audit entry', async () => {
-    vi.mocked(workflowEngine.transition).mockResolvedValueOnce({ success: false, error: 'guard failed' } as never)
+  it('a refused transition is the refusal\'s error and writes no audit entry', async () => {
+    pipe.transitionTicket.mockResolvedValueOnce({ moved: false, refusal: { guard: 'workflow', final: true, code: 'CONFLICT', message: 'guard failed' } })
     await expect(mod.executeChangeTransition(null, { changeId: 'chg-1', toStep: 'scheduled' }, ctx))
       .rejects.toMatchObject({ message: 'guard failed', extensions: { code: 'CONFLICT' } })
     expect(helpers.writeAudit).not.toHaveBeenCalled()
@@ -367,17 +380,16 @@ describe('executeChangeTransition', () => {
   })
 
   it('writes a stable action with trimmed notes and exposes step-action errors to the client', async () => {
-    vi.mocked(workflowEngine.transition).mockResolvedValueOnce({ success: true, actionErrors: ['sla timer'] } as never)
+    pipe.transitionTicket.mockResolvedValueOnce({ moved: true, actionErrors: ['sla timer'] })
     const res = await mod.executeChangeTransition(null, { changeId: 'chg-1', toStep: 'scheduled', notes: '  night window ' }, ctx)
     expect(helpers.writeAudit).toHaveBeenCalledWith(session, 'chg-1', 't1', 'change_step_entered', 'u-1',
       'scheduled: night window', { key: 'stepEntered', params: { step: 'scheduled', notes: ': night window' } })
-    expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ actionErrors: ['sla timer'] }), expect.any(String))
     expect(res).toMatchObject({ id: 'chg-1', actionErrors: ['sla timer'] })
   })
 
-  it('without notes the audit detail is the step alone, actionErrors null, and a missing user acts as system', async () => {
-    const res = await mod.executeChangeTransition(null, { changeId: 'chg-1', toStep: 'scheduled' }, { ...ctx, userId: undefined } as unknown as GraphQLContext)
-    expect(workflowEngine.transition).toHaveBeenCalledWith(session, expect.objectContaining({ triggeredBy: 'system' }), expect.objectContaining({ userId: 'system' }))
+  it('without notes the audit detail is the step alone, and actionErrors null', async () => {
+    const res = await mod.executeChangeTransition(null, { changeId: 'chg-1', toStep: 'scheduled' }, ctx)
+    expect(pipe.transitionTicket.mock.calls[0]![1]).toMatchObject({ notes: null })
     expect(vi.mocked(helpers.writeAudit).mock.calls[0]![5]).toBe('scheduled')
     expect(vi.mocked(helpers.writeAudit).mock.calls[0]![6]).toEqual({ key: 'stepEntered', params: { step: 'scheduled', notes: '' } })
     expect(res).toMatchObject({ actionErrors: null })

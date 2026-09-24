@@ -13,8 +13,10 @@
  *  - non-change tickets publish "ticket updated" for each field the deadline
  *    writes (notifications and automations listen to it); changes and KB
  *    articles do not have that channel;
- *  - the target step's update_field actions go through the same vocabulary
- *    check as the deadline's own fields;
+ *  - the fields the deadline writes reach the pipeline of the transitions,
+ *    whose conditions must see them (the pipeline and the registered step
+ *    actions are tested on their own: services/__tests__/ticketTransition,
+ *    workflow/__tests__/stepActions);
  *  - a retried refusal/failure is logged quietly (debug) — only the FIRST one
  *    is loud, otherwise the log fills with the same line every hour;
  *  - any unexpected error ends as `failed` on the execution (retried in an
@@ -46,19 +48,14 @@ vi.mock('@opengraphity/sla', async () => {
   }
 })
 
-const transition = vi.fn()
-vi.mock('@opengraphity/workflow', () => ({ workflowEngine: { transition: (...a: unknown[]) => transition(...a) } }))
-
-const automaticTransitionAllowed = vi.fn(async () => true)
-vi.mock('../../graphql/resolvers/change/windowGate.js', () => ({ automaticTransitionAllowed: (...a: unknown[]) => automaticTransitionAllowed(...(a as [])) }))
-const requestApprovalWouldBeSkipped = vi.fn(async () => false)
-vi.mock('../requestApproval.js', () => ({ requestApprovalWouldBeSkipped: (...a: unknown[]) => requestApprovalWouldBeSkipped(...(a as [])) }))
-// The named-approval gate (ticketApprovalGate.test.ts): open unless a test closes it.
-const ticketApprovalRefusal = vi.fn(async (..._a: unknown[]): Promise<unknown> => null)
-vi.mock('../ticketApprovalGate.js', () => ({
-  APPROVAL_GATED_TICKETS: ['incident', 'problem', 'service_request'],
-  ticketApprovalRefusal: (...a: unknown[]) => ticketApprovalRefusal(...a),
+// The pipeline of the transitions (wave 7 · B1): the guards and the move.
+const checkTicketTransition = vi.fn(async (..._a: unknown[]): Promise<unknown> => null)
+const transitionTicket = vi.fn(async (..._a: unknown[]): Promise<unknown> => ({ moved: true, actionErrors: [] }))
+vi.mock('../../services/ticketTransition.js', () => ({
+  checkTicketTransition: (...a: unknown[]) => checkTicketTransition(...a),
+  transitionTicket: (...a: unknown[]) => transitionTicket(...a),
 }))
+const refusal = (guard: string, message = 'held') => ({ guard, message, code: 'CONFLICT', final: true })
 
 vi.mock('../stepFieldWrites.js', async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -101,10 +98,8 @@ beforeEach(() => {
   runQueryOne.mockReset()
   runQuery.mockReset()
   runQuery.mockResolvedValue([])
-  transition.mockResolvedValue({ success: true })
-  automaticTransitionAllowed.mockResolvedValue(true)
-  requestApprovalWouldBeSkipped.mockResolvedValue(false)
-  ticketApprovalRefusal.mockResolvedValue(null)
+  checkTicketTransition.mockResolvedValue(null)
+  transitionTicket.mockResolvedValue({ moved: true, actionErrors: [] })
   for (const k of Object.keys(calendarsById)) delete calendarsById[k]
 })
 
@@ -139,7 +134,7 @@ describe('runStepDeadlineSweep', () => {
       candidate({ execId: 'ex-2', entityId: 'chg-2' }),
     ])
     // First: the approval gate refuses. Second: the arc is gone → failed.
-    automaticTransitionAllowed.mockResolvedValueOnce(false)
+    checkTicketTransition.mockResolvedValueOnce(refusal('change_window'))
     runQueryOne
       .mockResolvedValueOnce({ id: 'ex-1' }).mockResolvedValueOnce({ currentStep: 'review', deadline: JSON.stringify(REVIEW), entity: {} }).mockResolvedValueOnce({ name: 'closed' })
       .mockResolvedValueOnce({ id: 'ex-2' }).mockResolvedValueOnce({ currentStep: 'review', deadline: JSON.stringify(REVIEW), entity: {} }).mockResolvedValueOnce(null)
@@ -167,7 +162,7 @@ describe('fireStepDeadline — skipped paths release the claim', () => {
     scriptReads({ currentStep: 'implement', deadline: JSON.stringify(REVIEW), entity: {} })
     await expect(fireStepDeadline(candidate({ previousOutcome: 'refused' }), NOW)).resolves.toBe('skipped')
     expect(releaseWrites()).toEqual([{ execId: 'ex-1', tenantId: 'c-test', previous: 'refused' }])
-    expect(transition).not.toHaveBeenCalled()
+    expect(transitionTicket).not.toHaveBeenCalled()
   })
 
   it('the instance vanished → skipped', async () => {
@@ -181,7 +176,7 @@ describe('fireStepDeadline — skipped paths release the claim', () => {
     await expect(fireStepDeadline(candidate({ entityType: 'task', previousOutcome: 'running' }), NOW)).resolves.toBe('skipped')
     // Releasing to "running" would leave the execution claimed until it goes stale: back to "never tried".
     expect(releaseWrites()).toEqual([{ execId: 'ex-1', tenantId: 'c-test', previous: null }])
-    expect(transition).not.toHaveBeenCalled()
+    expect(transitionTicket).not.toHaveBeenCalled()
   })
 })
 
@@ -201,40 +196,33 @@ describe('fireStepDeadline — field writes and the target step', () => {
     expect(publishTicketUpdated).not.toHaveBeenCalled()
   })
 
-  it('the written fields and the assignee reach the transition conditions', async () => {
+  it('the written fields reach the pipeline, whose conditions must see them (it loads the assignee itself)', async () => {
     scriptReads({ currentStep: 'review', deadline: JSON.stringify(REVIEW), entity: { change_type: 'normal', outcome: null }, assignedTo: 'u-7', assignedTeam: null })
     await fireStepDeadline(candidate(), NOW)
-    const [, , opts] = transition.mock.calls[0]!
-    expect((opts as { entityData: Record<string, unknown> }).entityData).toMatchObject({ outcome: 'successful', assigned_to: 'u-7', assigned_team: null })
+    expect(transitionTicket).toHaveBeenCalledWith(session, expect.objectContaining({ extraEntityData: { outcome: 'successful' } }))
+    // No callbacks travel any more: the step actions are the registered handlers (workflow/stepActions.ts).
+    expect(Object.keys(transitionTicket.mock.calls[0]![1] as object).sort()).toEqual(['actor', 'extraEntityData', 'instanceId', 'tenantId', 'toStep', 'triggerType'])
   })
 
-  it('update_field actions of the target step are vocabulary-checked before being written', async () => {
+  it('moved with some target-step actions failed → still moved (the pipeline says it out loud)', async () => {
     scriptReads()
-    let invalid: unknown
-    transition.mockImplementation(async (_s: unknown, _t: unknown, opts: { updateField: (id: string, f: string, v: unknown) => Promise<void> }) => {
-      await opts.updateField('chg-1', 'outcome', 'failed')
-      invalid = await opts.updateField('chg-1', 'outcome', 'riuscita').catch((e: unknown) => e)
-      return { success: true }
-    })
+    transitionTicket.mockResolvedValue({ moved: true, actionErrors: ['notify: channel missing'] })
     await expect(fireStepDeadline(candidate(), NOW)).resolves.toBe('moved')
-    expect(writeTicketField).toHaveBeenCalledWith(session, 'c-test', 'change', 'chg-1', 'outcome', 'failed')
-    expect(writeTicketField).not.toHaveBeenCalledWith(session, 'c-test', 'change', 'chg-1', 'outcome', 'riuscita')
-    expect(invalid).toBeInstanceOf(Error)
-  })
-
-  it('moved but some target-step actions failed → still moved, and said out loud', async () => {
-    scriptReads()
-    transition.mockResolvedValue({ success: true, actionErrors: ['notify: channel missing'] })
-    await expect(fireStepDeadline(candidate(), NOW)).resolves.toBe('moved')
-    expect(log.error).toHaveBeenCalledWith(expect.objectContaining({ actionErrors: ['notify: channel missing'], toStep: 'closed' }), expect.any(String))
     expect(outcomeWrites().at(-1)).toMatchObject({ outcome: 'moved' })
   })
 
-  it('a transition refused without a message is recorded as "unknown"', async () => {
+  it('the engine refusing the move is recorded as failed, with its message', async () => {
     scriptReads()
-    transition.mockResolvedValue({ success: false })
+    transitionTicket.mockResolvedValue({ moved: false, refusal: refusal('workflow', 'The workflow refused the transition') })
     await expect(fireStepDeadline(candidate(), NOW)).resolves.toBe('failed')
-    expect(outcomeWrites().at(-1)).toMatchObject({ reason: 'transition', detail: 'unknown' })
+    expect(outcomeWrites().at(-1)).toMatchObject({ reason: 'transition', detail: 'The workflow refused the transition' })
+  })
+
+  it('a guard that changed between the check and the move → refused with its reason', async () => {
+    scriptReads()
+    transitionTicket.mockResolvedValue({ moved: false, refusal: refusal('named_approval') })
+    await expect(fireStepDeadline(candidate(), NOW)).resolves.toBe('refused')
+    expect(outcomeWrites().at(-1)).toMatchObject({ outcome: 'refused', reason: 'approval_request' })
   })
 })
 
@@ -259,7 +247,7 @@ describe('fireStepDeadline — unexpected errors and log levels', () => {
 
   it('first refusal is a warning; the same refusal retried an hour later is only debug', async () => {
     scriptReads()
-    automaticTransitionAllowed.mockResolvedValue(false)
+    checkTicketTransition.mockResolvedValue(refusal('change_window'))
     await fireStepDeadline(candidate({ previousOutcome: null }), NOW)
     expect(log.warn).toHaveBeenCalledTimes(1)
 

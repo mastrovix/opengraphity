@@ -26,8 +26,10 @@ const fakeSession = {
 vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
   withSession: vi.fn().mockImplementation((fn: (s: unknown) => unknown) => fn(fakeSession)),
 }))
-const transition = vi.fn<(...a: unknown[]) => Promise<{ success: boolean; error?: string }>>()
-vi.mock('@opengraphity/workflow', () => ({ workflowEngine: { transition: (...a: unknown[]) => transition(...a) } }))
+// The pipeline of the transitions (wave 7 · B1): the rule moves the ticket through it, signed by its name.
+const transition = vi.fn()
+vi.mock('../../services/ticketTransition.js', () => ({ transitionTicket: (...a: unknown[]) => transition(...a) }))
+const refused = (message: string, guard = 'workflow') => ({ moved: false, refusal: { guard, final: true, code: 'CONFLICT', message } })
 
 const { executeActions } = await import('../actionExecutor.js')
 
@@ -40,13 +42,17 @@ const action = { type: 'transition_workflow' as const, params: { to_step: 'appro
 beforeEach(() => { vi.clearAllMocks() })
 
 describe('transition_workflow — l\'esito del motore non si butta', () => {
-  it('transizione riuscita → azione riuscita', async () => {
-    transition.mockResolvedValue({ success: true })
+  it('transizione riuscita → azione riuscita; the rule asks as itself, by name', async () => {
+    transition.mockResolvedValue({ moved: true })
     await expect(executeActions([action], ctx)).resolves.toEqual([{ action: 'transition_workflow', success: true }])
+    expect(transition).toHaveBeenCalledWith(fakeSession, {
+      tenantId: 't1', instanceId: 'wi-1', toStep: 'approved', notes: 'Auto: Change emergency → approvazione immediata',
+      actor: { kind: 'system', path: 'rule', label: 'Change emergency → approvazione immediata' }, triggerType: 'automatic',
+    })
   })
 
   it('bersaglio inesistente → azione FALLITA che nomina il passo e l\'errore del motore', async () => {
-    transition.mockResolvedValue({ success: false, error: 'Transition to "approved" is not valid from the current step' })
+    transition.mockResolvedValue(refused('Transition to "approved" is not valid from the current step'))
     const results = await executeActions([action], ctx)
     expect(results).toHaveLength(1)
     expect(results[0]!.success).toBe(false)
@@ -55,8 +61,24 @@ describe('transition_workflow — l\'esito del motore non si butta', () => {
     expect(results[0]!.error).toContain('step of the change workflow')
   })
 
+  it('a refusal of the release window is a failed action naming the guard, and what to change in the rule', async () => {
+    transition.mockResolvedValue(refused('needs approvals', 'change_window'))
+    const [r] = await executeActions([action], ctx)
+    expect(r!.success).toBe(false)
+    expect(r!.error).toContain('(change_window: needs approvals)')
+    expect(r!.error).toContain('add the change type to the pre-approved types')
+    expect(r!.error).toContain('remove this action from the rule')
+    expect(r!.error).not.toContain('step of the change workflow')
+  })
+
+  it('another guard\'s refusal (an approval) names the guard, without advice that does not apply', async () => {
+    transition.mockResolvedValue(refused('Waiting for an approval', 'named_approval'))
+    const [r] = await executeActions([action], ctx)
+    expect(r!.error).toBe('transition_workflow: the transition to "approved" did not happen (named_approval: Waiting for an approval).')
+  })
+
   it('un\'azione dopo una transizione fallita non viene eseguita (la catena si ferma, come per ogni errore)', async () => {
-    transition.mockResolvedValue({ success: false, error: 'boom' })
+    transition.mockResolvedValue(refused('boom'))
     const results = await executeActions([action, { type: 'create_comment', params: { text: 'fatto' } }], ctx)
     expect(results.map((r) => r.action)).toEqual(['transition_workflow'])
   })

@@ -50,7 +50,34 @@ export const SYSTEM_TEXTS = {
   'task.cancelledTicketClosed': { en: 'The ticket was closed: this task is no longer needed', it: 'Il ticket è stato chiuso: questo task non serve più' },
   // L'escalation che una guardia ha fermato: si scrive SUL TICKET, perché
   // chi l'aspettava non ha modo di leggere i log del server.
-  'escalation.refusedByGuard': { en: 'Escalation to "{step}" was not carried out: {reason}', it: 'L\'escalation verso "{step}" non è stata eseguita: {reason}' },
+  /*
+   * AN AUTOMATIC MOVE THAT A GUARD REFUSED (wave 7 · B1): written on the
+   * ticket once per reason by services/ticketTransition.ts — who asked, where
+   * to, and what held the ticket.
+   */
+  'workflow.moveRefused':            { en: '{who} did not move the ticket to "{step}": {reason}', it: '{who} non ha spostato il ticket in "{step}": {reason}' },
+  'workflow.moveBy.rule':            { en: 'The rule «{rule}»',                 it: 'La regola «{rule}»' },
+  'workflow.moveBy.anyRule':         { en: 'An automation rule',                it: 'Una regola di automazione' },
+  'workflow.moveBy.escalation':      { en: 'The escalation',                    it: 'L\'escalation' },
+  'workflow.moveBy.step_deadline':   { en: 'The deadline of the step',          it: 'La scadenza del passo' },
+  'workflow.moveBy.timer':           { en: 'The timer of the step',             it: 'Il timer del passo' },
+  'workflow.moveBy.change_auto':     { en: 'The automatic transition',          it: 'La transizione automatica' },
+  'workflow.moveBy.change_follow':   { en: 'The linked change',                 it: 'La change collegata' },
+  'workflow.moveBy.approval':        { en: 'The approval decision',             it: 'La decisione di approvazione' },
+  'workflow.moveBy.investigation':   { en: 'The continuous improvement',        it: 'Il miglioramento continuo' },
+  'workflow.moveBy.service_monitoring': { en: 'The service monitoring',         it: 'Il monitoraggio del servizio' },
+  'workflow.moveBy.event_auto_resolve': { en: 'The cleared alarm',              it: 'L\'allarme rientrato' },
+  'workflow.moveBy.event_reopen':    { en: 'The returned alarm',                it: 'L\'allarme ricomparso' },
+  'workflow.moveBy.script':          { en: 'An operator\'s script',            it: 'Uno script di un operatore' },
+  'workflow.refusedBy.change_window':    { en: 'the change is not approved for the release window', it: 'la change non è approvata per la finestra di rilascio' },
+  'workflow.refusedBy.assessments':      { en: 'the assessment tasks or the deploy plan are not complete', it: 'le valutazioni o il piano di deploy non sono completi' },
+  'workflow.refusedBy.request_approval': { en: 'the request needs its approval first', it: 'la richiesta deve prima essere approvata' },
+  'workflow.refusedBy.approval_pending': { en: 'the approval of the step is still pending', it: 'l\'approvazione del passo è ancora in attesa' },
+  'workflow.refusedBy.approval_rejected': { en: 'the approval of the step was rejected', it: 'l\'approvazione del passo è stata rifiutata' },
+  'workflow.refusedBy.required_fields':  { en: 'required fields are empty ({fields})', it: 'ci sono campi obbligatori vuoti ({fields})' },
+  'workflow.refusedBy.step_metadata':    { en: 'the configuration of the step is not valid', it: 'la configurazione del passo non è valida' },
+  'workflow.refusedBy.type_permission':  { en: 'there is no permission to move this ticket', it: 'manca il permesso di spostare questo ticket' },
+  'workflow.refusedBy.workflow':         { en: 'the workflow refused it ({detail})', it: 'il workflow l\'ha rifiutato ({detail})' },
   /*
    * GLI ERRORI DI SEZIONE CHE FINISCONO IN UN DOCUMENTO CONSEGNATO (20 set
    * 2026, segnalato dal proprietario: «il pdf dà errore»).
@@ -109,6 +136,7 @@ export const SYSTEM_TEXTS = {
   'autoResolve.via':            { en: ' — through {steps}',                                     it: ' — passando per {steps}' },
   'autoResolve.historyVia':     { en: 'through {steps}',                                        it: 'passando per {steps}' },
   'autoResolve.cannotResolve':  { en: 'All correlated monitoring alarms have cleared (last: {title}); the incident is in "{step}" and cannot be resolved automatically from this step', it: 'Tutti gli allarmi di monitoraggio correlati sono rientrati (ultimo: {title}); l\'incident è in "{step}" e non può essere risolto automaticamente da questo passo' },
+  'autoResolve.historyRefused': { en: 'the incident was not resolved: {reason}',              it: 'l\'incident non è stato risolto: {reason}' },
   'autoResolve.historyCannot':  { en: 'the incident is in "{step}" and cannot be resolved automatically from this step', it: 'l\'incident è in "{step}" e non può essere risolto automaticamente da questo passo' },
   'autoResolve.suppressedOne':  { en: '1 monitoring alarm silenced{by} is still in the change window: it does not keep the incident open; at the end of the window it is re-evaluated and, if still firing, reopens it', it: '1 allarme di monitoraggio silenziato{by} resta in finestra di change: non tiene aperto l\'incident; a fine finestra viene rivalutato e, se ancora acceso, lo riapre' },
   'autoResolve.suppressedOther': { en: '{count} monitoring alarms silenced{by} are still in the change window: they do not keep the incident open; at the end of the window they are re-evaluated and, if still firing, reopen it', it: '{count} allarmi di monitoraggio silenziati{by} restano in finestra di change: non tengono aperto l\'incident; a fine finestra vengono rivalutati e, se ancora accesi, lo riaprono' },

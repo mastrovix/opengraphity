@@ -12,10 +12,11 @@
  *    otherwise an unapproved change can reach production unchallenged.
  *  - `saveWorkflowChanges` is an optimistic-locked, single-transaction save:
  *    a stale designer must not overwrite a colleague's edits.
- *  - A manual transition runs the step's side effects (on_enter_fields,
- *    notify rules, approvals, assignment). A corrupt step must block BEFORE the
- *    engine moves the ticket; a failure AFTER the move must be reported in
- *    `actionErrors`, not thrown (the ticket already moved).
+ *  - A manual transition is the pipeline's (services/ticketTransition.ts,
+ *    wave 7 · B1, tested there with every guard): here, that a person asks it
+ *    with their permissions, that changes are sent to their own mutation, that
+ *    a guard's refusal is the error on the screen and the engine's no is the
+ *    result, and that errors after the move are reported, not thrown.
  *  - Duplicating / switching definitions requires `config.workflow`, and the
  *    last active uncategorised definition of a type can never be switched off
  *    (no new ticket of that type could be created any more).
@@ -59,20 +60,22 @@ const callOf = (m: string | RegExp) => calls.find((c) => (typeof m === 'string' 
 const { WORKFLOW_ACTION_TYPES: REAL_ACTIONS, isWorkflowActionType: isRealAction } =
   await import('../../../../../../packages/workflow/src/types.js')
 
-let capturedActionCtx: Record<string, (...a: never[]) => Promise<unknown>> | null = null
 vi.mock('@opengraphity/workflow', () => ({
-  workflowEngine: {
-    transition: vi.fn(async (_s: unknown, _p: unknown, actx: Record<string, (...a: never[]) => Promise<unknown>>) => {
-      capturedActionCtx = actx
-      return { success: true, instance: { id: 'wi-1' } }
-    }),
-  },
   WORKFLOW_ACTION_TYPES: REAL_ACTIONS,
   isWorkflowActionType: isRealAction,
 }))
-vi.mock('@opengraphity/events', () => ({ publish: vi.fn(async () => undefined), getRedisOptions: vi.fn(() => ({})) }))
+// The pipeline of the transitions (wave 7 · B1): its guards and the move are tested on their own.
+const pipeline = vi.hoisted(() => ({ transitionTicket: vi.fn() }))
+vi.mock('../../../services/ticketTransition.js', async () => {
+  const { GraphQLError: GqlError } = await import('graphql')
+  return {
+    transitionTicket: (...a: unknown[]) => pipeline.transitionTicket(...a),
+    personActor: (c: { userId: string; permissions: unknown }) => ({ kind: 'person', userId: c.userId, permissions: c.permissions }),
+    refusalError: (r: { message: string; code: string; i18n?: unknown; extensions?: Record<string, unknown> }) =>
+      new GqlError(r.message, { extensions: { code: r.code, ...(r.extensions ?? {}), ...(r.i18n ? { i18n: r.i18n } : {}) } }),
+  }
+})
 vi.mock('@opengraphity/notifications', () => ({
-  sseManager: { sendToUser: vi.fn() },
   WORKFLOW_STEP_NOTIFY_EVENT: 'workflow.step.entered',
   routableChannels: () => ['in_app', 'email'],
   unroutableChannels: (_t: string, ch: readonly string[]) => ch.filter((c) => c !== 'in_app' && c !== 'email'),
@@ -87,20 +90,12 @@ vi.mock('../workflowMapping.js', async (orig) => ({
   loadTransitionRows: vi.fn(async () => []),
 }))
 vi.mock('../../../lib/logger.js', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
   workflowLogger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn(async () => undefined) }))
-vi.mock('../../../lib/validateRequiredFields.js', () => ({ validateRequiredFields: vi.fn(async () => undefined) }))
 vi.mock('../../../lib/workflowHelpers.js', () => ({ invalidateWorkflowCache: vi.fn() }))
 vi.mock('../../../lib/stepEvent.js', () => ({ auditStepEntered: vi.fn(async () => undefined) }))
-vi.mock('../../../lib/systemText.js', () => ({ systemText: vi.fn(async () => 'Approval requested') }))
-vi.mock('../../../lib/requestApproval.js', () => ({ requestApprovalWouldBeSkipped: vi.fn(async () => false) }))
-// The named-approval gate (lib/__tests__/ticketApprovalGate.test.ts): open unless a test closes it.
-vi.mock('../../../lib/ticketApprovalGate.js', () => ({
-  APPROVAL_GATED_TICKETS: ['incident', 'problem', 'service_request'],
-  ticketApprovalRefusal: vi.fn(async () => null),
-}))
 vi.mock('../../../lib/roles.js', async (orig) => ({
   ...(await orig<object>()),
   assertRolesExist: vi.fn(async () => undefined),
@@ -124,23 +119,11 @@ vi.mock('../../../lib/changePolicy.js', () => ({
   preApprovedChangeTypes: vi.fn(async () => policy.preApproved),
   changeTypeVocabulary:   vi.fn(async () => policy.vocabulary),
 }))
-vi.mock('../../../lib/stepActionCreateEntity.js', () => ({ createEntityFromStepAction: vi.fn(async () => 'new-entity-id') }))
-vi.mock('../../../services/ticketAssignment.js', () => ({ assertAssignablePerson: vi.fn(async () => undefined) }))
-vi.mock('../../../lib/ticketFieldWrite.js', () => ({ writeTicketField: vi.fn(async () => undefined) }))
 
 const M = await import('../workflowMutations.js')
-const { workflowEngine } = await import('@opengraphity/workflow')
-const { publish } = await import('@opengraphity/events')
-const { sseManager } = await import('@opengraphity/notifications')
-const { validateRequiredFields } = await import('../../../lib/validateRequiredFields.js')
 const { invalidateWorkflowCache } = await import('../../../lib/workflowHelpers.js')
 const { audit } = await import('../../../lib/audit.js')
-const { requestApprovalWouldBeSkipped } = await import('../../../lib/requestApproval.js')
-const { ticketApprovalRefusal } = await import('../../../lib/ticketApprovalGate.js')
 const { assertDefinitionDeadlines } = await import('../../../lib/stepDeadlineWrite.js')
-const { createEntityFromStepAction } = await import('../../../lib/stepActionCreateEntity.js')
-const { assertAssignablePerson } = await import('../../../services/ticketAssignment.js')
-const { writeTicketField } = await import('../../../lib/ticketFieldWrite.js')
 const { auditStepEntered } = await import('../../../lib/stepEvent.js')
 
 const ctx: GraphQLContext = {
@@ -162,7 +145,6 @@ const caughtSync = (fn: () => unknown): GraphQLError => {
 beforeEach(() => {
   calls.length = 0
   script = []
-  capturedActionCtx = null
   policy.preApproved = ['standard']
   policy.vocabulary = ['standard', 'normal']
   vi.clearAllMocks()
@@ -444,316 +426,78 @@ describe('removeWorkflowTransition', () => {
 
 // ── executeWorkflowTransition ─────────────────────────────────────────────────
 
-const PREFETCH = 'properties(entity) AS entityData'
-function primeInstance(entityType: string, entityData: Record<string, unknown> | null = { id: 'e-1', title: 'T' }) {
-  on(PREFETCH, rows({ entityData, assigned_to: 'u-9', assigned_team: null, entityType }))
-  on('RETURN wi.entity_type AS et', rows({ et: entityType }))
-}
+const TYPE_READ = 'RETURN wi.entity_type AS entityType'
+const primeInstance = (entityType: string) => on(TYPE_READ, rows({ entityType }))
 const run = (toStep = 'resolved', notes?: string) =>
   M.executeWorkflowTransition(null, { instanceId: 'wi-1', toStep, ...(notes ? { notes } : {}) }, ctx)
+const movedTo = (over: Record<string, unknown> = {}) =>
+  ({ moved: true, entityType: 'incident', entityId: 'e-1', fromStep: 'new', actionErrors: [], result: { success: true, instance: { id: 'wi-1' } }, ...over })
 
-describe('executeWorkflowTransition — gates before the engine moves the ticket', () => {
-  it('an instance not of the caller\'s tenant is NOT_FOUND and the engine is never called', async () => {
+describe('executeWorkflowTransition — who asks, and what the answer looks like', () => {
+  beforeEach(() => { pipeline.transitionTicket.mockResolvedValue(movedTo()) })
+
+  it('an instance not of the caller\'s tenant is NOT_FOUND and nothing is asked of the pipeline', async () => {
     const e = await caught(run())
     expect(e.extensions['code']).toBe('NOT_FOUND')
-    expect(callOf(PREFETCH)!.params).toEqual({ instanceId: 'wi-1', tenantId: 't-1' })
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
+    expect(callOf(TYPE_READ)!.params).toEqual({ instanceId: 'wi-1', tenantId: 't-1' })
+    expect(pipeline.transitionTicket).not.toHaveBeenCalled()
   })
 
-  it('changes must go through executeChangeTransition (approval gate)', async () => {
+  it('changes must go through executeChangeTransition (approval gate, phase side effects)', async () => {
     primeInstance('change')
     const e = await caught(run())
     expect(e.extensions['code']).toBe('CONFLICT')
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
+    expect(e.extensions['i18n']).toEqual({ key: 'errors.workflow.changeUsesChangeTransition' })
+    expect(pipeline.transitionTicket).not.toHaveBeenCalled()
   })
 
-  // Review of 23 Sep 2026: config.workflow opened the door to moving any ticket.
-  it('moving a ticket needs the write permission of its type, before the engine moves it', async () => {
-    primeInstance('incident')
-    const kbOnly = { ...ctx, role: 'operator', permissions: new Set<Permission>(['kb.write']) } as GraphQLContext
-    const e = await caught(M.executeWorkflowTransition(null, { instanceId: 'wi-1', toStep: 'resolved' }, kbOnly))
-    expect(e.extensions['code']).toBe('FORBIDDEN')
-    expect(e.message).toContain('incident.write')
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
-  })
-
-  it('an instance of a type this mutation does not move is refused, naming the type', async () => {
-    primeInstance('sprint')
-    const e = await caught(run())
-    expect(e.extensions['code']).toBe('BAD_USER_INPUT')
-    expect(e.extensions['i18n']).toEqual({ key: 'errors.workflow.unknownEntityType', params: { entityType: 'sprint' } })
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
-  })
-
-  it('a service request that would skip its approval is refused', async () => {
-    primeInstance('service_request')
-    vi.mocked(requestApprovalWouldBeSkipped).mockResolvedValueOnce(true)
-    const e = await caught(run('fulfilled'))
-    expect(e.extensions['i18n']).toMatchObject({ key: 'errors.request.approvalRequired' })
-    expect(requestApprovalWouldBeSkipped).toHaveBeenCalledWith(mockSession, 't-1', 'wi-1', 'fulfilled', { byPerson: true })
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
-  })
-
-  // Owner's decision, review of 23 Sep 2026: the approver named by the step decides.
-  it('a ticket held by a pending named approval is refused, naming the step', async () => {
-    primeInstance('incident')
-    vi.mocked(ticketApprovalRefusal).mockResolvedValueOnce({ status: 'pending', approvalId: 'ap-1', stepName: 'budget_approval' })
-    const e = await caught(run('in_progress'))
-    expect(e.extensions['code']).toBe('CONFLICT')
-    expect(e.extensions['i18n']).toEqual({ key: 'errors.approval.pendingOnStep', params: { step: 'budget_approval' } })
-    expect(ticketApprovalRefusal).toHaveBeenCalledWith(mockSession, 't-1', 'wi-1', 'in_progress')
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
-  })
-
-  it('a rejected one says so', async () => {
+  it('asks the pipeline as a PERSON, with the permissions of the role, on a manual arc, with the notes', async () => {
     primeInstance('problem')
-    vi.mocked(ticketApprovalRefusal).mockResolvedValueOnce({ status: 'rejected', approvalId: 'ap-1', stepName: 'review' })
+    await expect(run('resolved', 'cause found')).resolves.toEqual({ success: true, error: null, errorKey: null, errorParams: null, instance: { id: 'wi-1' }, actionErrors: null })
+    expect(pipeline.transitionTicket).toHaveBeenCalledWith(mockSession, {
+      tenantId: 't-1', instanceId: 'wi-1', toStep: 'resolved', notes: 'cause found', triggerType: 'manual',
+      actor: { kind: 'person', userId: 'u-1', permissions: ctx.permissions },
+    })
+  })
+
+  it('a guard\'s refusal is the error on the screen, with its code, key and fields', async () => {
+    primeInstance('incident')
+    pipeline.transitionTicket.mockResolvedValueOnce({ moved: false, refusal: {
+      guard: 'named_approval', message: 'Waiting for an approval', code: 'CONFLICT', final: true,
+      i18n: { key: 'errors.approval.pendingOnStep', params: { step: 'budget_approval' } }, extensions: { approvalId: 'ap-1' },
+    } })
     const e = await caught(run('in_progress'))
-    expect(e.extensions['i18n']).toMatchObject({ key: 'errors.approval.rejectedOnStep' })
+    expect(e.message).toBe('Waiting for an approval')
+    expect(e.extensions).toEqual({ code: 'CONFLICT', approvalId: 'ap-1', i18n: { key: 'errors.approval.pendingOnStep', params: { step: 'budget_approval' } } })
   })
 
-  it('approval.override is not held, and is not even asked', async () => {
+  it('the engine\'s own no (the arc, its condition) comes back as the result, as before', async () => {
     primeInstance('incident')
-    const admin = { ...ctx, permissions: new Set([...(ctx.permissions ?? []), 'approval.override']) } as GraphQLContext
-    await expect(M.executeWorkflowTransition(null, { instanceId: 'wi-1', toStep: 'in_progress' }, admin)).resolves.toMatchObject({ success: true })
-    expect(ticketApprovalRefusal).not.toHaveBeenCalled()
+    pipeline.transitionTicket.mockResolvedValueOnce({ moved: false, refusal: {
+      guard: 'workflow', message: 'not allowed', code: 'CONFLICT', final: true,
+      engine: { success: false, error: 'not allowed', errorI18n: { key: 'errors.workflow.transitionNotValid', params: { step: 'resolved' } } },
+    } })
+    await expect(run()).resolves.toEqual({
+      success: false, error: 'not allowed', errorKey: 'errors.workflow.transitionNotValid', errorParams: [{ name: 'step', value: 'resolved' }],
+      instance: null, actionErrors: null,
+    })
+    expect(auditStepEntered).not.toHaveBeenCalled()
   })
 
-  it('a service request whose approval is not skipped goes on', async () => {
-    primeInstance('service_request')
-    await expect(run('fulfilled')).resolves.toMatchObject({ success: true })
-  })
-
-  it('notes are offered to the required-field check as resolution notes and root cause', async () => {
-    primeInstance('problem')
-    await run('resolved', 'cause found')
-    expect(validateRequiredFields).toHaveBeenCalledWith(mockSession, expect.objectContaining({
-      entityType: 'problem', tenantId: 't-1',
-      fieldValues: expect.objectContaining({ resolution_notes: 'cause found', root_cause: 'cause found', assigned_to: 'u-9', id: 'e-1' }),
-    }))
-  })
-
-  it('without an entity type on re-read, required fields are not checked', async () => {
-    on(PREFETCH, rows({ entityData: null, assigned_to: null, assigned_team: null, entityType: 'problem' }))
-    await run()
-    expect(validateRequiredFields).not.toHaveBeenCalled()
-  })
-
-  it.each([
-    ['fields', 'on_enter_fields'],
-    ['enterActions', 'enter_actions'],
-  ])('corrupt %s on the destination step blocks BEFORE the engine moves the ticket', async (key, label) => {
-    primeInstance('incident')
-    on('s.on_enter_fields AS fields, s.enter_actions AS enterActions', rows({ [key]: '{broken' }))
-    const e = await caught(run())
-    expect(e.extensions['code']).toBe('CONFLICT')
-    expect(e.message).toContain(`${label} of step "resolved" is not valid JSON`)
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
-  })
-
-  it('valid step metadata passes the preflight', async () => {
-    primeInstance('incident')
-    on('s.on_enter_fields AS fields, s.enter_actions AS enterActions', rows({ fields: '{}', enterActions: '[]' }))
-    await expect(run()).resolves.toMatchObject({ success: true, actionErrors: null })
-  })
-})
-
-describe('executeWorkflowTransition — side effects after the move', () => {
-  const INCIDENT_POST = "WHERE wi.entity_type = 'incident'"
-  const ON_ENTER = 'step.on_enter_fields AS fields'
-  const NOTIFY = 's.label AS stepLabel'
-  const onEnterRow = (fields: string | null, entityType = 'incident') =>
-    rows({ fields, entityId: 'e-1', tenantId: 't-1', entityType })
-
-  it('on_enter_fields resolves $now, $userId and $notes and writes on the tenant\'s entity', async () => {
-    primeInstance('incident')
-    on(INCIDENT_POST, rows({ id: 'e-1', tenantId: 't-1' }))
-    on(ON_ENTER, onEnterRow(JSON.stringify({ resolved_by: '$userId', resolved_on: '$now', resolution: '$notes', source: 'workflow' })))
-    const out = await run('resolved', 'fixed it')
-    expect(out.actionErrors).toBeNull()
-    const w = callOf(/MATCH \(e:Incident \{id: \$entityId, tenant_id: \$tenantId\}\)/)!
-    expect(w.mode).toBe('write')
-    expect(w.params).toMatchObject({ entityId: 'e-1', tenantId: 't-1', __val_resolved_by: 'u-1', __val_resolution: 'fixed it', __val_source: 'workflow' })
-    expect(w.params['__val_resolved_on']).toBe(w.params['now'])
-    // The read that finds the fields is scoped to the caller's tenant.
-    expect(callOf(ON_ENTER)!.params['tenantId']).toBe('t-1')
-  })
-
-  it('$notes without notes writes null, not the literal token', async () => {
-    primeInstance('incident')
-    on(INCIDENT_POST, rows({ id: 'e-1', tenantId: 't-1' }))
-    on(ON_ENTER, onEnterRow(JSON.stringify({ resolution: '$notes' })))
-    await run('resolved')
-    expect(callOf(/MATCH \(e:Incident/)!.params['__val_resolution']).toBeNull()
-  })
-
-  it('no fields, or an empty object, writes nothing', async () => {
-    primeInstance('incident')
-    on(INCIDENT_POST, rows({ id: 'e-1', tenantId: 't-1' }))
-    on(ON_ENTER, onEnterRow('{}'))
-    await run()
-    primeInstance('incident')
-    on(INCIDENT_POST, rows({ id: 'e-1', tenantId: 't-1' }))
-    on(ON_ENTER, onEnterRow(null))
-    await run()
-    expect(callOf(/MATCH \(e:Incident/)).toBeUndefined()
-  })
-
-  it('on_enter_fields on an entity type that cannot be written is reported, the transition stays done (B-28)', async () => {
-    primeInstance('incident')
-    on(INCIDENT_POST, rows({ id: 'e-1', tenantId: 't-1' }))
-    on(ON_ENTER, onEnterRow('{"a":"b"}', 'mystery'))
-    const out = await run()
-    expect(out.success).toBe(true)
-    expect(out.actionErrors).toEqual([expect.stringContaining('on_enter_fields: Step "resolved" writes fields on enter, but entity type "mystery" is not writable')])
-  })
-
-  it('corrupt on_enter_fields found after the move lands in actionErrors', async () => {
-    primeInstance('incident')
-    on(INCIDENT_POST, rows({ id: 'e-1', tenantId: 't-1' }))
-    on(ON_ENTER, onEnterRow('{nope'))
-    const out = await run()
-    expect(out.actionErrors?.[0]).toMatch(/^on_enter_fields: Corrupt on_enter_fields JSON/)
-  })
-
-  // Review of 23 Sep 2026: the notify rules go out from the engine's onStepEntered hook
-  // for every path and type (lib/stepNotifyRules.ts, tested there); here they would go twice.
-  it('the manual transition does not publish the step\'s notify rules itself', async () => {
-    primeInstance('incident')
-    on(INCIDENT_POST, rows({ id: 'e-1', tenantId: 't-1' }))
-    on(NOTIFY, rows({ enterActions: JSON.stringify([{ type: 'notify_rule', params: { title_key: 'k' } }]), stepLabel: 'Resolved' }))
-    await run()
-    expect(publish).not.toHaveBeenCalled()
-  })
-
-  it('a KB article gets its step-entered audit and on_enter_fields (its notify rules come from the hook)', async () => {
+  it('a KB article gets its step-entered audit (its notify rules and fields come from the hook and the pipeline)', async () => {
     primeInstance('kb_article')
-    on("WHERE wi.entity_type = 'kb_article'", rows({ id: 'kb-1', tenantId: 't-1' }))
-    on(ON_ENTER, onEnterRow('{"reviewed_by":"$userId"}', 'kb_article'))
+    pipeline.transitionTicket.mockResolvedValueOnce(movedTo({ entityType: 'kb_article', entityId: 'kb-1' }))
     await run('published')
     expect(auditStepEntered).toHaveBeenCalledWith(mockSession, ctx, 'kb_article', 'KBArticle', 'kb-1', 'published')
-    expect(callOf(/MATCH \(e:KBArticle/)!.params['__val_reviewed_by']).toBe('u-1')
   })
 
-  it('engine action errors and post-commit errors are returned together', async () => {
+  it('the step actions\' errors and the post-move errors are returned together, never thrown', async () => {
     primeInstance('kb_article')
-    vi.mocked(workflowEngine.transition).mockResolvedValueOnce({ success: true, actionErrors: ['engine: boom'] } as never)
-    on("WHERE wi.entity_type = 'kb_article'", rows({ id: 'kb-1', tenantId: 't-1' }))
+    pipeline.transitionTicket.mockResolvedValueOnce(movedTo({ entityType: 'kb_article', entityId: 'kb-1', actionErrors: ['engine: boom', 'on_enter_fields: corrupt'], result: { success: true } }))
     vi.mocked(auditStepEntered).mockRejectedValueOnce('plain string failure')
     const out = await run('published')
-    expect(out.actionErrors).toEqual(['engine: boom', 'audit step entered: plain string failure'])
+    expect(out.actionErrors).toEqual(['engine: boom', 'on_enter_fields: corrupt', 'audit step entered: plain string failure'])
     expect(out.instance).toBeNull()
-  })
-
-  it('a refused transition runs no side effect and carries the engine\'s reason', async () => {
-    primeInstance('incident')
-    vi.mocked(workflowEngine.transition).mockResolvedValueOnce({ success: false, error: 'not allowed' } as never)
-    const out = await run()
-    expect(out).toMatchObject({ success: false, error: 'not allowed', actionErrors: null })
-    expect(callOf(INCIDENT_POST)).toBeUndefined()
-  })
-})
-
-describe('executeWorkflowTransition — the callbacks the engine uses for step actions', () => {
-  async function actionCtx(entityType = 'incident') {
-    primeInstance(entityType)
-    await run('assigned')
-    expect(capturedActionCtx).not.toBeNull()
-    calls.length = 0
-    return capturedActionCtx as unknown as {
-      entityData: Record<string, unknown>
-      createEntity: (t: string, d: Record<string, unknown>) => Promise<string>
-      assignTo: (id: string, type: string, target: string) => Promise<void>
-      updateField: (id: string, f: string, v: unknown) => Promise<void>
-      publishEvent: (t: string, p: Record<string, unknown>) => Promise<void>
-      createApprovalRequest: (a: Record<string, unknown>) => Promise<string>
-    }
-  }
-
-  it('createEntity passes the source ticket so the new one is linked to it', async () => {
-    const a = await actionCtx()
-    await expect(a.createEntity('problem', { title: 'x' })).resolves.toBe('new-entity-id')
-    expect(createEntityFromStepAction).toHaveBeenCalledWith(mockSession, { tenantId: 't-1', userId: 'u-1' }, 'problem', { title: 'x' }, { id: 'e-1', type: 'incident' })
-  })
-
-  it('assignTo a team replaces the team (no second team) scoped to the tenant', async () => {
-    const a = await actionCtx()
-    await a.assignTo('e-1', 'team', 'team-7')
-    expect(assertAssignablePerson).not.toHaveBeenCalled()
-    const w = callOf('MATCH (t:Team {id: $targetId, tenant_id: $tenantId})')!
-    expect(w.params).toMatchObject({ entityId: 'e-1', tenantId: 't-1', targetId: 'team-7' })
-  })
-
-  it('assignTo a person first checks the person can be assigned, then replaces the old assignee', async () => {
-    const a = await actionCtx()
-    await a.assignTo('e-1', 'user', 'u-5')
-    expect(assertAssignablePerson).toHaveBeenCalledWith(mockSession, 'u-5', 't-1')
-    expect(callOf('DELETE old')!.params).toMatchObject({ targetId: 'u-5', tenantId: 't-1' })
-  })
-
-  it('assignTo an unassignable person writes nothing', async () => {
-    const a = await actionCtx()
-    vi.mocked(assertAssignablePerson).mockRejectedValueOnce(new Error('inactive'))
-    await expect(a.assignTo('e-1', 'user', 'u-dead')).rejects.toThrow('inactive')
-    expect(callOf('DELETE old')).toBeUndefined()
-  })
-
-  it('updateField validates against today\'s metamodel (no templates at runtime) before writing', async () => {
-    const a = await actionCtx()
-    await expect(a.updateField('e-1', 'impact', '{title}')).rejects.toThrow(/not a value of the field "impact"/)
-    expect(writeTicketField).not.toHaveBeenCalled()
-    await a.updateField('e-1', 'impact', 'high')
-    expect(writeTicketField).toHaveBeenCalledWith(mockSession, 't-1', 'incident', 'e-1', 'impact', 'high')
-  })
-
-  it('publishEvent stamps tenant and actor', async () => {
-    const a = await actionCtx()
-    await a.publishEvent('custom.evt', { k: 1 })
-    expect(publish).toHaveBeenCalledWith(expect.objectContaining({ type: 'custom.evt', tenant_id: 't-1', actor_id: 'u-1', payload: { k: 1 } }))
-  })
-
-  it('an approval with no approver source defaults to the admin role and notifies each approver', async () => {
-    const a = await actionCtx()
-    on('role: $role', rows({ id: 'adm-1' }, { id: 'adm-2' }))
-    const id = await a.createApprovalRequest({ entityId: 'e-1', entityType: 'incident', title: 'Approve me' })
-    expect(callOf('role: $role')!.params).toEqual({ tenantId: 't-1', role: 'admin' })
-    const w = callOf('CREATE (ap:ApprovalRequest')!
-    expect(w.params).toMatchObject({ id, tenantId: 't-1', approvers: JSON.stringify(['adm-1', 'adm-2']), approvalType: 'any', requestedBy: 'u-1' })
-    expect(sseManager.sendToUser).toHaveBeenCalledTimes(2)
-    expect(vi.mocked(sseManager.sendToUser).mock.calls[0]).toEqual(['t-1', 'adm-1', expect.objectContaining({ entity_id: id, title_fallback: 'Approval requested', message: 'Approve me' })])
-  })
-
-  it('named people and team members are merged without repetition; the role is not used', async () => {
-    const a = await actionCtx()
-    on('u.id IN $ids', rows({ id: 'p-1' }, { id: 'p-2' }))
-    on('t.id IN $ids', rows({ id: 'p-2' }, { id: 'p-3' }))
-    await a.createApprovalRequest({ entityId: 'e-1', entityType: 'incident', title: 'T', approverRole: 'manager', approverUserIds: ['p-1', 'p-2'], approverTeamIds: ['tm-1'], approvalType: 'all' })
-    expect(callOf('role: $role')).toBeUndefined()
-    expect(callOf('CREATE (ap:ApprovalRequest')!.params).toMatchObject({ approvers: JSON.stringify(['p-1', 'p-2', 'p-3']), approvalType: 'all' })
-  })
-
-  it('no approver found: refused naming the role that has nobody', async () => {
-    const a = await actionCtx()
-    const e = await caught(a.createApprovalRequest({ entityId: 'e-1', entityType: 'incident', title: 'T', approverRole: 'cab' }))
-    expect(e.extensions['code']).toBe('NO_APPROVER')
-    expect(e.extensions['i18n']).toEqual({ key: 'errors.workflow.noApprover', params: { role: 'cab' } })
-    expect(callOf('CREATE (ap:ApprovalRequest')).toBeUndefined()
-  })
-
-  it('no approver found: without a role the message names the default admin role', async () => {
-    const a = await actionCtx()
-    const e = await caught(a.createApprovalRequest({ entityId: 'e-1', entityType: 'incident', title: 'T' }))
-    expect(e.message).toContain('no user with role "admin"')
-  })
-
-  it('no approver found among named people/teams: a different message, fixed in a different place', async () => {
-    const a = await actionCtx()
-    const e = await caught(a.createApprovalRequest({ entityId: 'e-1', entityType: 'incident', title: 'T', approverTeamIds: ['tm-empty'] }))
-    expect(e.extensions['i18n']).toEqual({ key: 'errors.workflow.noApproverTarget', params: {} })
-    expect(e.message).toContain('users: 0, teams: 1')
-    const a2 = await actionCtx()
-    const e2 = await caught(a2.createApprovalRequest({ entityId: 'e-1', entityType: 'incident', title: 'T', approverUserIds: ['ghost'] }))
-    expect(e2.message).toContain('users: 1, teams: 0')
   })
 })
 

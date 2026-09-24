@@ -1,13 +1,13 @@
 import { GraphQLError } from 'graphql'
 import { workflowEngine } from '@opengraphity/workflow'
-import type { ActionContext, ConditionContext } from '@opengraphity/workflow'
+import type { ConditionContext } from '@opengraphity/workflow'
 import type { Session as NeoSession } from 'neo4j-driver'
 import { toNumber } from '@opengraphity/neo4j'
 import { runQuery, runQueryOne, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
 import { getStepPurpose } from '../../../lib/workflowHelpers.js'
-import { automaticTransitionAllowed } from './windowGate.js'
+import { transitionTicket, type TransitionActor } from '../../../services/ticketTransition.js'
 import { stepNamesByCategory, stepNamesByPurposeOrdered, targetStepByCategory, targetStepByPurpose } from '../../../lib/workflowTargets.js'
 // Side-effect: registra le condizioni ITSM (all_assessments_complete, …)
 // sull'engine. Il walker le valuta dal registro, come fa l'engine stesso.
@@ -15,10 +15,13 @@ import '../../../workflow/conditions.js'
 import { systemText } from '../../../lib/systemText.js'
 
 type Session2 = Parameters<typeof runQuery>[0]
+
+/** A problem or an incident following its change (wave 7 · B1): signed by who moved the change. */
+const followerOf = (ctx: GraphQLContext): TransitionActor => ({ kind: 'system', path: 'change_follow', userId: ctx.userId ?? 'system' })
 export type AfterEnterStep = (session: Session2, changeId: string, tenantId: string, stepName: string) => Promise<void>
 
 // Strict driver Session: evaluateAutoTransitions apre transazioni proprie
-// (workflowEngine.transition) e non può girare dentro una tx esterna.
+// (services/ticketTransition.ts) e non può girare dentro una tx esterna.
 type Session = NeoSession
 
 /**
@@ -157,12 +160,12 @@ async function syncLinkedIncidents(
     }
     const toStep = await targetStepByCategory(session, ctx.tenantId, 'incident', ['resolved'],
       'automatic resolution of an incident solved by a closed change')
-    const res = await workflowEngine.transition(
-      session,
-      { instanceId: r.instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'automatic', notes: await systemText(ctx.tenantId, 'change.resolvedByChange', { code: r.code }), tenantId: ctx.tenantId },
-      { userId: ctx.userId ?? 'system', entityData: {} },
-    )
-    if (!res.success) logger.warn({ changeId, instanceId: r.instanceId, toStep, error: res.error }, '[syncLinkedIncidents] auto-resolve incident non riuscito')
+    // A refusal stays on the incident as a note, written by the pipeline.
+    await transitionTicket(session, {
+      tenantId: ctx.tenantId, instanceId: r.instanceId, toStep,
+      notes: await systemText(ctx.tenantId, 'change.resolvedByChange', { code: r.code }),
+      actor: followerOf(ctx), triggerType: 'automatic',
+    })
   }
 }
 
@@ -201,13 +204,12 @@ async function syncLinkedProblems(
     let problemStep  = r.problemStep
 
     const drive = async (toStep: string): Promise<void> => {
-      const res = await workflowEngine.transition(
-        session,
-        { instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'automatic', notes: await systemText(ctx.tenantId, 'change.changeInStep', { step: changeStep }), tenantId: ctx.tenantId },
-        { userId: ctx.userId ?? 'system', entityData: {} },
-      )
-      if (res.success) problemStep = toStep
-      else logger.warn({ changeId, instanceId, toStep, error: res.error }, '[syncLinkedProblems] transizione problem non riuscita')
+      const outcome = await transitionTicket(session, {
+        tenantId: ctx.tenantId, instanceId, toStep,
+        notes: await systemText(ctx.tenantId, 'change.changeInStep', { step: changeStep }),
+        actor: followerOf(ctx), triggerType: 'automatic',
+      })
+      if (outcome.moved) problemStep = toStep
     }
 
     const toInProgress = async () => drive(await targetStepByPurpose(session, ctx.tenantId, 'problem', ['change_in_progress'],
@@ -247,12 +249,11 @@ export async function revertProblemAfterChangeDetached(
 
   const toStep = await targetStepByPurpose(session, ctx.tenantId, 'problem', ['investigation'],
     'problem return to investigation after the change is unlinked')
-  const res = await workflowEngine.transition(
-    session,
-    { instanceId: row.instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'automatic', notes: await systemText(ctx.tenantId, 'change.resolvingDetached'), tenantId: ctx.tenantId },
-    { userId: ctx.userId ?? 'system', entityData: {} },
-  )
-  if (!res.success) logger.warn({ problemId, from: row.step, toStep, error: res.error }, '[revertProblemAfterChangeDetached] transizione non riuscita')
+  await transitionTicket(session, {
+    tenantId: ctx.tenantId, instanceId: row.instanceId, toStep,
+    notes: await systemText(ctx.tenantId, 'change.resolvingDetached'),
+    actor: followerOf(ctx), triggerType: 'automatic',
+  })
 }
 
 async function walkAutoTransitions(
@@ -304,37 +305,22 @@ async function walkAutoTransitions(
         throw new GraphQLError(`Change workflow misconfigured: cycle of automatic transitions ${wi.step} → ${tr.toStep} (step already walked)`, { extensions: { code: 'CONFLICT', i18n: { key: 'errors.change.autoTransitionCycle', params: { from: wi.step, to: tr.toStep } } } })
       }
 
-      // IL VARCO DELLA FINESTRA DI RILASCIO (terza revisione * C1). Qui non
-      // c'era: un arco `assessment -> scheduled` con innesco `automatic` e
-      // nessuna condizione portava una change non approvata dentro la finestra
-      // di rilascio, accendendo la soppressione degli allarmi, senza un errore
-      // e con il log a `info`. Non lancia — l'azione che ha innescato questo
-      // walk e legittima (un operatore che chiude un assessment task) e farla
-      // fallire per una configurazione che non e sua sarebbe un vicolo cieco:
-      // la transizione viene rifiutata, contata e scritta a `warn`.
-      const allowed = await automaticTransitionAllowed(session, {
-        tenantId:    ctx.tenantId,
-        changeId,
-        changeType:  String(wi.entityProps['change_type'] ?? ''),
-        currentStep: wi.step,
-        toStep:      tr.toStep,
-      }, 'auto_transition')
-      if (!allowed) continue
-
-      const actionCtx: ActionContext = {
-        userId:     ctx.userId ?? 'system',
-        entityData: wi.entityProps,
-      }
-      const result = await workflowEngine.transition(session, {
-        instanceId:  wi.instanceId,
-        toStepName:  tr.toStep,
-        triggeredBy: 'system',
-        triggerType: 'automatic',
-        tenantId:    ctx.tenantId,
-      }, actionCtx)
-
-      if (!result.success) {
-        logger.error({ changeId, from: wi.step, to: tr.toStep, error: result.error }, '[auto-transition] engine.transition failed')
+      // The pipeline of the transitions (wave 7 · B1), with the guards of every
+      // path. IL VARCO DELLA FINESTRA DI RILASCIO (terza revisione * C1) is one
+      // of them: an `assessment -> scheduled` arc with an `automatic` trigger
+      // and no condition put an unapproved change in the release window. It
+      // does not throw — the action that started this walk is legitimate (an
+      // operator closing an assessment task) and failing it for a
+      // configuration that is not theirs would be a dead end: the move is
+      // refused, counted, written at `warn` and noted on the change, and the
+      // next arc is tried. Any other refusal stops the walk (the pipeline
+      // logs and notes it).
+      const outcome = await transitionTicket(session, {
+        tenantId: ctx.tenantId, instanceId: wi.instanceId, toStep: tr.toStep,
+        actor: { kind: 'system', path: 'change_auto' }, triggerType: 'automatic',
+      })
+      if (!outcome.moved) {
+        if (outcome.refusal.guard === 'change_window') continue
         return
       }
       logger.info({ changeId, from: wi.step, to: tr.toStep }, '[auto-transition] fired')

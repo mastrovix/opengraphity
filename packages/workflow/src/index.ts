@@ -16,4 +16,8 @@ export {
   registerTaskCreator, currentTaskCreator, clearTaskCreator,
   type TaskCreator, type TaskToCreate,
 } from './taskCreator.js'
+export {
+  registerStepActionHandlers, currentStepActionHandlers, clearStepActionHandlers,
+  type StepActionHandlers, type StepActionActor, type StepActionEntity, type StepApprovalRequestParams,
+} from './stepActionHandlers.js'
 export { parseLocalizedLabels, serializeLocalizedLabels, localizedLabel, type LocalizedLabel } from './labels.js'

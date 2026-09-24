@@ -44,7 +44,9 @@ vi.mock('../../../../lib/sequence.js', () => ({ nextSequenceBlock: vi.fn() }))
 vi.mock('../../../../lib/ticketNumbering.js', () => ({ nextTicketNumber: vi.fn(async () => 'CHG00000042') }))
 vi.mock('../approvalCreation.js', () => ({ createChangeApprovals: vi.fn() }))
 vi.mock('../../../../lib/changePolicy.js', () => ({ isPreApprovedChangeType: vi.fn(async () => false) }))
-vi.mock('@opengraphity/workflow', () => ({ workflowEngine: { transition: vi.fn() } }))
+// The pipeline of the transitions (wave 7 · B1): the pre-approval moves the change through it.
+const transition = vi.hoisted(() => vi.fn())
+vi.mock('../../../../services/ticketTransition.js', () => ({ transitionTicket: transition }))
 vi.mock('../scoring.js', async (importOriginal) => {
   const orig = await importOriginal<typeof import('../scoring.js')>()
   return {
@@ -60,7 +62,6 @@ const { nextTicketNumber } = await import('../../../../lib/ticketNumbering.js')
 const { getStepPurpose } = await import('../../../../lib/workflowHelpers.js')
 const { createChangeApprovals } = await import('../approvalCreation.js')
 const { isPreApprovedChangeType } = await import('../../../../lib/changePolicy.js')
-const { workflowEngine } = await import('@opengraphity/workflow')
 const { deriveChangePriority, determineApprovalRoute } = await import('../scoring.js')
 const { runQuery } = await import('../../ci-utils.js')
 
@@ -391,7 +392,7 @@ describe('afterEnterStep', () => {
       await h.afterEnterStep(tx, 'c1', 't1', 'cab')
       expect(createChangeApprovals).toHaveBeenCalledWith(tx, 'c1', 't1')
       expect(isPreApprovedChangeType).toHaveBeenCalledWith('t1', 'normal')
-      expect(workflowEngine.transition).not.toHaveBeenCalled()
+      expect(transition).not.toHaveBeenCalled()
     })
 
     it('a change with no type is never treated as pre-approved', async () => {
@@ -401,7 +402,7 @@ describe('afterEnterStep', () => {
 
     it('a pre-approved type moves on to the scheduled step, and that step\'s hook runs', async () => {
       vi.mocked(isPreApprovedChangeType).mockResolvedValue(true)
-      vi.mocked(workflowEngine.transition).mockResolvedValue({ success: true } as never)
+      transition.mockResolvedValue({ moved: true, actionErrors: [] })
       const hooks: string[] = []
       one = (q, p) => {
         if (q.includes('c.change_type AS t')) return { t: 'standard' }
@@ -410,17 +411,19 @@ describe('afterEnterStep', () => {
         return null
       }
       await h.afterEnterStep(tx, 'c1', 't1', 'cab')
-      expect(workflowEngine.transition).toHaveBeenCalledWith(tx, expect.objectContaining({
-        instanceId: 'wi1', toStepName: 'scheduled', triggerType: 'automatic', notes: 'Pre-approved', tenantId: 't1',
-      }), expect.anything())
+      // The pre-approval is the approval's outcome, signed by the system.
+      expect(transition).toHaveBeenCalledWith(tx, {
+        tenantId: 't1', instanceId: 'wi1', toStep: 'scheduled', notes: 'Pre-approved',
+        actor: { kind: 'system', path: 'approval' }, triggerType: 'automatic',
+      })
       // The step reached automatically gets its own side effects.
       expect(hooks).toEqual(['cab', 'scheduled'])
     })
 
-    it.each([[{ success: false, error: 'window closed' }, 'window closed'], [{ success: false }, 'transition failed']])(
-      'a failed pre-approval is loud, never a change stuck with nothing to approve (%o)', async (res, reason) => {
+    it.each([['change_window', 'window closed'], ['workflow', 'The workflow refused the transition']])(
+      'a failed pre-approval is loud, never a change stuck with nothing to approve (%s)', async (guard, reason) => {
         vi.mocked(isPreApprovedChangeType).mockResolvedValue(true)
-        vi.mocked(workflowEngine.transition).mockResolvedValue(res as never)
+        transition.mockResolvedValue({ moved: false, refusal: { guard, final: true, code: 'CONFLICT', message: reason } })
         one = (q) => {
           if (q.includes('c.change_type AS t')) return { t: 'standard' }
           if (q.includes('wi.id AS id')) return { id: 'wi1', deleted: false }

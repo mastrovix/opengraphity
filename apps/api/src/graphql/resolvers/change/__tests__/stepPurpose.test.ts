@@ -54,8 +54,11 @@ vi.mock('../../ci-utils.js', () => ({
   runQueryOne: vi.fn(),
 }))
 vi.mock('@opengraphity/workflow', () => ({
-  workflowEngine: { transition: vi.fn(), getAvailableTransitions: vi.fn() },
+  workflowEngine: { getAvailableTransitions: vi.fn() },
 }))
+// The pipeline of the transitions (wave 7 · B1): here the steps are measured, not its guards.
+const transition = vi.hoisted(() => vi.fn())
+vi.mock('../../../../services/ticketTransition.js', () => ({ transitionTicket: transition }))
 vi.mock('../queries.js', () => ({ change: vi.fn(async () => ({ id: 'chg-1' })) }))
 vi.mock('../autoTransitions.js', () => ({ evaluateAutoTransitions: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../helpers.js', () => ({
@@ -98,7 +101,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   steps = CHANGE_STEPS
   invalidateWorkflowCache()
-  vi.mocked(workflowEngine.transition).mockResolvedValue({ success: true } as never)
+  transition.mockResolvedValue({ moved: true, actionErrors: [] })
   vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'in_calendario' }, { toStep: 'valutazione' }] as never)
 })
 
@@ -113,22 +116,14 @@ describe('approvazione della change su un workflow rinominato (A4-2)', () => {
   it('approvazione completa → avanza al passo di SCOPO scheduled («in_calendario»), non al nome «scheduled»', async () => {
     mockGate('cab_settimanale')
     await approveChangeApproval(null, { changeId: 'chg-1', teamId: 'team-cab' }, ctx)
-    expect(workflowEngine.transition).toHaveBeenCalledWith(
-      session,
-      expect.objectContaining({ instanceId: 'wi-1', toStepName: 'in_calendario', notes: 'Approvals complete' }),
-      expect.anything(),
-    )
+    expect(transition).toHaveBeenCalledWith(session, expect.objectContaining({ instanceId: 'wi-1', toStep: 'in_calendario', notes: 'Approvals complete' }))
     expect(afterEnterStep).toHaveBeenCalledWith(session, 'chg-1', 't1', 'in_calendario')
   })
 
   it('rifiuto → riporta al passo di SCOPO assessment («valutazione»)', async () => {
     mockGate('cab_settimanale')
     await rejectChangeApproval(null, { changeId: 'chg-1', teamId: 'team-cab', note: 'manca il rollback', reopenAll: true }, ctx)
-    expect(workflowEngine.transition).toHaveBeenCalledWith(
-      session,
-      expect.objectContaining({ toStepName: 'valutazione' }),
-      expect.anything(),
-    )
+    expect(transition).toHaveBeenCalledWith(session, expect.objectContaining({ toStep: 'valutazione' }))
     expect(afterEnterStep).toHaveBeenCalledWith(session, 'chg-1', 't1', 'valutazione')
   })
 
@@ -157,7 +152,7 @@ describe('approvazione della change su un workflow rinominato (A4-2)', () => {
     const err = await caught(approveChangeApproval(null, { changeId: 'chg-1', teamId: 'team-cab' }, ctx))
     expect(err.message).toMatch(/is not in the approval stage/)
     expect(err.message).toMatch(/purpose review/)
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
+    expect(transition).not.toHaveBeenCalled()
   })
 
   it('nessun passo dichiara lo scopo scheduled → si ferma dicendolo e nominando il disegnatore (non un CONFLICT muto)', async () => {
@@ -167,7 +162,7 @@ describe('approvazione della change su un workflow rinominato (A4-2)', () => {
     expect(err.message).toMatch(/change advance after all approvals/)
     expect(err.message).toMatch(/no step declares the purpose \[scheduled\]/)
     expect(err.message).toMatch(/designer/)
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
+    expect(transition).not.toHaveBeenCalled()
   })
 
   it('due passi con lo stesso scopo → si preferisce quello raggiungibile dalle transizioni disponibili', async () => {
@@ -176,7 +171,7 @@ describe('approvazione della change su un workflow rinominato (A4-2)', () => {
     vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'in_calendario' }] as never)
     mockGate('cab_settimanale')
     await approveChangeApproval(null, { changeId: 'chg-1', teamId: 'team-cab' }, ctx)
-    expect(workflowEngine.transition).toHaveBeenCalledWith(session, expect.objectContaining({ toStepName: 'in_calendario' }), expect.anything())
+    expect(transition).toHaveBeenCalledWith(session, expect.objectContaining({ toStep: 'in_calendario' }))
   })
 })
 

@@ -15,10 +15,10 @@
 import { BaseConsumer, publish } from '@opengraphity/events'
 import type { DomainEvent } from '@opengraphity/types'
 import { getSession } from '@opengraphity/neo4j'
-import { workflowEngine } from '@opengraphity/workflow'
 import { v4 as uuidv4 } from 'uuid'
 import { logger } from '../lib/logger.js'
 import { matchById } from '../lib/cypherLookups.js'
+import { transitionTicket } from '../services/ticketTransition.js'
 
 const BREACH_EVENTS = new Set(['sla.breached', 'ola.breached'])
 
@@ -53,11 +53,7 @@ export class EscalationConsumer extends BaseConsumer<unknown> {
                  // pubblicato qui inventava «high» per tutti (revisione totale
                  // · C-16): la notifica diceva una gravità che il dato non ha.
                  coalesce(e.severity, e.priority) AS severity,
-                 coalesce(e.number, e.code) AS number,
-                 // Per il varco della finestra di rilascio: questo consumatore e
-                 // GENERICO sul tipo di entita, e sla_breach e una delle quattro
-                 // voci della tendina degli inneschi.
-                 CASE WHEN 'Change' IN labels(e) THEN e.change_type ELSE null END AS changeType
+                 coalesce(e.number, e.code) AS number
           LIMIT 1
         `, { entityId, tenantId }),
       )
@@ -69,26 +65,15 @@ export class EscalationConsumer extends BaseConsumer<unknown> {
       const fromStep   = r.get('fromStep')   as string
       const toStep     = r.get('toStep')     as string
 
-      // IL VARCO DELLA FINESTRA DI RILASCIO (terza revisione * C1, quinto
-      // cammino). Un workflow delle change con un arco `sla_breach` verso il
-      // passo programmato faceva entrare in produzione una change non
-      // approvata allo scadere di un SLA. Non si rilancia: ritentare non fa
-      // comparire le approvazioni.
-      if (entityType === 'change') {
-        const { automaticTransitionAllowed } = await import('../graphql/resolvers/change/windowGate.js')
-        const allowed = await automaticTransitionAllowed(session, {
-          tenantId, changeId: entityId,
-          changeType:  (r.get('changeType') as string | null) ?? '',
-          currentStep: fromStep, toStep,
-        }, 'sla_breach')
-        if (!allowed) return
-      }
-      const result = await workflowEngine.transition(
-        session,
-        { instanceId, toStepName: toStep, triggeredBy: 'sla-engine', triggerType: 'sla_breach', tenantId },
-        { userId: 'system', entityData: {} },
-      )
-      if (!result.success) {
+      // The guards of every path (wave 7 · B1): the release window of a change
+      // (an `sla_breach` arc into the scheduled step put an unapproved change in
+      // production), the approval named by the step, the required fields.
+      const outcome = await transitionTicket(session, {
+        tenantId, instanceId, toStep,
+        actor: { kind: 'system', path: 'escalation', userId: 'sla-engine' },
+        triggerType: 'sla_breach',
+      })
+      if (!outcome.moved) {
         /**
          * RIFIUTATA DA UNA GUARDIA ≠ ANDATA STORTA (rimedio, 20 set 2026).
          *
@@ -96,26 +81,13 @@ export class EscalationConsumer extends BaseConsumer<unknown> {
          * tempo: dipende da qualcuno che chiuda un compito o completi un
          * assessment. I tentativi si esaurivano, l'evento finiva marcato
          * «lost», e **l'incident che doveva escalare non escalava** senza
-         * che comparisse niente sul ticket. Con la guardia sui compiti
-         * (`all_tasks_complete`) il caso è diventato ordinario.
-         *
-         * Ora il rifiuto si scrive SUL TICKET, dove lo vede chi aspettava
-         * l'escalation, e l'evento si chiude senza ritentare.
+         * che comparisse niente sul ticket. The pipeline writes the refusal
+         * on the ticket, where whoever waited for the escalation sees it, and
+         * the event closes without a retry. An error that is not a refusal
+         * is thrown: the queue retries it.
          */
-        if (result.refusedByCondition) {
-          logger.warn({ instanceId, toStep, condition: result.refusedByCondition, error: result.error },
-            '[escalation] escalation refused by a transition guard: not retried')
-          const { writeTicketComment } = await import('../lib/ticketComments.js')
-          const { systemText } = await import('../lib/systemText.js')
-          const testo = await systemText(tenantId, 'escalation.refusedByGuard', { step: toStep, reason: result.error ?? '' })
-          await session.executeWrite((tx) => writeTicketComment(tx as never, {
-            entityType, entityId, tenantId, text: testo,
-            authorId: 'system', authorLabel: 'system', isInternal: true,
-          }))
-          return
-        }
-        logger.error({ instanceId, toStep, error: result.error }, '[escalation] auto-escalation transition failed')
-        throw new Error(`[escalation] transition to ${toStep} failed for instance ${instanceId}: ${result.error ?? 'unknown'}`)
+        if (outcome.refusal.final) return
+        throw new Error(`[escalation] transition to ${toStep} failed for instance ${instanceId}: ${outcome.refusal.message}`)
       }
 
       // Publish the step-entered event so the notification rules fire

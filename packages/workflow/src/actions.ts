@@ -16,6 +16,7 @@ import type {
 } from './types.js'
 import { stepFieldRejection } from '@opengraphity/types'
 import { currentTaskCreator } from './taskCreator.js'
+import { currentStepActionHandlers, type StepActionActor, type StepActionHandlers } from './stepActionHandlers.js'
 
 const log = pino({ level: process.env['LOG_LEVEL'] ?? 'info' }).child({ module: 'workflow:actions' })
 
@@ -129,6 +130,20 @@ export function evaluateConditions(
 
 // ── Main action runner ────────────────────────────────────────────────────────
 
+/**
+ * The handlers the graph-writing actions need, or a loud error naming the
+ * action: a process that runs transitions without them is misconfigured, and
+ * the action must not look done (wave 7 · B1).
+ */
+function handlersFor(actionType: string): StepActionHandlers {
+  const h = currentStepActionHandlers()
+  if (!h) throw new Error(`${actionType}: nobody registered the step action handlers in this process (registerStepActionHandlers)`)
+  return h
+}
+
+const actorOf = (instance: WorkflowInstance, ctx: ActionContext): StepActionActor =>
+  ({ tenantId: instance.tenantId, userId: ctx.userId, stepName: instance.currentStep })
+
 export async function runAction(
   action: WorkflowActionConfig,
   instance: WorkflowInstance,
@@ -219,9 +234,7 @@ export async function runAction(
     case 'create_entity': {
       // Fail-loud: a configured create_entity that cannot run means the derived
       // incident/problem/change will NOT exist — that must never be a warn.
-      if (!ctx.createEntity) {
-        throw new Error('create_entity: createEntity callback not provided by the calling context')
-      }
+      const handlers = handlersFor('create_entity')
       const p = action.params as unknown as CreateEntityParams
       const VALID_TYPES = new Set(['incident', 'problem', 'change'])
       if (!VALID_TYPES.has(p.entity_type)) {
@@ -239,7 +252,7 @@ export async function runAction(
           if (field in ctx.entityData) data[field] = ctx.entityData[field]
         }
       }
-      const newId = await ctx.createEntity(p.entity_type, data)
+      const newId = await handlers.createEntity(actorOf(instance, ctx), p.entity_type, data, { id: instance.entityId, type: instance.entityType })
       // L'evento di creazione lo pubblica chi crea il ticket (il servizio del
       // suo tipo, revisione del 14 set 2026 · WA-2): pubblicarlo anche qui lo
       // duplicava, con un payload che nessun consumatore sapeva leggere.
@@ -250,16 +263,14 @@ export async function runAction(
     // ── New: assign_to ────────────────────────────────────────────────────────
 
     case 'assign_to': {
-      if (!ctx.assignTo) {
-        throw new Error('assign_to: assignTo callback not provided by the calling context')
-      }
+      const handlers   = handlersFor('assign_to')
       const p          = action.params as unknown as AssignToParams
       const resolvedId = p.target_id ?? resolveTemplate(p.target_name ?? '', buildTemplateCtx(instance, ctx.entityData))
       if (!resolvedId) {
         throw new Error('assign_to: no target_id or target_name resolved — the entity was NOT assigned')
       }
-      await ctx.assignTo(instance.entityId, p.target_type, resolvedId)
-      await ctx.publishEvent?.(`${instance.entityType}.assigned`, {
+      await handlers.assignTo(actorOf(instance, ctx), { id: instance.entityId, type: instance.entityType }, p.target_type, resolvedId)
+      await handlers.publishEvent(actorOf(instance, ctx), `${instance.entityType}.assigned`, {
         entity_id:   instance.entityId,
         target_type: p.target_type,
         target_id:   resolvedId,
@@ -271,20 +282,18 @@ export async function runAction(
     // ── New: update_field ─────────────────────────────────────────────────────
 
     case 'update_field': {
-      if (!ctx.updateField) {
-        throw new Error('update_field: updateField callback not provided by the calling context')
-      }
+      const handlers = handlersFor('update_field')
       const p = action.params as unknown as UpdateFieldParams
       // Campi riservati in @opengraphity/types: la stessa regola vale a
       // runtime, in scrittura (`assertStepActions`) e nel disegnatore. `status`
       // non è scrivibile (B-9): lo scrive il motore, e scavalcarlo faceva
       // divergere il ticket dal suo processo. L'esistenza del campo nel
-      // metamodello e il vocabolario li verifica chi scrive (`ctx.updateField`).
+      // metamodello e il vocabolario li verifica chi scrive (`updateField` registrato).
       const rejection = stepFieldRejection(p.field, instance.entityType)
       if (rejection) throw new Error(rejection.message)
       const resolved = typeof p.value === 'string' ? resolveTemplate(p.value, buildTemplateCtx(instance, ctx.entityData)) : p.value
-      await ctx.updateField(instance.entityId, p.field, resolved)
-      await ctx.publishEvent?.(`${instance.entityType}.updated`, {
+      await handlers.updateField(actorOf(instance, ctx), { id: instance.entityId, type: instance.entityType }, p.field, resolved)
+      await handlers.publishEvent(actorOf(instance, ctx), `${instance.entityType}.updated`, {
         entity_id:  instance.entityId,
         field:      p.field,
         value:      resolved,
@@ -299,14 +308,10 @@ export async function runAction(
     case 'create_approval_request': {
       // Fail-loud: a missing approval request leaves the workflow waiting for
       // an approval that will never arrive.
-      if (!ctx.createApprovalRequest) {
-        throw new Error('create_approval_request: callback not provided by the calling context')
-      }
+      const handlers = handlersFor('create_approval_request')
       const p     = action.params as unknown as CreateApprovalRequestParams
       const title = resolveTemplate(p.title_template ?? '', buildTemplateCtx(instance, ctx.entityData))
-      const approvalId = await ctx.createApprovalRequest({
-        entityId:     instance.entityId,
-        entityType:   instance.entityType,
+      const approvalId = await handlers.createApprovalRequest(actorOf(instance, ctx), { id: instance.entityId, type: instance.entityType }, {
         title,
         approverRole: p.approver_role,
         // Persone e squadre (moduli del catalogo, ondata 3): l'insieme degli

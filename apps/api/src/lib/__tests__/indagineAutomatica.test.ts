@@ -26,8 +26,9 @@ vi.mock('@opengraphity/neo4j', () => ({
   runQueryOne: async () => riga,
 }))
 
-vi.mock('@opengraphity/workflow', () => ({
-  workflowEngine: { transition: (...a: unknown[]) => transition(...a) },
+// The pipeline of the transitions (wave 7 · B1): its guards, and its note on a refusal.
+vi.mock('../../services/ticketTransition.js', () => ({
+  transitionTicket: (...a: unknown[]) => transition(...a),
 }))
 
 vi.mock('../logger.js', () => ({
@@ -36,7 +37,8 @@ vi.mock('../logger.js', () => ({
 
 const { avviaIndagine, segnaRisolto, SCOPO_INDAGINE, CATEGORIA_RISOLTO, MAX_PASSI } = await import('../indagineAutomatica.js')
 
-const ok = { success: true, instance: {}, execution: {}, actionsRun: [] }
+const ok = { moved: true, actionErrors: [] }
+const refused = (message: string) => ({ moved: false, refusal: { guard: 'workflow', final: true, message } })
 
 beforeEach(() => {
   chiuse.close = 0
@@ -50,12 +52,11 @@ describe('avviaIndagine', () => {
     const esito = await avviaIndagine('opengrafo', 'prb-1', 'PRB00000003', 'u-1')
     expect(esito).toEqual({ fatto: true, passo: 'under_investigation', percorsi: ['under_investigation'], motivo: 'fatto' })
     expect(transition).toHaveBeenCalledTimes(1)
-    const [, comando, contesto] = transition.mock.calls[0]!
-    expect(comando).toMatchObject({
-      instanceId: 'wi-1', toStepName: 'under_investigation',
-      triggeredBy: 'u-1', triggerType: 'automatic', tenantId: 'opengrafo',
+    const [, comando] = transition.mock.calls[0]!
+    expect(comando).toEqual({
+      tenantId: 'opengrafo', instanceId: 'wi-1', toStep: 'under_investigation',
+      actor: { kind: 'system', path: 'investigation', userId: 'u-1' }, triggerType: 'automatic',
     })
-    expect(contesto).toEqual({ userId: 'u-1', entityData: {} })
   })
 
   it('il passo si riconosce dal RUOLO: un tenant che lo ha rinominato funziona lo stesso', async () => {
@@ -63,7 +64,7 @@ describe('avviaIndagine', () => {
     const esito = await avviaIndagine('opengrafo', 'prb-2', 'PRB00000004', 'u-1')
     expect(esito.fatto).toBe(true)
     expect(esito.passo).toBe('sotto_esame')
-    expect(transition.mock.calls[0]![1]).toMatchObject({ toStepName: 'sotto_esame' })
+    expect(transition.mock.calls[0]![1]).toMatchObject({ toStep: 'sotto_esame' })
     expect(SCOPO_INDAGINE).toBe('investigation')
     expect(CATEGORIA_RISOLTO).toBe('resolved')
   })
@@ -83,7 +84,7 @@ describe('avviaIndagine', () => {
   })
 
   it('transizione rifiutata da una guardia: il motivo arriva a chi legge', async () => {
-    transition.mockResolvedValue({ ...ok, success: false, error: 'condition has_owner not satisfied' })
+    transition.mockResolvedValue(refused('condition has_owner not satisfied'))
     const esito = await avviaIndagine('opengrafo', 'prb-5', 'PRB00000007', 'u-1')
     expect(esito).toEqual({
       fatto: false, passo: 'new', percorsi: [], motivo: 'transizione_rifiutata',
@@ -113,14 +114,14 @@ describe('segnaRisolto: il cammino può essere LUNGO', () => {
     const esito = await segnaRisolto('opengrafo', 'prb-1', 'PRB00000003', 'autoanalisi')
     expect(esito).toEqual({ fatto: true, passo: 'resolved', percorsi: ['known_error', 'resolved'], motivo: 'fatto' })
     expect(transition).toHaveBeenCalledTimes(2)
-    expect(transition.mock.calls.map((c) => (c[1] as { toStepName: string }).toStepName))
+    expect(transition.mock.calls.map((c) => (c[1] as { toStep: string }).toStep))
       .toEqual(['known_error', 'resolved'])
   })
 
   it('un rifiuto A META\' STRADA lascia il Problem dove è arrivato, non dove era', async () => {
     riga = { instanceId: 'wi-1', passoAttuale: 'under_investigation', passi: ['known_error', 'resolved'] }
     transition.mockResolvedValueOnce(ok)
-    transition.mockResolvedValueOnce({ ...ok, success: false, error: 'serve una verifica' })
+    transition.mockResolvedValueOnce(refused('serve una verifica'))
     const esito = await segnaRisolto('opengrafo', 'prb-1', 'PRB00000003', 'autoanalisi')
     expect(esito).toEqual({
       fatto: false, passo: 'known_error', percorsi: ['known_error'],

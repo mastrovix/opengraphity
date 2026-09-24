@@ -3,7 +3,8 @@
  *  - step_deadlines runs the step-deadline sweep (the old auto_close is a no-op);
  *  - webhook_retry goes through the SSRF guard (private/loopback → throw, no fetch);
  *  - trigger_timer: a failed action fails the job (no "green job, zero actions");
- *  - timer_wait: a failed transition fails the job.
+ *  - timer_wait: moves through the pipeline of the transitions (wave 7 · B1);
+ *    an error that may be transient fails the job (a refusal is in the .more file).
  * BullMQ is mocked through lib/bullmq.ts, the processor is captured from createTenantWorkers.
  */
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
@@ -58,8 +59,9 @@ vi.mock('@opengraphity/neo4j', () => ({
   runQuery: (...args: unknown[]) => runQuery(...args),
 }))
 
+vi.mock('@opengraphity/workflow', () => ({ WAIT_EXIT_TRIGGERS: ['automatic', 'timer'] }))
 const transition = vi.fn()
-vi.mock('@opengraphity/workflow', () => ({ WAIT_EXIT_TRIGGERS: ['automatic', 'timer'], workflowEngine: { transition: (...a: unknown[]) => transition(...a) } }))
+vi.mock('../../services/ticketTransition.js', () => ({ transitionTicket: (...a: unknown[]) => transition(...a) }))
 
 const closeIncident = vi.fn()
 vi.mock('../../services/incidentService.js', () => ({ closeIncident: (...a: unknown[]) => closeIncident(...a) }))
@@ -72,7 +74,10 @@ vi.mock('../../lib/workflowHelpers.js', () => ({
 }))
 
 const runStepDeadlineSweep = vi.fn()
-vi.mock('../../lib/stepDeadlines.js', () => ({ runStepDeadlineSweep: (...a: unknown[]) => runStepDeadlineSweep(...a) }))
+vi.mock('../../lib/stepDeadlines.js', () => ({
+  runStepDeadlineSweep: (...a: unknown[]) => runStepDeadlineSweep(...a),
+  DEADLINE_REASON: { change_window: 'approval_gate', request_approval: 'request_approval', named_approval: 'approval_request', required_fields: 'required_fields', step_metadata: 'step_metadata', type_permission: 'type_permission', workflow: 'transition' },
+}))
 
 const executeActions = vi.fn()
 const runEscalationCheck = vi.fn()
@@ -119,7 +124,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   sessions.length = 0
   readRows = []
-  transition.mockResolvedValue({ success: true })
+  transition.mockResolvedValue({ moved: true, actionErrors: [] })
   closeIncident.mockResolvedValue(undefined)
   getWorkflowSteps.mockResolvedValue(STEPS)
   evaluateConditions.mockReturnValue(true)
@@ -296,18 +301,16 @@ describe('notification-jobs', () => {
     // marcato `automatic` O `timer` — il secondo era la scelta ovvia nella
     // tendina e non veniva percorso da nessuno.
     expect(s.reads[0]!.q).toContain('tr.trigger IN $exitTriggers')
-    expect(transition).toHaveBeenCalledWith(
-      expect.objectContaining({ mode: 'WRITE' }),
-      // CONTRATTO RINEGOZIATO (revisione totale · E-31): il tenant è obbligatorio.
-      { instanceId: 'wi-2', toStepName: 'closed', triggeredBy: 'timer', triggerType: 'automatic', tenantId: 't1' },
-      { userId: 'system', entityData: {} },
-    )
+    expect(transition).toHaveBeenCalledWith(expect.objectContaining({ mode: 'WRITE' }), {
+      tenantId: 't1', instanceId: 'wi-2', toStep: 'closed', triggerType: 'automatic',
+      actor: { kind: 'system', path: 'timer', userId: 'timer' },
+    })
   })
 
   it('timer_wait: il workflow è cambiato dopo la partenza → si usa il passo di ADESSO (warn), non quello nel payload', async () => {
     readRows = [[{ currentStep: 'risolto', toStep: 'archiviato' }]]
     await expect(notificationProcessor(job('timer_wait', { instanceId: 'wi-2', toStep: 'closed', tenantId: 't1' }))).resolves.toBeUndefined()
-    expect(transition).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ toStepName: 'archiviato' }), expect.anything())
+    expect(transition).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ toStep: 'archiviato' }))
     expect(logWarn).toHaveBeenCalledWith(
       expect.objectContaining({ scheduledToStep: 'closed', toStep: 'archiviato', currentStep: 'risolto' }),
       expect.stringContaining('il passo di arrivo è cambiato'),
@@ -321,13 +324,13 @@ describe('notification-jobs', () => {
     expect(transition).not.toHaveBeenCalled()
   })
 
-  it('timer_wait: istanza scomparsa → il job rigetta; transizione fallita → il job rigetta con l\'errore del motore', async () => {
+  it('timer_wait: istanza scomparsa → il job rigetta; an error that may be transient → il job rigetta con il suo messaggio', async () => {
     readRows = [[]]
     await expect(notificationProcessor(job('timer_wait', { instanceId: 'wi-2', toStep: 'closed', tenantId: 't1' })))
       .rejects.toThrow(/instance wi-2 of tenant t1 no longer exists/)
 
     readRows = [[{ currentStep: 'resolved', toStep: 'closed' }]]
-    transition.mockResolvedValue({ success: false, error: 'no such step' })
+    transition.mockResolvedValue({ moved: false, refusal: { guard: 'workflow', final: false, message: 'no such step' } })
     await expect(notificationProcessor(job('timer_wait', { instanceId: 'wi-2', toStep: 'closed', tenantId: 't1' })))
       .rejects.toThrow('timer_wait transition failed for instance wi-2 → closed: no such step')
     expect(sessions.every((s) => s.close.mock.calls.length === 1)).toBe(true)
