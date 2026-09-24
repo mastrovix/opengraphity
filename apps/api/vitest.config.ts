@@ -10,7 +10,8 @@ export default defineConfig({
     // vitest 4 no longer excludes `**/dist/**` by default: without this the
     // compiled copies of the tests under dist/ (tsc output of an older
     // tsconfig) would run too, against stale imports.
-    exclude: [...configDefaults.exclude, '**/dist/**'],
+    // The integration suite runs against a real Neo4j, with its own config (vitest.integration.config.ts).
+    exclude: [...configDefaults.exclude, '**/dist/**', 'src/__integration__/**'],
     /*
      * I LOG DEI TEST VANNO DRITTI A stdout (21 set 2026, vitest 5).
      *
@@ -55,7 +56,7 @@ export default defineConfig({
        * prova e' un Neo4j vero, e si verifica con `--verify` dopo una corsa.
        * Contarla con dei finti non direbbe niente su quello che scrive.
        */
-      exclude: [...ESCLUSI_SEMPRE, 'src/scripts/**', 'src/index.ts', 'src/worker.ts', 'src/workerHealthcheck.ts',
+      exclude: [...ESCLUSI_SEMPRE, 'src/scripts/**', 'src/__integration__/**', 'src/index.ts', 'src/worker.ts', 'src/workerHealthcheck.ts',
         'src/lib/testData/demoTenant/{writer,writeReference,writeTickets,generate,clean,afterRun,verify,catalogSetup,reports,serviceRequests}.ts'],
       /*
        * I PAVIMENTI stanno in `copertura.mjs` alla radice, con tutti gli altri

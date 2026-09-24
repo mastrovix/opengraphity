@@ -14,7 +14,7 @@
  */
 import { refuseInProduction, resolveTenantArg, readOptionValue, hasFlag, requireConfirmFlag, ScriptArgError } from './lib/scriptArgs.js'
 import { runScript } from './lib/runScript.js'
-import { DEFAULT_DEMO_COUNTS, type DemoCounts } from '../lib/testData/demoTenant/options.js'
+import { scaledDemoCounts, type DemoCounts } from '../lib/testData/demoTenant/options.js'
 import { generateDemoTenant } from '../lib/testData/demoTenant/generate.js'
 import { cleanDemoTenant } from '../lib/testData/demoTenant/clean.js'
 import { verifyDemoTenant } from '../lib/testData/demoTenant/verify.js'
@@ -86,11 +86,7 @@ async function run(): Promise<void> {
   const scaleRaw = readOptionValue('--scale')
   const scale = scaleRaw === undefined ? 1 : Number(scaleRaw)
   if (!(scale > 0 && scale <= 1)) throw new ScriptArgError(`--scale must be a number in (0, 1] (got "${String(scaleRaw)}")`)
-  const counts = Object.fromEntries(Object.entries(DEFAULT_DEMO_COUNTS).map(([k, v]) => {
-    // The catalog and the reports keep their size: they are content, not volume.
-    if (k === 'catalogItems' || k === 'reports') return [k, v]
-    return [k, Math.max(k.endsWith('Teams') ? 5 : 1, Math.round(v * scale))]
-  })) as unknown as DemoCounts
+  const counts = scaledDemoCounts(scale)
   const nowRaw = readOptionValue('--now')
   const nowMs = nowRaw === undefined ? Date.now() : Date.parse(nowRaw)
   if (Number.isNaN(nowMs)) throw new ScriptArgError(`--now is not a date: "${String(nowRaw)}"`)

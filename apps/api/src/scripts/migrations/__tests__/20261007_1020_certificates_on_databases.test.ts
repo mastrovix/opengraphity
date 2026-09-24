@@ -19,9 +19,11 @@ beforeEach(() => {
   vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => { lines.push(a.join(' ')) })
 })
 
-function session(rows: (params: Record<string, unknown>) => Array<{ wasCreated: boolean }>) {
+/** `shippedTypes`: how many CI types the stack has on tenant 'system' (0 = the metamodel was never seeded). */
+function session(rows: (params: Record<string, unknown>) => Array<{ wasCreated: boolean }>, shippedTypes = 12) {
   const calls: Array<{ cypher: string; params: Record<string, unknown> }> = []
   const run = vi.fn(async (cypher: string, params: Record<string, unknown>) => {
+    if (cypher.includes('count(t) AS n')) return { records: [{ get: () => shippedTypes }] }
     calls.push({ cypher, params })
     return { records: rows(params).map((r) => ({ get: (k: string) => (r as Record<string, unknown>)[k] })) }
   })
@@ -63,6 +65,13 @@ describe('20261007_1020_certificates_on_databases', () => {
   it('a second run reports that nothing was left to declare', async () => {
     await certificatesOnDatabases.up(session(() => [{ wasCreated: false }]).session as never)
     expect(lines).toEqual(['[20261007_1020_certificates_on_databases] already declared'])
+  })
+
+  it('on a stack never seeded (empty database) it declares nothing and says why: seed:metamodel brings them', async () => {
+    const { session: s, calls } = session(() => [{ wasCreated: true }], 0)
+    await certificatesOnDatabases.up(s as never)
+    expect(calls).toHaveLength(0)
+    expect(lines[0]).toContain('no shipped metamodel on this stack yet')
   })
 
   it('a missing shipped type stops the migration instead of claiming success', async () => {

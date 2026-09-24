@@ -110,7 +110,7 @@ export default tseslint.config(
     // produzione. Altrove (browser, pacchetti, script, test) e' uno strumento.
     files: [
       'apps/web/**', 'apps/portal/**', 'packages/**',
-      'apps/api/src/scripts/**', '**/__tests__/**', '**/*.test.ts',
+      'apps/api/src/scripts/**', 'apps/api/src/__integration__/**', '**/__tests__/**', '**/*.test.ts',
     ],
     rules: { 'no-console': 'off' },
   },

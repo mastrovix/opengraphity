@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # By hand on any branch (wave 7 · C2): a branch that is not yet a pull
+  # request can run the checks against a real Neo4j before it becomes one.
+  workflow_dispatch:
   # Weekly re-run of the dependency audit: new advisories appear without any
   # commit. Only the `audit` job runs on this trigger.
   schedule:
@@ -134,6 +137,34 @@ jobs:
           pnpm --filter @opengraphity/api build
           pnpm --filter @opengraphity/web build
           VITE_KEYCLOAK_CLIENT_ID=opengrafo-portal pnpm --filter @opengraphity/portal build
+
+  # ── Checks against a real Neo4j (wave 7 · C2) ───────────────────────────────
+  # The other jobs mock the database. This one starts the Neo4j of the compose
+  # (same image, same digest) and a Redis, both throwaway, and runs the same
+  # command a developer runs: every migration on an empty database,
+  # check-cypher, the integration suite (two tenants from the demo generator:
+  # no query of one returns an id of the other) and the cross-tenant edges.
+  neo4j-integration:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The API resolves @opengraphity/* against each package's dist/
+      - name: Build packages
+        run: pnpm --filter "./packages/*" build
+
+      - name: Checks against a real Neo4j
+        run: bash scripts/integration-neo4j.sh
 
   # ── Dependency audit (G-11): production dependencies, gate >= high, with the
   # explicit, expiring allowlist in audit-allowlist.json ──────────────────────

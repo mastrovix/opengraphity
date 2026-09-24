@@ -217,9 +217,17 @@ describe('assignCIOwner — removal on a CI type unknown to the metamodel', () =
 })
 
 describe('Team field resolvers — reuse the prefetch, else query scoped to the tenant', () => {
-  it('members: prefetched list returned as is, no query', async () => {
-    await expect(F['members']!({ id: 'team-1', _members: [{ id: 'u-1' }] }, {}, ctx)).resolves.toEqual([{ id: 'u-1' }])
+  it('members: the prefetched list is mapped like the detail (B-22: tenantId non-null), with no query', async () => {
+    // Returned raw, `teams { members { tenantId } }` failed on the list only (wave 7 · C2, real Neo4j).
+    const out = await F['members']!({ id: 'team-1', _members: [{ id: 'u-1', tenant_id: 'tenant-1', email: 'a@x', name: 'Ann' }] }, {}, ctx) as Array<Record<string, unknown>>
+    expect(out[0]).toMatchObject({ id: 'u-1', tenantId: 'tenant-1', email: 'a@x', name: 'Ann' })
     expect(runQuery).not.toHaveBeenCalled()
+  })
+
+  it('manager: the prefetched manager is mapped too, with no query', async () => {
+    const out = await F['manager']!({ id: 'team-1', _manager: { id: 'mgr-1', tenant_id: 'tenant-1', name: 'Bo' } }, {}, ctx) as Record<string, unknown>
+    expect(out).toMatchObject({ id: 'mgr-1', tenantId: 'tenant-1', name: 'Bo' })
+    expect(runQueryOne).not.toHaveBeenCalled()
   })
 
   it('members: without prefetch → mapped users (camelCase, non-null fields filled)', async () => {

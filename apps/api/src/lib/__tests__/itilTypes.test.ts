@@ -122,5 +122,15 @@ describe('loadITILTypes', () => {
     expect(types[0]!.fields[1]).toMatchObject({ enumTypeId: 'own-sev', enumValues: ['minor'] })
     // Defaults for a type written without the optional properties.
     expect(types[1]).toMatchObject({ neo4jLabel: null, icon: '', color: '', scope: 'itil', tenantId: 'system', validationScript: null, fields: [] })
+    // The non-null fields of CITypeDefinition, always there: without them the whole query failed on a real Neo4j.
+    expect(types[1]).toMatchObject({ labels: [], chainFamilies: [] })
+  })
+
+  it('carries the per-language labels of the type, and a corrupt JSON says which type', async () => {
+    const withLabels = fakeSession({ overrides: [], types: [{ t: node({ id: 't1', name: 'incident', label: 'Incident', labels: '{"it":"Incidente"}' }), fieldData: [] }] })
+    const [type] = await loadITILTypes(withLabels.session, 'tenant-a')
+    expect(type!.labels).toEqual([{ language: 'it', label: 'Incidente' }])
+    const corrupt = fakeSession({ overrides: [], types: [{ t: node({ id: 't1', name: 'incident', label: 'Incident', labels: '{not json' }), fieldData: [] }] })
+    await expect(loadITILTypes(corrupt.session, 'tenant-a')).rejects.toThrow(/incident/)
   })
 })

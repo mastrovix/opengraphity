@@ -168,7 +168,6 @@ const NOTE = new Map([
   ['apps/api/src/scripts/seed-ci-relations.ts#seed', 75],
   ['apps/web/src/hooks/useNotifications.ts#useNotifications', 73],
   ['apps/web/src/pages/settings/useITILTypeDesigner.ts#useITILTypeDesigner', 74],
-  ['apps/api/src/lib/tenantOnboarding.ts#onboardTenant', 73],
   ['apps/web/src/pages/settings/EventPolicyPage.tsx#EventPolicyPage', 62],
   ['apps/web/src/pages/teams/TeamDetailPage.tsx#TeamDetailPage', 72],
   ['apps/api/src/graphql/resolvers/dynamic-ci.ts#buildDynamicCIResolvers', 69],

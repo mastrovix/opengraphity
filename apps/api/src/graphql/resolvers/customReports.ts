@@ -12,6 +12,7 @@ import { loadTemplateSections } from '../../lib/reportTemplates.js'
 import { getReportWhitelist, STATIC_REPORT_LABELS } from '../../lib/reportWhitelist.js'
 import { assertReportTemplateAccess } from './reportAccess.js'
 import { withSession } from './ci-utils.js'
+import { mapUser } from '../../lib/mappers.js'
 
 /**
  * Allowed Neo4j node labels that can be used in reachableEntities queries.
@@ -85,12 +86,10 @@ export async function loadFullTemplate(id: string, tenantId: string) {
         RETURN properties(u) AS props LIMIT 1
       `, { id, tenantId }),
     )
-    const createdBy = userRes.records.length
-      ? (() => {
-          const p = userRes.records[0].get('props') as Props
-          return { id: p['id'] as string, name: p['name'] as string, email: p['email'] as string }
-        })()
-      : null
+    // The `User` type's own mapper: three fields by hand left `tenantId` null,
+    // a non-null field, and `reportTemplates { createdBy { tenantId } }`
+    // failed whole — found by the integration suite (wave 7 · C2).
+    const createdBy = userRes.records.length ? mapUser(userRes.records[0].get('props') as Props) : null
 
     return { ...tpl, sections, sharedWith, createdBy }
   } finally {

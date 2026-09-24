@@ -13,3 +13,8 @@ backups/
 e2e/.auth/
 e2e/test-results/
 test-results/
+
+# What the API writes when it runs from apps/api outside a container (the
+# integration suite, the demo generator): the local embedding model
+# (TRANSFORMERS_CACHE, ./data/models) and the report files (./data/reports).
+apps/api/data/

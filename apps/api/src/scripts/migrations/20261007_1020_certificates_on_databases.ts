@@ -15,7 +15,8 @@
  *
  * Idempotent: a declaration is matched by (type, name) and only created when
  * missing; one that exists is left as it is, because an administrator may
- * have relabelled it from the CI type designer.
+ * have relabelled it from the CI type designer. On a stack whose metamodel
+ * was never seeded it does nothing: the seed brings these declarations.
  */
 import { v4 as uuidv4 } from 'uuid'
 import type { Migration } from '@opengraphity/neo4j'
@@ -47,6 +48,19 @@ export const certificatesOnDatabases: Migration = {
   description: 'Declare certificates installed on database instances and used by databases, for every tenant',
 
   async up(session) {
+    /*
+     * A NEW STACK (wave 7 · C2, found by the first run on an empty database):
+     * the migrations run before `seed:metamodel` (docs/DEPLOY.md: `neo4j:init`,
+     * then the tenant, then the metamodel), and `seed:metamodel` declares these
+     * four relations with the rest. With no shipped type at all there is
+     * nothing to complete; a metamodel that exists without one of the types is
+     * still an error, below.
+     */
+    const shipped = await session.run(`MATCH (t:CITypeDefinition {tenant_id: 'system'}) RETURN count(t) AS n`, {})
+    if (Number(shipped.records[0]?.get('n') ?? 0) === 0) {
+      console.log(`[${certificatesOnDatabases.id}] no shipped metamodel on this stack yet: seed:metamodel declares these relations with it`)
+      return
+    }
     const created: string[] = []
     for (const r of CERTIFICATE_DATABASE_RELATIONS) {
       const result = await session.run(`

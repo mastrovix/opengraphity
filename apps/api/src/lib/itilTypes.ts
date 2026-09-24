@@ -6,6 +6,7 @@
  * `graphql/resolvers/itilTypeResolvers.ts`.
  */
 import type { Session } from 'neo4j-driver'
+import { parseLocalizedLabels } from '@opengraphity/types'
 import {
   SYSTEM_TENANT, enumScopeClause, loadTenantEnumOverrides, applyEnumOverrides,
   type EnumOverride, type EnumRow,
@@ -126,6 +127,16 @@ export async function loadITILTypes(session: Session, tenantId: string) {
       id:               t['id'],
       name:             t['name'] as string,
       label:            t['label'] as string,
+      /*
+       * The two non-null fields of CITypeDefinition this construction forgot
+       * (wave 7 · C2, found by the integration suite on a real Neo4j): the
+       * whole `itilTypes` query failed — «Cannot return null for non-nullable
+       * field CITypeDefinition.labels» — which a mock could not show. The same
+       * defect `ciTypes` had on 20 Sep (ciTypeMetamodel.ts, mapCITypeNode).
+       */
+      labels:           parseLocalizedLabels(t['labels'], `CITypeDefinition ${String(t['name'])}`),
+      // A ticket type is in no CI chain.
+      chainFamilies:    [] as string[],
       neo4jLabel:       (t['neo4j_label'] as string | null) ?? null,
       icon:             t['icon']  ?? '',
       color:            t['color'] ?? '',

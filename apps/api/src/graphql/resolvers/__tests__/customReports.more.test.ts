@@ -91,7 +91,7 @@ describe('loadFullTemplate', () => {
     const s = makeSession([
       [{ props: TPL }],
       [{ props: { id: 'team-1', name: 'NOC', extra: 1 } }],
-      [{ props: { id: 'user-1', name: 'Ada', email: 'ada@example.com' } }],
+      [{ props: { id: 'user-1', tenant_id: 'tenant-1', name: 'Ada', email: 'ada@example.com', role: 'admin' } }],
     ])
     vi.mocked(getSession).mockReturnValue(s as never)
     const sections = [{ id: 'sec-1' }] as never
@@ -104,7 +104,8 @@ describe('loadFullTemplate', () => {
       scheduleEnabled: false, scheduleCron: null, scheduleChannelId: null, scheduleRecipients: [],
       scheduleFormat: null, lastScheduledRun: null, createdAt: '2026-09-01', updatedAt: null,
       sections, sharedWith: [{ id: 'team-1', name: 'NOC' }],
-      createdBy: { id: 'user-1', name: 'Ada', email: 'ada@example.com' },
+      // The `User` mapper: tenantId is non-null in the schema (wave 7 · C2, real Neo4j).
+      createdBy: { id: 'user-1', tenantId: 'tenant-1', name: 'Ada', email: 'ada@example.com', role: 'admin', active: true, createdAt: null },
     })
     expect(loadTemplateSections).toHaveBeenCalledWith(s, 'tpl-1', 'tenant-1')
     for (const call of s.readRun.mock.calls) expect(call[1]).toEqual({ id: 'tpl-1', tenantId: 'tenant-1' })

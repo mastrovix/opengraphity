@@ -240,6 +240,31 @@ export async function onboardTenant(
   }
 
   // ── Neo4j ──────────────────────────────────────────────────────────────────
+  const { tenantCreated } = await onboardTenantGraph(spec, passo)
+  return {
+    realmCreated:  realm.created,
+    webClient:     web.created ? 'created' : 'existing',
+    portalClient:  portal.created ? 'created' : 'existing',
+    adminCreated:  utente.created,
+    tenantCreated,
+    steps,
+  }
+}
+
+/**
+ * The tenant in the graph, without the realm (wave 7 · C2): the `:Tenant`
+ * node, its first administrator, the factory data (roles, workflows,
+ * matrices, dashboard, notification rules) and the check of the shared CI
+ * types. `onboardTenant` calls it after Keycloak; the integration suite
+ * against a real Neo4j calls it alone, so its tenants are born exactly like
+ * a customer's. Idempotent like the rest of the onboarding.
+ */
+export async function onboardTenantGraph(
+  spec: TenantSpec,
+  passo: (linea: string) => void,
+): Promise<{ tenantCreated: boolean }> {
+  // Checked here too: this door does not go through the Keycloak token's.
+  assertSlugValido(spec.slug, configuredReservedSlugs())
   const session = getSession(undefined, 'WRITE')
   const now = new Date().toISOString()
   try {
@@ -368,14 +393,7 @@ export async function onboardTenant(
         : `${count} CITypeDefinition ${scope} available`)
     }
 
-    return {
-      realmCreated:  realm.created,
-      webClient:     web.created ? 'created' : 'existing',
-      portalClient:  portal.created ? 'created' : 'existing',
-      adminCreated:  utente.created,
-      tenantCreated,
-      steps,
-    }
+    return { tenantCreated }
   } finally {
     await session.close()
   }

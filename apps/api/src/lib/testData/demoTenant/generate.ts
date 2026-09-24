@@ -57,6 +57,13 @@ import { CERTIFICATE_DATABASE_RELATIONS } from '../../../scripts/migrations/2026
 import { integrationsResolvers } from '../../../graphql/resolvers/integrations.js'
 import { serviceResolvers } from '../../../graphql/resolvers/services.js'
 import { eventResolvers } from '../../../graphql/resolvers/events.js'
+/*
+ * The tenant schema, registered in this process (wave 7 · C1): the resolvers
+ * the generator drives reach lib/tenantSchema.ts (custom field names, the form
+ * designer), which only answers where graphql/schemaCache.ts was loaded — the
+ * server does it, a command that generates a tenant must do it too.
+ */
+import '../../../graphql/schemaCache.js'
 import { OlaFacts, planOlaContracts } from './olaPlan.js'
 import { planToolNames, type ToolNames } from './toolNames.js'
 import { backfillServiceHistory } from './serviceHistory.js'

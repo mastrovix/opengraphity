@@ -85,6 +85,21 @@ export const DEFAULT_DEMO_COUNTS: Readonly<DemoCounts> = {
   monitoredServices: 30,
 }
 
+/**
+ * The counts of a smaller tenant: every volume times `scale`, never below one
+ * — five for the teams, which the ratios split between owners and support.
+ * The catalog and the reports keep their size: they are content, not volume.
+ * The generator's command (`--scale`) and the integration suite against a
+ * real Neo4j use the same numbers.
+ */
+export function scaledDemoCounts(scale: number): DemoCounts {
+  if (!(scale > 0 && scale <= 1)) throw new Error(`the scale of a demo tenant is a number in (0, 1] (got ${String(scale)})`)
+  return Object.fromEntries(Object.entries(DEFAULT_DEMO_COUNTS).map(([k, v]) => {
+    if (k === 'catalogItems' || k === 'reports') return [k, v]
+    return [k, Math.max(k.endsWith('Teams') ? 5 : 1, Math.round(v * scale))]
+  })) as unknown as DemoCounts
+}
+
 /** The shares the owner of the product fixed. Changing them is changing the request. */
 export const DEMO_RATIOS = {
   /** Of the teams, the internal ones (the rest are external suppliers). */

@@ -385,6 +385,21 @@ relazioni, zero legami in circa 3 s.
   `pnpm --filter @opengraphity/api check:cross-tenant-edges`. Esce con 1 se
   trova legami.
 
+**I controlli contro un Neo4j vero** (ondata 7 · C2, 24 set 2026): `pnpm
+test:integration` (cioè `scripts/integration-neo4j.sh`), lo stesso comando
+del job `neo4j-integration` della CI. Avvia un Neo4j (immagine e digest letti
+da `infra/docker-compose.yml`) e un Redis usa-e-getta su porte loro (17687,
+16379): lo stack locale resta com'è e gli eventi dei tenant di prova non
+arrivano alle sue code. Poi, in ordine: schema e **tutte** le migrazioni su un
+database vuoto, i metamodelli condivisi, `check-cypher`, la suite
+d'integrazione (`apps/api/src/__integration__/`: due tenant nati come quelli
+di un cliente e riempiti dal generatore della demo a scala 0,02, e nessuna
+lettura del tenant A — ogni query dello schema, e ogni lettura per id fatta
+con gli id del tenant B — restituisce un id di B), e i legami tra tenant.
+Toglie i container alla fine; con `--keep` li lascia, e un secondo giro
+riusa i due tenant (secondi invece di minuti). La suite rifiuta un database
+che contenga altri tenant, e vuole `OG_INTEGRATION_NEO4J=throwaway`.
+
 **Utenti demo e notifiche**: `User.notifications_enabled` è un flag di
 *opt-out*: il dispatcher delle notifiche e il digest email trattano il flag
 **assente come `true`** (`coalesce(u.notifications_enabled, true)`). Gli utenti

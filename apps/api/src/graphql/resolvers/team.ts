@@ -271,7 +271,10 @@ async function assignCISupportGroup(
 // ── Field resolvers ──────────────────────────────────────────────────────────
 
 async function teamMembers(parent: { id: string; _members?: Props[] }, _: unknown, ctx: GraphQLContext) {
-  if (parent._members) return parent._members
+  // The list prefetches the members as the node's properties: mapped like the
+  // detail (B-22), or `members { tenantId }` failed on the list only — found by
+  // the integration suite on a real Neo4j (wave 7 · C2).
+  if (parent._members) return parent._members.map(mapUser)
   return withSession(async (session) => {
     const cypher = `
       MATCH (t:Team {id: $id, tenant_id: $tenantId})<-[:MEMBER_OF]-(u:User)
@@ -322,7 +325,8 @@ async function teamSupportedCIs(parent: { id: string; _supportedCIs?: unknown[] 
 }
 
 async function teamManager(parent: { id: string; _manager?: Props | null }, _: unknown, ctx: GraphQLContext) {
-  if (parent._manager !== undefined) return parent._manager
+  // B-22 on the prefetched manager of the list too (wave 7 · C2).
+  if (parent._manager !== undefined) return parent._manager ? mapUser(parent._manager) : null
   return withSession(async (session) => {
     const row = await runQueryOne<{ props: Props }>(session, `
       MATCH (t:Team {id: $id, tenant_id: $tenantId})-[:MANAGED_BY]->(u:User)
