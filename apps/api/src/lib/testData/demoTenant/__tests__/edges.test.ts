@@ -324,7 +324,10 @@ describe('World', () => {
 
 /** D2 (tour of 23 Sep 2026): the month the demo is shown in was a peak, three times the average, and it filled the open queue. */
 describe('the arrivals over three years', () => {
-  it('grow, but the current month is an ordinary one — never a peak', () => {
+  // 250,000 instants (five seeds × a full year's 50,000): 1.5 s alone, over the
+  // default 5 s on the CI runner's two shared cores (run 35965892237). Fewer
+  // arrivals would make the ratio below too noisy to pin.
+  it('grow, but the current month is an ordinary one — never a peak', { timeout: 30_000 }, () => {
     const clock = new DemoClock(NOW, 3, 'Europe/Rome')
     for (const seed of ['a', 'b', 'c', 'd', 'e']) {
       const at = arrivalInstants(new Rng(seed), clock, 50000, clock.startMs, NOW)
