@@ -299,11 +299,11 @@ export function ProblemDetailPage() {
   // la pagina si rimontava richiudendo le sezioni e tornava in cima (giro del 14 set 2026, #20).
   if (loading && !data) {
     return (
-      <div className="space-y-4" style={{ maxWidth: 1100, margin: '0 auto', padding: 24 }}>
+      <div className="og-stack" style={{ maxWidth: 1100, margin: '0 auto', padding: 24 }}>
         <Skeleton style={{ height: 32, width: 200 }} />
         <DetailLayout sideWidth={340}>
-          <div className="space-y-4"><Skeleton style={{ height: 120 }} /><Skeleton style={{ height: 160 }} /></div>
-          <div className="space-y-4"><Skeleton style={{ height: 200 }} /><Skeleton style={{ height: 240 }} /></div>
+          <div className="og-stack"><Skeleton style={{ height: 120 }} /><Skeleton style={{ height: 160 }} /></div>
+          <div className="og-stack"><Skeleton style={{ height: 200 }} /><Skeleton style={{ height: 240 }} /></div>
         </DetailLayout>
       </div>
     )

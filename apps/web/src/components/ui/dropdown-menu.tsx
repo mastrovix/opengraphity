@@ -1,15 +1,23 @@
-import * as React from "react"
+/**
+ * THE MENU of the header (user menu), on Base UI's Menu.
+ *
+ * Rewritten with the tokens on 24 Sep 2026, when Tailwind left the web (review
+ * of 23 Sep 2026, decided by the owner). Its classes had never been compiled:
+ * the popup had a look only from the inline style its one caller gives it,
+ * the separator had no height, an item under the pointer or the keyboard
+ * showed nothing. The styles are now `og-menu*` in index.css.
+ *
+ * Only what the product uses is here: menu, trigger, content, item,
+ * separator. The other shadcn wrappers (sub-menus, checkbox and radio items,
+ * labels, shortcuts) had no caller.
+ */
 import { Menu as MenuPrimitive } from "@base-ui/react/menu"
 
-import { cn } from "@/lib/utils"
-import { ChevronRightIcon, CheckIcon } from "lucide-react"
+/** A caller's class goes after the base one: it adds, it does not replace. */
+const withClass = (base: string, extra: string | undefined) => (extra ? `${base} ${extra}` : base)
 
 function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
   return <MenuPrimitive.Root data-slot="dropdown-menu" {...props} />
-}
-
-function DropdownMenuPortal({ ...props }: MenuPrimitive.Portal.Props) {
-  return <MenuPrimitive.Portal data-slot="dropdown-menu-portal" {...props} />
 }
 
 function DropdownMenuTrigger({ ...props }: MenuPrimitive.Trigger.Props) {
@@ -23,247 +31,40 @@ function DropdownMenuContent({
   sideOffset = 4,
   className,
   ...props
-}: MenuPrimitive.Popup.Props &
-  Pick<
-    MenuPrimitive.Positioner.Props,
-    "align" | "alignOffset" | "side" | "sideOffset"
-  >) {
+}: Omit<MenuPrimitive.Popup.Props, "className"> & { className?: string } &
+  Pick<MenuPrimitive.Positioner.Props, "align" | "alignOffset" | "side" | "sideOffset">) {
   return (
     <MenuPrimitive.Portal>
-      <MenuPrimitive.Positioner
-        className="isolate z-50 outline-none"
-        align={align}
-        alignOffset={alignOffset}
-        side={side}
-        sideOffset={sideOffset}
-      >
-        <MenuPrimitive.Popup
-          data-slot="dropdown-menu-content"
-          className={cn("z-50 max-h-(--available-height) min-w-[180px] origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-[10px] bg-white py-2 text-[color:var(--color-slate-dark)] shadow-[0_4px_12px_var(--color-black-a10)] ring-1 ring-[var(--border)] duration-100 outline-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:overflow-hidden data-closed:fade-out-0 data-closed:zoom-out-95", className )}
-          {...props}
-        />
+      <MenuPrimitive.Positioner className="og-menu-positioner" align={align} alignOffset={alignOffset} side={side} sideOffset={sideOffset}>
+        <MenuPrimitive.Popup data-slot="dropdown-menu-content" className={withClass("og-menu", className)} {...props} />
       </MenuPrimitive.Positioner>
     </MenuPrimitive.Portal>
   )
 }
 
-function DropdownMenuGroup({ ...props }: MenuPrimitive.Group.Props) {
-  return <MenuPrimitive.Group data-slot="dropdown-menu-group" {...props} />
-}
-
-function DropdownMenuLabel({
-  className,
-  inset,
-  ...props
-}: MenuPrimitive.GroupLabel.Props & {
-  inset?: boolean
-}) {
-  return (
-    <MenuPrimitive.GroupLabel
-      data-slot="dropdown-menu-label"
-      data-inset={inset}
-      className={cn(
-        "px-1.5 py-1 text-xs font-medium text-muted-foreground data-inset:pl-7",
-        className
-      )}
-      {...props}
-    />
-  )
-}
-
 function DropdownMenuItem({
   className,
-  inset,
   variant = "default",
   ...props
-}: MenuPrimitive.Item.Props & {
-  inset?: boolean
-  variant?: "default" | "destructive"
-}) {
+}: Omit<MenuPrimitive.Item.Props, "className"> & { className?: string; variant?: "default" | "destructive" }) {
   return (
     <MenuPrimitive.Item
       data-slot="dropdown-menu-item"
-      data-inset={inset}
       data-variant={variant}
-      className={cn(
-        "group/dropdown-menu-item relative flex cursor-default items-center gap-1.5 rounded-md px-4 py-2.5 text-sm outline-hidden select-none focus:bg-[var(--color-slate-bg)] focus:text-[color:var(--color-slate-dark)] not-data-[variant=destructive]:focus:**:text-[color:var(--color-slate-dark)] data-inset:pl-7 data-[variant=destructive]:text-[color:var(--color-danger)] data-[variant=destructive]:focus:bg-[var(--color-danger-bg)] data-[variant=destructive]:focus:text-[color:var(--color-danger)] data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className
-      )}
+      className={withClass("og-menu-item", className)}
       {...props}
     />
   )
 }
 
-function DropdownMenuSub({ ...props }: MenuPrimitive.SubmenuRoot.Props) {
-  return <MenuPrimitive.SubmenuRoot data-slot="dropdown-menu-sub" {...props} />
-}
-
-function DropdownMenuSubTrigger({
-  className,
-  inset,
-  children,
-  ...props
-}: MenuPrimitive.SubmenuTrigger.Props & {
-  inset?: boolean
-}) {
-  return (
-    <MenuPrimitive.SubmenuTrigger
-      data-slot="dropdown-menu-sub-trigger"
-      data-inset={inset}
-      className={cn(
-        "flex cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-inset:pl-7 data-popup-open:bg-accent data-popup-open:text-accent-foreground data-open:bg-accent data-open:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className
-      )}
-      {...props}
-    >
-      {children}
-      <ChevronRightIcon className="ml-auto" />
-    </MenuPrimitive.SubmenuTrigger>
-  )
-}
-
-function DropdownMenuSubContent({
-  align = "start",
-  alignOffset = -3,
-  side = "right",
-  sideOffset = 0,
-  className,
-  ...props
-}: React.ComponentProps<typeof DropdownMenuContent>) {
-  return (
-    <DropdownMenuContent
-      data-slot="dropdown-menu-sub-content"
-      className={cn(
-        "w-auto min-w-[96px] rounded-lg bg-popover p-1 text-popover-foreground shadow-lg ring-1 ring-foreground/10 duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
-        className
-      )}
-      align={align}
-      alignOffset={alignOffset}
-      side={side}
-      sideOffset={sideOffset}
-      {...props}
-    />
-  )
-}
-
-function DropdownMenuCheckboxItem({
-  className,
-  children,
-  checked,
-  inset,
-  ...props
-}: MenuPrimitive.CheckboxItem.Props & {
-  inset?: boolean
-}) {
-  return (
-    <MenuPrimitive.CheckboxItem
-      data-slot="dropdown-menu-checkbox-item"
-      data-inset={inset}
-      className={cn(
-        "relative flex cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className
-      )}
-      checked={checked}
-      {...props}
-    >
-      <span
-        className="pointer-events-none absolute right-2 flex items-center justify-center"
-        data-slot="dropdown-menu-checkbox-item-indicator"
-      >
-        <MenuPrimitive.CheckboxItemIndicator>
-          <CheckIcon
-          />
-        </MenuPrimitive.CheckboxItemIndicator>
-      </span>
-      {children}
-    </MenuPrimitive.CheckboxItem>
-  )
-}
-
-function DropdownMenuRadioGroup({ ...props }: MenuPrimitive.RadioGroup.Props) {
-  return (
-    <MenuPrimitive.RadioGroup
-      data-slot="dropdown-menu-radio-group"
-      {...props}
-    />
-  )
-}
-
-function DropdownMenuRadioItem({
-  className,
-  children,
-  inset,
-  ...props
-}: MenuPrimitive.RadioItem.Props & {
-  inset?: boolean
-}) {
-  return (
-    <MenuPrimitive.RadioItem
-      data-slot="dropdown-menu-radio-item"
-      data-inset={inset}
-      className={cn(
-        "relative flex cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className
-      )}
-      {...props}
-    >
-      <span
-        className="pointer-events-none absolute right-2 flex items-center justify-center"
-        data-slot="dropdown-menu-radio-item-indicator"
-      >
-        <MenuPrimitive.RadioItemIndicator>
-          <CheckIcon
-          />
-        </MenuPrimitive.RadioItemIndicator>
-      </span>
-      {children}
-    </MenuPrimitive.RadioItem>
-  )
-}
-
-function DropdownMenuSeparator({
-  className,
-  ...props
-}: MenuPrimitive.Separator.Props) {
-  return (
-    <MenuPrimitive.Separator
-      data-slot="dropdown-menu-separator"
-      className={cn("-mx-1 my-1 h-px bg-border", className)}
-      {...props}
-    />
-  )
-}
-
-function DropdownMenuShortcut({
-  className,
-  ...props
-}: React.ComponentProps<"span">) {
-  return (
-    <span
-      data-slot="dropdown-menu-shortcut"
-      className={cn(
-        "ml-auto text-xs tracking-widest text-muted-foreground group-focus/dropdown-menu-item:text-accent-foreground",
-        className
-      )}
-      {...props}
-    />
-  )
+function DropdownMenuSeparator({ className, ...props }: Omit<MenuPrimitive.Separator.Props, "className"> & { className?: string }) {
+  return <MenuPrimitive.Separator data-slot="dropdown-menu-separator" className={withClass("og-menu-separator", className)} {...props} />
 }
 
 export {
   DropdownMenu,
-  DropdownMenuPortal,
   DropdownMenuTrigger,
   DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuLabel,
   DropdownMenuItem,
-  DropdownMenuCheckboxItem,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
-  DropdownMenuShortcut,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
 }

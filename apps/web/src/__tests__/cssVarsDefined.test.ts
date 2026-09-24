@@ -23,11 +23,37 @@ function files(dir: string, ext: RegExp): string[] {
   })
 }
 
+/**
+ * A stylesheet without its `@theme` blocks. `@theme` is Tailwind's, and the
+ * browser drops it: counting it as a definition is how four names used by the
+ * code (`--font-mono`, `--font-sans`, `--color-surface`, `--color-muted`) passed
+ * this test while undefined at run time (24 Sep 2026, when Tailwind left).
+ */
+export function withoutThemeBlocks(source: string): string {
+  // Comments first: a comment that names `@theme` is not a block.
+  const css = source.replace(/\/\*[\s\S]*?\*\//g, '')
+  let out = ''
+  let i = 0
+  for (const m of css.matchAll(/@theme\b[^{]*\{/g)) {
+    if (m.index < i) continue
+    out += css.slice(i, m.index)
+    let depth = 1
+    let j = m.index + m[0].length
+    while (j < css.length && depth > 0) {
+      if (css[j] === '{') depth++
+      else if (css[j] === '}') depth--
+      j++
+    }
+    i = j
+  }
+  return out + css.slice(i)
+}
+
 /** Declared in a stylesheet (`--x:`) or set by the code (`'--x'` as a style key or with setProperty). */
 function definedNames(): Set<string> {
   const names = new Set<string>()
   for (const file of files(SRC, /\.css$/)) {
-    for (const m of readFileSync(file, 'utf8').matchAll(/(--[\w-]+)\s*:/g)) names.add(m[1]!)
+    for (const m of withoutThemeBlocks(readFileSync(file, 'utf8')).matchAll(/(--[\w-]+)\s*:/g)) names.add(m[1]!)
   }
   for (const file of files(SRC, /\.(ts|tsx)$/)) {
     const text = readFileSync(file, 'utf8')
@@ -41,6 +67,11 @@ function definedNames(): Set<string> {
 const withoutComments = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
 
 describe('CSS variables', () => {
+  it('a variable declared only in a @theme block is not defined', () => {
+    const css = '/* the @theme is gone { */ :root { --a: 1; }\n@theme inline { --b: 2; --c: var(--a); }\n.x { --d: 3; }'
+    expect([...withoutThemeBlocks(css).matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1])).toEqual(['--a', '--d'])
+  })
+
   it('every var(--x) used in the sources is defined', () => {
     const defined = definedNames()
     const missing: string[] = []

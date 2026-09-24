@@ -1,9 +1,13 @@
-@import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
+/*
+ * No Tailwind (review of 23 Sep 2026, decided by the owner on 24 Sep). It was
+ * imported and never compiled: its utilities, its `@theme` and its
+ * `@custom-variant` never reached the browser, only its reset did — which is
+ * now ours, rule for rule (reset.css). The variables that lived only in
+ * `@theme` are in `:root` below; the classes the components used are
+ * styled here (`og-skeleton`, `og-label`, `og-menu*`, `animate-spin`).
+ */
+@import "./reset.css";
 @import "./fonts.css";
-
-@custom-variant dark (&:is(.dark *));
 
 :root {
   /* ── Design System ─────────────────────────────────── */
@@ -98,7 +102,7 @@
   --chrome-hover-bg:    rgba(255,255,255,0.08);
   --chrome-input-bg:    rgba(255,255,255,0.06);
 
-  /* ── shadcn variable overrides ─────────────────────── */
+  /* ── Names of the shadcn components' era: the toaster still reads --popover, --popover-foreground and --radius ── */
   --background-shadcn: var(--background);
   --foreground:        var(--text-primary);
   --card:              var(--surface);
@@ -234,102 +238,17 @@
     si cambia qui.
   */
   --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
-}
 
-@theme inline {
-  /* Un carattere solo, e sta in `--font-family`: anche il «mono» è quello
-     (vedi la nota su `code, kbd, samp, pre`), perché il prodotto non ne ha due. */
-  --font-sans: var(--font-family);
-  --font-mono: var(--font-family);
-
-  /* Design System Colors for Tailwind classes */
-  --color-background:    var(--background);
-  --color-surface:       var(--surface);
-  --color-surface-2:     var(--surface-2);
-  --color-border:        var(--border);
-  --color-border-strong: var(--border-strong);
-  --color-text-primary:  var(--text-primary);
-  --color-text-secondary:var(--text-secondary);
-  --color-text-muted:    var(--text-muted);
-  --color-accent:        var(--accent);
-  --color-accent-hover:  var(--accent-hover);
-  --color-accent-light:  var(--accent-light);
-  --color-success:       var(--success);
-  --color-success-light: var(--success-light);
-  --color-warning:       var(--warning);
-  --color-warning-light: var(--warning-light);
-  --color-danger:        var(--danger);
-  --color-danger-light:  var(--danger-light);
-  --color-info:          var(--info);
-  --color-info-light:    var(--info-light);
-
-  /* shadcn compat */
-  --color-foreground:          var(--text-primary);
-  --color-card:                var(--surface);
-  --color-card-foreground:     var(--text-primary);
-  --color-popover:             var(--surface);
-  --color-popover-foreground:  var(--text-primary);
-  --color-primary:             var(--accent);
-  --color-primary-foreground:  #ffffff;
-  --color-secondary:           var(--surface-2);
-  --color-secondary-foreground:var(--text-secondary);
-  --color-muted:               var(--surface-2);
-  --color-muted-foreground:    var(--text-muted);
-  --color-destructive:         var(--danger);
-  --color-input:               var(--border);
-  --color-ring:                var(--accent);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-
-  /* ── Semantic brand aliases → text-brand, bg-brand, border-brand … */
-  --color-brand:        var(--color-brand);
-  --color-brand-light:  var(--color-brand-light);
-  --color-brand-hover:  var(--color-brand-hover);
-
-  /* ── Slate semantic scale → text-slate, text-slate-dark, text-slate-light … */
-  --color-slate:        var(--color-slate);
-  --color-slate-dark:   var(--color-slate-dark);
-  --color-slate-light:  var(--color-slate-light);
-  --color-slate-bg:     var(--color-slate-bg);
-
-  /* ── Severity scale → bg-severity-low-bg, text-severity-high-text … */
-  --color-severity-low-bg:           var(--color-severity-low-bg);
-  --color-severity-low-text:         var(--color-severity-low-text);
-  --color-severity-low-border:       var(--color-severity-low-border);
-  --color-severity-medium-bg:        var(--color-severity-medium-bg);
-  --color-severity-medium-text:      var(--color-severity-medium-text);
-  --color-severity-medium-border:    var(--color-severity-medium-border);
-  --color-severity-high-bg:          var(--color-severity-high-bg);
-  --color-severity-high-text:        var(--color-severity-high-text);
-  --color-severity-high-border:      var(--color-severity-high-border);
-  --color-severity-critical-bg:      var(--color-severity-critical-bg);
-  --color-severity-critical-text:    var(--color-severity-critical-text);
-  --color-severity-critical-border:  var(--color-severity-critical-border);
-
-  /* ── Trigger types → text-trigger-manual, text-trigger-automatic … */
-  --color-trigger-manual:      var(--color-trigger-manual);
-  --color-trigger-automatic:   var(--color-trigger-automatic);
-  --color-trigger-sla-breach:  var(--color-trigger-sla-breach);
-  --color-trigger-timer:       var(--color-trigger-timer);
-
-  /* ── Status feedback → text-status-success, bg-status-danger … */
-  --color-status-success: var(--color-success);
-  --color-status-warning: var(--color-warning);
-  --color-status-danger:  var(--color-danger);
-
-  /* ── Font family → font-sans resolves via CSS variable */
-  --font-sans: var(--font-family);
-
-  /* ── Semantic font sizes → text-page-title, text-body, text-sidebar … */
-  --text-page-title:    var(--font-size-page-title);
-  --text-section-title: var(--font-size-section-title);
-  --text-card-title:    var(--font-size-card-title);
-  --text-body:          var(--font-size-body);
-  --text-sidebar:       var(--font-size-sidebar);
-  --text-table:         var(--font-size-table);
-  --text-label:         var(--font-size-label);
-  --text-small:         var(--font-size-small);
+  /*
+    Four names the code used that lived only in Tailwind's `@theme`, which the
+    browser never saw (24 Sep 2026): `code` and the rich text fell back to the
+    inherited font, the change calendar and a problem panel had no
+    background. One font, so «mono» and «sans» are the same.
+  */
+  --font-sans:     var(--font-family);
+  --font-mono:     var(--font-family);
+  --color-surface: var(--surface);
+  --color-muted:   var(--surface-2);
 }
 
 @layer base {
@@ -469,6 +388,104 @@ table thead th.sft-sticky-end {
 /* ── Utility classes ───────────────────────────────────── */
 .font-mono {
   font-family: var(--font-mono);
+}
+
+/*
+ * THE LOADING ICON TURNS (24 Sep 2026). `animate-spin` is on twenty-six
+ * loading icons, and it was a Tailwind class nobody compiled: they stood
+ * still. Whoever asked for less motion still sees it turn, slower.
+ */
+@keyframes og-spin { to { transform: rotate(360deg); } }
+.animate-spin { animation: og-spin 1s linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin { animation-duration: 2.5s; }
+}
+
+/*
+ * THE COMPONENTS THAT WORE TAILWIND CLASSES (24 Sep 2026), now with the
+ * tokens. None of their classes had ever been compiled:
+ *  - the skeleton of a loading page (components/ui/skeleton.tsx) had no
+ *    background: on eleven pages an empty gap while the data came;
+ *  - the header menu (components/ui/dropdown-menu.tsx) had its look only from
+ *    the inline style of its caller: no highlight under the pointer or the
+ *    keyboard, and a separator with no height;
+ *  - the label (components/ui/label.tsx) had the look of plain text.
+ */
+.og-skeleton {
+  border-radius: 6px;
+  background-color: var(--color-muted);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .og-skeleton { animation: og-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+  @keyframes og-pulse { 50% { opacity: 0.5; } }
+}
+
+/* A column of blocks 16px apart: the loading skeleton of the ticket details (it was Tailwind's `space-y-4`). */
+.og-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.og-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-body);
+  font-weight: 500;
+  line-height: 1;
+  user-select: none;
+}
+
+.og-menu-positioner {
+  isolation: isolate;
+  z-index: 50;
+  outline: none;
+}
+.og-menu {
+  min-width: 180px;
+  max-height: var(--available-height, none);   /* set by Base UI on the positioner */
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 8px 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background-color: var(--surface);
+  color: var(--color-slate-dark);
+  box-shadow: 0 4px 12px var(--color-black-a10);
+  outline: none;
+  transform-origin: var(--transform-origin, center);
+}
+.og-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  font-size: var(--font-size-body);
+  cursor: default;
+  user-select: none;
+  outline: none;
+}
+.og-menu-item[data-highlighted] {
+  background-color: var(--color-slate-bg);
+  color: var(--color-slate-dark);
+}
+.og-menu-item[data-variant='destructive'] { color: var(--color-danger); }
+.og-menu-item[data-variant='destructive'][data-highlighted] { background-color: var(--color-danger-bg); }
+.og-menu-item[data-disabled] {
+  pointer-events: none;
+  opacity: 0.5;
+}
+.og-menu-item svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+.og-menu-separator {
+  height: 1px;
+  margin: 4px 0;
+  background-color: var(--border);
 }
 
 /*

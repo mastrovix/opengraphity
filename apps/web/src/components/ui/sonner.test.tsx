@@ -2,8 +2,8 @@
  * THE TOASTER OF THE APP: where every «saved», «failed» and «deleted» appears.
  *
  * The wrapper is mounted once in `main.tsx`. It gives the toasts the product's
- * icons (so an error reads as an error at a glance), the product's toast class
- * and the colours of the current theme, and it must pass through what the app
+ * icons (so an error reads as an error at a glance) at 16 px, and the colours
+ * of the current theme, and it must pass through what the app
  * sets on it (the position). If it regresses, feedback after every action
  * either disappears or looks like somebody else's widget.
  */
@@ -19,14 +19,16 @@ afterEach(() => { act(() => { toast.dismiss() }) })
 const toastWith = async (text: string) => (await screen.findByText(text)).closest('li[data-sonner-toast]') as HTMLElement
 
 describe('Toaster', () => {
-  it('a success toast appears with the product check icon and the product toast class', async () => {
+  it('a success toast appears with the product check icon, at 16 px', async () => {
     render(<Toaster />)
     act(() => { toast.success('Contract saved') })
     const item = await toastWith('Contract saved')
-    expect(item).toHaveClass('cn-toast')
     expect(item).toHaveAttribute('data-type', 'success')
     const icon = item.querySelector('[data-icon] svg')!
-    expect(icon).toHaveClass('lucide-circle-check', 'size-4')
+    expect(icon).toHaveClass('lucide-circle-check')
+    // The size is the icon's own: `size-4` was a Tailwind class nobody compiled (24 Sep 2026).
+    expect(icon).toHaveAttribute('width', '16')
+    expect(icon).toHaveAttribute('height', '16')
   })
 
   it('each kind of toast carries its own icon: an error is not drawn like a success', async () => {

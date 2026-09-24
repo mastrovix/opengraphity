@@ -271,19 +271,6 @@ export const GET_MY_TASKS = gql`
   }
 `
 
-export const GET_CHANGE_IMPACT = gql`
-  query GetChangeImpact($ciIds: [ID!]!) {
-    changeImpactAnalysis(ciIds: $ciIds) {
-      riskScore
-      riskLevel
-      breakdown { productionCIs blastRadiusCIs openIncidents failedChanges ongoingChanges scoreDetails }
-      blastRadius { id name type environment distance }
-      openIncidents { id number title severity status ciName ciId createdAt isOpen }
-      recentChanges { id code title phase ciName ciId createdAt }
-    }
-  }
-`
-
 /**
  * IL CALENDARIO DELLE CHANGE (17 set 2026): le finestre pianificate che cadono
  * nell'intervallo, una voce per finestra. L'intervallo lo applica il server,

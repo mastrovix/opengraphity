@@ -92,11 +92,19 @@ describe('ServiceRequestDetailPage with the real Apollo client', () => {
   })
 
   it('while a move is on its way no other move can start, and its outcome is said once it arrives', async () => {
-    const { user } = mount([requestMock(), approve({ result: moved }, 40)])
+    /*
+     * The answer takes 600 ms: long enough that the in-flight state is still
+     * there when it is looked at, even on a loaded machine. With 40 ms the
+     * answer sometimes arrived between the two checks, under the coverage run
+     * (24 Sep 2026). Both are checked in the same look.
+     */
+    const { user } = mount([requestMock(), approve({ result: moved }, 600)])
     await user.click(await screen.findByRole('button', { name: 'Approve' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Reject' })).toBeDisabled())
-    expect(screen.getByRole('button', { name: 'Approve' })).toHaveStyle({ opacity: '0.6' })
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Moved to Fulfilled'))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Reject' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Approve' })).toHaveStyle({ opacity: '0.6' })
+    })
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Moved to Fulfilled'), { timeout: 3000 })
     expect(screen.getByRole('button', { name: 'Reject' })).toBeEnabled()
   })
 
@@ -104,14 +112,14 @@ describe('ServiceRequestDetailPage with the real Apollo client', () => {
     const save: GqlMock = {
       request: { query: UPDATE_SERVICE_REQUEST, variables: { id: 'sr-1', input: { title: 'Laptop', description: 'A new one', priority: 'urgent', dueDate: null } } },
       result: { data: { updateServiceRequest: { __typename: 'ServiceRequest', id: 'sr-1', title: 'Laptop', description: 'A new one', status: 'approval', priority: 'urgent', dueDate: null } } },
-      delay: 40,
+      delay: 600,   // the in-flight state must still be there when looked at (see above)
     }
     const { user } = mount([requestMock(), save])
     await user.click(await screen.findByRole('button', { name: 'Edit' }))
     const dialog = screen.getByRole('dialog', { name: 'Edit the request' })
     await user.click(within(dialog).getByRole('button', { name: 'Save' }))
     expect(await within(dialog).findByRole('button', { name: 'Saving...' })).toBeDisabled()
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Request updated'))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Request updated'), { timeout: 3000 })
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 

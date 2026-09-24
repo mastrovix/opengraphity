@@ -281,7 +281,7 @@ function KBArticlePreviewPanel({ entityId }: { entityId: string }) {
 
               {/* Body */}
               <div style={{ padding: '16px', maxHeight: 400, overflowY: 'auto' }}>
-                <div className="kb-preview-body" style={{ fontSize: 'var(--font-size-body)', lineHeight: 1.7, color: palette.neutral.textMuted }}>
+                <div style={{ fontSize: 'var(--font-size-body)', lineHeight: 1.7, color: palette.neutral.textMuted }}>
                   <ReactMarkdown remarkPlugins={[remarkGfm, remarkUnderline]}>
                     {article.body}
                   </ReactMarkdown>

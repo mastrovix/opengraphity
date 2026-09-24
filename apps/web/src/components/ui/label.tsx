@@ -1,18 +1,13 @@
 import * as React from "react"
 
-import { cn } from "@/lib/utils"
-
+/**
+ * A label, styled by `og-label` in index.css since Tailwind left the web
+ * (24 Sep 2026): its classes had never been compiled.
+ */
 function Label({ className, ...props }: React.ComponentProps<"label">) {
   return (
     // eslint-disable-next-line jsx-a11y/label-has-associated-control -- primitiva generica: htmlFor/children arrivano dal chiamante via props
-    <label
-      data-slot="label"
-      className={cn(
-        "flex items-center gap-2 text-sm leading-none font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50",
-        className
-      )}
-      {...props}
-    />
+    <label data-slot="label" className={className ? `og-label ${className}` : "og-label"} {...props} />
   )
 }
 

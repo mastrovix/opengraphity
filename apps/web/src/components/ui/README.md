@@ -54,8 +54,11 @@ Un solo posto per ogni pattern ricorrente. Le primitive vivono in
   `<button aria-expanded>`; `headerRight` resta fuori dal bottone.
 - **DetailField**, **SimpleTable**, **Pill / badges** (`SeverityBadge`,
   `StatusBadge`, `RoleBadge`, `CountBadge`, `SlaBadge`…), **skeleton**,
-  **sonner** (toast), **dropdown-menu**, **label** (queste ultime tre derivate
-  da shadcn; le altre primitive shadcn non usate sono state rimosse).
+  **sonner** (toast), **dropdown-menu**, **label**. Le ultime quattro
+  venivano da shadcn e portavano classi Tailwind che nessuno compilava: dal
+  24 set 2026 Tailwind non c'è più, e i loro stili sono le classi `og-*` di
+  `index.css` (con i token). Una classe senza stile fa fallire
+  `src/__tests__/cssClassesDefined.test.ts`.
 
 ## GraphQL
 
