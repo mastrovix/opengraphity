@@ -1906,7 +1906,9 @@ valutazioni in attesa, marcatori di idempotenza.
 ### Query fermate dai limiti del database
 
 Dal 24 set 2026 (ondata 7 · A2) Neo4j ferma da solo una transazione che dura
-più di **120 s** o che occupa più di **1 GB** di memoria
+più di **120 s** o che occupa più di **2 GB** di memoria (1 GB fino al 24 set:
+la pulizia del tenant demo cancella mille utenti per lotto, con centinaia di
+relazioni ciascuno, e lo superava; l'heap è salito a 4 GB con lui)
 (`NEO4J_db_transaction_timeout`, `NEO4J_db_memory_transaction_max` nel
 compose). Una query impazzita si ferma lì e non tiene fermo il database di
 tutti i clienti. Due tipi di lavoro portano un limite loro, che prende il posto

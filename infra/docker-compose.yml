@@ -43,20 +43,28 @@ services:
       # di errore nei log di Neo4j — il processo semplicemente spariva e
       # ripartiva. Il numero che conta non è quanta memoria ha il Mac (24 GB),
       # è quanta ne ha la VM: questi valori ci stanno dentro con margine.
+      # 24 set 2026: la VM è passata a 12 GB (il build dell'immagine api la
+      # esauriva e il kernel uccideva Neo4j), e l'heap a 4 GB per reggere il
+      # tetto per transazione di 2 GB qui sotto: la memoria di TUTTE le
+      # transazioni insieme è il 70% dell'heap (2,8 GB), e una sola da 2 GB
+      # su un heap di 3 lasciava senza spazio le query dell'app.
       NEO4J_server_memory_heap_initial__size: 1G
-      NEO4J_server_memory_heap_max__size: 3G
+      NEO4J_server_memory_heap_max__size: 4G
       NEO4J_server_memory_pagecache_size: 1G
       # The database's own limits on a transaction (review of 23 Sep 2026,
       # wave 7 · A2, values decided by the owner on 24 Sep): a runaway query
-      # stops instead of holding the database of every tenant. 1 GB is a third
-      # of the heap. The API sends shorter limits for a page's reads (30 s)
+      # stops instead of holding the database of every tenant. The API sends
+      # shorter limits for a page's reads (30 s)
       # and longer ones for maintenance — backup, restore, migrations, purges —
       # and a limit sent by the client replaces this one (queryScope.ts in
       # packages/neo4j). The memory limit cannot be raised by a client:
       # maintenance streams its reads and writes in batches.
+      # 2 GB since 24 Sep (was 1 GB, raised by the owner): the clean-up of the
+      # demo tenant deletes a thousand users in a batch, and each carries
+      # hundreds of relationships (380,000 in the batch); half of the heap.
       NEO4J_db_transaction_timeout: 120s
-      NEO4J_db_memory_transaction_max: 1g
-    mem_limit: 5g
+      NEO4J_db_memory_transaction_max: 2g
+    mem_limit: 6g
     volumes:
       - neo4j_data:/data
       - neo4j_logs:/logs
