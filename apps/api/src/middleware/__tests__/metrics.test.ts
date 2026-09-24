@@ -71,8 +71,10 @@ describe('getRequestMetrics / getNeo4jMetrics / getQueueMetricsSnapshot', () => 
     expect(r.averageResponseMs).toBeCloseTo(30)
     expect(r.p95ResponseMs).toBe(50)  // first bucket (0.05) reaching 95% of 2 observations
 
-    m.neo4jQueryDurationSeconds.observe({ operation: 'QUERY' }, 0.5)
-    expect(m.getNeo4jMetrics()).toMatchObject({ totalQueries: 1, averageQueryMs: 500 })
+    m.neo4jQueryDurationSeconds.observe({ mode: 'READ', tenant: 't1' }, 0.5)
+    m.neo4jQueryDurationSeconds.observe({ mode: 'WRITE', tenant: 't2' }, 1.5)
+    // Per tenant (wave 7 · A2): t2's query is not t1's.
+    expect(m.getNeo4jMetrics('t1')).toMatchObject({ totalQueries: 1, averageQueryMs: 500 })
 
     m.bullmqQueueDepth.set({ queue: 'embeddings', tenant: 't1', status: 'waiting' }, 4)
     m.bullmqQueueDepth.set({ queue: 'embeddings', tenant: 't1', status: 'failed' }, 1)

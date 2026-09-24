@@ -54,6 +54,15 @@ export interface BackupManifest {
    * export — the system nodes the tenant's nodes refer to.
    */
   endpoint_nodes_added?: number
+  /**
+   * The lines written and the counts taken before and after them in the same
+   * transaction (24 Sep 2026): on a live graph they may differ, and the
+   * archive says by how much. Absent in older archives.
+   */
+  graph_counts?: {
+    nodes: { written: number; before: number; after: number }
+    rels:  { written: number; before: number; after: number }
+  }
 }
 
 /** The tenant an archive belongs to, or null for a whole-installation archive. */

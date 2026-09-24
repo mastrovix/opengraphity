@@ -31,6 +31,7 @@ import { createHash } from 'node:crypto'
 import { hostname } from 'node:os'
 import type { Session } from 'neo4j-driver'
 import type { Queryable } from './query.js'
+import { MAINTENANCE_SCOPE, runInQueryScope } from './queryScope.js'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -256,39 +257,49 @@ export async function runMigrations(
 
   await acquireLock(session, owner, now().toISOString(), lockTtlMs)
   try {
-    // Lo stato applicato si rilegge DENTRO il lock (revisione totale · E-5): due
-    // processi che partono insieme leggevano entrambi la lista dei pending prima
-    // che il primo prendesse il lock, e la seconda applicava di nuovo tutto.
-    const appliedNow = await loadApplied(session)
-    const stillPending = toRun.filter((m) => force || !appliedNow.has(m.id))
-    for (const m of toRun) {
-      if (!stillPending.includes(m)) {
-        result.skipped.push(m.id)
-        log(`[migrate] ${m.id} applied by another process while waiting for the lock — skipped`)
-      }
-    }
-    for (const m of stillPending) {
-      const checksum = migrationChecksum(m)
-      const params   = { id: m.id, now: now().toISOString(), checksum, description: m.description }
-      log(`[migrate] applying ${m.id} — ${m.description}`)
-      try {
-        if (m.autocommit) {
-          await m.up(session)
-          await session.run(MARK_APPLIED, params)
-        } else {
-          await session.executeWrite(async (tx) => {
-            await m.up(tx)
-            await tx.run(MARK_APPLIED, params)
-          })
-        }
-      } catch (err) {
-        throw new MigrationError(m.id, err)
-      }
-      result.applied.push(m.id)
-      log(`[migrate] applied ${m.id}`)
-    }
+    // A migration is maintenance whoever runs it (queryScope.ts): its
+    // `IN TRANSACTIONS`, its index waits and its whole-label rewrites must not
+    // stop at the server's 120 s.
+    await runInQueryScope(MAINTENANCE_SCOPE, () => applyPending(toRun, force, session, log, now, result))
   } finally {
     await releaseLock(session, owner)
   }
   return result
+}
+
+async function applyPending(
+  toRun: Migration[], force: boolean, session: Session, log: (message: string) => void,
+  now: () => Date, result: RunMigrationsResult,
+): Promise<void> {
+  // Lo stato applicato si rilegge DENTRO il lock (revisione totale · E-5): due
+  // processi che partono insieme leggevano entrambi la lista dei pending prima
+  // che il primo prendesse il lock, e la seconda applicava di nuovo tutto.
+  const appliedNow = await loadApplied(session)
+  const stillPending = toRun.filter((m) => force || !appliedNow.has(m.id))
+  for (const m of toRun) {
+    if (!stillPending.includes(m)) {
+      result.skipped.push(m.id)
+      log(`[migrate] ${m.id} applied by another process while waiting for the lock — skipped`)
+    }
+  }
+  for (const m of stillPending) {
+    const checksum = migrationChecksum(m)
+    const params   = { id: m.id, now: now().toISOString(), checksum, description: m.description }
+    log(`[migrate] applying ${m.id} — ${m.description}`)
+    try {
+      if (m.autocommit) {
+        await m.up(session)
+        await session.run(MARK_APPLIED, params)
+      } else {
+        await session.executeWrite(async (tx) => {
+          await m.up(tx)
+          await tx.run(MARK_APPLIED, params)
+        })
+      }
+    } catch (err) {
+      throw new MigrationError(m.id, err)
+    }
+    result.applied.push(m.id)
+    log(`[migrate] applied ${m.id}`)
+  }
 }

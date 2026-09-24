@@ -32,7 +32,7 @@ if (workGroups.includes('maintenance')) validateConfig('maintenance')
 import './workflow/conditions.js'
 import { closeDriver, registerSessionTracker } from '@opengraphity/neo4j'
 import { closeConnection } from '@opengraphity/events'
-import { neo4jQueryDurationSeconds, recordSlowQuery } from './middleware/metrics.js'
+import { trackNeo4jQuery } from './middleware/metrics.js'
 import { startEmbeddingWorker } from './jobs/embeddingWorker.js'
 import { startEventIngestWorker } from './jobs/eventIngestWorker.js'
 import { startEventCorrelateWorker, startEventMaintenanceWorker } from './jobs/eventCorrelateWorker.js'
@@ -56,10 +56,7 @@ import { logger } from './lib/logger.js'
 import { assertMigrationsAppliedAtBoot } from './lib/migrationState.js'
 import { startInAppBus, stopInAppBus } from './lib/inAppBus.js'
 
-registerSessionTracker((durationMs, query) => {
-  neo4jQueryDurationSeconds.observe({ operation: 'QUERY' }, durationMs / 1000)
-  if (durationMs > 500) recordSlowQuery(query || 'unknown', durationMs)
-})
+registerSessionTracker(trackNeo4jQuery)
 
 async function main() {
   // Revisione del 14 set 2026 · F8: come l'API (lib/migrationState.ts).

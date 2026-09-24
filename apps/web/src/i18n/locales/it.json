@@ -4490,6 +4490,8 @@
       "range": "Il peso dell'ambiente deve essere un intero fra 0 e {{max}} (ricevuto {{got}})."
     },
     "internalDatabase": "Errore interno del database (riferimento {{ref}}). Segnalalo all'amministratore: i dettagli sono nel log dell'API.",
+    "queryTimeout": "Il database ha fermato la richiesta perché richiedeva troppo tempo (riferimento {{ref}}). Restringila — un filtro, un periodo più breve — e riprova.",
+    "queryMemoryLimit": "Il database ha fermato la richiesta perché richiedeva troppa memoria (riferimento {{ref}}). Restringila — un filtro, un periodo più breve — e riprova.",
     "serviceRequest": {
       "priorityFromCatalog": "La priorità di una richiesta dal catalogo la decide la voce del catalogo.",
       "catalogItemRequired": "Dal portale una richiesta si apre da una voce del catalogo.",

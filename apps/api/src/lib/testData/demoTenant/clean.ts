@@ -30,7 +30,7 @@
 import neo4j from 'neo4j-driver'
 import type { Session } from 'neo4j-driver'
 import { rm } from 'node:fs/promises'
-import { getSession, runQuery } from '@opengraphity/neo4j'
+import { getSession, MAINTENANCE_SCOPE, runInQueryScope, runQuery } from '@opengraphity/neo4j'
 import { getTenantQueue } from '../../bullmq.js'
 import { TICKET_NUMBER_KINDS, type TicketNumberKind } from '../../ticketNumbering.js'
 import { syntheticActorIds } from '../../auditActors.js'
@@ -78,7 +78,13 @@ export function sequenceOf(code: unknown): number | null {
   return m ? Number(m[1]) : null
 }
 
-export async function cleanDemoTenant(tenantId: string, log: (message: string) => void): Promise<{ deleted: number }> {
+export function cleanDemoTenant(tenantId: string, log: (message: string) => void): Promise<{ deleted: number }> {
+  // Maintenance whoever runs it: its `IN TRANSACTIONS` passes last a whole
+  // label each, past the server's 120 s (queryScope.ts in @opengraphity/neo4j).
+  return runInQueryScope(MAINTENANCE_SCOPE, () => cleanDemoTenantData(tenantId, log))
+}
+
+async function cleanDemoTenantData(tenantId: string, log: (message: string) => void): Promise<{ deleted: number }> {
   const session = getSession(undefined, neo4j.session.WRITE)
   try {
     const runs = await runQuery<RunRecord>(session, `

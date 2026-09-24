@@ -11,7 +11,7 @@
  * deletion runs in real transactions of a thousand rows.
  */
 import type { Session } from 'neo4j-driver'
-import { runQuery, toNumber } from '@opengraphity/neo4j'
+import { MAINTENANCE_SCOPE, runInQueryScope, runQuery, toNumber } from '@opengraphity/neo4j'
 
 /** A label read from the database, as a Cypher identifier. */
 const quoted = (label: string): string => '`' + label.replace(/`/g, '``') + '`'
@@ -47,11 +47,14 @@ export async function deleteTenantNodes(session: Session, tenantId: string): Pro
   let deleted = 0
   for (const label of await allLabels(session)) {
     const lbl = quoted(label)
-    const rows = await runQuery<{ n: unknown }>(session, `
+    // Maintenance whoever asks for it — the console's purge is a request: the
+    // outer transaction of `IN TRANSACTIONS` lasts the whole label, past the
+    // server's 120 s (queryScope.ts in @opengraphity/neo4j).
+    const rows = await runInQueryScope(MAINTENANCE_SCOPE, () => runQuery<{ n: unknown }>(session, `
       MATCH (n:${lbl} {tenant_id: $tenantId})
       CALL (n) { DETACH DELETE n } IN TRANSACTIONS OF 1000 ROWS
       RETURN count(*) AS n
-    `, { tenantId })
+    `, { tenantId }))
     deleted += toNumber(rows[0]?.n)
   }
   return deleted

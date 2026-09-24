@@ -5,6 +5,8 @@ import { splitTenantQueueName } from '@opengraphity/events'
 import type { ApolloServerPlugin } from '@apollo/server'
 import type { GraphQLContext } from '../context.js'
 import { logger } from '../lib/logger.js'
+import type { TrackedQuery } from '@opengraphity/neo4j'
+import { isQueryTimeout } from '../lib/queryTimeout.js'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -229,11 +231,24 @@ export const graphqlResolverDurationSeconds = createHistogram(
   [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1],
 )
 
+/*
+ * Per tenant and access mode (wave 7 · A2): the label `operation` was always
+ * 'QUERY'. The buckets reach the limits — 30 s for a page's reads, 120 s for
+ * the database — so a query that is getting close to one shows before it
+ * hits it.
+ */
 export const neo4jQueryDurationSeconds = createHistogram(
   'neo4j_query_duration_seconds',
-  'Neo4j query execution duration in seconds',
-  ['operation'],
-  [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1],
+  'Neo4j query execution duration in seconds, by access mode and tenant',
+  ['mode', 'tenant'],
+  [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 30, 120],
+)
+
+/** Queries the database stopped at a limit: `time` (the transaction timeout) or `memory` (the per-transaction cap). */
+export const neo4jQueryLimitHitsTotal = createCounter(
+  'neo4j_query_limit_hits_total',
+  'Neo4j queries stopped at the transaction time or memory limit, by limit and tenant',
+  ['limit', 'tenant'],
 )
 
 // Scheduled backup outcome (workers/maintenance.worker.ts): result = ok |
@@ -563,6 +578,7 @@ export function renderMetrics(): string {
     httpRequestDurationSeconds.collect(),
     graphqlResolverDurationSeconds.collect(),
     neo4jQueryDurationSeconds.collect(),
+    neo4jQueryLimitHitsTotal.collect(),
     bullmqQueueDepth.collect(),
     backupRunsTotal.collect(),
     backupLastSuccessTimestamp.collect(),
@@ -652,6 +668,8 @@ export interface SlowQueryEntry {
   query: string
   durationMs: number
   timestamp: string
+  /** What asked for it: a GraphQL operation, a job, a script. */
+  operation: string | null
 }
 
 export interface Neo4jMetricsData {
@@ -673,8 +691,19 @@ export interface ProcessMetricsData {
 
 // ── Slow query buffer ─────────────────────────────────────────────────────────
 
-const slowQueryBuffer: SlowQueryEntry[] = []
+/*
+ * Per tenant (wave 7 · A2), like the resolver errors: the panel is read by
+ * every tenant's administrator, and it showed the slow queries of all of them
+ * — the text of a query names the tenant's own types. A query with no tenant
+ * (platform work) is kept under '' and shown to nobody; the log has it.
+ */
+const slowQueryBuffers = new Map<string, SlowQueryEntry[]>()
 const MAX_SLOW_QUERIES = 20
+
+/** A query slower than this goes in its tenant's panel. */
+export const SLOW_QUERY_MS = 500
+/** A query slower than this is also written in the log, with whom it ran for. */
+export const SLOW_QUERY_LOG_MS = 5_000
 
 /**
  * La query come la LEGGE chi guarda il pannello: senza i commenti del
@@ -700,13 +729,46 @@ export function queryPerIlPannello(query: string): string {
     .trim()
 }
 
-export function recordSlowQuery(query: string, durationMs: number): void {
-  slowQueryBuffer.push({
+export function recordSlowQuery(tenantId: string | null, query: string, durationMs: number, operation: string | null): void {
+  const key = tenantId ?? ''
+  let buffer = slowQueryBuffers.get(key)
+  if (!buffer) { buffer = []; slowQueryBuffers.set(key, buffer) }
+  buffer.push({
     query: queryPerIlPannello(query).slice(0, 200),
     durationMs,
     timestamp: new Date().toISOString(),
+    operation,
   })
-  if (slowQueryBuffer.length > MAX_SLOW_QUERIES) slowQueryBuffer.shift()
+  if (buffer.length > MAX_SLOW_QUERIES) buffer.shift()
+}
+
+const queryLogger = logger.child({ module: 'neo4j' })
+
+/**
+ * The session tracker of every process (`registerSessionTracker` in
+ * @opengraphity/neo4j): a query's duration into the metrics of its tenant,
+ * a slow one into its tenant's panel, and — past SLOW_QUERY_LOG_MS or when
+ * the database stopped it at a limit — a line in the log with the tenant,
+ * the operation and the text. The line carries `tenantId`, so it shows on
+ * that tenant's Log page.
+ */
+export function trackNeo4jQuery(durationMs: number, query: string, info: TrackedQuery): void {
+  const tenant = info.tenantId ?? ''
+  neo4jQueryDurationSeconds.observe({ mode: info.mode, tenant }, durationMs / 1000)
+  const limit = isQueryTimeout({ code: info.errorCode }) ? 'time'
+    : info.errorCode?.includes('MemoryPoolOutOfMemoryError') ? 'memory'
+    : null
+  if (limit) neo4jQueryLimitHitsTotal.inc({ limit, tenant })
+  if (durationMs > SLOW_QUERY_MS) recordSlowQuery(info.tenantId, query || 'unknown', durationMs, info.operation)
+  if (limit || durationMs > SLOW_QUERY_LOG_MS) {
+    const entry = {
+      tenantId: info.tenantId, operation: info.operation, mode: info.mode,
+      durationMs: Math.round(durationMs), query: queryPerIlPannello(query).slice(0, 500),
+      ...(info.errorCode ? { errorCode: info.errorCode } : {}),
+    }
+    if (limit) queryLogger.warn({ ...entry, limit }, 'Neo4j query stopped at the database limit')
+    else queryLogger.warn(entry, 'Slow Neo4j query')
+  }
 }
 
 // ── Resolver error tracking ───────────────────────────────────────────────────
@@ -817,10 +879,12 @@ export function getGraphQLMetrics(tenantId: string): GraphQLMetricsData {
   }
 }
 
-export function getNeo4jMetrics(): Neo4jMetricsData {
+/** `tenantId`'s queries only: the counts, the average and the slow ones. */
+export function getNeo4jMetrics(tenantId: string): Neo4jMetricsData {
   let totalSum   = 0
   let totalCount = 0
   for (const s of neo4jQueryDurationSeconds.snapshot()) {
+    if (s.labels['tenant'] !== tenantId) continue
     totalSum   += s.sum
     totalCount += s.count
   }
@@ -828,7 +892,7 @@ export function getNeo4jMetrics(): Neo4jMetricsData {
   return {
     totalQueries:        totalCount,
     averageQueryMs:      totalCount > 0 ? (totalSum / totalCount) * 1000 : 0,
-    slowQueries:         [...slowQueryBuffer],
+    slowQueries:         [...(slowQueryBuffers.get(tenantId) ?? [])],
     connectionPoolActive: 0,
     connectionPoolIdle:   0,
   }

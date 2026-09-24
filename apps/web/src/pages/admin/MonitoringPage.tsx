@@ -23,7 +23,7 @@ interface StatusCodeCount { code: string; count: number }
 interface ResolverMetric { name: string; averageMs: number; maxMs: number; count: number }
 interface ResolverError  { name: string; count: number; lastError: string | null }
 interface QueueMetrics   { name: string; waiting: number; active: number; completed: number; failed: number; delayed: number }
-interface SlowQuery      { query: string; durationMs: number; timestamp: string }
+interface SlowQuery      { query: string; durationMs: number; timestamp: string; operation: string | null }
 interface RecentTrace    { traceId: string; operationName: string; durationMs: number; status: string; timestamp: string; spanCount: number }
 
 interface SystemMetrics {
@@ -301,6 +301,10 @@ export function MonitoringPage() {
                 {metrics.neo4j.slowQueries.map((sq, i) => (
                   <tr key={i} style={{ borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
                     <td style={{ padding: '6px 0', wordBreak: 'break-all', color: palette.neutral.textMuted }}>
+                      {/* What asked for it — the page's operation, a job — says where to look (wave 7 · A2). */}
+                      {sq.operation && (
+                        <div style={{ fontWeight: 600, color: colors.slate, wordBreak: 'normal' }}>{sq.operation}</div>
+                      )}
                       {sq.query}
                     </td>
                     <td style={{ padding: '6px 12px', color: 'var(--color-danger)', fontWeight: 600, whiteSpace: 'nowrap' }}>

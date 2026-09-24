@@ -172,6 +172,17 @@ groups:
           description: "{{ $value }} lock waits abandoned in 15 minutes: critical sections (incident open/attach) are too slow or Neo4j is contended; jobs retry with backoff."
           runbook: "docs/OPERATIONS.md §7 «Metriche e pannelli»"
 
+      # Wave 7 · A2 (24 Sep 2026): the database stops a transaction at 120 s or
+      # 1 GB, and a page's read at 30 s. A query stopped there is a page that
+      # failed or a job that did not finish.
+      - alert: Neo4jQueriesStoppedAtLimit
+        expr: sum by (limit, tenant) (increase(neo4j_query_limit_hits_total[15m])) > 0
+        labels: { severity: warning, subsystem: platform }
+        annotations:
+          summary: "Neo4j stopped queries at its {{ $labels.limit }} limit{{ if $labels.tenant }} for tenant {{ $labels.tenant }}{{ end }}"
+          description: "{{ $value }} quer(ies) stopped in 15 minutes. The log line «Neo4j query stopped at the database limit» names the operation and the query."
+          runbook: "docs/OPERATIONS.md §9 «Query fermate dai limiti del database»"
+
       - alert: BackupStale
         expr: time() - max(opengrafo_backup_last_success_timestamp_seconds) > 25 * 3600
         labels: { severity: critical, subsystem: platform }

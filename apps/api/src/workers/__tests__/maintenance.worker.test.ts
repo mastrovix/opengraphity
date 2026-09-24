@@ -183,6 +183,14 @@ describe('job backup_database', () => {
     expect(rename).not.toHaveBeenCalled()
   })
 
+  it('every job of the queue is maintenance: the backup runs with the long limit, not the server\'s 120 s (wave 7 · A2)', async () => {
+    const { currentQueryScope, MAINTENANCE_SCOPE } = await import('@opengraphity/neo4j')
+    let seen: unknown = null
+    runBackup.mockImplementationOnce(async () => { seen = currentQueryScope(); return { archivePath: ARCHIVE, nodeCount: 1, relCount: 0, durationMs: 1 } })
+    await processor(job('backup_database'))
+    expect(seen).toMatchObject(MAINTENANCE_SCOPE)
+  })
+
   it('verifica fallita → archivio rinominato .invalid, logger.error con i problemi, metrica verify_failed, job fallito; la retention gira comunque', async () => {
     verifyBackup.mockResolvedValue({ archivePath: ARCHIVE, ok: false, problems: ['nodes.jsonl: 9 righe, manifest node_count 10'], warnings: [], nodes: 9, rels: 4, restorableRels: 4, manifest: null })
     archives(3)

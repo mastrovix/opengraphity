@@ -13,6 +13,7 @@ import { pruneInbox } from '@opengraphity/notifications'
 import { inAppRetentionByTenant } from '../lib/tenantInAppRetention.js'
 import { purgaIRegistriDeiLog, leggiGiorniDiRetention } from '../services/serverLogRetention.js'
 import { immettiEventiDaiLog } from '../lib/serverLogEvents.js'
+import { MAINTENANCE_SCOPE, runInQueryScope } from '@opengraphity/neo4j'
 
 const maintenanceLogger = logger.child({ module: 'maintenance' })
 
@@ -312,7 +313,10 @@ export async function startMaintenanceWorker(): Promise<Worker> {
   seedBackupMetrics(backupDir())
   await scheduleRepeatableJobs()
 
-  const worker = createWorker(MAINTENANCE_QUEUE, processMaintenanceJob, { concurrency: 1 })
+  // Every job of this queue is maintenance: the backup reads the whole graph
+  // in one transaction and the purges run `IN TRANSACTIONS` — the long limit,
+  // not the server's 120 s (queryScope.ts in @opengraphity/neo4j).
+  const worker = createWorker(MAINTENANCE_QUEUE, (job: Job) => runInQueryScope(MAINTENANCE_SCOPE, () => processMaintenanceJob(job)), { concurrency: 1 })
   maintenanceLogger.info({ backupDir: backupDir(), retention }, 'Maintenance worker started')
   return worker
 }

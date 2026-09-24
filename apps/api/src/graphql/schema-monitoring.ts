@@ -69,6 +69,8 @@ export function monitoringSDL(): string {
       query:      String!
       durationMs: Float!
       timestamp:  String!
+      "What asked for it: a GraphQL operation, a job, a script."
+      operation:  String
     }
     type ProcessMetrics {
       memoryUsageMb:    Float!

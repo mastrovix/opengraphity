@@ -39,7 +39,7 @@ import { tmpdir }                  from 'node:os'
 import { join, resolve, basename } from 'node:path'
 import { pathToFileURL }           from 'node:url'
 import pino                        from 'pino'
-import { getSession }              from '@opengraphity/neo4j'
+import { getSession, MAINTENANCE_TX_CONFIG } from '@opengraphity/neo4j'
 import type { Session }           from 'neo4j-driver'
 import { LABEL_RE, REL_TYPE_RE }   from '../lib/cypherIdentifiers.js'
 import { requireConfirmFlag }      from './lib/scriptArgs.js'
@@ -306,7 +306,8 @@ export async function createRestoreIndexes(session: Session, plan: { byId: Set<s
   for (const label of plan.byId) if (!indexedById.has(label)) await create(label, 'id')
   for (const label of plan.byEid) await create(label, RESTORE_EID)
   if (created.length) {
-    await session.run('CALL db.awaitIndexes(600)')
+    // Up to ten minutes by design: past the server's 120 s (queryScope.ts in @opengraphity/neo4j).
+    await session.run('CALL db.awaitIndexes(600)', {}, MAINTENANCE_TX_CONFIG)
     log.info({ indexes: created.length }, 'Indici temporanei del restore pronti')
   }
   return created
@@ -315,7 +316,8 @@ export async function createRestoreIndexes(session: Session, plan: { byId: Set<s
 /** Removes the elementId markers and drops the temporary indexes: the graph and the schema end as the product has them. */
 export async function cleanUpRestore(session: Session, byEid: Set<string>, indexes: string[]): Promise<void> {
   for (const label of byEid) {
-    await session.run(`MATCH (n:${label}) WHERE n.${RESTORE_EID} IS NOT NULL CALL (n) { REMOVE n.${RESTORE_EID} } IN TRANSACTIONS OF 10000 ROWS`)
+    // The outer transaction of `IN TRANSACTIONS` lasts the whole label: past the server's 120 s.
+    await session.run(`MATCH (n:${label}) WHERE n.${RESTORE_EID} IS NOT NULL CALL (n) { REMOVE n.${RESTORE_EID} } IN TRANSACTIONS OF 10000 ROWS`, {}, MAINTENANCE_TX_CONFIG)
   }
   for (const name of indexes) {
     if (!name.startsWith(TEMP_INDEX_PREFIX) || !/^[A-Za-z0-9_]+$/.test(name)) throw new Error(`Not a restore index: ${name}`)

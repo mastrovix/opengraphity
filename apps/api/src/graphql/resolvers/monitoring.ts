@@ -97,7 +97,7 @@ export const monitoringResolvers = {
 
       const requests = getRequestMetrics()
       const graphql  = getGraphQLMetrics(ctx.tenantId)
-      const neo4j    = getNeo4jMetrics()
+      const neo4j    = getNeo4jMetrics(ctx.tenantId)
       const system   = getProcessMetrics()
       const queues   = getQueueMetricsSnapshot(ctx.tenantId)
 

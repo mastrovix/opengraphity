@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-vi.mock('@opengraphity/neo4j', () => ({ closeDriver: vi.fn() }))
+const scope = vi.hoisted(() => ({ entered: [] as unknown[] }))
+vi.mock('@opengraphity/neo4j', () => ({
+  closeDriver: vi.fn(),
+  MAINTENANCE_SCOPE: { readTimeoutMs: 7_200_000, writeTimeoutMs: 7_200_000 },
+  runInQueryScope: (s: unknown, fn: () => Promise<void>) => { scope.entered.push(s); return fn() },
+}))
 
 const { runScript } = await import('../lib/runScript.js')
 const { closeDriver } = await import('@opengraphity/neo4j')
@@ -29,6 +34,8 @@ describe('runScript', () => {
     expect(main).toHaveBeenCalledOnce()
     expect(closeDriver).toHaveBeenCalledOnce()
     expect(process.exitCode).toBeUndefined()
+    // A script is maintenance: its transactions carry the long limit, and its queries say which script (wave 7 · A2).
+    expect(scope.entered.at(-1)).toEqual({ readTimeoutMs: 7_200_000, writeTimeoutMs: 7_200_000, operation: 'script ok' })
   })
 
   it('prints only the message for ScriptArgError and sets exitCode 1', async () => {

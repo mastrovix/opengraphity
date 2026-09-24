@@ -14,6 +14,9 @@ const fake = vi.hoisted(() => ({
   alive: [] as string[],
   removed: [] as string[],
   queuesOpened: [] as string[],
+  // The maintenance scope (wave 7 · A2): every query of the clean-up runs inside it.
+  scopeDepth: 0,
+  outsideScope: [] as string[],
 }))
 
 function answer(cypher: string, params: Record<string, unknown>): Array<Record<string, unknown>> {
@@ -31,6 +34,11 @@ function answer(cypher: string, params: Record<string, unknown>): Array<Record<s
 }
 
 vi.mock('@opengraphity/neo4j', () => ({
+  MAINTENANCE_SCOPE: { readTimeoutMs: 7_200_000, writeTimeoutMs: 7_200_000 },
+  runInQueryScope: async (_s: unknown, fn: () => Promise<unknown>) => {
+    fake.scopeDepth++
+    try { return await fn() } finally { fake.scopeDepth-- }
+  },
   getSession: () => ({
     run: async (cypher: string, params: Record<string, unknown>) => {
       fake.queries.push({ cypher, params })
@@ -42,6 +50,7 @@ vi.mock('@opengraphity/neo4j', () => ({
   }),
   runQuery: async (_s: unknown, cypher: string, params: Record<string, unknown>) => {
     fake.queries.push({ cypher, params })
+    if (fake.scopeDepth === 0) fake.outsideScope.push(cypher)
     return answer(cypher, params)
   },
 }))
@@ -61,7 +70,7 @@ const writes = (pattern: string) => fake.queries.filter((q) => q.cypher.includes
 const RUN = { id: 'r1', startedAt: '2026-09-23T03:38:14.274Z', limits: null, eventPolicy: null, hasEventPolicy: false, retention: null, hasRetention: false, rules: null }
 
 beforeEach(() => {
-  fake.queries = []; fake.run = { ...RUN }; fake.highest = {}; fake.jobs = []; fake.alive = []; fake.removed = []; fake.queuesOpened = []
+  fake.queries = []; fake.run = { ...RUN }; fake.highest = {}; fake.jobs = []; fake.alive = []; fake.removed = []; fake.queuesOpened = []; fake.outsideScope = []
 })
 
 describe('the sweep lists', () => {
@@ -92,6 +101,8 @@ describe('cleanDemoTenant', () => {
     expect(incidents[0]!.params).toMatchObject({ since: RUN.startedAt, at: 'created_at' })
     // A label that is not in the database is not swept.
     expect(writes('MATCH (n:Problem {tenant_id: $tenantId}) WHERE n.demo_run_id IS NULL')).toHaveLength(0)
+    // All of it is maintenance: the `IN TRANSACTIONS` passes last past the server's 120 s (wave 7 · A2).
+    expect(fake.outsideScope).toEqual([])
   })
 
   it('the history of people and work that no longer exist goes, whenever it was written; the synthetic actors are not people', async () => {

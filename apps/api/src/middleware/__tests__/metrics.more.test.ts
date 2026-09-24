@@ -169,18 +169,79 @@ describe('slow query panel', () => {
     expect(m.queryPerIlPannello('// why this is written so\nMATCH (n) /* inline */\n  RETURN n // trailing')).toBe('MATCH (n) RETURN n')
   })
 
-  it('keeps the last 20 queries, each cut to 200 characters', () => {
-    for (let i = 0; i < 22; i++) m.recordSlowQuery(`MATCH (n${String(i)}) RETURN n`, i)
-    m.recordSlowQuery('x'.repeat(300), 99)
-    const slow = m.getNeo4jMetrics().slowQueries
+  it('keeps the last 20 queries of a tenant, each cut to 200 characters, with what asked for it', () => {
+    for (let i = 0; i < 22; i++) m.recordSlowQuery('t1', `MATCH (n${String(i)}) RETURN n`, i, 'GetIncidents')
+    m.recordSlowQuery('t1', 'x'.repeat(300), 99, null)
+    const slow = m.getNeo4jMetrics('t1').slowQueries
     expect(slow).toHaveLength(20)
     // The oldest entries were evicted, the newest kept.
     expect(slow[0]!.query).toBe('MATCH (n3) RETURN n')
+    expect(slow[0]!.operation).toBe('GetIncidents')
     expect(slow.at(-1)!.query).toHaveLength(200)
   })
 
+  it('a tenant sees only its own slow queries; platform work (no tenant) is shown to nobody (wave 7 · A2)', () => {
+    m.recordSlowQuery('t1', 'MATCH (a:CustomTypeOfT1) RETURN a', 900, 'GetA')
+    m.recordSlowQuery(null, 'MATCH (b:Tenant) RETURN b', 900, 'job maintenance/backup_database')
+    expect(m.getNeo4jMetrics('t2').slowQueries).toEqual([])
+    expect(m.getNeo4jMetrics('t1').slowQueries.map((q) => q.query)).toEqual(['MATCH (a:CustomTypeOfT1) RETURN a'])
+  })
+
   it('with no query observed the average is zero, not NaN', () => {
-    expect(m.getNeo4jMetrics()).toMatchObject({ totalQueries: 0, averageQueryMs: 0 })
+    expect(m.getNeo4jMetrics('t1')).toMatchObject({ totalQueries: 0, averageQueryMs: 0 })
+  })
+})
+
+/*
+ * THE TRACKER OF EVERY PROCESS (wave 7 · A2): what a Neo4j query leaves
+ * behind. The metrics per tenant and mode, the panel of its tenant, and a
+ * line in the log when it was slow or stopped at a limit — with the tenant
+ * and the operation, which the old tracker did not know.
+ */
+describe('trackNeo4jQuery', () => {
+  const info = (over: Partial<Parameters<M['trackNeo4jQuery']>[2]> = {}) =>
+    ({ mode: 'READ' as const, tenantId: 't1', operation: 'GetIncidents', errorCode: null, ...over })
+  const series = () => m.neo4jQueryDurationSeconds.snapshot().map((s) => ({ labels: s.labels, count: s.count }))
+  const hits = () => m.neo4jQueryLimitHitsTotal.snapshot()
+
+  it('a fast query: counted for its tenant and mode, nothing else', () => {
+    m.trackNeo4jQuery(12, 'MATCH (n) RETURN n', info())
+    m.trackNeo4jQuery(3, 'CREATE (n)', info({ mode: 'WRITE', tenantId: null }))
+    expect(series()).toEqual([
+      { labels: { mode: 'READ', tenant: 't1' }, count: 1 },
+      { labels: { mode: 'WRITE', tenant: '' }, count: 1 },
+    ])
+    expect(m.getNeo4jMetrics('t1').slowQueries).toEqual([])
+    expect(warn).not.toHaveBeenCalled()
+    expect(hits()).toEqual([])
+  })
+
+  it('past 500 ms it goes in its tenant\'s panel; past 5 s also in the log, with whom it ran for', () => {
+    m.trackNeo4jQuery(501, 'MATCH (i:Incident) RETURN i', info())
+    expect(m.getNeo4jMetrics('t1').slowQueries).toEqual([expect.objectContaining({ query: 'MATCH (i:Incident) RETURN i', durationMs: 501, operation: 'GetIncidents' })])
+    expect(warn).not.toHaveBeenCalled()
+    m.trackNeo4jQuery(m.SLOW_QUERY_LOG_MS + 1, '// why\nMATCH (s:SLAStatus) RETURN s', info())
+    expect(warn).toHaveBeenCalledWith({
+      tenantId: 't1', operation: 'GetIncidents', mode: 'READ', durationMs: 5001, query: 'MATCH (s:SLAStatus) RETURN s',
+    }, 'Slow Neo4j query')
+  })
+
+  it('a query the database stopped at its time limit: counted, and logged even when it was quick to fail', () => {
+    m.trackNeo4jQuery(30_004, 'MATCH (n) RETURN n', info({ errorCode: 'Neo.ClientError.Transaction.TransactionTimedOutClientConfiguration' }))
+    m.trackNeo4jQuery(40, 'MATCH (n) RETURN collect(n)', info({ errorCode: 'Neo.TransientError.General.MemoryPoolOutOfMemoryError' }))
+    expect(hits()).toEqual([
+      { labels: { limit: 'time', tenant: 't1' }, value: 1 },
+      { labels: { limit: 'memory', tenant: 't1' }, value: 1 },
+    ])
+    expect(warn).toHaveBeenCalledTimes(2)
+    expect(warn).toHaveBeenLastCalledWith(expect.objectContaining({ limit: 'memory', errorCode: 'Neo.TransientError.General.MemoryPoolOutOfMemoryError', durationMs: 40 }),
+      'Neo4j query stopped at the database limit')
+  })
+
+  it('any other error is not a limit', () => {
+    m.trackNeo4jQuery(20, 'MATCH (n) RETURN n', info({ errorCode: 'Neo.ClientError.Statement.SyntaxError' }))
+    expect(hits()).toEqual([])
+    expect(warn).not.toHaveBeenCalled()
   })
 })
 

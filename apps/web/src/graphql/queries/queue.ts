@@ -47,7 +47,7 @@ export const GET_SYSTEM_METRICS = gql`
       queues { name waiting active completed failed delayed }
       neo4j {
         totalQueries averageQueryMs connectionPoolActive connectionPoolIdle
-        slowQueries { query durationMs timestamp }
+        slowQueries { query durationMs timestamp operation }
       }
       system { memoryUsageMb memoryRssMb cpuUsagePercent nodeVersion uptimeSeconds pid }
     }

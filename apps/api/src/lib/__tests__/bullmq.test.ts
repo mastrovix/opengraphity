@@ -139,6 +139,28 @@ describe('tenant queues', () => {
     expect(() => getTenantQueue('maintenance', 't1')).toThrow('[bullmq] "maintenance" is not a tenant queue (lib/queueRegistry.ts)')
   })
 
+  /*
+   * A job's queries say whom they run for (wave 7 · A2): the tenant its data
+   * names and the job, so its slow queries land in that tenant's panel and
+   * metrics — they showed under nobody.
+   */
+  it('a job runs in a query scope with the tenant of its data and its name; a platform job has no tenant', async () => {
+    const { currentQueryScope } = await import('@opengraphity/neo4j')
+    const w = createWorker('q-scope', async () => currentQueryScope()) as unknown as FakeWorker
+    const run = w.processor as (job: unknown) => Promise<unknown>
+    await expect(run({ name: 'sweep', data: { tenantId: 't1' } })).resolves.toEqual({ tenantId: 't1', operation: 'job q-scope/sweep' })
+    await expect(run({ name: 'backup_database', data: {} })).resolves.toEqual({ operation: 'job q-scope/backup_database' })
+  })
+
+  it('so does a job of a tenant queue', async () => {
+    const { currentQueryScope } = await import('@opengraphity/neo4j')
+    const pool = createTenantWorkers('webhook-delivery', async () => currentQueryScope())
+    await pool.add('t1')
+    const run = (pool.workerOf('t1') as unknown as FakeWorker).processor as (job: unknown) => Promise<unknown>
+    await expect(run({ name: 'deliver', id: 'j1', data: { tenantId: 't1' } })).resolves.toEqual({ tenantId: 't1', operation: 'job webhook-delivery/deliver' })
+    await pool.close()
+  })
+
   it('createTenantWorkers registers the pool of a tenant base; a platform base is refused', async () => {
     const pool = createTenantWorkers('webhook-delivery', async () => undefined, { concurrency: 3 })
     expect(pool.base).toBe('webhook-delivery')

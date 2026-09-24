@@ -35,13 +35,15 @@ const fake = vi.hoisted(() => ({
   rels: [] as Row[],
   tenantExists: true,
   txCalls: [] as Array<{ cypher: string; params: unknown }>,
+  txConfigs: [] as unknown[],
 }))
 
 vi.mock('@opengraphity/neo4j', () => ({
   toNative: (v: unknown) => v,
+  MAINTENANCE_TX_CONFIG: { timeout: 7_200_000 },
   getDriver: () => ({
     session: () => ({
-      beginTransaction: () => ({
+      beginTransaction: (txConfig?: unknown) => (fake.txConfigs.push(txConfig), {
         run: (cypher: string, params: unknown) => {
           fake.txCalls.push({ cypher, params })
           if (cypher.includes('count(r) AS rels')) return result([fake.counts.shift()!])
@@ -68,6 +70,7 @@ let out: string
 beforeEach(async () => {
   out = await mkdtemp(join(tmpdir(), 'og-backup-export-'))
   fake.txCalls = []
+  fake.txConfigs = []
   fake.tenantExists = true
   fake.nodes = [{ id: '4:d:1', labels: ['User'], props: { id: 'u1', tenant_id: 'acme' } }]
   fake.rels = [{
@@ -104,6 +107,8 @@ describe('runBackup — endpoints the node stream did not carry', () => {
     expect(manifest).toMatchObject({ node_count: 2, rel_count: 1, endpoint_nodes_added: 1, nodes_by_label: { User: 1, Team: 1 }, scope: { tenant: null } })
     // The whole installation: no tenant parameter.
     expect(fake.txCalls.every((c) => JSON.stringify(c.params) === '{}')).toBe(true)
+    // One read transaction for the whole graph — 98 s on 24 Sep 2026 — with the maintenance limit, not the server's 120 s.
+    expect(fake.txConfigs).toEqual([{ timeout: 7_200_000 }])
   })
 
   it('an endpoint already written is not written twice', async () => {
@@ -112,6 +117,30 @@ describe('runBackup — endpoints the node stream did not carry', () => {
     const { manifest, nodes } = await unpack((await runBackup(opts())).archivePath)
     expect(nodes).toHaveLength(2)
     expect(manifest).toMatchObject({ node_count: 2, endpoint_nodes_added: 0 })
+  })
+})
+
+/*
+ * A live graph (24 Sep 2026): a relationship replaced while the stream ran
+ * leaves the archive one short of both counts with nothing lost. The nightly
+ * backup of the demo was refused for exactly that; now it is published, the
+ * drift is logged and the manifest keeps the three numbers.
+ */
+describe('runBackup — the counts of a live graph', () => {
+  it('one relationship short of both counts: published, said in the log, the numbers in the manifest', async () => {
+    fake.nodes.push({ id: '4:d:2', labels: ['Team'], props: { id: 't1', tenant_id: 'acme' } })
+    fake.counts = [{ nodes: 2, rels: 2 }, { nodes: 2, rels: 3 }]
+    const warn = vi.fn()
+    const res = await runBackup(opts({ log: { info: () => {}, warn } }))
+    const { manifest } = await unpack(res.archivePath)
+    expect(manifest['graph_counts']).toEqual({ nodes: { written: 2, before: 2, after: 2 }, rels: { written: 1, before: 2, after: 3 } })
+    expect(warn).toHaveBeenCalledWith(expect.objectContaining({ outside: { nodes: 0, rels: 1 } }), expect.stringMatching(/outside the two counts by less than a live graph explains/))
+  })
+
+  it('a stream that lost a real part of the graph is still not published', async () => {
+    fake.counts = [{ nodes: 500, rels: 1 }, { nodes: 500, rels: 1 }]
+    await expect(runBackup(opts())).rejects.toThrow(/Backup NOT published .*nodes: 1 written, 500 counted .*explains up to 100/)
+    expect((await readdir(out)).filter((f) => f.endsWith('.tar.gz'))).toEqual([])
   })
 })
 

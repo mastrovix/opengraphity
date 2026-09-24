@@ -12,6 +12,7 @@ import { join } from 'node:path'
 
 const writes: Array<{ cypher: string; rows: unknown }> = []
 vi.mock('@opengraphity/neo4j', () => ({
+  MAINTENANCE_TX_CONFIG: { timeout: 7_200_000 },
   getSession: vi.fn(() => ({
     executeWrite: async (fn: (tx: unknown) => unknown) => fn({
       run: async (cypher: string, p: { rows: unknown[] }) => {
@@ -89,7 +90,7 @@ describe('restorePlan', () => {
 
 describe('temporary indexes', () => {
   const session = (indexed: string[]) => {
-    const run = vi.fn(async (cypher: string) => cypher.startsWith('SHOW INDEXES')
+    const run = vi.fn(async (cypher: string, _params?: unknown, _txConfig?: unknown) => cypher.startsWith('SHOW INDEXES')
       ? { records: indexed.map((l) => ({ get: () => l })) }
       : { records: [] })
     return { run, session: { run } as never }
@@ -103,6 +104,8 @@ describe('temporary indexes', () => {
     expect(cypher).toContain('CREATE INDEX `og_restore_AuditEntry_id` IF NOT EXISTS FOR (n:AuditEntry) ON (n.id)')
     expect(cypher).toContain(`CREATE INDEX \`og_restore_FormTableRow_restore_eid\` IF NOT EXISTS FOR (n:FormTableRow) ON (n.${RESTORE_EID})`)
     expect(cypher.at(-1)).toBe('CALL db.awaitIndexes(600)')
+    // Ten minutes of waiting by design: past the server's 120 s only with the maintenance limit (wave 7 · A2).
+    expect(run.mock.calls.at(-1)!.slice(1)).toEqual([{}, { timeout: 7_200_000 }])
   })
 
   it('cleaning up removes the markers in batches and drops only the restore\'s indexes', async () => {
@@ -110,6 +113,8 @@ describe('temporary indexes', () => {
     await cleanUpRestore(s, new Set(['FormTableRow']), ['og_restore_AuditEntry_id'])
     const cypher = run.mock.calls.map((c) => String(c[0]))
     expect(cypher[0]).toContain(`MATCH (n:FormTableRow) WHERE n.${RESTORE_EID} IS NOT NULL CALL (n) { REMOVE n.${RESTORE_EID} } IN TRANSACTIONS`)
+    // The outer transaction lasts the whole label: the maintenance limit (wave 7 · A2).
+    expect(run.mock.calls[0]!.slice(1)).toEqual([{}, { timeout: 7_200_000 }])
     expect(cypher[1]).toBe('DROP INDEX `og_restore_AuditEntry_id` IF EXISTS')
     await expect(cleanUpRestore(s, new Set(), ['user_id_unique'])).rejects.toThrow('Not a restore index')
   })

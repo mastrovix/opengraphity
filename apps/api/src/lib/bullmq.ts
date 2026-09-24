@@ -19,7 +19,8 @@
  */
 import { Queue, Worker, type Job, type Processor, type WorkerOptions, type QueueOptions } from 'bullmq'
 import { Redis } from 'ioredis'
-import { getRedisConnection, setTenantQueueHooks, tenantQueue, TenantWorkerPool, type TenantPoolOptions } from '@opengraphity/events'
+import { getRedisConnection, jobTenantOf, setTenantQueueHooks, tenantQueue, TenantWorkerPool, type TenantPoolOptions } from '@opengraphity/events'
+import { runInQueryScope } from '@opengraphity/neo4j'
 import { logger } from './logger.js'
 import { isTenantQueueBase } from './queueRegistry.js'
 
@@ -133,7 +134,7 @@ export function createTenantWorkers<D = unknown, R = unknown>(
   opts: CreateTenantWorkersOptions = {},
 ): TenantWorkerPool<D, R> {
   if (!isTenantQueueBase(base)) throw new Error(`[bullmq] "${base}" is not a tenant queue (lib/queueRegistry.ts)`)
-  const pool = new TenantWorkerPool<D, R>(base, processor, opts)
+  const pool = new TenantWorkerPool<D, R>(base, inJobScope(base, processor), opts)
   log.info({ queue: base, concurrency: opts.concurrency ?? 1, processLimit: opts.processLimit ?? null }, '[bullmq] tenant worker pool registered')
   return pool
 }
@@ -217,6 +218,18 @@ export interface CreateWorkerOptions extends Omit<WorkerOptions, 'connection'> {
  * Creates a Worker with the mandatory `'error'` + `'failed'` listeners.
  * `'error'` logs and never throws (a Redis blip must NOT crash the API).
  */
+/**
+ * A job's queries say whom they run for (wave 7 · A2, queryScope.ts in
+ * @opengraphity/neo4j): the tenant its data names and the job, so a slow
+ * query of a job lands in that tenant's panel and metrics, not in nobody's.
+ */
+export function inJobScope<D, R, N extends string>(queue: string, processor: Processor<D, R, N>): Processor<D, R, N> {
+  return (job, ...rest) => runInQueryScope(
+    { tenantId: jobTenantOf(job.data) ?? undefined, operation: `job ${queue}/${job.name}` },
+    () => processor(job, ...rest),
+  )
+}
+
 export function createWorker<D = unknown, R = unknown, N extends string = string>(
   name: string,
   processor: Processor<D, R, N>,
@@ -226,7 +239,7 @@ export function createWorker<D = unknown, R = unknown, N extends string = string
     throw new Error(`[bullmq] queue "${name}" is per tenant since 23 Sep 2026: use createTenantWorkers("${name}", …)`)
   }
   const { onFailed, ...workerOpts } = opts
-  const worker = new Worker<D, R, N>(name, processor, { ...workerOpts, connection: getRedisConnection() })
+  const worker = new Worker<D, R, N>(name, inJobScope(name, processor), { ...workerOpts, connection: getRedisConnection() })
 
   worker.on('error', (err: Error) => {
     guastoDi(log, `bullmq:worker:${name}`, err, { worker: name })

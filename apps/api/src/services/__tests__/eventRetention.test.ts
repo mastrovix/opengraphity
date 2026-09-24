@@ -12,7 +12,16 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
+// The maintenance scope, recorded: the purge must run inside it (wave 7 · A2).
+const scope = vi.hoisted(() => ({ depth: 0, entered: [] as unknown[], depthAt: new Map<string, number>() }))
+vi.mock('@opengraphity/neo4j', () => ({
+  getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(),
+  MAINTENANCE_SCOPE: { readTimeoutMs: 7_200_000, writeTimeoutMs: 7_200_000 },
+  runInQueryScope: async (s: unknown, fn: () => Promise<unknown>) => {
+    scope.entered.push(s); scope.depth++
+    try { return await fn() } finally { scope.depth-- }
+  },
+}))
 const logInfo = vi.fn()
 const logError = vi.fn()
 vi.mock('../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => ({ info: logInfo, warn: vi.fn(), error: logError, debug: vi.fn() }) } }))
@@ -39,6 +48,7 @@ const CHANGE_STEPS = [step('assessment', { isInitial: true }), step('deployment'
 
 function onCypher(rules: Array<[RegExp, unknown]>) {
   const impl = async (_s: unknown, cypher: string, params: Record<string, unknown>) => {
+    scope.depthAt.set(cypher, scope.depth)
     for (const [re, value] of [...rules].reverse()) if (re.test(cypher)) return typeof value === 'function' ? (value as (p: Record<string, unknown>) => unknown)(params) : value
     throw new Error(`unexpected cypher in test:\n${cypher}`)
   }
@@ -98,6 +108,9 @@ describe('purgeTenantResolvedEvents', () => {
     expect(purge.params).toEqual({ tenantId: 'acme', cutoff: 'CUTOFF', closedIncidentSteps: ['closed'], closedChangeSteps: ['closed'] })
     // CALL … IN TRANSACTIONS vuole una sessione auto-commit (runQuery → session.run, vedi eventRetentionAutocommit.test.ts)
     expect(getSession).toHaveBeenCalledWith(undefined, 'WRITE')
+    // Its outer transaction lasts the whole purge: it runs in the maintenance scope, not under the server's 120 s.
+    expect(scope.depthAt.get(purge.cypher)).toBe(1)
+    expect(scope.entered.at(-1)).toEqual({ readTimeoutMs: 7_200_000, writeTimeoutMs: 7_200_000 })
 
     vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
     onCypher([[Q.purge, null]])

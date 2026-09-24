@@ -215,18 +215,26 @@ describe('queues, database and process', () => {
     expect(within(row('notifications')).getByText('0')).not.toHaveStyle({ color: 'var(--color-danger)' })
   })
 
-  it('shows the database figures and its slow queries with duration and time', () => {
+  it('shows the database figures and its slow queries with what asked for them, duration and time', () => {
     apolloFinto.risposte['GetSystemMetrics'] = metrics({}, {
       neo4j: { totalQueries: 1234, averageQueryMs: 4.56, connectionPoolActive: 2, connectionPoolIdle: 8,
-        slowQueries: [{ query: 'MATCH (n:Incident) RETURN n', durationMs: 812.4, timestamp: '2026-09-01T08:30:00Z' }] },
+        slowQueries: [
+          { query: 'MATCH (n:Incident) RETURN n', durationMs: 812.4, timestamp: '2026-09-01T08:30:00Z', operation: 'GetIncidents' },
+          { query: 'MATCH (s:SLAStatus) RETURN s', durationMs: 640, timestamp: '2026-09-01T08:31:00Z', operation: null },
+        ] },
     })
     mount()
     expect(valueOf('Total Queries')).toHaveTextContent('1234')
     expect(valueOf('Avg Query Time')).toHaveTextContent('4.6ms')
     expect(screen.getByText('Slow Queries (>500ms)')).toBeInTheDocument()
     const slow = screen.getByText('MATCH (n:Incident) RETURN n').closest('tr')!
+    // The page's operation says where to look (wave 7 · A2).
+    expect(within(slow).getByText('GetIncidents')).toBeInTheDocument()
     expect(within(slow).getByText('812ms')).toBeInTheDocument()
     expect(within(slow).getByText('10:30:00')).toBeInTheDocument()
+    // A query with no operation shows just the query.
+    const other = screen.getByText('MATCH (s:SLAStatus) RETURN s').closest('td')!
+    expect(other.children).toHaveLength(0)
   })
 
   it('without slow queries, there is no slow-query table', () => {

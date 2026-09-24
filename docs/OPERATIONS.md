@@ -31,18 +31,29 @@ Garanzie (D-08):
 
 - **Consistenza**: nodi e relazioni sono letti in streaming da **una sola
   transazione read** (niente `SKIP/LIMIT` su sessioni separate, che sotto
-  scritture concorrenti saltava o duplicava righe senza errori).
+  scritture concorrenti saltava o duplicava righe senza errori). La
+  transazione porta il limite di manutenzione (2 ore), non i 120 s del
+  database: il 24 set 2026 la lettura di 4,8 milioni di nodi è durata 98 s
+  (§9 «Query fermate dai limiti del database»).
 - **Pubblicazione fail-loud**: l'archivio è scritto come
   `backup_<stamp>.tar.gz.partial` e rinominato in `.tar.gz` solo se le righe
-  scritte stanno fra il conteggio letto prima degli stream e quello letto
-  dopo, nella stessa transazione. Una transazione di lettura di Neo4j è
-  «read committed», non un'istantanea: le scritture che altri committano
-  mentre gli stream girano (log, audit, monitoraggio) si vedono, e con un
-  conteggio solo bastava un nodo in più per scartare il backup notturno
-  (18 set 2026). Uno stream troncato resta fuori dall'intervallo ed è
-  rifiutato; se il grafo è cambiato durante il backup il log lo dice
-  (`The graph changed while the backup was running`). Un `.partial` non è mai
-  un backup valido.
+  scritte tornano con i due conteggi letti prima e dopo gli stream, nella
+  stessa transazione. Una transazione di lettura di Neo4j è «read
+  committed», non un'istantanea: le scritture che altri committano mentre
+  gli stream girano (log, audit, monitoraggio) si vedono. Con un conteggio
+  solo bastava un nodo in più per scartare il backup notturno (18 set 2026).
+  Nemmeno «fra i due conteggi» basta: un legame cancellato prima che lo
+  stream ci arrivi e uno creato dopo che lo stream è passato lasciano
+  l'archivio uno sotto a **tutti e due** i conteggi, senza aver perso nulla
+  (24 set 2026: 4.978.496 relazioni scritte, 4.978.497 prima e 4.978.499
+  dopo, backup del demo rifiutato). Per questo l'intervallo ha una
+  tolleranza: un millesimo del conteggio, almeno 100
+  (`LIVE_CHANGE_TOLERANCE`). Uno stream che ha perso una parte vera del
+  grafo resta fuori ed è rifiutato. Una differenza dentro la tolleranza
+  finisce nel log (`What was written lies outside the two counts…`) e nel
+  manifest (`graph_counts`: scritte, prima, dopo). Se il grafo è cambiato
+  durante il backup il log lo dice (`The graph changed while the backup
+  was running`). Un `.partial` non è mai un backup valido.
 - **Keycloak**: se non risponde o l'autenticazione admin fallisce il backup
   **fallisce**. Per saltarlo consapevolmente: `--skip-keycloak` (CLI) o
   `BACKUP_SKIP_KEYCLOAK=true` (worker); il manifest lo registra.
@@ -488,7 +499,8 @@ dice quale dipendenza è giù.
 **Backup notturno fallito** (log `Backup verification FAILED` o job fallito)
 - Guardare i `problems` nel log; l'archivio è rinominato `.invalid`
   (verifica fallita) o lasciato `.partial` (righe scritte fuori
-  dall'intervallo dei due conteggi: uno stream interrotto).
+  dall'intervallo dei due conteggi più della tolleranza: uno stream
+  interrotto).
 - Rilanciare a mano `backup-neo4j` + `verify-backup`; se il problema è
   Keycloak, risolverlo o `--skip-keycloak` per non restare senza backup del grafo.
 
@@ -1859,6 +1871,47 @@ valutazioni in attesa, marcatori di idempotenza.
   anche in quel momento resta la sola riga di log e il job fallito.
 - Dopo un restore (§2) o un `--force-recreate` del container: `migrate
   --init-schema` è idempotente e sicuro.
+
+### Query fermate dai limiti del database
+
+Dal 24 set 2026 (ondata 7 · A2) Neo4j ferma da solo una transazione che dura
+più di **120 s** o che occupa più di **1 GB** di memoria
+(`NEO4J_db_transaction_timeout`, `NEO4J_db_memory_transaction_max` nel
+compose). Una query impazzita si ferma lì e non tiene fermo il database di
+tutti i clienti. Due tipi di lavoro portano un limite loro, che prende il posto
+di quello del server (`packages/neo4j/src/queryScope.ts`):
+
+| Lavoro | Limite di tempo |
+|---|---|
+| Le letture di una pagina (una richiesta GraphQL) | 30 s |
+| Le scritture di una pagina, i job | 120 s (quello del server) |
+| Manutenzione: gli script (`runScript`), le migrazioni, `initSchema`, i job della coda `maintenance` (backup, pulizie), la cancellazione di un tenant, la pulizia del demo, le passate `IN TRANSACTIONS` | 2 ore |
+
+Il limite di memoria vale per tutti: un client non può alzarlo. Il backup
+legge in streaming e non lo tocca. Le cancellazioni e il ripristino lavorano a
+lotti.
+
+Una query fermata si vede in tre posti:
+
+- **chi usa la pagina** legge «Il database ha fermato la richiesta perché
+  richiedeva troppo tempo / troppa memoria (riferimento …)» invece dell'errore
+  interno generico;
+- **nel log** c'è la riga `Neo4j query stopped at the database limit`, con
+  il tenant, l'operazione GraphQL o il job, il modo e il testo della query.
+  Porta `tenantId`, quindi compare anche nella pagina Log di quel cliente.
+  Le query più lente di 5 s, anche se non vengono fermate, lasciano la riga
+  `Slow Neo4j query`;
+- **nelle metriche**: `neo4j_query_limit_hits_total{limit,tenant}` sale e
+  scatta l'allarme `Neo4jQueriesStoppedAtLimit`.
+  `neo4j_query_duration_seconds{mode,tenant}` ha i bucket fino a 30 s e 120 s:
+  una query che si avvicina al limite si vede prima di toccarlo.
+
+Cosa fare: dalla riga di log si risale all'operazione e alla query. Se è
+una pagina, di solito le manca un filtro o un indice. Se è un job che deve
+davvero durare di più, è lavoro di manutenzione e va dentro
+`runInQueryScope(MAINTENANCE_SCOPE, …)`. Un'istruzione lunga per costruzione
+(`IN TRANSACTIONS`, `db.awaitIndexes`, la lettura di tutto il grafo) porta
+`MAINTENANCE_TX_CONFIG`: un guardiano lo verifica.
 
 ### Job falliti: cosa si rigioca e cosa no
 

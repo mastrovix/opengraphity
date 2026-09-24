@@ -155,6 +155,12 @@ describe('systemMetrics e traceInfo', () => {
     expect(getGraphQLMetrics).toHaveBeenLastCalledWith('t1')
   })
 
+  it('so are the database figures and the slow queries (wave 7 · A2)', async () => {
+    const { getNeo4jMetrics } = await import('../../../middleware/metrics.js')
+    await R.Query.systemMetrics(null, null, ADMIN)
+    expect(getNeo4jMetrics).toHaveBeenLastCalledWith('t1')
+  })
+
   it('and so are the queues: every tenant has its own since 23 Sep 2026', async () => {
     const { getQueueMetricsSnapshot } = await import('../../../middleware/metrics.js')
     await R.Query.systemMetrics(null, null, ADMIN)

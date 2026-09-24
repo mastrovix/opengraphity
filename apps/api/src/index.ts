@@ -22,7 +22,7 @@ import { AutomationConsumer } from './consumers/automationConsumer.js'
 import { ServiceImpactConsumer } from './consumers/serviceImpactConsumer.js'
 import { closeConnection } from '@opengraphity/events'
 import { closeDriver, registerSessionTracker } from '@opengraphity/neo4j'
-import { neo4jQueryDurationSeconds, recordSlowQuery, startBullMQMetricsCollector } from './middleware/metrics.js'
+import { startBullMQMetricsCollector, trackNeo4jQuery } from './middleware/metrics.js'
 import { getAllQueues, getQueue, getTenantQueue, closeAllQueues } from './lib/bullmq.js'
 import { PLATFORM_QUEUE_NAMES, TENANT_QUEUE_BASES } from './lib/queueRegistry.js'
 import { startTenantQueueLifecycle, stopTenantQueueLifecycle, tenantsWithQueues } from './lib/tenantQueueLifecycle.js'
@@ -39,10 +39,7 @@ import { startMetamodelBus, stopMetamodelBus } from './lib/metamodelBus.js'
 import './lib/notificationRuleCache.js'
 
 // Instrument every Neo4j session.run() — covers all 400+ call sites
-registerSessionTracker((durationMs, query) => {
-  neo4jQueryDurationSeconds.observe({ operation: 'QUERY' }, durationMs / 1000)
-  if (durationMs > 500) recordSlowQuery(query || 'unknown', durationMs)
-})
+registerSessionTracker(trackNeo4jQuery)
 import { startReportScheduler } from './jobs/reportScheduler.js'
 import { startAnomalyScanner } from './anomaly/anomalyEngine.js'
 import { startProposalScanner } from './jobs/proposalScanner.js'

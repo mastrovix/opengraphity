@@ -1,4 +1,5 @@
 export * from './driver.js'
+export * from './queryScope.js'
 export * from './query.js'
 export * from './migrations.js'
 export { initSchema, GLOBAL_SEARCH_LABELS, GLOBAL_SEARCH_PROPERTIES, type InitSchemaOptions } from './init.js'

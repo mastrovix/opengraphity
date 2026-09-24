@@ -38,7 +38,7 @@ import type { WriteStream }                from 'node:fs'
 import type { Result, Session }            from 'neo4j-driver'
 import neo4j                               from 'neo4j-driver'
 import pino                                from 'pino'
-import { getDriver, toNative }             from '@opengraphity/neo4j'
+import { getDriver, MAINTENANCE_TX_CONFIG, toNative } from '@opengraphity/neo4j'
 import { createKeycloakAdmin, keycloakConfigFromEnv, type KeycloakAdminConfig } from './lib/keycloakAdmin.js'
 import {
   MANIFEST_FILE, NODES_FILE, RELS_FILE, ATTACHMENTS_TAR, KEYCLOAK_DIR, MANIFEST_FORMAT,
@@ -139,24 +139,63 @@ interface GraphExport {
 }
 
 /**
- * Whether what was written is the whole graph (tour of 23 Sep 2026, D60).
+ * Whether what was written is the whole graph (tour of 23 Sep 2026, D60;
+ * 24 Sep 2026).
  *
  * The check compared the lines written with a count taken at the start of the
  * same transaction, assuming a transaction sees a frozen graph. Neo4j gives
  * «read committed»: a write committed by someone else while the streams run
  * is visible to them. On a live installation — logs, audit, monitoring —
  * one node more was enough to refuse the nightly backup (18 Sep: 291,049
- * written, 291,048 counted). What must hold is that nothing was lost: the
- * lines written lie between the count before and the count after. A
- * truncated stream still falls outside and is refused.
+ * written, 291,048 counted).
+ *
+ * «Between the count before and the count after», the rule that followed,
+ * does not hold either. A relationship deleted during the export before the
+ * stream reached it, and another created after the stream passed its place,
+ * leave the archive one short of BOTH counts, with nothing lost — the missing
+ * one was deleted. That refused the nightly backup of 24 Sep 2026, the first
+ * one with the demo tenant: 4,978,496 relationships written, 4,978,497
+ * counted before and 4,978,499 after. The lines written can fall outside the
+ * range by as many replacements (a deletion and a creation while the stream
+ * runs) as there were, and read committed offers no way to count them.
+ *
+ * So the range gets a tolerance, LIVE_CHANGE_TOLERANCE: what the check still
+ * refuses is a stream that lost a real part of the graph. A difference within
+ * the tolerance is not silent: runBackup logs it and the manifest records
+ * the three numbers (`graph_counts`).
  */
-export function graphCountProblems(g: Pick<GraphExport, 'nodeCount' | 'relCount' | 'dbNodeCount' | 'dbRelCount' | 'dbNodeCountAfter' | 'dbRelCountAfter'>): string[] {
+export const LIVE_CHANGE_TOLERANCE = { ratio: 0.001, min: 100 } as const
+
+type GraphCounts = Pick<GraphExport, 'nodeCount' | 'relCount' | 'dbNodeCount' | 'dbRelCount' | 'dbNodeCountAfter' | 'dbRelCountAfter'>
+
+/** How far `written` lies outside the two counts; 0 inside. */
+function outsideCounts(written: number, before: number, after: number): number {
+  const lo = Math.min(before, after)
+  const hi = Math.max(before, after)
+  return written < lo ? lo - written : written > hi ? written - hi : 0
+}
+
+/** The difference a live graph explains for a count this size. */
+export function liveChangeTolerance(before: number, after: number): number {
+  return Math.max(LIVE_CHANGE_TOLERANCE.min, Math.ceil(LIVE_CHANGE_TOLERANCE.ratio * Math.max(before, after)))
+}
+
+/** How far the nodes and the relationships written lie outside their two counts. */
+export function graphCountDrift(g: GraphCounts): { nodes: number; rels: number } {
+  return {
+    nodes: outsideCounts(g.nodeCount, g.dbNodeCount, g.dbNodeCountAfter),
+    rels:  outsideCounts(g.relCount, g.dbRelCount, g.dbRelCountAfter),
+  }
+}
+
+export function graphCountProblems(g: GraphCounts): string[] {
   const problems: string[] = []
   const check = (what: string, written: number, before: number, after: number) => {
-    const lo = Math.min(before, after)
-    const hi = Math.max(before, after)
-    if (written < lo || written > hi) {
-      problems.push(`${what}: ${String(written)} written, ${before === after ? String(before) : `between ${String(lo)} and ${String(hi)}`} counted in the same transaction`)
+    const allowed = liveChangeTolerance(before, after)
+    if (outsideCounts(written, before, after) > allowed) {
+      const lo = Math.min(before, after)
+      const hi = Math.max(before, after)
+      problems.push(`${what}: ${String(written)} written, ${before === after ? String(before) : `between ${String(lo)} and ${String(hi)}`} counted in the same transaction (a live graph explains up to ${String(allowed)})`)
     }
   }
   check('nodes', g.nodeCount, g.dbNodeCount, g.dbNodeCountAfter)
@@ -219,8 +258,10 @@ async function exportGraph(session: Session, stagingDir: string, log: BackupLogg
 
   // One explicit READ transaction for counts + both streams: every row comes
   // from the same transactional view, in whatever order the store yields it
-  // (no pagination, so no ordering assumption at all).
-  const tx = session.beginTransaction()
+  // (no pagination, so no ordering assumption at all). It reads the whole
+  // graph — 98 s for 4.8 million nodes on 24 Sep 2026 — so it carries the
+  // maintenance limit, not the server's 120 s (queryScope.ts in @opengraphity/neo4j).
+  const tx = session.beginTransaction(MAINTENANCE_TX_CONFIG)
   const countGraph = async (): Promise<{ nodes: number; rels: number }> => {
     const counts = await tx.run(cypher.count, params)
     const c = counts.records[0]
@@ -401,6 +442,10 @@ export async function runBackup(opts: BackupOptions): Promise<BackupResult> {
       keycloak,
       scope:          { tenant },
       endpoint_nodes_added: graph.endpointNodes,
+      graph_counts: {
+        nodes: { written: graph.nodeCount, before: graph.dbNodeCount, after: graph.dbNodeCountAfter },
+        rels:  { written: graph.relCount, before: graph.dbRelCount, after: graph.dbRelCountAfter },
+      },
     }
     await writeFile(join(stagingDir, MANIFEST_FILE), JSON.stringify(manifest, null, 2), 'utf8')
 
@@ -410,6 +455,11 @@ export async function runBackup(opts: BackupOptions): Promise<BackupResult> {
     const problems = graphCountProblems(graph)
     if (problems.length) {
       throw new Error(`Backup NOT published (left as ${basename(partial)}): ${problems.join('; ')}`)
+    }
+    const drift = graphCountDrift(graph)
+    if (drift.nodes > 0 || drift.rels > 0) {
+      log.warn({ ...manifest.graph_counts, outside: drift },
+        'What was written lies outside the two counts by less than a live graph explains (data replaced while the backup ran): published')
     }
     await rename(partial, archive)
 

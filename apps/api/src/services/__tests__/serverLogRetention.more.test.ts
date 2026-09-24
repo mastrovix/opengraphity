@@ -19,12 +19,12 @@ const h = vi.hoisted(() => {
   const state = {
     counts: { server: 0, browser: 0 } as { server: unknown; browser: unknown },
     failWrite: false,
-    runs: [] as Array<{ mode: string; cypher: string; params: Record<string, unknown> }>,
+    runs: [] as Array<{ mode: string; cypher: string; params: Record<string, unknown>; txConfig?: unknown }>,
     closed: [] as string[],
   }
   const getSession = (_db: unknown, mode: string) => ({
-    run: async (cypher: string, params: Record<string, unknown>) => {
-      state.runs.push({ mode, cypher, params })
+    run: async (cypher: string, params: Record<string, unknown>, txConfig?: unknown) => {
+      state.runs.push({ mode, cypher, params, txConfig })
       if (cypher.includes('RETURN count(l) AS n')) {
         const n = cypher.includes(':ServerLogEntry') ? state.counts.server : state.counts.browser
         return { records: n === undefined ? [] : [{ get: (k: string) => (k === 'n' ? n : undefined) }] }
@@ -39,6 +39,7 @@ const h = vi.hoisted(() => {
 
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: h.getSession,
+  MAINTENANCE_TX_CONFIG: { timeout: 7_200_000 },
   toNumber: (v: unknown) => (typeof v === 'object' && v !== null && 'toNumber' in v ? (v as { toNumber(): number }).toNumber() : Number(v)),
 }))
 
@@ -76,6 +77,8 @@ describe('purgaIRegistriDeiLog', () => {
     // The server registry dates by day, the browser one by full instant.
     expect(writes()[0]!.params).toEqual({ limiteGiorno: '2026-06-22' })
     expect(writes()[1]!.params).toEqual({ limite: '2026-06-22T12:00:00.000Z' })
+    // `IN TRANSACTIONS` lasts the whole purge: both deletes carry the maintenance limit (wave 7 · A2).
+    expect(writes().map((w) => w.txConfig)).toEqual([{ timeout: 7_200_000 }, { timeout: 7_200_000 }])
     // Both counting sessions and the write session are released.
     expect(h.state.closed.sort()).toEqual(['READ', 'READ', 'WRITE'])
   })

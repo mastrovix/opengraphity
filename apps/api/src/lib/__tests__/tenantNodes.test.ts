@@ -5,11 +5,18 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const calls: Array<{ q: string; p: Record<string, unknown> }> = []
+const calls: Array<{ q: string; p: Record<string, unknown>; inMaintenance: boolean }> = []
 const counts: Record<string, number> = {}
+// The maintenance scope, recorded (wave 7 · A2): each deletion must run inside it.
+const scope = vi.hoisted(() => ({ depth: 0 }))
 vi.mock('@opengraphity/neo4j', () => ({
+  MAINTENANCE_SCOPE: { readTimeoutMs: 7_200_000, writeTimeoutMs: 7_200_000 },
+  runInQueryScope: async (_s: unknown, fn: () => Promise<unknown>) => {
+    scope.depth++
+    try { return await fn() } finally { scope.depth-- }
+  },
   runQuery: vi.fn(async (_s: unknown, q: string, p: Record<string, unknown>) => {
-    calls.push({ q, p })
+    calls.push({ q, p, inMaintenance: scope.depth > 0 })
     if (q.includes('CALL db.labels()')) return [{ label: 'Incident' }, { label: 'User' }, { label: 'We`ird' }]
     const label = /MATCH \(n:`((?:[^`]|``)+)`/.exec(q)?.[1]?.replace(/``/g, '`') ?? ''
     return [{ n: counts[label] ?? 0 }]
@@ -48,6 +55,8 @@ describe('deleteTenantNodes', () => {
       expect(d.q).toMatch(/MATCH \(n:`[^{]+` \{tenant_id: \$tenantId\}\)/)
       expect(d.q).toContain('IN TRANSACTIONS OF 1000 ROWS')
       expect(d.p).toEqual({ tenantId: 'acme' })
+      // The console's purge is a request, and the outer transaction lasts the whole label: the maintenance limit.
+      expect(d.inMaintenance).toBe(true)
     }
     expect(calls.some((c) => c.q.includes('MATCH (n {'))).toBe(false)
   })

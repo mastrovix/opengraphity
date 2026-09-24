@@ -3,7 +3,8 @@
 #   http_requests_total{method,route,status_code}          counter
 #   http_request_duration_seconds{method,route}            histogram
 #   graphql_resolver_duration_seconds{resolver}            histogram
-#   neo4j_query_duration_seconds{operation}                histogram
+#   neo4j_query_duration_seconds{mode,tenant}             histogram (mode = READ | WRITE; tenant '' = platform work)
+#   neo4j_query_limit_hits_total{limit,tenant}            counter (time | memory: stopped at the database's limit)
 #   bullmq_queue_depth{queue,tenant,status}                gauge (30s sampling, api only: every queue of lib/queueRegistry.ts;
 #                                                                a tenant queue once per tenant, `tenant` absent on platform queues)
 #   opengrafo_backup_runs_total{result}                    counter (ok | backup_failed | verify_failed)

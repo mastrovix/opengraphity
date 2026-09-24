@@ -127,6 +127,8 @@ function makeSchema(extraField?: string): GraphQLSchema {
         hello: String
         whoami: String
         logTenant: String
+        queryScope: String
+        timedOut: String
         forbidden: String
         boom: String
         driver: String
@@ -139,6 +141,8 @@ function makeSchema(extraField?: string): GraphQLSchema {
         hello: () => 'world',
         whoami: (_: unknown, __: unknown, ctx: { tenantId: string }) => ctx.tenantId,
         logTenant: async () => (await import('../lib/logTenantScope.js')).currentLogTenant(),
+        queryScope: async () => JSON.stringify((await import('@opengraphity/neo4j')).currentQueryScope()),
+        timedOut: () => { throw Object.assign(new DriverError('The transaction has been terminated.'), { code: 'Neo.ClientError.Transaction.TransactionTimedOutClientConfiguration' }) },
         forbidden: () => { throw new GraphQLError('Not allowed', { extensions: { code: 'FORBIDDEN' } }) },
         boom: () => { throw new Error('kaboom') },
         driver: () => { throw new DriverError('Expected parameter(s): tenantId') },
@@ -215,6 +219,29 @@ describe('per-tenant GraphQL routing', () => {
     expect(await res.json()).toEqual({ data: { whoami: 't-one', logTenant: 't-one' } })
     expect(buildContext).toHaveBeenCalledTimes(1)
     expect(schemaCache.getSchemaState).toHaveBeenCalledWith('t-one')
+  })
+
+  /*
+   * Wave 7 · A2: a page's reads stop at 30 s, and its queries say whom they
+   * are for — the tenant and the operation — for the slow-query panel and
+   * the metrics of that tenant.
+   */
+  it('the request runs in a query scope: 30 s reads, its tenant and its operation', async () => {
+    const res = await fetch(`${base}/graphql`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-tenant': 't-one' },
+      body: JSON.stringify({ query: 'query WhoAsks { queryScope }', operationName: 'WhoAsks' }),
+    })
+    const body = await res.json() as { data: { queryScope: string } }
+    expect(JSON.parse(body.data.queryScope)).toEqual({ readTimeoutMs: 30_000, tenantId: 't-one', operation: 'WhoAsks' })
+    const anonymous = await (await gql('t-one', '{ queryScope }')).json() as { data: { queryScope: string } }
+    expect(JSON.parse(anonymous.data.queryScope)).toMatchObject({ operation: 'anonymous' })
+  })
+
+  it('a query the database stopped at its time limit tells the person to narrow it, not «internal error»', async () => {
+    const body = await (await gql('t-one', '{ timedOut }')).json() as { errors: Array<{ message: string; extensions: { i18n: { key: string } } }> }
+    expect(body.errors[0]!.extensions.i18n.key).toBe('errors.queryTimeout')
+    expect(body.errors[0]!.message).toMatch(/^The database stopped this request because it took too long \(reference [0-9a-f]{8}\)/)
   })
 
   it('a field that exists only in one tenant schema is not visible to another tenant', async () => {

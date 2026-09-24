@@ -31,7 +31,7 @@
  * mancante/corrotta, query fallita, workflow senza passo resolved) non ferma
  * gli altri ma fa fallire il job.
  */
-import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
+import { getSession, MAINTENANCE_SCOPE, runInQueryScope, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { logger } from '../lib/logger.js'
 import { getWorkflowSteps } from '../lib/workflowHelpers.js'
 import { eventsPurgedTotal } from '../middleware/metrics.js'
@@ -87,7 +87,9 @@ export async function purgeTenantResolvedEvents(tenantId: string, cutoff: string
     // `CALL { … } IN TRANSACTIONS` vuole una sessione auto-commit (session.run,
     // mai dentro executeWrite): ogni batch è una transazione propria, e il
     // riepilogo sul padre viene scritto nello stesso batch della cancellazione.
-    const row = await runQueryOne<{ n: unknown }>(session, `
+    // Its outer transaction lasts the whole purge: the maintenance limit, not
+    // the server's 120 s (queryScope.ts in @opengraphity/neo4j).
+    const row = await runInQueryScope(MAINTENANCE_SCOPE, () => runQueryOne<{ n: unknown }>(session, `
       MATCH (e:Event {tenant_id: $tenantId, status: 'resolved'})
       WHERE e.resolved_at IS NOT NULL AND e.resolved_at < $cutoff
         AND NOT EXISTS {
@@ -112,7 +114,7 @@ export async function purgeTenantResolvedEvents(tenantId: string, cutoff: string
         DETACH DELETE e
       } IN TRANSACTIONS OF ${PURGE_BATCH_SIZE} ROWS
       RETURN count(*) AS n
-    `, { tenantId, cutoff, closedIncidentSteps: closed.incident, closedChangeSteps: closed.change })
+    `, { tenantId, cutoff, closedIncidentSteps: closed.incident, closedChangeSteps: closed.change }))
     return toNumber(row?.n)
   } finally { await session.close() }
 }

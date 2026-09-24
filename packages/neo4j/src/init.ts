@@ -1,6 +1,7 @@
 import { pathToFileURL } from 'node:url'
 import { getDriver, closeDriver } from './driver.js'
 import { runMigrations, type Migration } from './migrations.js'
+import { MAINTENANCE_SCOPE, runInQueryScope } from './queryScope.js'
 import neo4j from 'neo4j-driver'
 
 interface SchemaStatement {
@@ -869,8 +870,16 @@ async function markCountersSeeded(): Promise<void> {
  * Prechecks, constraints, indexes, counter seeds, then the given migrations.
  * Throws on the first failure (the schema is then NOT fully initialised).
  * Does not close the driver.
+ *
+ * All of it is maintenance (queryScope.ts): a constraint on a label with
+ * millions of nodes is verified in its transaction, and the counter seeds
+ * scan every ticket — the server's 120 s would stop them half way.
  */
-export async function initSchema(opts: InitSchemaOptions = {}): Promise<void> {
+export function initSchema(opts: InitSchemaOptions = {}): Promise<void> {
+  return runInQueryScope(MAINTENANCE_SCOPE, () => initSchemaSteps(opts))
+}
+
+async function initSchemaSteps(opts: InitSchemaOptions): Promise<void> {
   const log = opts.log ?? ((m: string) => console.log(m))
   log('[neo4j:init] Starting schema initialisation...')
   await runPrechecks()

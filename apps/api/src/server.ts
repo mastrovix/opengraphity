@@ -1,6 +1,8 @@
 import express, { type Application, type Request, type Response, type NextFunction } from 'express'
 import { auditMutationsPlugin } from './graphql/auditMutationsPlugin.js'
 import { runInLogTenantScope } from './lib/logTenantScope.js'
+import { graphqlOperationName } from './lib/graphqlOperationName.js'
+import { PAGE_READ_TIMEOUT_MS, runInQueryScope } from '@opengraphity/neo4j'
 import { runInAuditScope } from './lib/auditScope.js'
 import cors from 'cors'
 import helmet from 'helmet'
@@ -560,7 +562,10 @@ export async function startServer(): Promise<http.Server> {
         // lo legge il registro delle mutation per non scriverne una seconda.
         // Di chi è ogni riga di log scritta da qui in poi (lib/logTenantScope.ts):
         // senza, la pagina Log di un cliente mostrava le righe di tutti.
-        runInLogTenantScope(ctx.tenantId, () => runInAuditScope(() => handler(req, res, next)))
+        // The page's reads stop at 30 s, and its queries say whom they are for
+        // (wave 7 · A2, queryScope.ts in @opengraphity/neo4j).
+        const queryScope = { readTimeoutMs: PAGE_READ_TIMEOUT_MS, tenantId: ctx.tenantId, operation: graphqlOperationName(req.body) }
+        runInQueryScope(queryScope, () => runInLogTenantScope(ctx.tenantId, () => runInAuditScope(() => handler(req, res, next))))
       } catch (err) {
         next(err)
       }

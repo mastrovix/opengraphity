@@ -46,6 +46,16 @@ services:
       NEO4J_server_memory_heap_initial__size: 1G
       NEO4J_server_memory_heap_max__size: 3G
       NEO4J_server_memory_pagecache_size: 1G
+      # The database's own limits on a transaction (review of 23 Sep 2026,
+      # wave 7 · A2, values decided by the owner on 24 Sep): a runaway query
+      # stops instead of holding the database of every tenant. 1 GB is a third
+      # of the heap. The API sends shorter limits for a page's reads (30 s)
+      # and longer ones for maintenance — backup, restore, migrations, purges —
+      # and a limit sent by the client replaces this one (queryScope.ts in
+      # packages/neo4j). The memory limit cannot be raised by a client:
+      # maintenance streams its reads and writes in batches.
+      NEO4J_db_transaction_timeout: 120s
+      NEO4J_db_memory_transaction_max: 1g
     mem_limit: 5g
     volumes:
       - neo4j_data:/data

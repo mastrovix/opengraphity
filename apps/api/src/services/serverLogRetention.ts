@@ -23,7 +23,7 @@
  * dire riempire la heap di Neo4j e far cadere tutto il resto. Per lo stesso
  * motivo serve una sessione in **auto-commit**.
  */
-import { getSession, toNumber } from '@opengraphity/neo4j'
+import { getSession, MAINTENANCE_TX_CONFIG, toNumber } from '@opengraphity/neo4j'
 import neo4j from 'neo4j-driver'
 import { logger } from '../lib/logger.js'
 
@@ -107,8 +107,9 @@ export async function purgaIRegistriDeiLog(adessoMs: number = Date.now()): Promi
 
   const session = getSession(undefined, neo4j.session.WRITE)
   try {
-    if (daTogliere.server > 0)  await session.run(PURGA_SERVER_CYPHER,  { limiteGiorno })
-    if (daTogliere.browser > 0) await session.run(PURGA_BROWSER_CYPHER, { limite })
+    // `IN TRANSACTIONS`: the outer transaction lasts the whole purge, past the server's 120 s.
+    if (daTogliere.server > 0)  await session.run(PURGA_SERVER_CYPHER,  { limiteGiorno }, MAINTENANCE_TX_CONFIG)
+    if (daTogliere.browser > 0) await session.run(PURGA_BROWSER_CYPHER, { limite }, MAINTENANCE_TX_CONFIG)
   } finally {
     await session.close()
   }
