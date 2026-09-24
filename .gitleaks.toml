@@ -5,6 +5,10 @@
 # placeholders and local-stack defaults that are not secrets. Anything that
 # looks like a real credential (JWT, private key, cloud/API token) must be
 # removed from the history and rotated, not added here.
+#
+# Single findings in the history, one by one with their reason, are in
+# .gitleaksignore (24 Sep 2026: three test values, and one legacy JWT that
+# was already dead — expired, its signing secret replaced, legacy tokens off).
 title = "OpenGraphity gitleaks config"
 
 [extend]

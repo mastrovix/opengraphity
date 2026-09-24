@@ -1,0 +1,21 @@
+# Known gitleaks findings in the history, each with its reason (24 Sep 2026).
+#
+# A push or a pull request scans only its own commits; a run by hand
+# (workflow_dispatch) scans the whole history and met these four, all in
+# commits already on main. Format: commit:file:rule:line (the Fingerprint
+# gitleaks prints).
+
+# Test values, not secrets: a generated password asserted by a test
+# ('Pw-generata-123') and a fixed 32-hex signing secret for the Slack tests.
+8fbcbe4df7bd487987060f6c4dc5ef85c9b2bec7:apps/api/src/lib/__tests__/tenantLifecycle.test.ts:generic-api-key:270
+f6fd7fed26c25eafb3b40124f3a74a6304e8644d:apps/web/src/pages/admin/SlackSection.test.tsx:generic-api-key:33
+f6fd7fed26c25eafb3b40124f3a74a6304e8644d:apps/api/src/rest/__tests__/slackSignature.test.ts:generic-api-key:193
+
+# A real token, and a dead one: a legacy HS256 JWT written in a seed script
+# on 10 Mar 2026 (8b745b4f), the file deleted on 8 Sep (b5f237ea). It expired
+# on 9 Mar 2026; the JWT_SECRET in use today does not verify its signature
+# (checked on 24 Sep without printing either); and the API refuses every
+# legacy token (ALLOW_LEGACY_JWT=false). The owner chose to keep the history
+# rather than rewrite main: a new credential found in the history is still
+# removed and rotated, never listed here (.gitleaks.toml).
+8b745b4fd3ccb41e10dfd2a67387158d6742d13a:apps/api/src/scripts/seed-cmdb.ts:jwt:1
