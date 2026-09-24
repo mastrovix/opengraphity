@@ -12,6 +12,7 @@ import { GraphQLObjectType } from 'graphql'
 import { CUSTOM_FIELD_NAME_RE, customFieldNameReserved, isTicketCustomFieldEntityType } from '@opengraphity/types'
 import { ValidationError } from './errors.js'
 import { TICKET_LABELS } from './ticketCustomFields.js'
+import { getSchemaForTenant } from './tenantSchema.js'
 
 const toSnake = (s: string): string => s.replace(/[A-Z]/g, (l) => `_${l.toLowerCase()}`)
 
@@ -24,7 +25,6 @@ export async function assertCustomFieldName(session: Session, tenantId: string, 
     )
   }
   const label = TICKET_LABELS[entityType]
-  const { getSchemaForTenant } = await import('./schemaCache.js')
   const type = (await getSchemaForTenant(tenantId)).getType(label)
   const apiFields = type instanceof GraphQLObjectType ? Object.keys(type.getFields()).map(toSnake) : []
   if (customFieldNameReserved(name, entityType) || apiFields.includes(name)) {

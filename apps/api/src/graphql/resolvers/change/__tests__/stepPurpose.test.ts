@@ -60,13 +60,13 @@ vi.mock('@opengraphity/workflow', () => ({
 const transition = vi.hoisted(() => vi.fn())
 vi.mock('../../../../services/ticketTransition.js', () => ({ transitionTicket: transition }))
 vi.mock('../queries.js', () => ({ change: vi.fn(async () => ({ id: 'chg-1' })) }))
-vi.mock('../autoTransitions.js', () => ({ evaluateAutoTransitions: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('../helpers.js', () => ({
+vi.mock('../../../../services/change/autoTransitions.js', () => ({ evaluateAutoTransitions: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('../../../../services/change/helpers.js', () => ({
   afterEnterStep: vi.fn().mockResolvedValue(undefined),
   getInstanceId:  vi.fn().mockResolvedValue('wi-1'),
   writeAudit:     vi.fn().mockResolvedValue(undefined),
 }))
-vi.mock('../approvalCreation.js', () => ({ areAllApprovalsSatisfied: vi.fn().mockResolvedValue(true) }))
+vi.mock('../../../../services/change/approvalCreation.js', () => ({ areAllApprovalsSatisfied: vi.fn().mockResolvedValue(true) }))
 // Ondata 7: il rifiuto riscrive la priorità dalla matrice del cliente. Qui si
 // misurano i PASSI, non la priorità: il doppio risponde con la matrice di
 // fabbrica (lib/__tests__/domainMatrixFake.ts).
@@ -77,7 +77,7 @@ vi.mock('../../../../lib/logger.js', () => ({
 
 const { runQueryOne } = await import('../../ci-utils.js')
 const { workflowEngine } = await import('@opengraphity/workflow')
-const { afterEnterStep } = await import('../helpers.js')
+const { afterEnterStep } = await import('../../../../services/change/helpers.js')
 const { approveChangeApproval, rejectChangeApproval } = await import('../approvalGate.js')
 const { invalidateWorkflowCache } = await import('../../../../lib/workflowHelpers.js')
 const { targetStepByPurpose, targetStepByCategory, stepNamesByCategory, stepNamesByPurposeOrdered } =

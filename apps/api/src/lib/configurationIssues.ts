@@ -47,10 +47,10 @@ import { formFieldsWithFormula } from './catalogForm.js'
 import { PORTAL_SEVERITY_VOCABULARY, portalSeverityOptions } from './portalSeverityOptions.js'
 import { catalogItemsWithLegacyCategory, catalogItemsWithoutFulfillmentTeam, catalogItemsWithoutPriority } from './catalogItemPriority.js'
 import { tenantInAppRetentionDays } from './tenantInAppRetention.js'
-import { getSchemaState } from './schemaCache.js'
+import { getSchemaState } from './tenantSchema.js'
 import { ENTITY_NEO4J_LABELS } from '@opengraphity/types'
 import { TASK_STATE } from './ticketTasks.js'
-import { runQuery } from '../graphql/resolvers/ci-utils.js'
+import { runQuery } from './db.js'
 
 /**
  * Le coppie «tipo dichiarato :: etichetta Neo4j» ammesse per un compito,

@@ -5,7 +5,7 @@
 import { Router, type Request, type Response, type Router as ExpressRouter } from 'express'
 import { requirePermission } from '../../middleware/apiKeyAuth.js'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
-import { withSession } from '../../graphql/resolvers/ci-utils.js'
+import { withSession } from '../../lib/db.js'
 import { NotFoundError } from '../../lib/errors.js'
 import { asyncHandler } from '../errorHandler.js'
 import { apiKeyOf, parsePagination } from '../apiContext.js'

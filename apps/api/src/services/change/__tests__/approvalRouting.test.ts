@@ -8,14 +8,14 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('../../ci-utils.js', () => ({
+vi.mock('../../../lib/db.js', () => ({
   getSession:  vi.fn(),
   runQuery:    vi.fn(),
   runQueryOne: vi.fn(),
   mapCI:       vi.fn(),
 }))
 
-vi.mock('../../../../lib/logger.js', () => ({
+vi.mock('../../../lib/logger.js', () => ({
   // `child` serve perché scoring.ts ora importa lib/domainMatrix.js, che si
   // prende un logger figlio al caricamento del modulo (ondata 7).
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
@@ -24,25 +24,25 @@ vi.mock('../../../../lib/logger.js', () => ({
 // Ondata 7: la priorità della change esce dalla matrice del cliente. Qui
 // interessa la ROUTE, non la priorità: il doppio risponde con la matrice di
 // fabbrica e i vocabolari spediti (lib/__tests__/domainMatrixFake.ts).
-vi.mock('../../../../lib/domainMatrix.js', () => import('../../../../lib/__tests__/domainMatrixFake.js'))
+vi.mock('../../../lib/domainMatrix.js', () => import('../../../lib/__tests__/domainMatrixFake.js'))
 // Rimedio 3: le soglie delle fasce di rischio sono dato del cliente, quindi
 // `deriveChangePriority` legge il tenant anche solo per sapere che fascia è un
 // punteggio. Questo test misura la rotta d'approvazione: il doppio risponde con
 // le soglie factory senza grafo.
-vi.mock('../../../../lib/riskBands.js', async () => {
-  const fake = await import('../../../../lib/__tests__/riskBandsFake.js')
+vi.mock('../../../lib/riskBands.js', async () => {
+  const fake = await import('../../../lib/__tests__/riskBandsFake.js')
   return { ...fake, riskBandOf: vi.fn(fake.riskBandOf) }
 })
 
-vi.mock('../../../../lib/workflowHelpers.js', () => ({
+vi.mock('../../../lib/workflowHelpers.js', () => ({
   getInitialStepName: vi.fn().mockResolvedValue('assessment'),
   getWorkflowSteps:   vi.fn().mockResolvedValue([]),
 }))
 
 const { determineApprovalRoute } = await import('../scoring.js')
 const { computeAggregateRisk } = await import('../helpers.js')
-const { runQueryOne } = await import('../../ci-utils.js')
-const { riskBandOf } = await import('../../../../lib/riskBands.js')
+const { runQueryOne } = await import('../../../lib/db.js')
+const { riskBandOf } = await import('../../../lib/riskBands.js')
 
 describe('determineApprovalRoute', () => {
   it('soglie di fabbrica: 0 e 30 → low, 31 e 60 → medium, 61 e 100 → high', async () => {

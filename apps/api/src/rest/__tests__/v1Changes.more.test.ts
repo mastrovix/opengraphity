@@ -32,19 +32,20 @@ vi.mock('../../middleware/apiKeyAuth.js', () => ({
   },
 }))
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
+vi.mock('../../lib/db.js', () => ({
   withSession: vi.fn().mockImplementation(async (fn: (s: unknown) => Promise<unknown>) => fn({ close: vi.fn() })),
 }))
 vi.mock('../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../lib/workflowHelpers.js', () => ({ getWorkflowSteps: vi.fn() }))
 vi.mock('../../services/changeCreationService.js', () => ({ createChangeRFC: vi.fn() }))
-vi.mock('../../graphql/resolvers/change/changeMutations.js', () => ({ executeChangeTransition: vi.fn() }))
+// The change's own transition, as a service (wave 7 · C1): the REST route no longer calls a resolver.
+vi.mock('../../services/change/changeTransition.js', () => ({ transitionChange: vi.fn() }))
 
 const { runQueryOne } = await import('@opengraphity/neo4j')
 const { audit } = await import('../../lib/audit.js')
 const { getWorkflowSteps } = await import('../../lib/workflowHelpers.js')
 const { createChangeRFC } = await import('../../services/changeCreationService.js')
-const { executeChangeTransition } = await import('../../graphql/resolvers/change/changeMutations.js')
+const { transitionChange } = await import('../../services/change/changeTransition.js')
 const { changesRouter } = await import('../v1/changes.js')
 const { restErrorHandler } = await import('../errorHandler.js')
 
@@ -79,7 +80,7 @@ describe('POST /api/v1/changes — created but not readable back', () => {
 
 describe('POST /api/v1/changes/:id/transition — change gone before the reload', () => {
   it('answers 404 instead of 200 with no data', async () => {
-    vi.mocked(executeChangeTransition).mockResolvedValueOnce({} as never)
+    vi.mocked(transitionChange).mockResolvedValueOnce({} as never)
     vi.mocked(runQueryOne).mockResolvedValueOnce(null)
     const res = await postJson('/chg-1/transition', { toStep: 'planning' })
     expect(res.status).toBe(404)

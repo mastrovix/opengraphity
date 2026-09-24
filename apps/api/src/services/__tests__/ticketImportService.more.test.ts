@@ -48,7 +48,7 @@ vi.mock('@opengraphity/neo4j', () => ({
   getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(), toNumber: (v: unknown) => Number(v),
 }))
 vi.mock('../../lib/workflowHelpers.js', () => ({ getWorkflowSteps: vi.fn(), getInitialStepName: vi.fn() }))
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
+vi.mock('../../lib/db.js', () => ({
   withSession: vi.fn(async (fn: (s: unknown) => unknown) => fn(h.session)),
   getSession: vi.fn(),
 }))
@@ -61,7 +61,7 @@ vi.mock('../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), 
 const svc = await import('../ticketImportService.js')
 const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { getWorkflowSteps } = await import('../../lib/workflowHelpers.js')
-const { withSession } = await import('../../graphql/resolvers/ci-utils.js')
+const { withSession } = await import('../../lib/db.js')
 
 const ctx = { tenantId: 'tenant-1', userId: 'user-1' }
 const STEPS = [

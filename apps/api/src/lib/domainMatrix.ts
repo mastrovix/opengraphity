@@ -180,7 +180,7 @@ export const DOMAIN_MATRIX_SEEDS: Readonly<Record<DomainMatrixKind, DomainMatrix
     critical: 'critical', warning: 'medium', info: 'low',
   },
   /**
-   * Trascritta da `deriveChangePriority` (`resolvers/change/scoring.ts`) prima
+   * Trascritta da `deriveChangePriority` (`services/change/scoring.ts`) prima
    * dell'ondata 7, cella per cella: `emergency` → `critical` solo con rischio
    * alto, altrimenti `high`; `standard` → `medium` solo con rischio alto,
    * altrimenti `low`; `normal` → la fascia stessa.
@@ -203,7 +203,7 @@ export const DOMAIN_MATRIX_SEEDS: Readonly<Record<DomainMatrixKind, DomainMatrix
     critical: 'critical', high: 'high', medium: 'medium', low: 'low',
     blocker: 'critical', major: 'high', minor: 'low', trivial: 'low',
   },
-  /** Trascritto da `environmentScore` (resolvers/change/scoring.ts), valore per valore del vocabolario spedito. */
+  /** Trascritto da `environmentScore` (services/change/scoring.ts), valore per valore del vocabolario spedito. */
   environment_risk: {
     production: '3', staging: '1', development: '0', testing: '0', dr: '0',
   },

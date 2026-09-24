@@ -3,7 +3,7 @@
  * ordered by priority (Cypher), support AND/OR condition logic and stop_on_match.
  */
 import { runQuery } from '@opengraphity/neo4j'
-import { withSession } from '../graphql/resolvers/ci-utils.js'
+import { withSession } from './db.js'
 import { createAutomationCache, evaluateRules } from './automationEngine.js'
 import { invalidateSchema } from './schemaInvalidator.js'
 

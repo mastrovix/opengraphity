@@ -35,7 +35,7 @@ const assertUserInCITeam = vi.fn()
 const writeAudit = vi.fn()
 const getCIName = vi.fn(async () => 'VM-01')
 const computeAggregateRisk = vi.fn()
-vi.mock('../helpers.js', async (importOriginal) => ({
+vi.mock('../../../../services/change/helpers.js', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   assertUserInCITeam: (...a: unknown[]) => assertUserInCITeam(...a),
   writeAudit: (...a: unknown[]) => writeAudit(...a),
@@ -44,7 +44,7 @@ vi.mock('../helpers.js', async (importOriginal) => ({
 }))
 
 const evaluateAutoTransitions = vi.fn()
-vi.mock('../autoTransitions.js', () => ({ evaluateAutoTransitions: (...a: unknown[]) => evaluateAutoTransitions(...a) }))
+vi.mock('../../../../services/change/autoTransitions.js', () => ({ evaluateAutoTransitions: (...a: unknown[]) => evaluateAutoTransitions(...a) }))
 
 const getInitialStepName = vi.fn()
 vi.mock('../../../../lib/workflowHelpers.js', async (importOriginal) => ({

@@ -59,7 +59,7 @@ vi.mock('@opengraphity/workflow', () => ({
     definitionId: 'def-sr', stepId: 'step-1', stepName: 'submitted', definitionCategory: null,
   })),
 }))
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
+vi.mock('../../lib/db.js', () => ({
   withSession: vi.fn(async (fn: (s: unknown) => Promise<unknown>) => fn(h.session)),
   getSession:  vi.fn(),
 }))

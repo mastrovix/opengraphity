@@ -9,7 +9,7 @@
  */
 import { workflowEngine, registerTaskCreator } from '@opengraphity/workflow'
 import type { ConditionEvaluator } from '@opengraphity/workflow'
-import { runQueryOne } from '../graphql/resolvers/ci-utils.js'
+import { runQueryOne } from '../lib/db.js'
 import { TASK_STATUS, VALIDATION_RESULT, REVIEW_RESULT } from '../lib/taskStatus.js'
 import { toNumber } from '@opengraphity/neo4j'
 import { areAllAssessmentsComplete } from '../lib/changeAssessments.js'

@@ -857,7 +857,7 @@ processo**:
 
 | Cache (nome del clearer) | TTL |
 |---|---|
-| `schema` (`lib/schemaCache.ts`) | 5 min |
+| `schema` (`graphql/schemaCache.ts`) | 5 min |
 | `domain-vocabulary`, `domain-matrix`, `pre-approved-change-types`, `ci-labels-for-tenant`, `ci-type-name-to-label`, `ci-metamodel-for-tenant` (`lib/metamodelCache.ts`) | 60 s |
 | `report-whitelist` (`lib/reportWhitelist.ts`) | 60 s |
 | `memory-cache` (`lib/cache.ts`) | per chiave (30 s la policy del ciclo di vita) |

@@ -12,7 +12,7 @@
  * non la lista delle chiamate.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { perms } from '../../../../lib/__tests__/testPermissions.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const getStepPurpose        = vi.fn<(s: unknown, t: string, e: string, step: string) => Promise<string | null>>()
 // Revisione totale · B-11: il varco guarda anche se il passo di arrivo è
@@ -26,12 +26,12 @@ const areAllApprovalsSatisfied    = vi.fn<() => Promise<boolean>>()
 const inc = vi.fn()
 const areAllAssessmentsComplete = vi.fn<() => Promise<boolean>>()
 
-vi.mock('../../../../lib/workflowHelpers.js', () => ({ getStepPurpose, getStepRow, getStepNamesByPurpose }))
-vi.mock('../../../../lib/changePolicy.js',    () => ({ isPreApprovedChangeType }))
+vi.mock('../../../lib/workflowHelpers.js', () => ({ getStepPurpose, getStepRow, getStepNamesByPurpose }))
+vi.mock('../../../lib/changePolicy.js',    () => ({ isPreApprovedChangeType }))
 vi.mock('../approvalCreation.js',             () => ({ assertAllApprovalsSatisfied, areAllApprovalsSatisfied }))
-vi.mock('../../../../middleware/metrics.js',  () => ({ changeWindowGateBlockedTotal: { inc } }))
-vi.mock('../../../../lib/changeAssessments.js', () => ({ areAllAssessmentsComplete }))
-vi.mock('../../../../lib/logger.js', () => ({
+vi.mock('../../../middleware/metrics.js',  () => ({ changeWindowGateBlockedTotal: { inc } }))
+vi.mock('../../../lib/changeAssessments.js', () => ({ areAllAssessmentsComplete }))
+vi.mock('../../../lib/logger.js', () => ({
   logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => ({ warn: vi.fn(), info: vi.fn(), error: vi.fn() }) },
 }))
 

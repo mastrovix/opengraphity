@@ -22,7 +22,7 @@ vi.mock('@opengraphity/neo4j', () => ({
   getSession: () => ({ close: async () => undefined }),
   toNumber: (v: unknown) => Number(v),
 }))
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
+vi.mock('../db.js', () => ({
   runQuery: async (_s: unknown, q: string, p: Record<string, unknown>) => {
     eseguite.query = q
     eseguite.params = p

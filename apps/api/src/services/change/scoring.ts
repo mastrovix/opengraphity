@@ -11,10 +11,10 @@
  * d'ambiente, punteggio della domanda, rischio del CI, rotta d'approvazione —
  * restano sincrone e senza dipendenze.
  */
-import { riskBandOf } from '../../../lib/riskBands.js'
-import { ValidationError } from '../../../lib/errors.js'
-import { assertDomainValue } from '../../../lib/domainMatrix.js'
-import { resolveDomainValue } from '../../../lib/domainValue.js'
+import { riskBandOf } from '../../lib/riskBands.js'
+import { ValidationError } from '../../lib/errors.js'
+import { assertDomainValue } from '../../lib/domainMatrix.js'
+import { resolveDomainValue } from '../../lib/domainValue.js'
 
 export interface QuestionScore {
   /** rel.weight on (CITypeDefinition)-[:HAS_QUESTION]->(question), default 1 */
@@ -118,7 +118,7 @@ export async function determineApprovalRoute(tenantId: string, aggregateScore: n
  * quindi riordinare il vocabolario invertiva le fasce in silenzio, e una quarta
  * fascia era irraggiungibile. Ora sono dato del cliente: `lib/riskBands.ts`.
  */
-export { riskBandOf } from '../../../lib/riskBands.js'
+export { riskBandOf } from '../../lib/riskBands.js'
 
 /**
  * Priorità della Change = **tipo × fascia di rischio** (decisione del

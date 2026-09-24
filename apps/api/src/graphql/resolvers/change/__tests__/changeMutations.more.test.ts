@@ -59,7 +59,7 @@ vi.mock('@opengraphity/workflow', () => ({
   },
 }))
 vi.mock('../queries.js', () => ({ change: vi.fn(async (_: unknown, a: { id: string }) => ({ id: a.id, title: 'T' })) }))
-vi.mock('../autoTransitions.js', () => ({
+vi.mock('../../../../services/change/autoTransitions.js', () => ({
   evaluateAutoTransitions: vi.fn().mockResolvedValue(undefined),
   revertProblemAfterChangeDetached: vi.fn().mockResolvedValue(undefined),
 }))
@@ -72,7 +72,7 @@ vi.mock('../../../../services/ticketTransition.js', async () => {
     refusalError: (r: { message: string; code: string }) => new GraphQLError(r.message, { extensions: { code: r.code } }),
   }
 })
-vi.mock('../helpers.js', () => ({
+vi.mock('../../../../services/change/helpers.js', () => ({
   afterEnterStep: vi.fn().mockResolvedValue(undefined),
   writeAudit: vi.fn().mockResolvedValue(undefined),
   getNextTaskCodes: vi.fn(async (_s: unknown, _t: string, n: number) => Array.from({ length: n }, (_, i) => `TASK${i + 1}`)),
@@ -109,8 +109,8 @@ vi.mock('../../../../services/serviceImpact/sync.js', () => ({ notifyChangeWindo
 const mod = await import('../changeMutations.js')
 const { workflowEngine } = await import('@opengraphity/workflow')
 const ciUtils = await import('../../ci-utils.js')
-const helpers = await import('../helpers.js')
-const { revertProblemAfterChangeDetached, evaluateAutoTransitions } = await import('../autoTransitions.js')
+const helpers = await import('../../../../services/change/helpers.js')
+const { revertProblemAfterChangeDetached, evaluateAutoTransitions } = await import('../../../../services/change/autoTransitions.js')
 const { change: getChange } = await import('../queries.js')
 const { logger } = await import('../../../../lib/logger.js')
 const { assertCIsLinkable } = await import('../../../../lib/ticketCIExclusions.js')

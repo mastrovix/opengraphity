@@ -56,11 +56,11 @@ const close = vi.fn().mockResolvedValue(undefined)
 const loadTenantEnumOverrides = vi.fn()
 
 vi.mock('@opengraphity/neo4j', () => ({ getSession: () => ({ executeRead, close }) }))
-vi.mock('../../../../lib/enumScope.js', () => ({ loadTenantEnumOverrides }))
+vi.mock('../../../lib/enumScope.js', () => ({ loadTenantEnumOverrides }))
 
 const { deriveChangePriority, riskBandOf, determineApprovalRoute } = await import('../scoring.js')
-const { clearDomainCaches, DOMAIN_MATRIX_SEEDS } = await import('../../../../lib/domainMatrix.js')
-const { clearRiskBandCache } = await import('../../../../lib/riskBands.js')
+const { clearDomainCaches, DOMAIN_MATRIX_SEEDS } = await import('../../../lib/domainMatrix.js')
+const { clearRiskBandCache } = await import('../../../lib/riskBands.js')
 
 function vocab(over: Record<string, string[]> = {}) {
   const base: Record<string, string[]> = {

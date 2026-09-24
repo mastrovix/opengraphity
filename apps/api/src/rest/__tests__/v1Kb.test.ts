@@ -35,7 +35,7 @@ vi.mock('../../middleware/apiKeyAuth.js', () => ({
   },
 }))
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
+vi.mock('../../lib/db.js', () => ({
   withSession: vi.fn().mockImplementation(async (fn: (s: unknown) => Promise<unknown>) => fn({ close: vi.fn() })),
 }))
 

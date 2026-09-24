@@ -74,7 +74,7 @@ vi.mock('../../lib/systemText.js', () => ({ modelLanguageFor: vi.fn(async () => 
 // The tenant's GraphQL schema: ServiceRequest has camelCase fields that are
 // stored as snake_case properties.
 const getSchemaForTenant = vi.fn()
-vi.mock('../../lib/schemaCache.js', () => ({ getSchemaForTenant: (...a: unknown[]) => getSchemaForTenant(...a) }))
+vi.mock('../../lib/tenantSchema.js', () => ({ getSchemaForTenant: (...a: unknown[]) => getSchemaForTenant(...a) }))
 
 const validaProposta = vi.fn()
 vi.mock('../../lib/formDesignProposal.js', async (importOriginal) => ({

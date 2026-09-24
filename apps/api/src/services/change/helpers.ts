@@ -8,24 +8,27 @@
  */
 
 import { GraphQLError } from 'graphql'
-import { NotFoundError } from '../../../lib/errors.js'
+import { NotFoundError } from '../../lib/errors.js'
 import type { ManagedTransaction } from 'neo4j-driver'
-import { ForbiddenError, ValidationError } from '../../../lib/errors.js'
+import { ForbiddenError, ValidationError } from '../../lib/errors.js'
 import { v4 as uuidv4 } from 'uuid'
 import {
   TASK_STATUS, ASSESSMENT_ROLE, ROLE_LABEL, ROLE_TO_RELATION,
-} from '../../../lib/taskStatus.js'
-import { runQuery, runQueryOne, getSession, type Props } from '../ci-utils.js'
-import type { GraphQLContext } from '../../../context.js'
-import { logger } from '../../../lib/logger.js'
+} from '../../lib/taskStatus.js'
+import { runQuery, runQueryOne, getSession, type Props } from '../../lib/db.js'
+import type { GraphQLContext } from '../../context.js'
+import { logger } from '../../lib/logger.js'
 import { calculateCIRiskScore, determineApprovalRoute, deriveChangePriority } from './scoring.js'
-import { getInitialStepName, getStepPurpose } from '../../../lib/workflowHelpers.js'
-import { targetStepByPurpose } from '../../../lib/workflowTargets.js'
+import { getInitialStepName, getStepPurpose } from '../../lib/workflowHelpers.js'
+import { targetStepByPurpose } from '../../lib/workflowTargets.js'
 import { toNumber } from '@opengraphity/neo4j'
-import { systemText } from '../../../lib/systemText.js'
-import { nextSequenceBlock } from '../../../lib/sequence.js'
-import { nextTicketNumber } from '../../../lib/ticketNumbering.js'
-import { hasPermission } from '../../../lib/permissions.js'
+import { systemText } from '../../lib/systemText.js'
+import { nextSequenceBlock } from '../../lib/sequence.js'
+import { nextTicketNumber } from '../../lib/ticketNumbering.js'
+import { hasPermission } from '../../lib/permissions.js'
+import { isPreApprovedChangeType } from '../../lib/changePolicy.js'
+import { transitionTicket } from '../ticketTransition.js'
+import { createChangeApprovals } from './approvalCreation.js'
 
 export type Session = ReturnType<typeof getSession>
 
@@ -505,7 +508,6 @@ export async function afterEnterStep(session: SessionOrTx, changeId: string, ten
   // resta corretto anche se il workflow è già avanzato.
   const purpose = await getStepPurpose(session as Session, tenantId, 'change', stepName)
   if (purpose === 'approval') {
-    const { createChangeApprovals } = await import('./approvalCreation.js')
     await createChangeApprovals(session, changeId, tenantId)
     // Pre-approvata = nessun requisito: avanza subito al passo di scopo
     // `scheduled`. Terza revisione: qui c'era ancora il LETTERALE
@@ -518,9 +520,7 @@ export async function afterEnterStep(session: SessionOrTx, changeId: string, ten
     // vedeva la change transire comunque nella finestra di rilascio, con i
     // requisiti appena creati e pendenti.
     const ct = await runQueryOne<{ t: string }>(session, `MATCH (c:Change {id: $changeId, tenant_id: $tenantId}) RETURN c.change_type AS t`, { changeId, tenantId })
-    const { isPreApprovedChangeType } = await import('../../../lib/changePolicy.js')
     if (ct?.t != null && await isPreApprovedChangeType(tenantId, ct.t)) {
-      const { transitionTicket } = await import('../../../services/ticketTransition.js')
       const instanceId = await getInstanceId(session as Session, changeId, tenantId)
       const toStep = await targetStepByPurpose(session as Session, tenantId, 'change', ['scheduled'],
         'pre-approval of a standard change')

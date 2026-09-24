@@ -41,7 +41,7 @@ vi.mock('../../workflow/conditions.js', () => ({ registerWorkflowConditions: vi.
  */
 let varcoApre = true
 const automaticTransitionOutcome = vi.fn(async () => (varcoApre ? { allowed: true, reason: 'open' } : { allowed: false, reason: 'needs_approvals' }))
-vi.mock('../../graphql/resolvers/change/windowGate.js', () => ({
+vi.mock('../../services/change/windowGate.js', () => ({
   automaticTransitionOutcome: () => automaticTransitionOutcome(),
 }))
 

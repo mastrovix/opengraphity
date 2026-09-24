@@ -38,7 +38,7 @@ const assertUserInCITeam = vi.fn()
 const writeAudit = vi.fn()
 const getCIName = vi.fn(async () => 'VM-01')
 const resetChangeRisk = vi.fn()
-vi.mock('../helpers.js', async (importOriginal) => ({
+vi.mock('../../../../services/change/helpers.js', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   assertMayReopenTasks: (...a: unknown[]) => assertMayReopenTasks(...a),
   assertUserInCITeam: (...a: unknown[]) => assertUserInCITeam(...a),
@@ -48,7 +48,7 @@ vi.mock('../helpers.js', async (importOriginal) => ({
 }))
 
 const evaluateAutoTransitions = vi.fn()
-vi.mock('../autoTransitions.js', () => ({
+vi.mock('../../../../services/change/autoTransitions.js', () => ({
   evaluateAutoTransitions: (...a: unknown[]) => evaluateAutoTransitions(...a),
 }))
 

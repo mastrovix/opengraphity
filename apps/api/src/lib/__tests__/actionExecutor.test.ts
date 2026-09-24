@@ -38,7 +38,7 @@ const session = {
     run: async () => ({ records: wiRecords.map((r) => ({ get: (k: string) => r[k] ?? null })) }),
   })),
 }
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
+vi.mock('../db.js', () => ({
   withSession: vi.fn().mockImplementation((fn: (s: unknown) => unknown) => fn(session)),
 }))
 

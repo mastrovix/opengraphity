@@ -30,8 +30,8 @@ import {
   metamodelSDL,
   type ReservedSchemaNames, type CIFieldNameContext,
 } from '@opengraphity/schema-generator'
-import { buildBaseSDL } from '../graphql/schema-base.js'
-import { ValidationError } from './errors.js'
+import { buildBaseSDL } from './schema-base.js'
+import { ValidationError } from '../lib/errors.js'
 
 // ── I nomi che l'SDL di base dichiara ─────────────────────────────────────────
 

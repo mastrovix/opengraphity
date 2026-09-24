@@ -50,7 +50,7 @@ vi.mock('../../../lib/workflowHelpers.js', () => ({ isEntityClosed: (...a: unkno
 const collab = vi.hoisted(() => ({
   autoWatch: vi.fn(), notifyMentions: vi.fn(), notifyWatchers: vi.fn(), getEntityTitle: vi.fn(),
 }))
-vi.mock('../collaboration.js', () => collab)
+vi.mock('../../../services/collaboration.js', () => collab)
 
 const C = await import('../comments.js')
 

@@ -1,8 +1,6 @@
 import type { GraphQLResolveInfo } from 'graphql'
 import { requestCustomFieldDefs } from './ticketCustomFields.js'
 import { customFieldValueMap, type CustomFieldInput } from '../../lib/ticketCustomFields.js'
-import { resolvePriorityPatch } from '../../lib/priority.js'
-import { propsToFieldValues as mergedFieldValues } from '../../lib/validateRequiredFields.js'
 import { requirePermission } from '../../lib/permissions.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
@@ -21,7 +19,6 @@ import { ticketSlaStatusResolver } from './ticketSlaStatus.js'
 import { commentAuthorKind, commentAuthorLabel, commentTrace } from '../../lib/commentAuthor.js'
 import { writeTicketComment } from '../../lib/ticketComments.js'
 import { notifyCommentAudience } from './comments.js'
-import { publishTicketUpdated } from '../../lib/ticketUpdated.js'
 import { publishEvent } from '../../lib/publishEvent.js'
 import { listPage } from '../../lib/listLimit.js'
 import { serviceRelPatternForTenant } from '../../lib/ciMetamodelForTenant.js'
@@ -160,74 +157,13 @@ async function createIncident(
   })
 }
 
-async function updateIncident(
+/** The fields of an incident, from the page (wave 7 · C1: the rules and the write are the service's, the REST API uses it too). */
+function updateIncident(
   _: unknown,
-  args: { id: string; input: { title?: string; description?: string; severity?: string; impact?: string; urgency?: string } },
+  args: { id: string; input: incidentService.IncidentPatch },
   ctx: GraphQLContext,
 ) {
-  const { id, input } = args
-  const now = new Date().toISOString()
-
-  return withSession(async (session) => {
-    // Le regole "campo obbligatorio" si valutano sullo stato RISULTANTE
-    // (persistito + patch), non sulla sola patch: altrimenti un update parziale
-    // fallirebbe sui campi obbligatori non toccati.
-    const current = await runQueryOne<{ props: Props }>(session,
-      'MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN properties(i) AS props',
-      { id, tenantId: ctx.tenantId })
-    if (!current) throw new NotFoundError('Incident', id)
-    await validateRequiredFields(session, {
-      entityType:  'incident',
-      fieldValues: { ...mergedFieldValues(current.props), ...(input as Record<string, unknown>) },
-      tenantId:    ctx.tenantId,
-    })
-
-    // Priorità (severity) = Impatto × Urgenza, sempre coerenti tra loro:
-    //  - impact/urgency nella patch → severity ricalcolata (merge col corrente);
-    //  - solo severity nella patch → impact/urgency riallineati alla severity.
-    const { severity, impact, urgency } = await resolvePriorityPatch(
-      ctx.tenantId,
-      { impact: current.props['impact'] as string | null, urgency: current.props['urgency'] as string | null },
-      { priority: input.severity, impact: input.impact, urgency: input.urgency },
-    )
-
-    const cypher = `
-      MATCH (i:Incident {id: $id, tenant_id: $tenantId})
-      // La descrizione si può SVUOTARE (revisione totale · B-17): con
-      // «coalesce» null e assente erano la stessa cosa, e chi cancellava un
-      // testo sbagliato lo ritrovava lì dopo il salvataggio. Ora conta se il
-      // campo è presente nell'input. Il titolo no: un ticket senza titolo non
-      // si riconosce in nessun elenco.
-      SET i += {
-        title:       coalesce($title, i.title),
-        description: CASE WHEN $descriptionGiven THEN $description ELSE i.description END,
-        severity:    coalesce($severity, i.severity),
-        impact:      coalesce($impact, i.impact),
-        urgency:     coalesce($urgency, i.urgency),
-        updated_at:  $now
-      }
-      RETURN properties(i) as props
-    `
-    // NB: status is intentionally NOT settable here — an incident's status is
-    // the workflow current step and must only change via executeWorkflowTransition
-    // (which keeps WorkflowInstance.current_step and the entity status in sync).
-    const rows = await runQuery<{ props: Props }>(session, cypher, {
-      id,
-      tenantId:    ctx.tenantId,
-      title:       input.title       ?? null,
-      description: input.description ?? null,
-      // B-17: «presente nell'input» distingue il vuoto dall'assenza.
-      descriptionGiven: Object.prototype.hasOwnProperty.call(input, 'description'),
-      severity,
-      impact,
-      urgency,
-      now,
-    })
-    const row = rows[0]
-    if (!row) throw new NotFoundError('Incident', id)
-    await publishTicketUpdated(ctx, 'incident', id, current.props, row.props)
-    return mapIncident(row.props)
-  }, true)
+  return incidentService.updateIncident(args.id, args.input, ctx)
 }
 
 async function resolveIncident(

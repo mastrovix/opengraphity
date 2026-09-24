@@ -32,7 +32,7 @@
  * presenta come una proposta sensata.
  */
 import { getSession } from '@opengraphity/neo4j'
-import { runQuery, runQueryOne } from '../graphql/resolvers/ci-utils.js'
+import { runQuery, runQueryOne } from './db.js'
 import { humanActorClause, SYNTHETIC_ACTORS_PARAM, syntheticActorIds } from './auditActors.js'
 import { actionKey, isGenericMutationAction } from './auditActionMap.js'
 

@@ -10,15 +10,16 @@ import type { CustomFieldInput } from '../../../lib/ticketCustomFields.js'
 import { systemText } from '../../../lib/systemText.js'
 import { workflowEngine } from '@opengraphity/workflow'
 import { TASK_STATUS, ASSESSMENT_ROLE } from '../../../lib/taskStatus.js'
-import { withSession, runQuery, runQueryOne, getSession, type Props } from '../ci-utils.js'
+import { withSession, runQuery, runQueryOne, getSession, mapCI, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
 import { requirePermission } from '../../../lib/permissions.js'
 import { stepNamesByPurposeOrdered } from '../../../lib/workflowTargets.js'
 import { createChangeRFC } from '../../../services/changeCreationService.js'
 import { change as getChange } from './queries.js'
-import { evaluateAutoTransitions, revertProblemAfterChangeDetached } from './autoTransitions.js'
-import { personActor, refusalError, transitionTicket } from '../../../services/ticketTransition.js'
+import { revertProblemAfterChangeDetached } from '../../../services/change/autoTransitions.js'
+import { transitionChange } from '../../../services/change/changeTransition.js'
+import { transitionTicket } from '../../../services/ticketTransition.js'
 import { TASK_KINDS } from './taskKinds.js'
 import { NotFoundError } from '../../../lib/errors.js'
 import { publishEvent } from '../../../lib/publishEvent.js'
@@ -31,9 +32,7 @@ import {
   assertCIHasOwnerAndSupport,
   assertInitialStep,
   getCIName,
-  loadChangeWorkflow,
-  afterEnterStep,
-} from './helpers.js'
+} from '../../../services/change/helpers.js'
 
 // ── createChange ───────────────────────────────────────────────────────────────
 
@@ -357,7 +356,6 @@ export async function addCIToChange(_: unknown, args: { changeId: string; ciId: 
     `, { changeId: args.changeId, ciId: args.ciId, tenantId: ctx.tenantId })
     if (!row) throw new GraphQLError('CI not found after being added', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
     row.ciProps['type'] = row.ciProps['type'] as string | undefined ?? ciTypeFromLabels(ctx.tenantId, [row.ciLabel])
-    const { mapCI } = await import('../ci-utils.js')
     return {
       ci: mapCI(row.ciProps),
       ciPhase: 'assessment',
@@ -405,45 +403,11 @@ export async function executeChangeTransition(
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
-    // Una sola lettura coerente: change non eliminata + istanza + step corrente
-    // (dalla relazione CURRENT_STEP, verificata contro wi.current_step).
-    const { instanceId } = await loadChangeWorkflow(session, args.changeId, ctx.tenantId)
-
-    // The pipeline of the transitions (wave 7 · B1) checks, in its order, the
-    // write permission, IL VARCO DELLA FINESTRA DI RILASCIO (terza revisione *
-    // C1: the manual gate, whose sentences name the two ways out), the
-    // required fields of the step being entered (ondata 8 · B-21: the notes
-    // count as a value) and its metadata — the same guards as every other
-    // path, which is what the gate's own comment used to promise.
-    //
-    // Il rollback non è più un campo del change: è valutato (con punteggio)
-    // nell'assessment tecnico ("Is a tested rollback plan available?"), che si
-    // completa prima del deploy. Nessun gate sul testo qui.
-    const outcome = await transitionTicket(session, {
-      tenantId: ctx.tenantId, instanceId, toStep: args.toStep, notes: args.notes ?? null,
-      actor: personActor(ctx), triggerType: 'manual',
-    })
-    if (!outcome.moved) throw refusalError(outcome.refusal)
-
-    await afterEnterStep(session, args.changeId, ctx.tenantId, args.toStep)
-    // Azione STABILE, passo nei dettagli (D-22, applicato a incident e problem
-    // e non alle change: `change_transition_<passo>` metteva il nome del passo
-    // nell'identità dell'azione, e una rinomina spezzava in due la storia dei
-    // filtri della timeline — revisione totale · B-19). Le voci storiche NON
-    // si riscrivono: il web sa ancora leggere il vecchio prefisso.
-    await writeAudit(session, args.changeId, ctx.tenantId,
-      'change_step_entered', ctx.userId,
-      args.notes?.trim() ? `${args.toStep}: ${args.notes.trim()}` : args.toStep,
-      // `notes` porta già i due punti quando c'è: è punteggiatura, non lingua,
-      // e la frase resta una sola chiave per entrambi i casi.
-      { key: 'stepEntered', params: { step: args.toStep, notes: args.notes?.trim() ? `: ${args.notes.trim()}` : '' } })
-
-    await evaluateAutoTransitions(session, args.changeId, ctx, afterEnterStep)
-
+    const { actionErrors } = await transitionChange(session, ctx, args)
     // Le azioni di step fallite dopo il commit (SLA, eventi, timer) non vanno
     // perse: esposte al client come Change.actionErrors (solo su questa mutation).
     const changed = await getChange(null, { id: args.changeId }, ctx)
-    return changed ? { ...changed, actionErrors: outcome.actionErrors.length ? outcome.actionErrors : null } : null
+    return changed ? { ...changed, actionErrors: actionErrors.length ? actionErrors : null } : null
   }, true)
 }
 

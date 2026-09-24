@@ -55,7 +55,7 @@ vi.mock('@opengraphity/neo4j', () => ({
     close: vi.fn().mockResolvedValue(undefined),
   }),
 }))
-vi.mock('../schemaCache.js', () => ({ getSchemaState: vi.fn(async () => { h.schemaReads++; return { degraded: false, reason: null } }) }))
+vi.mock('../tenantSchema.js', () => ({ getSchemaState: vi.fn(async () => { h.schemaReads++; return { degraded: false, reason: null } }) }))
 vi.mock('../catalogForm.js', () => ({ formFieldsWithFormula: vi.fn(async () => []) }))
 vi.mock('../scriptingPlan.js', () => ({ getScriptingPlan: vi.fn(async () => ({ plan: 'enterprise', enabled: true })) }))
 vi.mock('../tenantLanguage.js', () => ({ tenantDefaultLanguage: vi.fn(async () => 'en'), LINGUA_DI_ULTIMA_ISTANZA: 'en' }))

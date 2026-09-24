@@ -5,7 +5,7 @@
 import { Router, type Request, type Response, type Router as ExpressRouter } from 'express'
 import { requirePermission } from '../../middleware/apiKeyAuth.js'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
-import { withSession } from '../../graphql/resolvers/ci-utils.js'
+import { withSession } from '../../lib/db.js'
 import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
 import { ciLabelForTypeName, ciTypeNamesForTenant } from '../../lib/ciTypeNameToLabel.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'

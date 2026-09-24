@@ -1,19 +1,14 @@
-import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
 import { neo4jDateToISO } from '../../lib/mappers.js'
+import type { Props } from '../../lib/db.js'
 
 export { ciTypeFromLabels }
 
-export type Props = Record<string, unknown>
-
-export async function withSession<T>(fn: (s: ReturnType<typeof getSession>) => Promise<T>, write = false): Promise<T> {
-  const session = getSession(undefined, write ? 'WRITE' : 'READ')
-  try {
-    return await fn(session)
-  } finally {
-    await session.close()
-  }
-}
+/*
+ * The database access is lib/db.ts (wave 7 · C1): re-exported here for the
+ * resolvers, which have always imported it from this file.
+ */
+export { withSession, runQuery, runQueryOne, getSession, type Props } from '../../lib/db.js'
 
 export function mapBase(props: Props) {
   return {
@@ -43,4 +38,3 @@ export function mapCI(props: Props) {
   return mapBase(props)
 }
 
-export { runQuery, runQueryOne, getSession }

@@ -55,7 +55,7 @@ const audit = vi.fn().mockResolvedValue(undefined)
 vi.mock('../../../lib/audit.js', () => ({ audit: (...a: unknown[]) => audit(...a) }))
 
 const evaluateAutoTransitions = vi.fn().mockResolvedValue(undefined)
-vi.mock('../change/autoTransitions.js', () => ({
+vi.mock('../../../services/change/autoTransitions.js', () => ({
   evaluateAutoTransitions: (...a: unknown[]) => evaluateAutoTransitions(...a),
 }))
 

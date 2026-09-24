@@ -7,7 +7,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { buildSchema } from 'graphql'
 
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
-vi.mock('../schemaCache.js', () => ({
+vi.mock('../tenantSchema.js', () => ({
   getSchemaForTenant: vi.fn(async () => buildSchema('type Query { x: Int } type Change { id: ID! changeType: String what: String approvalRoute: String }')),
 }))
 

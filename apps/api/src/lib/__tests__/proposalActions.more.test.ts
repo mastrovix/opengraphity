@@ -38,7 +38,7 @@ vi.mock('@opengraphity/neo4j', () => ({
     }
   },
 }))
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
+vi.mock('../db.js', () => ({
   runQueryOne: async (_s: unknown, _q: string, p: Record<string, unknown>) => {
     state.writes.push(p)
     return state.tenantFound ? { id: p['tenantId'] } : null

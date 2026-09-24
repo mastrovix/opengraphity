@@ -3,16 +3,17 @@ import { workflowEngine } from '@opengraphity/workflow'
 import type { ConditionContext } from '@opengraphity/workflow'
 import type { Session as NeoSession } from 'neo4j-driver'
 import { toNumber } from '@opengraphity/neo4j'
-import { runQuery, runQueryOne, type Props } from '../ci-utils.js'
-import type { GraphQLContext } from '../../../context.js'
-import { logger } from '../../../lib/logger.js'
-import { getStepPurpose } from '../../../lib/workflowHelpers.js'
-import { transitionTicket, type TransitionActor } from '../../../services/ticketTransition.js'
-import { stepNamesByCategory, stepNamesByPurposeOrdered, targetStepByCategory, targetStepByPurpose } from '../../../lib/workflowTargets.js'
+import { runQuery, runQueryOne, type Props } from '../../lib/db.js'
+import type { GraphQLContext } from '../../context.js'
+import { logger } from '../../lib/logger.js'
+import { getStepPurpose } from '../../lib/workflowHelpers.js'
+import { transitionTicket, type TransitionActor } from '../ticketTransition.js'
+import { stepNamesByCategory, stepNamesByPurposeOrdered, targetStepByCategory, targetStepByPurpose } from '../../lib/workflowTargets.js'
 // Side-effect: registra le condizioni ITSM (all_assessments_complete, …)
 // sull'engine. Il walker le valuta dal registro, come fa l'engine stesso.
-import '../../../workflow/conditions.js'
-import { systemText } from '../../../lib/systemText.js'
+import '../../workflow/conditions.js'
+import { systemText } from '../../lib/systemText.js'
+import { resolveChangeWindowSteps } from '../eventCorrelation.js'
 
 type Session2 = Parameters<typeof runQuery>[0]
 
@@ -75,7 +76,6 @@ async function syncServiceMaintenance(
   // I passi di finestra vengono dallo SCOPO dei passi del tenant (ondata 4 ·
   // A4-1): con i due letterali di prima, un passo di rilascio rinominato non
   // mandava più il servizio in manutenzione.
-  const { resolveChangeWindowSteps } = await import('../../../services/eventCorrelation.js')
   const windowSteps = await resolveChangeWindowSteps(ctx.tenantId, session)
   const inWindow = windowSteps.all.includes(row.step)
   if (inWindow === (row.notified === true)) return
@@ -84,7 +84,7 @@ async function syncServiceMaintenance(
     SET c.service_window = $inWindow
     RETURN c.id AS id
   `, { changeId, tenantId: ctx.tenantId, inWindow })
-  const { notifyChangeWindowChanged } = await import('../../../services/serviceImpact/sync.js')
+  const { notifyChangeWindowChanged } = await import('../serviceImpact/sync.js')
   const maps = await notifyChangeWindowChanged(ctx.tenantId, changeId, inWindow ? 'change.window_entered' : 'change.window_left')
   logger.info({ changeId, step: row.step, inWindow, maps }, '[change] finestra di change: valutazione dei servizi accodata')
 }
@@ -112,10 +112,9 @@ async function syncSuppressedEvents(
     RETURN wi.current_step AS step, wi.updated_at AS enteredAt, count(e) AS suppressed
   `, { changeId, tenantId: ctx.tenantId })
   if (!row || toNumber(row.suppressed) === 0) return
-  const { resolveChangeWindowSteps } = await import('../../../services/eventCorrelation.js')
   const windowSteps = await resolveChangeWindowSteps(ctx.tenantId, session)
   if (windowSteps.all.includes(row.step)) return
-  const { enqueueChangeWindowReevaluation } = await import('../../../jobs/eventCorrelateWorker.js')
+  const { enqueueChangeWindowReevaluation } = await import('../../jobs/eventCorrelateWorker.js')
   // Epoca del passo = ingresso nel passo corrente (WorkflowInstance.updated_at):
   // stessa uscita dalla finestra → stesso job id (le mutation a raffica non
   // accodano N job); un'istanza senza data leggibile usa l'istante corrente.

@@ -27,7 +27,7 @@ const sessioniChiuse = { n: 0 }
 vi.mock('../changesStuck.js', () => ({
   changeChePossonoMuoversi: async () => candidate,
 }))
-vi.mock('../../graphql/resolvers/change/windowGate.js', () => ({
+vi.mock('../../services/change/windowGate.js', () => ({
   automaticTransitionOutcome: (...a: unknown[]) => varco(...a),
 }))
 // The pipeline of the transitions (wave 7 · B1): the guards of every path, and its note on a refusal.

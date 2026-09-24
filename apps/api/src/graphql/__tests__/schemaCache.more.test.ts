@@ -23,11 +23,11 @@ vi.mock('@opengraphity/schema-generator', async (importOriginal) => {
   const orig = await importOriginal<typeof import('@opengraphity/schema-generator')>()
   return { ...orig, loadMetamodel }
 })
-vi.mock('../ciTypeFromLabels.js', () => ({ registerCITypes }))
-vi.mock('../../graphql/resolvers/index.js', () => ({ buildResolvers: () => ({}) }))
+vi.mock('../../lib/ciTypeFromLabels.js', () => ({ registerCITypes }))
+vi.mock('../resolvers/index.js', () => ({ buildResolvers: () => ({}) }))
 
 const { getSchemaForTenant, getSchemaState } = await import('../schemaCache.js')
-const { invalidateSchema, clearAllMetamodelCaches } = await import('../schemaInvalidator.js')
+const { invalidateSchema, clearAllMetamodelCaches } = await import('../../lib/schemaInvalidator.js')
 
 function ciType(name: string, scope: 'base' | 'tenant' = 'tenant'): CITypeWithDefinitions {
   const pascal = name.split('_').map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join('')

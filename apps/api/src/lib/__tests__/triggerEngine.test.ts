@@ -25,7 +25,7 @@ vi.mock('@opengraphity/neo4j', () => ({
   runQuery: vi.fn(async (_s: unknown, cypher: string, params: { tenantId: string }) =>
     (cypher.includes('RETURN t.id AS id') ? (h.rowsByTenant.get(params.tenantId) ?? []) : [])),
 }))
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({ withSession: vi.fn(async (fn: (s: unknown) => unknown) => fn({})) }))
+vi.mock('../db.js', () => ({ withSession: vi.fn(async (fn: (s: unknown) => unknown) => fn({})) }))
 vi.mock('../bullmq.js', () => ({ getTenantQueue: vi.fn(() => h.queue) }))
 vi.mock('../actionExecutor.js', () => ({
   executeActions: vi.fn(async () => [{ action: 'set_field', success: true }]),

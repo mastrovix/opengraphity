@@ -116,6 +116,45 @@ export default tseslint.config(
   },
   {
     /*
+     * THE LAYERS OF THE API: NOTHING BELOW `graphql/` IMPORTS IT (wave 7 · C1).
+     *
+     * lib, services, jobs, rest, consumers, workflow and the rest are what the
+     * resolvers use; the REST API reached into resolver files (updateIncident,
+     * the custom fields, the change transition, the watchers of a comment)
+     * and lib hid the same dependency behind `await import()` so the
+     * typechecker would not see the cycle. That logic is in services now, and
+     * this rule keeps it there: a static import and a dynamic one alike.
+     *
+     * The exemptions are the doors above the resolvers, on purpose:
+     *  - server.ts and index.ts assemble the GraphQL server;
+     *  - scripts/ exports the schema;
+     *  - lib/testData/demoTenant/ drives the product through its resolvers
+     *    like a client, so the demo passes every rule the page passes;
+     *  - tests may reach any layer to pin it.
+     */
+    files: ['apps/api/src/**/*.ts'],
+    ignores: [
+      'apps/api/src/graphql/**',
+      'apps/api/src/server.ts', 'apps/api/src/index.ts',
+      'apps/api/src/scripts/**',
+      'apps/api/src/lib/testData/demoTenant/**',
+      '**/__tests__/**', '**/*.test.ts',
+    ],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          regex: '^\\.{1,2}/(.*/)?graphql/',
+          message: 'Only the GraphQL layer imports graphql/: move the logic into services/ (or lib/) and let the resolver call it.',
+        }],
+      }],
+      'no-restricted-syntax': ['error', {
+        selector: 'ImportExpression[source.value=/^\\.{1,2}\\/(.*\\/)?graphql\\//]',
+        message: 'A dynamic import of graphql/ is the same dependency, hidden: move the logic into services/ (or lib/).',
+      }],
+    },
+  },
+  {
+    /*
      * I COLORI SI PRENDONO DAI TOKEN, NON SI SCRIVONO A MANO.
      *
      * Vale sul portale, dove il cliente cambia il tema: un `#3b82f6` scritto

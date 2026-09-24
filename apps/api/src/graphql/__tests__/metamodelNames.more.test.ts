@@ -22,7 +22,7 @@ vi.mock('@opengraphity/schema-generator', async (orig) => {
 })
 
 const { assertNewCITypeName, assertNewCIFieldName, resetBaseSchemaNamesCache, reservedNamesFromSDL } = await import('../metamodelNames.js')
-const { ValidationError } = await import('../errors.js')
+const { ValidationError } = await import('../../lib/errors.js')
 
 beforeEach(() => { resetBaseSchemaNamesCache(); realAssert.fn = null })
 

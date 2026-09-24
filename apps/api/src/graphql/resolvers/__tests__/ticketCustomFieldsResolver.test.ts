@@ -16,6 +16,8 @@ vi.mock('../../../lib/customFieldSteps.js', async (importOriginal) => ({
 }))
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: (...a: unknown[]) => runQueryOne(...a) }))
 vi.mock('../ci-utils.js', () => ({ withSession: vi.fn(async (fn: (s: unknown) => unknown) => fn({})) }))
+// The write is the service's (wave 7 · C1): the same session for it.
+vi.mock('../../../lib/db.js', () => ({ withSession: vi.fn(async (fn: (s: unknown) => unknown) => fn({})) }))
 const audit = vi.fn(async () => {})
 vi.mock('../../../lib/audit.js', () => ({ audit: (...a: unknown[]) => audit(...a) }))
 const publishTicketUpdated = vi.fn(async () => {})

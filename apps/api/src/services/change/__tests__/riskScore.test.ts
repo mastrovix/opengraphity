@@ -19,7 +19,7 @@ import {
   calculateCIRiskScore,
   ENV_MAX,
 } from '../scoring.js'
-import { FACTORY_ENVIRONMENT_WEIGHT as W } from '../../../../lib/changeEnvironmentWeight.js'
+import { FACTORY_ENVIRONMENT_WEIGHT as W } from '../../../lib/changeEnvironmentWeight.js'
 
 describe('calculateTaskScore', () => {
   it('tutte le risposte al massimo + environment production (max) → 100', () => {

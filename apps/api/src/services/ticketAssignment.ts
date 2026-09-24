@@ -9,7 +9,7 @@
  * (NotFoundError / ValidationError) che il layer GraphQL traduce in codici.
  */
 import { NotFoundError, ValidationError } from '../lib/errors.js'
-import { runQueryOne } from '../graphql/resolvers/ci-utils.js'
+import { runQueryOne } from '../lib/db.js'
 import { assignTeamCypher, TEAM_NOW_PARAM } from '../lib/ticketTeamHistory.js'
 
 type Session = Parameters<typeof runQueryOne>[0]

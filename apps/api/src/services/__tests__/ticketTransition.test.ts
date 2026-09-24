@@ -42,7 +42,7 @@ vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => '
 vi.mock('../../lib/ticketComments.js', () => ({
   writeTicketComment: vi.fn(async (_tx: unknown, c: Record<string, unknown>) => { h.comments.push(c); return null }),
 }))
-vi.mock('../../graphql/resolvers/change/windowGate.js', () => ({
+vi.mock('../change/windowGate.js', () => ({
   assertChangeWindowGate: vi.fn(async () => undefined),
   automaticTransitionOutcome: vi.fn(async () => h.gateOutcome),
   automaticTransitionAllowed: vi.fn(async () => false),
@@ -58,7 +58,7 @@ const { validateStepRequirements } = await import('../../lib/validateRequiredFie
 const { requestApprovalWouldBeSkipped } = await import('../../lib/requestApproval.js')
 const { ticketApprovalRefusal } = await import('../../lib/ticketApprovalGate.js')
 const { applyOnEnterFields } = await import('../../lib/onEnterFields.js')
-const gate = await import('../../graphql/resolvers/change/windowGate.js')
+const gate = await import('../change/windowGate.js')
 
 const engine = vi.mocked(workflowEngine.transition)
 const session = {

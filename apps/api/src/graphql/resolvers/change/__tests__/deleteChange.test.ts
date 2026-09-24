@@ -37,7 +37,7 @@ vi.mock('../../../../jobs/eventCorrelateWorker.js', () => ({
 vi.mock('../../../../services/serviceImpact/sync.js', () => ({
   notifyChangeWindowChanged: vi.fn().mockResolvedValue(2),
 }))
-vi.mock('../autoTransitions.js', () => ({
+vi.mock('../../../../services/change/autoTransitions.js', () => ({
   evaluateAutoTransitions: vi.fn().mockResolvedValue(undefined),
   revertProblemAfterChangeDetached: vi.fn().mockResolvedValue(undefined),
 }))

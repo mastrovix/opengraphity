@@ -1,24 +1,24 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
-import type { GraphQLContext } from '../../../../context.js'
-import { perms } from '../../../../lib/__tests__/testPermissions.js'
+import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
-vi.mock('../../ci-utils.js', () => ({
+vi.mock('../../../lib/db.js', () => ({
   getSession:  vi.fn(),
   runQuery:    vi.fn(),
   runQueryOne: vi.fn(),
   mapCI:       vi.fn(),
 }))
 
-vi.mock('../../../../lib/logger.js', () => ({
+vi.mock('../../../lib/logger.js', () => ({
   // `child` serve perché scoring.ts ora importa lib/domainMatrix.js, che si
   // prende un logger figlio al caricamento del modulo (ondata 7).
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }))
 
-vi.mock('../../../../lib/workflowHelpers.js', () => ({
+vi.mock('../../../lib/workflowHelpers.js', () => ({
   getInitialStepName: vi.fn().mockResolvedValue('draft'),
   getWorkflowSteps:   vi.fn().mockResolvedValue([]),
 }))
@@ -26,7 +26,7 @@ vi.mock('../../../../lib/workflowHelpers.js', () => ({
 // ── Import after mocks ────────────────────────────────────────────────────────
 
 const { assertUserInCITeam, assertMayReopenTasks } = await import('../helpers.js')
-const { runQueryOne } = await import('../../ci-utils.js')
+const { runQueryOne } = await import('../../../lib/db.js')
 
 // ── Test context ──────────────────────────────────────────────────────────────
 

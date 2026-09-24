@@ -10,7 +10,7 @@ import { planEnvelope } from '../../../lib/deployWindows.js'
 import { withSession, runQueryOne, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { mapDeployPlanTask } from './mappers.js'
-import { evaluateAutoTransitions } from './autoTransitions.js'
+import { evaluateAutoTransitions } from '../../../services/change/autoTransitions.js'
 import { getInitialStepName } from '../../../lib/workflowHelpers.js'
 import {
   writeAudit,
@@ -18,7 +18,7 @@ import {
   assertUserInCITeam,
   computeAggregateRisk,
   afterEnterStep,
-} from './helpers.js'
+} from '../../../services/change/helpers.js'
 
 type TimeWindowInput = { start: string; end: string }
 type DeployStepInput = { title: string; validationWindow: TimeWindowInput; releaseWindow: TimeWindowInput }

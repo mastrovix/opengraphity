@@ -24,13 +24,13 @@ vi.mock('../../ci-utils.js', async (importOriginal) => ({
   }),
   runQueryOne: (...a: unknown[]) => runQueryOne(...a),
 }))
-vi.mock('../helpers.js', async (importOriginal) => ({
+vi.mock('../../../../services/change/helpers.js', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   writeAudit: vi.fn(),
   getCIName: vi.fn(async () => 'VM-01'),
   resetChangeRisk: vi.fn(),
 }))
-vi.mock('../autoTransitions.js', () => ({ evaluateAutoTransitions: vi.fn() }))
+vi.mock('../../../../services/change/autoTransitions.js', () => ({ evaluateAutoTransitions: vi.fn() }))
 
 const m = await import('../reopenMutations.js')
 

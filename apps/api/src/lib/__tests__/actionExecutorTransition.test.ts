@@ -23,7 +23,7 @@ const fakeSession = {
     run: async () => ({ records: [{ get: (k: string) => (k === 'labels' ? null : 'wi-1') }] }),
   })),
 }
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
+vi.mock('../db.js', () => ({
   withSession: vi.fn().mockImplementation((fn: (s: unknown) => unknown) => fn(fakeSession)),
 }))
 // The pipeline of the transitions (wave 7 · B1): the rule moves the ticket through it, signed by its name.

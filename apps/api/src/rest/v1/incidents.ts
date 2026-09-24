@@ -12,17 +12,16 @@
 import { Router, type Request, type Response, type Router as ExpressRouter } from 'express'
 import { requirePermission } from '../../middleware/apiKeyAuth.js'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
-import { withSession } from '../../graphql/resolvers/ci-utils.js'
+import { withSession } from '../../lib/db.js'
 import * as incidentService from '../../services/incidentService.js'
-import { incidentResolvers } from '../../graphql/resolvers/incident.js'
 import { mapIncident } from '../../lib/mappers.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { asyncHandler } from '../errorHandler.js'
 import { apiCtx, apiKeyOf, optionalBodyString, optionalString, parsePagination, requiredString } from '../apiContext.js'
 import { customFieldDefs, parseRestCustomFields, restCustomFieldValues } from '../../lib/ticketCustomFields.js'
-import { ticketCustomFieldResolvers } from '../../graphql/resolvers/ticketCustomFields.js'
+import { writeTicketCustomFields } from '../../services/ticketCustomFields.js'
 import { writeTicketComment } from '../../lib/ticketComments.js'
-import { notifyCommentAudience } from '../../graphql/resolvers/comments.js'
+import { notifyCommentAudience } from '../../services/commentAudience.js'
 import { audit } from '../../lib/audit.js'
 import { parametro } from '../parametroDiRotta.js'
 import { logger } from '../../lib/logger.js'
@@ -121,16 +120,16 @@ router.patch('/:id', requirePermission('incidents:write'), asyncHandler(async (r
   const customFields = parseRestCustomFields(body)
   if (Object.keys(input).length === 0 && customFields === undefined) throw new ValidationError('No patchable field provided')
 
-  // Same resolvers as the UI: required-field rules, Impact×Urgency coherence,
+  // Same services as the UI: required-field rules, Impact×Urgency coherence,
   // and the customer's fields validated like the detail page (ondata 4).
   const id  = parametro(req, 'id')
   const ctx = apiCtx(req)
-  const updated = Object.keys(input).length > 0 ? await incidentResolvers.Mutation.updateIncident(null, { id, input }, ctx) : null
+  const updated = Object.keys(input).length > 0 ? await incidentService.updateIncident(id, input, ctx) : null
   if (customFields === undefined) {
     res.json({ data: updated })
     return
   }
-  await ticketCustomFieldResolvers.Mutation.setTicketCustomFields(null, { entityType: 'incident', id, values: customFields }, ctx)
+  await writeTicketCustomFields('incident', id, customFields, ctx)
   const { row, defs } = await withSession(async (session) => ({
     row: await runQueryOne<{ props: Props }>(session, 'MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN properties(i) AS props', { id, tenantId: ctx.tenantId }),
     defs: await customFieldDefs(session, ctx.tenantId, 'incident'),

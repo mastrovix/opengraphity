@@ -27,6 +27,9 @@ vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), 
 vi.mock('../ci-utils.js', () => ({
   withSession: vi.fn(async (fn: (s: unknown) => Promise<unknown>) => fn(mockSession)),
 }))
+vi.mock('../../../lib/db.js', () => ({
+  withSession: vi.fn(async (fn: (s: unknown) => Promise<unknown>) => fn(mockSession)),
+}))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/roles.js', () => ({
   roleHasPermission: async (_t: string, role: string, permission: string) =>

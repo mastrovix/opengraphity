@@ -35,13 +35,14 @@ import type { GraphQLSchema } from 'graphql'
 import { loadMetamodel, generateSDL } from '@opengraphity/schema-generator'
 import type { ReservedSchemaNames } from '@opengraphity/schema-generator'
 import { reservedNamesOfBaseSchema } from './metamodelNames.js'
-import { ENUM_SCOPE } from './enumScope.js'
-import { buildBaseSDL } from '../graphql/schema-base.js'
-import { buildResolvers } from '../graphql/resolvers/index.js'
-import { logger } from './logger.js'
-import { registerSchemaInvalidator } from './schemaInvalidator.js'
-import { registerCITypes } from './ciTypeFromLabels.js'
-import { config } from './config.js'
+import { ENUM_SCOPE } from '../lib/enumScope.js'
+import { buildBaseSDL } from './schema-base.js'
+import { buildResolvers } from './resolvers/index.js'
+import { logger } from '../lib/logger.js'
+import { registerSchemaInvalidator } from '../lib/schemaInvalidator.js'
+import { registerTenantSchemaSource } from '../lib/tenantSchema.js'
+import { registerCITypes } from '../lib/ciTypeFromLabels.js'
+import { config } from '../lib/config.js'
 import {
   graphqlSchemaBuildsTotal, graphqlSchemaEvictionsTotal, graphqlSchemaBuildFailedTotal, graphqlSchemaCacheEntries,
 } from '../middleware/metrics.js'
@@ -325,4 +326,7 @@ export async function regenerateSchema(tenantId: string): Promise<GraphQLSchema>
 
 // Note: invalidateSchema is now in schemaInvalidator.ts to avoid circular imports
 // It is still exported here for backward compatibility with server.ts etc.
-export { invalidateSchema } from './schemaInvalidator.js'
+export { invalidateSchema } from '../lib/schemaInvalidator.js'
+
+// The layers below read the tenant's schema through lib/tenantSchema.ts (wave 7 · C1).
+registerTenantSchemaSource({ getSchemaForTenant, getSchemaState })

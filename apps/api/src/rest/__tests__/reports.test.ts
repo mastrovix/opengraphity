@@ -14,7 +14,7 @@ vi.mock('../../middleware/auth.js', () => ({
 process.env['REPORT_DIR'] = path.join(os.tmpdir(), 'opengraphity-reports-test')
 
 const { resolveTenantReportFile } = await import('../reports.js')
-const { tenantReportDir, REPORT_DIR } = await import('../../graphql/resolvers/reportExport.js')
+const { tenantReportDir, REPORT_DIR } = await import('../../services/reportExport.js')
 
 describe('report download path resolution (A-11 / C-25)', () => {
   it('serves only from REPORT_DIR/<tenantId>/<uuid>.<ext>', () => {

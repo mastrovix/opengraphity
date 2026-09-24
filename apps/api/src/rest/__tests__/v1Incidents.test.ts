@@ -1,7 +1,7 @@
 /**
  * A-08 / A-21 on the REST incidents router, over a real Express app:
  *  - PATCH never accepts `status` (workflow-only) and delegates to the same
- *    updateIncident resolver as GraphQL;
+ *    updateIncident service as GraphQL;
  *  - POST delegates to incidentService.createIncident;
  *  - typed errors map to 404/400, anything else to a generic 500;
  *  - `?page=1&page=2` (un array) is a 400, not a NaN reaching Cypher.
@@ -31,7 +31,7 @@ import { perms } from '../../lib/__tests__/testPermissions.js'
 
 vi.mock('../../lib/ticketCustomFields.js', async (importOriginal) => ({ ...(await importOriginal<object>()), customFieldDefs: vi.fn(async () => []) }))
 const setTicketCustomFields = vi.fn(async () => [])
-vi.mock('../../graphql/resolvers/ticketCustomFields.js', () => ({ ticketCustomFieldResolvers: { Mutation: { setTicketCustomFields: (...a: unknown[]) => setTicketCustomFields(...a) } } }))
+vi.mock('../../services/ticketCustomFields.js', () => ({ writeTicketCustomFields: (...a: unknown[]) => setTicketCustomFields(...a) }))
 vi.mock('../../lib/logger.js', () => ({
   logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn(), child: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() }) },
 }))
@@ -46,19 +46,16 @@ vi.mock('@opengraphity/neo4j', () => ({
   runQuery:    vi.fn(),
   runQueryOne: vi.fn(),
 }))
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
+vi.mock('../../lib/db.js', () => ({
   withSession: vi.fn().mockImplementation(async (fn: (s: unknown) => Promise<unknown>) => fn({ close: vi.fn() })),
 }))
 vi.mock('../../services/incidentService.js', () => ({
   createIncident: vi.fn(),
-}))
-vi.mock('../../graphql/resolvers/incident.js', () => ({
-  incidentResolvers: { Mutation: { updateIncident: vi.fn() } },
+  updateIncident: vi.fn(),
 }))
 
 const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
-const { createIncident } = await import('../../services/incidentService.js')
-const { incidentResolvers } = await import('../../graphql/resolvers/incident.js')
+const { createIncident, updateIncident } = await import('../../services/incidentService.js')
 const { incidentsRouter } = await import('../v1/incidents.js')
 const { restErrorHandler } = await import('../errorHandler.js')
 const { NotFoundError, ValidationError } = await import('../../lib/errors.js')
@@ -88,7 +85,7 @@ describe('PATCH /api/v1/incidents/:id', () => {
     const body = await res.json() as { error: { code: string; message: string } }
     expect(body.error.code).toBe('VALIDATION_ERROR')
     expect(body.error.message).toMatch(/workflow transition/)
-    expect(incidentResolvers.Mutation.updateIncident).not.toHaveBeenCalled()
+    expect(updateIncident).not.toHaveBeenCalled()
     expect(runQuery).not.toHaveBeenCalled()
   })
 
@@ -98,38 +95,38 @@ describe('PATCH /api/v1/incidents/:id', () => {
     expect(((await res.json()) as { error: { message: string } }).error.message).toMatch(/assignee_id/)
   })
 
-  it('delegates to the GraphQL updateIncident resolver with the API-key context', async () => {
-    vi.mocked(incidentResolvers.Mutation.updateIncident).mockResolvedValueOnce({ id: 'inc-1', title: 'nuovo' } as never)
+  it('delegates to the updateIncident service of GraphQL with the API-key context', async () => {
+    vi.mocked(updateIncident).mockResolvedValueOnce({ id: 'inc-1', title: 'nuovo' } as never)
     const res = await patch('inc-1', { title: 'nuovo', severity: 'high' })
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ data: { id: 'inc-1', title: 'nuovo' } })
-    expect(incidentResolvers.Mutation.updateIncident).toHaveBeenCalledWith(
-      null,
-      { id: 'inc-1', input: { title: 'nuovo', severity: 'high' } },
+    expect(updateIncident).toHaveBeenCalledWith(
+      'inc-1',
+      { title: 'nuovo', severity: 'high' },
       expect.objectContaining({ tenantId: 'tenant-1', userId: 'key-1', role: 'operator', permissions: perms('operator') }),
     )
   })
 
   // Ondata 4: i campi del cliente passano dalla stessa mutation del dettaglio.
-  it('customFields → setTicketCustomFields con l\'oggetto trasformato in elenco; un valore non scalare → 400', async () => {
+  it('customFields → writeTicketCustomFields con l\'oggetto trasformato in elenco; un valore non scalare → 400', async () => {
     vi.mocked(runQueryOne).mockResolvedValueOnce({ props: { id: 'inc-1', title: 't', status: 'new', severity: 'low', created_at: 'x', updated_at: 'x', esito: 'ok' } })
     const res = await patch('inc-1', { customFields: { esito: 'ok', centro: null } })
     expect(res.status).toBe(200)
-    expect(setTicketCustomFields).toHaveBeenCalledWith(null, { entityType: 'incident', id: 'inc-1', values: [{ name: 'esito', value: 'ok' }, { name: 'centro', value: null }] }, expect.objectContaining({ tenantId: 'tenant-1' }))
-    expect(incidentResolvers.Mutation.updateIncident).not.toHaveBeenCalled()
+    expect(setTicketCustomFields).toHaveBeenCalledWith('incident', 'inc-1', [{ name: 'esito', value: 'ok' }, { name: 'centro', value: null }], expect.objectContaining({ tenantId: 'tenant-1' }))
+    expect(updateIncident).not.toHaveBeenCalled()
     const bad = await patch('inc-1', { customFields: { esito: { nested: true } } })
     expect(bad.status).toBe(400)
   })
 
   it('NotFoundError from the resolver → 404', async () => {
-    vi.mocked(incidentResolvers.Mutation.updateIncident).mockRejectedValueOnce(new NotFoundError('Incident', 'inc-404'))
+    vi.mocked(updateIncident).mockRejectedValueOnce(new NotFoundError('Incident', 'inc-404'))
     const res = await patch('inc-404', { title: 'x' })
     expect(res.status).toBe(404)
     expect(await res.json()).toEqual({ error: { code: 'NOT_FOUND', message: 'Incident inc-404 not found' } })
   })
 
   it('unexpected error → 500 with a generic message', async () => {
-    vi.mocked(incidentResolvers.Mutation.updateIncident).mockRejectedValueOnce(new Error('bolt://secret-host refused'))
+    vi.mocked(updateIncident).mockRejectedValueOnce(new Error('bolt://secret-host refused'))
     const res = await patch('inc-1', { title: 'x' })
     expect(res.status).toBe(500)
     expect(await res.json()).toEqual({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } })

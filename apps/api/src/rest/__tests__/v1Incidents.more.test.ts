@@ -18,7 +18,7 @@ import type { AddressInfo } from 'node:net'
 
 vi.mock('../../lib/ticketCustomFields.js', async (importOriginal) => ({ ...(await importOriginal<object>()), customFieldDefs: vi.fn(async () => []) }))
 const setTicketCustomFields = vi.fn(async () => [])
-vi.mock('../../graphql/resolvers/ticketCustomFields.js', () => ({ ticketCustomFieldResolvers: { Mutation: { setTicketCustomFields: (...a: unknown[]) => setTicketCustomFields(...(a as [])) } } }))
+vi.mock('../../services/ticketCustomFields.js', () => ({ writeTicketCustomFields: (...a: unknown[]) => setTicketCustomFields(...(a as [])) }))
 const logError = vi.fn()
 vi.mock('../../lib/logger.js', () => ({
   logger: { warn: vi.fn(), error: (...a: unknown[]) => logError(...a), info: vi.fn(), debug: vi.fn(), child: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() }) },
@@ -31,21 +31,19 @@ vi.mock('../../middleware/apiKeyAuth.js', () => ({
 }))
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
 const withSessionWrite: unknown[] = []
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
+vi.mock('../../lib/db.js', () => ({
   withSession: vi.fn().mockImplementation(async (fn: (s: unknown) => Promise<unknown>, write?: unknown) => { withSessionWrite.push(write); return fn({ close: vi.fn() }) }),
 }))
-vi.mock('../../services/incidentService.js', () => ({ createIncident: vi.fn() }))
-vi.mock('../../graphql/resolvers/incident.js', () => ({ incidentResolvers: { Mutation: { updateIncident: vi.fn() } } }))
+vi.mock('../../services/incidentService.js', () => ({ createIncident: vi.fn(), updateIncident: vi.fn() }))
 const writeTicketComment = vi.fn()
 vi.mock('../../lib/ticketComments.js', () => ({ writeTicketComment: (...a: unknown[]) => writeTicketComment(...a) }))
 const notifyCommentAudience = vi.fn()
-vi.mock('../../graphql/resolvers/comments.js', () => ({ notifyCommentAudience: (...a: unknown[]) => notifyCommentAudience(...a) }))
+vi.mock('../../services/commentAudience.js', () => ({ notifyCommentAudience: (...a: unknown[]) => notifyCommentAudience(...a) }))
 const audit = vi.fn()
 vi.mock('../../lib/audit.js', () => ({ audit: (...a: unknown[]) => audit(...a) }))
 
 const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
-const { createIncident } = await import('../../services/incidentService.js')
-const { incidentResolvers } = await import('../../graphql/resolvers/incident.js')
+const { createIncident, updateIncident } = await import('../../services/incidentService.js')
 const { incidentsRouter } = await import('../v1/incidents.js')
 const { restErrorHandler } = await import('../errorHandler.js')
 
@@ -127,15 +125,15 @@ describe('PATCH /api/v1/incidents/:id', () => {
     const res = await json('PATCH', `${base}/inc-1`, {})
     expect(res.status).toBe(400)
     expect(((await res.json()) as { error: { message: string } }).error.message).toMatch(/No patchable field/)
-    expect(incidentResolvers.Mutation.updateIncident).not.toHaveBeenCalled()
+    expect(updateIncident).not.toHaveBeenCalled()
   })
 
   it('fields AND customFields: both go through the UI resolvers, the answer is re-read after both', async () => {
-    vi.mocked(incidentResolvers.Mutation.updateIncident).mockResolvedValueOnce({ id: 'inc-1' } as never)
+    vi.mocked(updateIncident).mockResolvedValueOnce({ id: 'inc-1' } as never)
     vi.mocked(runQueryOne).mockResolvedValueOnce({ props: { ...INC, title: 'new' } })
     const res = await json('PATCH', `${base}/inc-1`, { title: 'new', customFields: { outcome: 'ok' } })
     expect(res.status).toBe(200)
-    expect(incidentResolvers.Mutation.updateIncident).toHaveBeenCalledWith(null, { id: 'inc-1', input: { title: 'new' } }, expect.objectContaining({ tenantId: 'tenant-1' }))
+    expect(updateIncident).toHaveBeenCalledWith('inc-1', { title: 'new' }, expect.objectContaining({ tenantId: 'tenant-1' }))
     expect(setTicketCustomFields).toHaveBeenCalled()
     expect(((await res.json()) as { data: Record<string, unknown> }).data['title']).toBe('new')
     expect(vi.mocked(runQueryOne).mock.calls[0]![2]).toEqual({ id: 'inc-1', tenantId: 'tenant-1' })

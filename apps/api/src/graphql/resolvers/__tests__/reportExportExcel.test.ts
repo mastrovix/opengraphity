@@ -17,7 +17,7 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn() }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn() }))
 
-const { generateExcel, excelJsFrom, righeDiSerie, etichettaDelPeriodo, worksheetName } = await import('../reportExport.js')
+const { generateExcel, excelJsFrom, righeDiSerie, etichettaDelPeriodo, worksheetName } = await import('../../../services/reportExport.js')
 
 /**
  * LE DUE FORME DI UNA SERIE (20 set 2026, dal giro nel browser: «esportando in

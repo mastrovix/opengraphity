@@ -13,7 +13,7 @@ vi.mock('../logger.js', () => {
 const runQuery = vi.fn(async (..._a: unknown[]) => [{ ok: 1 }])
 vi.mock('@opengraphity/neo4j', () => ({ runQuery: (...a: unknown[]) => runQuery(...a) }))
 vi.mock('@opengraphity/events', () => ({ publish: vi.fn() }))
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({ withSession: vi.fn().mockImplementation((fn: (s: unknown) => unknown) => fn({})) }))
+vi.mock('../db.js', () => ({ withSession: vi.fn().mockImplementation((fn: (s: unknown) => unknown) => fn({})) }))
 const assignIncidentToTeam = vi.fn(async () => ({}))
 const assignIncidentToUser = vi.fn(async () => ({}))
 vi.mock('../../services/incidentService.js', () => ({ assignIncidentToTeam, assignIncidentToUser }))

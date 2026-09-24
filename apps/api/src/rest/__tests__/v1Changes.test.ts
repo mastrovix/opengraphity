@@ -1,7 +1,7 @@
 /**
  * REST v1 changes router over a real Express app: tenant-scoped pagination,
  * 404 on unknown ids, POST delegating to changeCreationService with the
- * API-key context, transitions reusing executeChangeTransition (CONFLICT →
+ * API-key context, transitions through the change transition service (CONFLICT →
  * 400 TRANSITION_NOT_AVAILABLE), /status deployApproved from step order,
  * /tasks type mapping. Neo4j, services and audit are mocked.
  */
@@ -39,19 +39,20 @@ vi.mock('../../middleware/apiKeyAuth.js', () => ({
   },
 }))
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
+vi.mock('../../lib/db.js', () => ({
   withSession: vi.fn().mockImplementation(async (fn: (s: unknown) => Promise<unknown>) => fn({ close: vi.fn() })),
 }))
 vi.mock('../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../lib/workflowHelpers.js', () => ({ getWorkflowSteps: vi.fn() }))
 vi.mock('../../services/changeCreationService.js', () => ({ createChangeRFC: vi.fn() }))
-vi.mock('../../graphql/resolvers/change/changeMutations.js', () => ({ executeChangeTransition: vi.fn() }))
+// The change's own transition, as a service (wave 7 · C1): the REST route no longer calls a resolver.
+vi.mock('../../services/change/changeTransition.js', () => ({ transitionChange: vi.fn() }))
 
 const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { audit } = await import('../../lib/audit.js')
 const { getWorkflowSteps } = await import('../../lib/workflowHelpers.js')
 const { createChangeRFC } = await import('../../services/changeCreationService.js')
-const { executeChangeTransition } = await import('../../graphql/resolvers/change/changeMutations.js')
+const { transitionChange } = await import('../../services/change/changeTransition.js')
 const { changesRouter } = await import('../v1/changes.js')
 const { restErrorHandler } = await import('../errorHandler.js')
 const { NotFoundError, ValidationError } = await import('../../lib/errors.js')
@@ -212,25 +213,25 @@ describe('POST /api/v1/changes/:id/transition', () => {
   it('missing toStep → 400, resolver untouched', async () => {
     const res = await postJson('/chg-1/transition', { notes: 'x' })
     expect(res.status).toBe(400)
-    expect(executeChangeTransition).not.toHaveBeenCalled()
+    expect(transitionChange).not.toHaveBeenCalled()
   })
 
-  it('reuses executeChangeTransition with the operator ctx, audits, returns the reloaded change', async () => {
-    vi.mocked(executeChangeTransition).mockResolvedValueOnce({} as never)
+  it('moves the change through the service with the operator ctx, audits, returns the reloaded change', async () => {
+    vi.mocked(transitionChange).mockResolvedValueOnce({} as never)
     vi.mocked(runQueryOne).mockResolvedValueOnce({ ...changeRow, phase: 'planning' })
     const res = await postJson('/chg-1/transition', { toStep: ' planning ', notes: 'all assessed' })
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({ data: { id: 'chg-1', phase: 'planning' } })
-    expect(executeChangeTransition).toHaveBeenCalledWith(
-      null,
-      { changeId: 'chg-1', toStep: 'planning', notes: 'all assessed' },
+    expect(transitionChange).toHaveBeenCalledWith(
+      expect.anything(),
       expect.objectContaining({ tenantId: 'tenant-1', userId: 'key-1', role: 'operator', permissions: perms('operator'), userEmail: 'api-key:key-1' }),
+      { changeId: 'chg-1', toStep: 'planning', notes: 'all assessed' },
     )
     expect(audit).toHaveBeenCalledWith(expect.anything(), 'change_transition', 'change', 'chg-1', { toStep: 'planning', notes: 'all assessed' })
   })
 
   it('workflow guard rejection (CONFLICT) → 400 TRANSITION_NOT_AVAILABLE, no audit', async () => {
-    vi.mocked(executeChangeTransition).mockRejectedValueOnce(new GraphQLError('Assessment tasks still open', { extensions: { code: 'CONFLICT' } }))
+    vi.mocked(transitionChange).mockRejectedValueOnce(new GraphQLError('Assessment tasks still open', { extensions: { code: 'CONFLICT' } }))
     const res = await postJson('/chg-1/transition', { toStep: 'planning' })
     expect(res.status).toBe(400)
     expect(await err(res)).toEqual({ code: 'TRANSITION_NOT_AVAILABLE', message: 'Assessment tasks still open' })
@@ -238,7 +239,7 @@ describe('POST /api/v1/changes/:id/transition', () => {
   })
 
   it('unknown change from the resolver → 404', async () => {
-    vi.mocked(executeChangeTransition).mockRejectedValueOnce(new NotFoundError('Change', 'chg-404'))
+    vi.mocked(transitionChange).mockRejectedValueOnce(new NotFoundError('Change', 'chg-404'))
     const res = await postJson('/chg-404/transition', { toStep: 'planning' })
     expect(res.status).toBe(404)
   })

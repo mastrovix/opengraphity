@@ -19,7 +19,7 @@ vi.mock('@opengraphity/neo4j', () => ({
     return null
   }),
 }))
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({ withSession: vi.fn(async (fn: (s: unknown) => unknown) => fn(h.session)) }))
+vi.mock('../../lib/db.js', () => ({ withSession: vi.fn(async (fn: (s: unknown) => unknown) => fn(h.session)) }))
 vi.mock('../ticketAssignment.js', () => ({ setTicketTeam: vi.fn() }))
 vi.mock('../requestService.js', () => ({ mapRequest: (p: Record<string, unknown>) => p }))
 vi.mock('../../lib/ticketComments.js', () => ({ writeTicketComment: vi.fn() }))

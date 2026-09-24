@@ -76,7 +76,7 @@ vi.mock('../../lib/workflowHelpers.js', () => ({
   ]),
 }))
 
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
+vi.mock('../../lib/db.js', () => ({
   withSession: vi.fn().mockImplementation(
     async (fn: (s: unknown) => Promise<unknown>, _write?: boolean) => fn(mockSession),
   ),

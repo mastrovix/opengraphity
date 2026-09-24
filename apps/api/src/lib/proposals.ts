@@ -31,7 +31,7 @@ import {
   type ProposalArea, type ProposalStatus, type ProposalEvidence,
   type ProposalRejectionKind,
 } from '@opengraphity/types'
-import { runQuery, runQueryOne } from '../graphql/resolvers/ci-utils.js'
+import { runQuery, runQueryOne } from './db.js'
 import { logger } from './logger.js'
 
 /** Quello che un analista consegna. Il resto lo mette questo modulo. */

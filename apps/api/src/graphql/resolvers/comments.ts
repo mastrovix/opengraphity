@@ -5,10 +5,9 @@ import { getSession } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
-import { parseMentions } from '../../lib/mentionParser.js'
-import { notifyMentions, notifyWatchers, autoWatch, getEntityTitle } from './collaboration.js'
 import { COMMENTABLE_LABELS, requireCommentRead, writeTicketComment } from '../../lib/ticketComments.js'
 import { hasPermission, isPortalOnly } from '../../lib/permissions.js'
+import { notifyCommentAudience } from '../../services/commentAudience.js'
 
 interface EntityComment {
   id:          string
@@ -231,22 +230,8 @@ export async function deleteComment(
   }
 }
 
-/**
- * Chi deve sapere di un commento: chi lo scrive diventa osservatore, i
- * menzionati ricevono la menzione, gli osservatori l'aggiornamento. Una
- * funzione per tutte le porte da cui si commenta (CO-3: il dettaglio di
- * incident e problem non notificava nessuno).
- */
-export async function notifyCommentAudience(ctx: GraphQLContext, entityType: string, entityId: string, body: string, isInternal = false): Promise<void> {
-  await autoWatch(ctx.tenantId, ctx.userId, entityId)
-  const mentions = parseMentions(body)
-  // Il titolo del ticket nella menzione: prima si passava l'id, e la frase diceva «in incident "3f2a…"».
-  if (mentions.length > 0) await notifyMentions(ctx.tenantId, ctx.userEmail, entityType, entityId, await getEntityTitle(ctx.tenantId, entityId), mentions, 'comment', body.slice(0, 200))
-  // `isInternal`: una nota interna non si annuncia a chi non può leggerla —
-  // l'utente del portale che ha aperto il ticket è osservatore (revisione
-  // totale · M-16).
-  await notifyWatchers(ctx.tenantId, entityType, entityId, { kind: 'comment', author: ctx.userEmail }, ctx.userId, isInternal)
-}
+// Who is told of a comment lives in services/collaboration.ts (wave 7 · C1): the REST API tells them too.
+export { notifyCommentAudience }
 
 export const commentResolvers = {
   Query:    { comments },

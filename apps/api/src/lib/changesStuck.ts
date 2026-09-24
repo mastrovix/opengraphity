@@ -42,6 +42,7 @@
  */
 import type { Session } from 'neo4j-driver'
 import { runQuery } from '@opengraphity/neo4j'
+import { automaticTransitionOutcome } from '../services/change/windowGate.js'
 
 /**
  * Il tetto dei candidati da valutare: questo è un controllo di diagnostica, non
@@ -128,7 +129,6 @@ export async function changeChePossonoMuoversi(session: Session, tenantId: strin
    * una diagnostica che gira ogni minuto per ogni tenant avrebbe sepolto i
    * rifiuti veri sotto quelli immaginari.
    */
-  const { automaticTransitionOutcome } = await import('../graphql/resolvers/change/windowGate.js')
 
   const ferme = new Set<string>()
   const muovibili: CambioFermo[] = []

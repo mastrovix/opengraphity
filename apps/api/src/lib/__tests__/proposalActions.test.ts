@@ -15,7 +15,7 @@
 import { describe, it, expect, vi } from 'vitest'
 
 vi.mock('@opengraphity/neo4j', () => ({ getSession: () => ({ close: async () => undefined }) }))
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({ runQueryOne: async () => ({ id: 't1' }) }))
+vi.mock('../db.js', () => ({ runQueryOne: async () => ({ id: 't1' }) }))
 vi.mock('../portalSeverityOptions.js', () => ({
   PORTAL_SEVERITY_VOCABULARY: 'severity',
   portalSeverityOptions: async () => finto.opzioni,

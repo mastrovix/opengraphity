@@ -49,15 +49,15 @@ vi.mock('@opengraphity/neo4j', () => ({
 vi.mock('../../../../lib/stepMetadataPreflight.js', () => ({ preflightStepMetadata: vi.fn(async () => {}) }))
 vi.mock('../../../../lib/onEnterFields.js', () => ({ applyOnEnterFields: vi.fn(async () => {}) }))
 vi.mock('../queries.js', () => ({ change: vi.fn(async () => ({ id: 'chg-1' })) }))
-vi.mock('../autoTransitions.js', () => ({
+vi.mock('../../../../services/change/autoTransitions.js', () => ({
   evaluateAutoTransitions: vi.fn().mockResolvedValue(undefined),
   revertProblemAfterChangeDetached: vi.fn().mockResolvedValue(undefined),
 }))
 const assertAllApprovalsSatisfied = vi.fn<() => Promise<void>>(async () => {})
-vi.mock('../approvalCreation.js', () => ({
+vi.mock('../../../../services/change/approvalCreation.js', () => ({
   assertAllApprovalsSatisfied: () => assertAllApprovalsSatisfied(),
 }))
-vi.mock('../helpers.js', () => ({
+vi.mock('../../../../services/change/helpers.js', () => ({
   afterEnterStep: vi.fn().mockResolvedValue(undefined),
   writeAudit:     vi.fn().mockResolvedValue(undefined),
   getNextTaskCodes: vi.fn(),

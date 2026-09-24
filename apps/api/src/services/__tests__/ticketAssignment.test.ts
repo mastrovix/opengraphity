@@ -11,10 +11,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({ runQueryOne: vi.fn() }))
+vi.mock('../../lib/db.js', () => ({ runQueryOne: vi.fn() }))
 
 const { assertUserInAssignedTeam, setTicketTeam, setTicketUser } = await import('../ticketAssignment.js')
-const { runQueryOne } = await import('../../graphql/resolvers/ci-utils.js')
+const { runQueryOne } = await import('../../lib/db.js')
 
 const session = {} as Parameters<typeof runQueryOne>[0]
 

@@ -33,7 +33,7 @@ import { ApolloServerPluginLandingPageDisabled } from '@apollo/server/plugin/dis
 import { expressMiddleware } from '@as-integrations/express5'
 import type { GraphQLRequestContextDidEncounterErrors } from '@apollo/server'
 import { buildContext, type GraphQLContext } from './context.js'
-import { getSchemaForTenant, getSchemaState } from './lib/schemaCache.js'
+import { getSchemaForTenant, getSchemaState } from './graphql/schemaCache.js'
 import { healthRouter } from './rest/health.js'
 import { sseRouter } from './rest/sse.js'
 import { reportStreamRouter } from './rest/report-stream.js'
@@ -452,7 +452,7 @@ async function apolloFor(tenantId: string, schema: GraphQLSchema): Promise<Tenan
     // quindi era sempre la prima candidata; sfrattarla rendeva
     // `GET /graphql` un 500 («System Apollo instance not ready») dopo
     // GRAPHQL_SCHEMA_CACHE_MAX tenant serviti. È la stessa protezione che la
-    // cache degli schemi ha già (NEVER_EVICTED in lib/schemaCache.ts).
+    // cache degli schemi ha già (NEVER_EVICTED in graphql/schemaCache.ts).
     while (apolloByTenant.size > Math.max(1, config.graphqlSchemaCacheMax)) {
       const oldest = apolloEvictionVictim([...apolloByTenant.keys()], tenantId)
       if (oldest === undefined) break

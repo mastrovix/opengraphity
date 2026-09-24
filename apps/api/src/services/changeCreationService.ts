@@ -21,10 +21,10 @@ import { workflowEngine } from '@opengraphity/workflow'
 import { ValidationError } from '../lib/errors.js'
 import { domainEvent, publishDomainEvent, recordDomainEventIn } from '../lib/publishEvent.js'
 import { TASK_STATUS, ASSESSMENT_ROLE } from '../lib/taskStatus.js'
-import { deriveChangePriority } from '../graphql/resolvers/change/scoring.js'
+import { deriveChangePriority } from './change/scoring.js'
 import { assertDomainValue } from '../lib/domainMatrix.js'
 import { assertCIsLinkable } from '../lib/ticketCIExclusions.js'
-import { withSession } from '../graphql/resolvers/ci-utils.js'
+import { withSession } from '../lib/db.js'
 import { runQueryOne } from '@opengraphity/neo4j'
 import { getInitialStepName } from '../lib/workflowHelpers.js'
 import {
@@ -32,7 +32,7 @@ import {
   nextChangeCode,
   getNextTaskCodes,
   assertCIHasOwnerAndSupport,
-} from '../graphql/resolvers/change/helpers.js'
+} from './change/helpers.js'
 
 export interface ChangeCreationInput {
   title:         string

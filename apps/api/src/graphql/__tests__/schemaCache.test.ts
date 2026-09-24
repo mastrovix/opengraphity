@@ -23,11 +23,11 @@ vi.mock('@opengraphity/schema-generator', async (importOriginal) => {
   const orig = await importOriginal<typeof import('@opengraphity/schema-generator')>()
   return { ...orig, loadMetamodel, loadITILTypes }
 })
-vi.mock('../ciTypeFromLabels.js', () => ({ registerCITypes }))
-vi.mock('../../graphql/resolvers/index.js', () => ({ buildResolvers: () => ({}) }))
+vi.mock('../../lib/ciTypeFromLabels.js', () => ({ registerCITypes }))
+vi.mock('../resolvers/index.js', () => ({ buildResolvers: () => ({}) }))
 
 const { getSchemaForTenant, getSchemaState, regenerateSchema } = await import('../schemaCache.js')
-const { invalidateSchema } = await import('../schemaInvalidator.js')
+const { invalidateSchema } = await import('../../lib/schemaInvalidator.js')
 
 /** Un tipo CI nella forma esatta di `CITypeWithDefinitions`. */
 function ciType(name: string, scope: 'base' | 'tenant' = 'tenant'): CITypeWithDefinitions {
@@ -166,7 +166,7 @@ describe('lo schema sicuro quando quello del tenant non si assembla', () => {
 
 describe('la cache è limitata', () => {
   it('oltre il limite sfratta il meno usato di recente e lo ricostruisce alla richiesta dopo', async () => {
-    const { config } = await import('../config.js')
+    const { config } = await import('../../lib/config.js')
     const max = config.graphqlSchemaCacheMax
     loadMetamodel.mockImplementation(async (tenantId: string) => [ciType(`tipo_${String(tenantId).replace(/[^a-z0-9]/gi, '_')}`)])
 

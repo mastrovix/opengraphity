@@ -12,7 +12,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 
-vi.mock('../../ci-utils.js', () => ({
+vi.mock('../../../../lib/db.js', () => ({
   runQuery:    vi.fn(),
   runQueryOne: vi.fn(),
 }))
@@ -33,13 +33,13 @@ vi.mock('../../../../lib/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }))
 
-import { runQuery, runQueryOne } from '../../ci-utils.js'
+import { runQuery, runQueryOne } from '../../../../lib/db.js'
 import {
   getApprovalGateState,
   assertAllApprovalsSatisfied,
   areAllApprovalsSatisfied,
   createChangeApprovals,
-} from '../approvalCreation.js'
+} from '../../../../services/change/approvalCreation.js'
 
 const session = {} as Parameters<typeof runQuery>[0]
 const mockedOne = vi.mocked(runQueryOne)

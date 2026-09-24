@@ -40,7 +40,7 @@ vi.mock('@opengraphity/neo4j', () => ({
     close: vi.fn().mockResolvedValue(undefined),
   }),
 }))
-vi.mock('../schemaCache.js', () => ({ getSchemaState: vi.fn(async () => degraded) }))
+vi.mock('../tenantSchema.js', () => ({ getSchemaState: vi.fn(async () => degraded) }))
 /**
  * I campi con una formula e l'interruttore degli script (moduli del catalogo,
  * ondata 6): di default nessun campo calcolato e script accesi, così questo
@@ -528,7 +528,7 @@ describe('configurationIssues', () => {
   })
 
   it('un controllo che fallisce diventa una voce, e non nasconde gli altri', async () => {
-    const { getSchemaState } = await import('../schemaCache.js')
+    const { getSchemaState } = await import('../tenantSchema.js')
     vi.mocked(getSchemaState).mockRejectedValueOnce(new Error('neo4j giù'))
     gaps = [{ kind: 'no_dashboard' }]
     const issues = await configurationIssues('c-one')

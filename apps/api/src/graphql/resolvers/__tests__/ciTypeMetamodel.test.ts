@@ -12,7 +12,7 @@
  *
  * Ondata 5 «la personalizzazione dei CI diventa vera» (A-12 / A-6):
  * - `createCIType` e `addCIField` passano dalla PORTA sui nomi
- *   (`lib/metamodelNames.ts`), che legge prima l'elenco dei nomi già presi:
+ *   (`graphql/metamodelNames.ts`), che legge prima l'elenco dei nomi già presi:
  *   per questo la Cypher della scrittura non è più la prima chiamata;
  * - `updateCIType`, `deleteCIType`, `addCIRelation` e `removeCIRelation`
  *   leggono l'ambito del tipo PRIMA di scrivere e verificano i contatori DOPO:

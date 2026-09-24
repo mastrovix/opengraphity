@@ -65,7 +65,7 @@ vi.mock('@opengraphity/notifications', async () => {
 // ── Ondata 11: il documento ai destinatari ───────────────────────────────────
 const sendEmail = vi.fn()
 const generateReportFile = vi.fn()
-vi.mock('../../graphql/resolvers/reportExport.js', () => ({
+vi.mock('../../services/reportExport.js', () => ({
   generateReportFile: (...a: unknown[]) => generateReportFile(...a),
 }))
 const readFile = vi.fn()

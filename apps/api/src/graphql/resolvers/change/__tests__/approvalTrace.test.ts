@@ -24,14 +24,14 @@ vi.mock('../../ci-utils.js', () => ({
   runQuery:    (...a: unknown[]) => runQuery(...(a as [])),
   runQueryOne: (...a: unknown[]) => { writes.push({ cypher: a[1] as string, params: a[2] as Record<string, unknown> }); return runQueryOne(...a) },
 }))
-vi.mock('../approvalCreation.js', () => ({
+vi.mock('../../../../services/change/approvalCreation.js', () => ({
   areAllApprovalsSatisfied: (...a: unknown[]) => areAllApprovalsSatisfied(...(a as [])),
   getApprovalGateState: vi.fn(),
   assertAllApprovalsSatisfied: vi.fn(),
   createChangeApprovals: vi.fn(),
 }))
-vi.mock('../helpers.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../helpers.js')>()),
+vi.mock('../../../../services/change/helpers.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../services/change/helpers.js')>()),
   writeAudit: vi.fn(),
   getInstanceId: vi.fn(async () => 'wi-1'),
   requireTeamMembership: vi.fn(),

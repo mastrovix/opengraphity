@@ -10,22 +10,22 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('../../ci-utils.js', () => ({
+vi.mock('../../../lib/db.js', () => ({
   runQuery:    vi.fn(),
   runQueryOne: vi.fn(),
 }))
 let preApproved: string[] = ['standard']
-vi.mock('../../../../lib/changePolicy.js', () => ({
+vi.mock('../../../lib/changePolicy.js', () => ({
   isPreApprovedChangeType: (_t: string, type: unknown) => Promise.resolve(typeof type === 'string' && preApproved.includes(type)),
   preApprovedChangeTypes:  () => Promise.resolve(preApproved as readonly string[]),
 }))
-vi.mock('../../../../lib/logger.js', () => ({
+vi.mock('../../../lib/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }))
 
-import { runQuery, runQueryOne } from '../../ci-utils.js'
+import { runQuery, runQueryOne } from '../../../lib/db.js'
 import { backfillChangeManagerApprovals } from '../approvalCreation.js'
-import { NotFoundError } from '../../../../lib/errors.js'
+import { NotFoundError } from '../../../lib/errors.js'
 
 const session = {} as Parameters<typeof runQuery>[0]
 const many = vi.mocked(runQuery)

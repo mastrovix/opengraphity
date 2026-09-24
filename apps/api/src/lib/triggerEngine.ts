@@ -5,7 +5,7 @@
  */
 import { runQuery } from '@opengraphity/neo4j'
 import { logger as appLogger } from './logger.js'
-import { withSession } from '../graphql/resolvers/ci-utils.js'
+import { withSession } from './db.js'
 import { getTenantQueue } from './bullmq.js'
 import { createAutomationCache, evaluateRules } from './automationEngine.js'
 import { invalidateSchema } from './schemaInvalidator.js'

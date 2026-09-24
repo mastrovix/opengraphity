@@ -25,6 +25,7 @@ import { isLingua } from '../lib/tenantLanguage.js'
 import { loadTemplateSections } from '../lib/reportTemplates.js'
 import { logger } from '../lib/logger.js'
 import { createTenantWorkers } from '../lib/bullmq.js'
+import { generateReportFile } from '../services/reportExport.js'
 
 export const REPORT_SCHEDULER_QUEUE = 'report-scheduler'
 
@@ -291,7 +292,6 @@ async function reportSchedulerProcessor(job: Job<{ tenantId: string }>) {
        */
       let consegnato = 0
       if (tpl.recipients.length > 0) {
-        const { generateReportFile } = await import('../graphql/resolvers/reportExport.js')
         const { sendEmail } = await import('@opengraphity/notifications')
         const { filePath, filename } = await generateReportFile(tpl.format, tpl.id, tpl.tenantId)
         try {

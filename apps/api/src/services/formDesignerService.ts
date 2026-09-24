@@ -44,6 +44,7 @@ import { loadVocabularyEntries } from '../lib/vocabularyEntries.js'
 import { SYSTEM_TENANT } from '../lib/enumScope.js'
 import { modelLanguageFor } from '../lib/systemText.js'
 import { TIPI_PROPONIBILI, validaProposta, type CatalogoPerProposta, type PropostaValidata } from '../lib/formDesignProposal.js'
+import { getSchemaForTenant } from '../lib/tenantSchema.js'
 
 const log = logger.child({ module: 'form-designer' })
 
@@ -183,7 +184,6 @@ async function leggiCatalogo(req: RichiestaDiProgetto): Promise<Catalogo> {
  */
 async function nomiNonUsabili(tenantId: string): Promise<ReadonlySet<string>> {
   const { customFieldNameReserved } = await import('@opengraphity/types')
-  const { getSchemaForTenant } = await import('../lib/schemaCache.js')
   const { GraphQLObjectType } = await import('graphql')
   const fuori = new Set<string>()
   const tipo = (await getSchemaForTenant(tenantId)).getType('ServiceRequest')

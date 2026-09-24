@@ -20,33 +20,33 @@
  * tests can tell the two apart.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { perms } from '../../../../lib/__tests__/testPermissions.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 type Route = (q: string, params: Record<string, unknown>) => unknown
 let many: Route = () => []
 let one: Route = () => null
 
-vi.mock('../../ci-utils.js', () => ({
+vi.mock('../../../lib/db.js', () => ({
   getSession:  vi.fn(),
   runQuery:    vi.fn(async (_s: unknown, q: string, p: Record<string, unknown>) => many(q, p)),
   runQueryOne: vi.fn(async (_s: unknown, q: string, p: Record<string, unknown>) => one(q, p)),
 }))
-vi.mock('../../../../lib/logger.js', () => ({
+vi.mock('../../../lib/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }))
-vi.mock('../../../../lib/workflowHelpers.js', () => ({
+vi.mock('../../../lib/workflowHelpers.js', () => ({
   getInitialStepName: vi.fn(async () => 'draft'),
   getStepPurpose:     vi.fn(async () => null),
 }))
-vi.mock('../../../../lib/workflowTargets.js', () => ({ targetStepByPurpose: vi.fn(async () => 'scheduled') }))
-vi.mock('../../../../lib/systemText.js', () => ({ systemText: vi.fn(async () => 'Pre-approved') }))
-vi.mock('../../../../lib/sequence.js', () => ({ nextSequenceBlock: vi.fn() }))
-vi.mock('../../../../lib/ticketNumbering.js', () => ({ nextTicketNumber: vi.fn(async () => 'CHG00000042') }))
+vi.mock('../../../lib/workflowTargets.js', () => ({ targetStepByPurpose: vi.fn(async () => 'scheduled') }))
+vi.mock('../../../lib/systemText.js', () => ({ systemText: vi.fn(async () => 'Pre-approved') }))
+vi.mock('../../../lib/sequence.js', () => ({ nextSequenceBlock: vi.fn() }))
+vi.mock('../../../lib/ticketNumbering.js', () => ({ nextTicketNumber: vi.fn(async () => 'CHG00000042') }))
 vi.mock('../approvalCreation.js', () => ({ createChangeApprovals: vi.fn() }))
-vi.mock('../../../../lib/changePolicy.js', () => ({ isPreApprovedChangeType: vi.fn(async () => false) }))
+vi.mock('../../../lib/changePolicy.js', () => ({ isPreApprovedChangeType: vi.fn(async () => false) }))
 // The pipeline of the transitions (wave 7 · B1): the pre-approval moves the change through it.
 const transition = vi.hoisted(() => vi.fn())
-vi.mock('../../../../services/ticketTransition.js', () => ({ transitionTicket: transition }))
+vi.mock('../../ticketTransition.js', () => ({ transitionTicket: transition }))
 vi.mock('../scoring.js', async (importOriginal) => {
   const orig = await importOriginal<typeof import('../scoring.js')>()
   return {
@@ -57,13 +57,13 @@ vi.mock('../scoring.js', async (importOriginal) => {
 })
 
 const h = await import('../helpers.js')
-const { nextSequenceBlock } = await import('../../../../lib/sequence.js')
-const { nextTicketNumber } = await import('../../../../lib/ticketNumbering.js')
-const { getStepPurpose } = await import('../../../../lib/workflowHelpers.js')
+const { nextSequenceBlock } = await import('../../../lib/sequence.js')
+const { nextTicketNumber } = await import('../../../lib/ticketNumbering.js')
+const { getStepPurpose } = await import('../../../lib/workflowHelpers.js')
 const { createChangeApprovals } = await import('../approvalCreation.js')
-const { isPreApprovedChangeType } = await import('../../../../lib/changePolicy.js')
+const { isPreApprovedChangeType } = await import('../../../lib/changePolicy.js')
 const { deriveChangePriority, determineApprovalRoute } = await import('../scoring.js')
-const { runQuery } = await import('../../ci-utils.js')
+const { runQuery } = await import('../../../lib/db.js')
 
 // ── fake session / transaction ────────────────────────────────────────────────
 

@@ -18,10 +18,10 @@
  *     'pending' invece di restare bloccato su record stantii.
  */
 import { GraphQLError } from 'graphql'
-import { NotFoundError } from '../../../lib/errors.js'
-import { runQuery, runQueryOne } from '../ci-utils.js'
-import { logger } from '../../../lib/logger.js'
-import { isPreApprovedChangeType, preApprovedChangeTypes } from '../../../lib/changePolicy.js'
+import { NotFoundError } from '../../lib/errors.js'
+import { runQuery, runQueryOne } from '../../lib/db.js'
+import { logger } from '../../lib/logger.js'
+import { isPreApprovedChangeType, preApprovedChangeTypes } from '../../lib/changePolicy.js'
 
 type Session = Parameters<typeof runQuery>[0]
 

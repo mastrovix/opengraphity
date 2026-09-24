@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import type { Session } from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
-import { withSession } from '../graphql/resolvers/ci-utils.js'
+import { withSession } from '../lib/db.js'
 import type {
   DiscoveredCI,
   SyncSourceConfig,

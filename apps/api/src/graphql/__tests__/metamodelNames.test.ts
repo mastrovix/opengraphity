@@ -18,8 +18,8 @@ import {
   reservedNamesFromSDL, reservedNamesOfBaseSchema, resetBaseSchemaNamesCache,
   assertNewCITypeName, assertNewCIFieldName, type ExistingCIType,
 } from '../metamodelNames.js'
-import { buildBaseSDL } from '../../graphql/schema-base.js'
-import { ValidationError } from '../errors.js'
+import { buildBaseSDL } from '../schema-base.js'
+import { ValidationError } from '../../lib/errors.js'
 
 /** I tipi CI del grafo dal vivo (`t.scope` + `t.name`, verificato 12 set 2026). */
 const EXISTING: ExistingCIType[] = [

@@ -21,7 +21,7 @@ vi.mock('@opengraphity/workflow', () => ({
   registerStepActionHandlers: vi.fn(),
 }))
 const runQueryOne = vi.fn()
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
+vi.mock('../../lib/db.js', () => ({
   runQueryOne: (...a: unknown[]) => runQueryOne(...a) as unknown,
 }))
 const areAllAssessmentsComplete = vi.fn()

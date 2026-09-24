@@ -13,7 +13,7 @@
  */
 import { TICKET_TEAM_ASSIGNED_EVENT, type TicketTeamAssignedPayload } from '@opengraphity/types'
 import { runQueryOne } from '@opengraphity/neo4j'
-import { withSession } from '../graphql/resolvers/ci-utils.js'
+import { withSession } from '../lib/db.js'
 import { NotFoundError, ValidationError } from '../lib/errors.js'
 import { publishEvent } from '../lib/publishEvent.js'
 import { systemText } from '../lib/systemText.js'

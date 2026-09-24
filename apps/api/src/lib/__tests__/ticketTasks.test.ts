@@ -36,7 +36,7 @@ vi.mock('@opengraphity/types', async (orig) => {
   delete labels['problem']
   return { ...real, ENTITY_NEO4J_LABELS: labels }
 })
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
+vi.mock('../db.js', () => ({
   runQuery: (...a: unknown[]) => h.runQuery(...a),
   runQueryOne: (...a: unknown[]) => h.runQueryOne(...a),
 }))

@@ -44,7 +44,7 @@ vi.mock('../../ci-utils.js', () => ({
   runQuery:    (...a: [unknown, string, Record<string, unknown>]) => runQuery(...a),
   runQueryOne: (...a: [unknown, string, Record<string, unknown>]) => runQueryOne(...a),
 }))
-vi.mock('../helpers.js', () => ({
+vi.mock('../../../../services/change/helpers.js', () => ({
   writeAudit:             (...a: unknown[]) => writeAudit(...a),
   getCIName:              () => getCIName(),
   getQuestionText:        () => getQuestionText(),
@@ -55,7 +55,7 @@ vi.mock('../helpers.js', () => ({
   computeAggregateRisk:   (...a: unknown[]) => computeAggregateRisk(...a),
   afterEnterStep:         vi.fn(),
 }))
-vi.mock('../autoTransitions.js', () => ({
+vi.mock('../../../../services/change/autoTransitions.js', () => ({
   evaluateAutoTransitions: (...a: unknown[]) => evaluateAutoTransitions(...a),
 }))
 vi.mock('../../../../lib/environmentRisk.js', () => ({

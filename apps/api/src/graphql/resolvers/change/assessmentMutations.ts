@@ -13,10 +13,10 @@ import { withSession, runQuery, runQueryOne, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
 import { mapAssessmentTask, mapDeployPlanTask } from './mappers.js'
-import { calculateTaskScore } from './scoring.js'
+import { calculateTaskScore } from '../../../services/change/scoring.js'
 import { changeEnvironmentWeight } from '../../../lib/changeEnvironmentWeight.js'
 import { environmentRiskScore } from '../../../lib/environmentRisk.js'
-import { evaluateAutoTransitions } from './autoTransitions.js'
+import { evaluateAutoTransitions } from '../../../services/change/autoTransitions.js'
 import {
   writeAudit,
   getCIName,
@@ -28,7 +28,7 @@ import {
   computeAggregateRisk,
   afterEnterStep,
   type Session,
-} from './helpers.js'
+} from '../../../services/change/helpers.js'
 import { toNumber } from '@opengraphity/neo4j'
 
 // ── Togliere l'assegnazione (F-4) ─────────────────────────────────────────────

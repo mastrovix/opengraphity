@@ -45,12 +45,12 @@ vi.mock('../../../lib/domainMatrix.js', () => ({
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/cache.js', () => ({ cache: { invalidate: vi.fn() } }))
 vi.mock('@opengraphity/schema-generator', () => ({ loadMetamodel: vi.fn(async () => []) }))
-vi.mock('../change/approvalCreation.js', () => ({ backfillChangeManagerApprovals: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('../../../services/change/approvalCreation.js', () => ({ backfillChangeManagerApprovals: vi.fn().mockResolvedValue(undefined) }))
 
 const { teamResolvers } = await import('../team.js')
 const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { audit } = await import('../../../lib/audit.js')
-const { backfillChangeManagerApprovals } = await import('../change/approvalCreation.js')
+const { backfillChangeManagerApprovals } = await import('../../../services/change/approvalCreation.js')
 
 const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'a@test.io', role: 'admin', permissions: perms('admin') }
 

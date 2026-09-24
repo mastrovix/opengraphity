@@ -3,11 +3,13 @@ import { GraphQLError } from 'graphql'
 import { customFieldDefs, resolveCustomFieldWrites, type CustomFieldInput } from '../lib/ticketCustomFields.js'
 import { creationStepContext } from '../lib/customFieldSteps.js'
 import { nextTicketNumber } from '../lib/ticketNumbering.js'
-import { resolveNewTicketPriority } from '../lib/priority.js'
+import { resolveNewTicketPriority, resolvePriorityPatch } from '../lib/priority.js'
+import { propsToFieldValues as mergedFieldValues, validateRequiredFields } from '../lib/validateRequiredFields.js'
+import { publishTicketUpdated } from '../lib/ticketUpdated.js'
 import { workflowEngine } from '@opengraphity/workflow'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { logger } from '../lib/logger.js'
-import { withSession, getSession } from '../graphql/resolvers/ci-utils.js'
+import { withSession, getSession } from '../lib/db.js'
 import { mapIncident } from '../lib/mappers.js'
 import { NotFoundError, ValidationError } from '../lib/errors.js'
 import { validateStringLength } from '../lib/validation.js'
@@ -476,6 +478,85 @@ export async function createIncident(
   } catch (err) {
     throw createdButIncomplete({ id: String(created.id), number: String(created.number ?? created.id) }, err)
   }
+}
+
+/** What the page and the REST API may change on an incident: the status is the workflow's. */
+export interface IncidentPatch {
+  title?:       string
+  description?: string
+  severity?:    string
+  impact?:      string
+  urgency?:     string
+}
+
+/**
+ * Updates the fields of an incident (wave 7 · C1: moved from the resolver,
+ * which the REST API called). The required-field rules on the resulting
+ * state, priority = impact × urgency, `ticket.updated` for the automations.
+ */
+export async function updateIncident(id: string, input: IncidentPatch, ctx: ServiceCtx) {
+  const now = new Date().toISOString()
+
+  return withSession(async (session) => {
+    // Le regole "campo obbligatorio" si valutano sullo stato RISULTANTE
+    // (persistito + patch), non sulla sola patch: altrimenti un update parziale
+    // fallirebbe sui campi obbligatori non toccati.
+    const current = await runQueryOne<{ props: Props }>(session,
+      'MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN properties(i) AS props',
+      { id, tenantId: ctx.tenantId })
+    if (!current) throw new NotFoundError('Incident', id)
+    await validateRequiredFields(session, {
+      entityType:  'incident',
+      fieldValues: { ...mergedFieldValues(current.props), ...(input as Record<string, unknown>) },
+      tenantId:    ctx.tenantId,
+    })
+
+    // Priorità (severity) = Impatto × Urgenza, sempre coerenti tra loro:
+    //  - impact/urgency nella patch → severity ricalcolata (merge col corrente);
+    //  - solo severity nella patch → impact/urgency riallineati alla severity.
+    const { severity, impact, urgency } = await resolvePriorityPatch(
+      ctx.tenantId,
+      { impact: current.props['impact'] as string | null, urgency: current.props['urgency'] as string | null },
+      { priority: input.severity, impact: input.impact, urgency: input.urgency },
+    )
+
+    const cypher = `
+      MATCH (i:Incident {id: $id, tenant_id: $tenantId})
+      // La descrizione si può SVUOTARE (revisione totale · B-17): con
+      // «coalesce» null e assente erano la stessa cosa, e chi cancellava un
+      // testo sbagliato lo ritrovava lì dopo il salvataggio. Ora conta se il
+      // campo è presente nell'input. Il titolo no: un ticket senza titolo non
+      // si riconosce in nessun elenco.
+      SET i += {
+        title:       coalesce($title, i.title),
+        description: CASE WHEN $descriptionGiven THEN $description ELSE i.description END,
+        severity:    coalesce($severity, i.severity),
+        impact:      coalesce($impact, i.impact),
+        urgency:     coalesce($urgency, i.urgency),
+        updated_at:  $now
+      }
+      RETURN properties(i) as props
+    `
+    // NB: status is intentionally NOT settable here — an incident's status is
+    // the workflow current step and must only change through the pipeline of
+    // the transitions (services/ticketTransition.ts).
+    const rows = await runQuery<{ props: Props }>(session, cypher, {
+      id,
+      tenantId:    ctx.tenantId,
+      title:       input.title       ?? null,
+      description: input.description ?? null,
+      // B-17: «presente nell'input» distingue il vuoto dall'assenza.
+      descriptionGiven: Object.prototype.hasOwnProperty.call(input, 'description'),
+      severity,
+      impact,
+      urgency,
+      now,
+    })
+    const row = rows[0]
+    if (!row) throw new NotFoundError('Incident', id)
+    await publishTicketUpdated(ctx, 'incident', id, current.props, row.props)
+    return mapIncident(row.props)
+  }, true)
 }
 
 export async function resolveIncident(

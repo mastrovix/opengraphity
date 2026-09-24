@@ -16,7 +16,7 @@ import { describe, it, expect, vi } from 'vitest'
 const eseguite = vi.hoisted(() => ({ query: [] as string[], params: [] as Record<string, unknown>[] }))
 
 vi.mock('@opengraphity/neo4j', () => ({ getSession: () => ({ close: async () => undefined }) }))
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
+vi.mock('../db.js', () => ({
   runQuery: async (_s: unknown, q: string, p: Record<string, unknown>) => {
     eseguite.query.push(q); eseguite.params.push(p)
     return []

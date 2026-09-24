@@ -22,7 +22,7 @@ const h = vi.hoisted(() => ({
 }))
 
 vi.mock('@opengraphity/neo4j', () => ({ getSession: () => ({ close: h.close }) }))
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({ runQuery: h.runQuery, runQueryOne: h.runQueryOne }))
+vi.mock('../db.js', () => ({ runQuery: h.runQuery, runQueryOne: h.runQueryOne }))
 
 const {
   copertura, azioniUmane, tempiNeiPassi, coppieRipetute, adozioneFunzioniAI, SOGLIE, AI_AUDIT_ACTIONS,

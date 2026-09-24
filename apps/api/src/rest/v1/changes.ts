@@ -4,8 +4,9 @@
  * Exposes the same RFC workflow used by the GraphQL API:
  *   - creation goes through the shared changeCreationService (CI validation,
  *     CHG code, per-CI assessment/deploy-plan tasks, workflow instance, audit)
- *   - transitions reuse the GraphQL executeChangeTransition resolver, so
- *     workflow guards and step side-effects behave identically.
+ *   - transitions go through the same service as the change's button in the
+ *     app (services/change/changeTransition.ts), so workflow guards and step
+ *     side-effects behave identically.
  *
  * Step names are never hardcoded: phases come from the WorkflowInstance and
  * step ordering/categories from lib/workflowHelpers (WorkflowStep nodes).
@@ -16,13 +17,13 @@
 import { Router, type Request, type Response, type Router as ExpressRouter } from 'express'
 import { requirePermission } from '../../middleware/apiKeyAuth.js'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
-import { withSession } from '../../graphql/resolvers/ci-utils.js'
+import { withSession } from '../../lib/db.js'
 import { audit } from '../../lib/audit.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { ASSESSMENT_ROLE, ROLE_TO_CATEGORY } from '../../lib/taskStatus.js'
 import { getWorkflowSteps } from '../../lib/workflowHelpers.js'
 import { createChangeRFC } from '../../services/changeCreationService.js'
-import { executeChangeTransition } from '../../graphql/resolvers/change/changeMutations.js'
+import { transitionChange } from '../../services/change/changeTransition.js'
 import { asyncHandler } from '../errorHandler.js'
 import { apiCtx, apiKeyOf, optionalString, parsePagination, requiredString } from '../apiContext.js'
 import { customFieldDefs, parseRestCustomFields, restCustomFieldValues, type CustomFieldDef } from '../../lib/ticketCustomFields.js'
@@ -316,7 +317,7 @@ router.post('/:id/transition', requirePermission('changes:write'), asyncHandler(
   // (task creation on step entry), audit trail and auto-transitions
   // all behave exactly like the UI flow. Guard rejections surface as
   // CONFLICT → 400 TRANSITION_NOT_AVAILABLE via the error middleware.
-  await executeChangeTransition(null, { changeId, toStep, notes }, ctx)
+  await withSession((session) => transitionChange(session, ctx, { changeId, toStep, notes }), true)
   await audit(ctx, 'change_transition', 'change', changeId, { toStep, notes: notes ?? null })
 
   await withSession(async (session) => {

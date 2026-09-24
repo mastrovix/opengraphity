@@ -10,7 +10,7 @@
  */
 import type { Session, ManagedTransaction } from 'neo4j-driver'
 import { toNumber } from '@opengraphity/neo4j'
-import { runQueryOne } from '../graphql/resolvers/ci-utils.js'
+import { runQueryOne } from './db.js'
 import { TASK_STATUS } from './taskStatus.js'
 
 export async function areAllAssessmentsComplete(

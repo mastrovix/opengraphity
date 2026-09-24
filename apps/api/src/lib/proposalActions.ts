@@ -42,7 +42,7 @@ import {
 } from '@opengraphity/types'
 import { assertAzioniAmmesseDaProposta } from './automationOrigin.js'
 import { riempiEtichette, ripristinaEtichette } from './configurationAssistActions.js'
-import { runQueryOne } from '../graphql/resolvers/ci-utils.js'
+import { runQueryOne } from './db.js'
 import { NotFoundError, ValidationError } from './errors.js'
 import { PORTAL_SEVERITY_VOCABULARY, portalSeverityOptions } from './portalSeverityOptions.js'
 import { domainVocabulary } from './domainMatrix.js'

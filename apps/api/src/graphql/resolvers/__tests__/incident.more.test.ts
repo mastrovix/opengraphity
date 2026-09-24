@@ -8,9 +8,8 @@
  *    customer must never read or touch another customer's incident or CI;
  *  - the list prefetches assignee/team/CIs so the field resolvers must NOT
  *    run a query per row, and must fall back to a query on the detail page;
- *  - update validates required fields on the RESULTING state (a partial edit
- *    must not fail on untouched fields), lets the description be emptied, and
- *    never lets `status` bypass the workflow;
+ *  - update hands over to the service (services/__tests__/incidentUpdate.test.ts
+ *    pins its rules);
  *  - linking a CI that does not exist in the tenant must be an error, not a
  *    silent "ok" that shows an unchanged incident;
  *  - the audit log says who got the ticket, from whom, and does not record
@@ -38,7 +37,6 @@ vi.mock('../ci-utils.js', () => ({
   ciTypeFromLabels: (_t: string, labels: string[]) => (labels[0] ? `type:${labels[0]}` : 'type:unknown'),
 }))
 vi.mock('../ticketCustomFields.js', () => ({ requestCustomFieldDefs: vi.fn().mockResolvedValue([{ name: 'cf_site' }]) }))
-vi.mock('../../../lib/priority.js', () => ({ resolvePriorityPatch: vi.fn() }))
 vi.mock('../../../lib/validateRequiredFields.js', () => ({
   validateRequiredFields: vi.fn().mockResolvedValue(undefined),
   propsToFieldValues: (p: Record<string, unknown>) => ({ ...p }),
@@ -46,7 +44,7 @@ vi.mock('../../../lib/validateRequiredFields.js', () => ({
 vi.mock('../../../lib/filterBuilder.js', () => ({ buildAdvancedWhere: vi.fn().mockReturnValue('i.title CONTAINS $f0') }))
 vi.mock('../../../lib/schemaFields.js', () => ({ getScalarFields: vi.fn().mockReturnValue(['title', 'severity']) }))
 vi.mock('../../../services/incidentService.js', () => ({
-  createIncident: vi.fn(), resolveIncident: vi.fn(), assignIncidentToTeam: vi.fn(), assignIncidentToUser: vi.fn(),
+  createIncident: vi.fn(), updateIncident: vi.fn(), resolveIncident: vi.fn(), assignIncidentToTeam: vi.fn(), assignIncidentToUser: vi.fn(),
 }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/ciLabelsForTenant.js', () => ({ ciLabelPredicateForTenant: vi.fn().mockResolvedValue('ci:ConfigurationItem') }))
@@ -54,7 +52,6 @@ vi.mock('../../../lib/ticketCIExclusions.js', () => ({ assertCIsLinkable: vi.fn(
 vi.mock('../../../lib/slaAcknowledgement.js', () => ({ assertMayAcknowledgeNoSla: vi.fn() }))
 vi.mock('../../../lib/ticketComments.js', () => ({ writeTicketComment: vi.fn() }))
 vi.mock('../comments.js', () => ({ notifyCommentAudience: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('../../../lib/ticketUpdated.js', () => ({ publishTicketUpdated: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/publishEvent.js', () => ({ publishEvent: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/ciMetamodelForTenant.js', () => ({ serviceRelPatternForTenant: vi.fn().mockResolvedValue('DEPENDS_ON|HOSTED_ON') }))
 vi.mock('../../../lib/logger.js', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() } }))
@@ -63,14 +60,12 @@ const { incidentResolvers, INCIDENT_SORT_WHITELIST } = await import('../incident
 const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { buildAdvancedWhere } = await import('../../../lib/filterBuilder.js')
 const { validateRequiredFields } = await import('../../../lib/validateRequiredFields.js')
-const { resolvePriorityPatch } = await import('../../../lib/priority.js')
 const incidentService = await import('../../../services/incidentService.js')
 const { audit } = await import('../../../lib/audit.js')
 const { assertCIsLinkable } = await import('../../../lib/ticketCIExclusions.js')
 const { assertMayAcknowledgeNoSla } = await import('../../../lib/slaAcknowledgement.js')
 const { writeTicketComment } = await import('../../../lib/ticketComments.js')
 const { notifyCommentAudience } = await import('../comments.js')
-const { publishTicketUpdated } = await import('../../../lib/ticketUpdated.js')
 const { logger } = await import('../../../lib/logger.js')
 
 const Q = incidentResolvers.Query
@@ -186,51 +181,12 @@ describe('createIncident', () => {
 })
 
 describe('updateIncident', () => {
-  const CURRENT = { id: 'i1', title: 'Old', description: 'text', impact: 'low', urgency: 'low', severity: 'low', category: 'db' }
-
-  it('unknown incident in the tenant → NotFound before any validation', async () => {
-    vi.mocked(runQueryOne).mockResolvedValueOnce(null as never)
-    await expect(M.updateIncident(null, { id: 'x', input: { title: 'n' } }, ctx)).rejects.toMatchObject({ extensions: { code: 'NOT_FOUND' } })
-    expect(vi.mocked(runQueryOne).mock.calls[0]![2]).toEqual({ id: 'x', tenantId: 't1' })
-    expect(validateRequiredFields).not.toHaveBeenCalled()
-  })
-
-  it('validates the MERGED state, recomputes priority from the current impact/urgency and publishes old → new', async () => {
-    vi.mocked(runQueryOne).mockResolvedValueOnce({ props: CURRENT } as never)
-    vi.mocked(resolvePriorityPatch).mockResolvedValueOnce({ severity: 'high', impact: 'high', urgency: 'low' } as never)
-    const updated = { ...CURRENT, impact: 'high', severity: 'high' }
-    vi.mocked(runQuery).mockResolvedValueOnce([{ props: updated }] as never)
-
-    const out = await M.updateIncident(null, { id: 'i1', input: { impact: 'high' } }, ctx)
-
-    // A partial edit keeps untouched required fields (category) in the check.
-    expect(validateRequiredFields).toHaveBeenCalledWith(mockSession, {
-      entityType: 'incident', tenantId: 't1', fieldValues: expect.objectContaining({ category: 'db', impact: 'high' }),
-    })
-    expect(resolvePriorityPatch).toHaveBeenCalledWith('t1', { impact: 'low', urgency: 'low' }, { priority: undefined, impact: 'high', urgency: undefined })
-    const [, cypher, params] = vi.mocked(runQuery).mock.calls[0]!
-    expect(cypher).toContain('MATCH (i:Incident {id: $id, tenant_id: $tenantId})')
-    // Status only moves through the workflow, never through this mutation.
-    expect(cypher).not.toMatch(/status\s*:/)
-    expect(params).toMatchObject({ id: 'i1', tenantId: 't1', title: null, description: null, descriptionGiven: false, severity: 'high', impact: 'high', urgency: 'low' })
-    expect(publishTicketUpdated).toHaveBeenCalledWith(ctx, 'incident', 'i1', CURRENT, updated)
-    expect(out).toMatchObject({ id: 'i1', title: 'Old' })
-  })
-
-  it('a description present in the input (even null) is written, so it can be cleared', async () => {
-    vi.mocked(runQueryOne).mockResolvedValueOnce({ props: CURRENT } as never)
-    vi.mocked(resolvePriorityPatch).mockResolvedValueOnce({ severity: null, impact: null, urgency: null } as never)
-    vi.mocked(runQuery).mockResolvedValueOnce([{ props: { ...CURRENT, description: null } }] as never)
-    await M.updateIncident(null, { id: 'i1', input: { description: undefined, title: 'New' } }, ctx)
-    expect(vi.mocked(runQuery).mock.calls[0]![2]).toMatchObject({ descriptionGiven: true, description: null, title: 'New' })
-  })
-
-  it('incident deleted between read and write → NotFound, nothing published', async () => {
-    vi.mocked(runQueryOne).mockResolvedValueOnce({ props: CURRENT } as never)
-    vi.mocked(resolvePriorityPatch).mockResolvedValueOnce({ severity: null, impact: null, urgency: null } as never)
-    vi.mocked(runQuery).mockResolvedValueOnce([] as never)
-    await expect(M.updateIncident(null, { id: 'i1', input: { title: 'n' } }, ctx)).rejects.toMatchObject({ extensions: { code: 'NOT_FOUND' } })
-    expect(publishTicketUpdated).not.toHaveBeenCalled()
+  // The rules and the write are the service's (wave 7 · C1), pinned in
+  // services/__tests__/incidentUpdate.test.ts; the resolver only hands over.
+  it('delegates to the service with the id, the input and the caller', async () => {
+    vi.mocked(incidentService.updateIncident).mockResolvedValueOnce({ id: 'i1' } as never)
+    await expect(M.updateIncident(null, { id: 'i1', input: { title: 'n' } }, ctx)).resolves.toEqual({ id: 'i1' })
+    expect(incidentService.updateIncident).toHaveBeenCalledWith('i1', { title: 'n' }, ctx)
   })
 })
 

@@ -15,29 +15,29 @@
  * factory-like table stands in for the tenant workflow.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { GraphQLContext } from '../../../../context.js'
-import { perms } from '../../../../lib/__tests__/testPermissions.js'
+import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: { evaluateCondition: vi.fn() },
 }))
 // The ITSM conditions register themselves on import; this suite fires only unconditioned arcs.
-vi.mock('../../../../workflow/conditions.js', () => ({}))
+vi.mock('../../../workflow/conditions.js', () => ({}))
 // Never a real driver: the module only needs toNumber.
 vi.mock('@opengraphity/neo4j', () => ({ toNumber: (v: unknown) => Number(v), getSession: vi.fn() }))
-vi.mock('../../ci-utils.js', () => ({ runQuery: vi.fn(), runQueryOne: vi.fn() }))
-vi.mock('../../../../lib/logger.js', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
-vi.mock('../../../../lib/systemText.js', () => ({ systemText: vi.fn(async (_t: string, key: string) => `text:${key}`) }))
+vi.mock('../../../lib/db.js', () => ({ runQuery: vi.fn(), runQueryOne: vi.fn() }))
+vi.mock('../../../lib/logger.js', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
+vi.mock('../../../lib/systemText.js', () => ({ systemText: vi.fn(async (_t: string, key: string) => `text:${key}`) }))
 // The pipeline of the transitions (wave 7 · B1): its guards and its notes are tested on their own.
 const transition = vi.fn()
-vi.mock('../../../../services/ticketTransition.js', () => ({ transitionTicket: (...a: unknown[]) => transition(...a) }))
+vi.mock('../../ticketTransition.js', () => ({ transitionTicket: (...a: unknown[]) => transition(...a) }))
 const refused = { moved: false, refusal: { guard: 'required_fields', final: true, message: 'required field missing' } }
-vi.mock('../../../../lib/workflowHelpers.js', () => ({ getStepPurpose: vi.fn() }))
-vi.mock('../../../../services/eventCorrelation.js', () => ({
+vi.mock('../../../lib/workflowHelpers.js', () => ({ getStepPurpose: vi.fn() }))
+vi.mock('../../eventCorrelation.js', () => ({
   resolveChangeWindowSteps: vi.fn(async () => ({ implementation: ['deployment'], planned: ['scheduled'], all: ['deployment', 'scheduled'] })),
 }))
-vi.mock('../../../../jobs/eventCorrelateWorker.js', () => ({ enqueueChangeWindowReevaluation: vi.fn() }))
-vi.mock('../../../../services/serviceImpact/sync.js', () => ({ notifyChangeWindowChanged: vi.fn(async () => 0) }))
+vi.mock('../../../jobs/eventCorrelateWorker.js', () => ({ enqueueChangeWindowReevaluation: vi.fn() }))
+vi.mock('../../serviceImpact/sync.js', () => ({ notifyChangeWindowChanged: vi.fn(async () => 0) }))
 
 const BY_PURPOSE: Record<string, Record<string, string[]>> = {
   change:  { implementation: ['deployment'], review: ['review'] },
@@ -49,7 +49,7 @@ const BY_CATEGORY: Record<string, Record<string, string[]>> = {
   incident: { active: ['in_progress'], escalated: ['escalated'], resolved: ['resolved'] },
 }
 const lookup = (table: typeof BY_PURPOSE, entity: string, keys: readonly string[]) => keys.flatMap((k) => table[entity]?.[k] ?? [])
-vi.mock('../../../../lib/workflowTargets.js', () => ({
+vi.mock('../../../lib/workflowTargets.js', () => ({
   stepNamesByPurposeOrdered: vi.fn(async (_s: unknown, _t: string, e: string, p: string[]) => lookup(BY_PURPOSE, e, p)),
   stepNamesByCategory:       vi.fn(async (_s: unknown, _t: string, e: string, c: string[]) => lookup(BY_CATEGORY, e, c)),
   targetStepByPurpose:       vi.fn(async (_s: unknown, _t: string, e: string, p: string[]) => lookup(BY_PURPOSE, e, p)[0]),
@@ -57,8 +57,8 @@ vi.mock('../../../../lib/workflowTargets.js', () => ({
 }))
 
 const { evaluateAutoTransitions, revertProblemAfterChangeDetached } = await import('../autoTransitions.js')
-const { runQuery, runQueryOne } = await import('../../ci-utils.js')
-const { getStepPurpose } = await import('../../../../lib/workflowHelpers.js')
+const { runQuery, runQueryOne } = await import('../../../lib/db.js')
+const { getStepPurpose } = await import('../../../lib/workflowHelpers.js')
 
 const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'op@test.io', role: 'operator', permissions: perms('operator') }
 const session = {} as never

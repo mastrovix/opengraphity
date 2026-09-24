@@ -37,7 +37,7 @@
  */
 import { getSession } from '@opengraphity/neo4j'
 import { changeChePossonoMuoversi } from './changesStuck.js'
-import { automaticTransitionOutcome } from '../graphql/resolvers/change/windowGate.js'
+import { automaticTransitionOutcome } from '../services/change/windowGate.js'
 import { logger } from './logger.js'
 import { transitionTicket } from '../services/ticketTransition.js'
 

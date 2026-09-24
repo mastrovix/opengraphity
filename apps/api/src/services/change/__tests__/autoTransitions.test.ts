@@ -13,8 +13,8 @@
  *   4. the pipeline of the transitions (wave 7 · B1) + afterEnterStep se la condizione passa.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { GraphQLContext } from '../../../../context.js'
-import { perms } from '../../../../lib/__tests__/testPermissions.js'
+import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
@@ -22,7 +22,7 @@ import { perms } from '../../../../lib/__tests__/testPermissions.js'
 // conditions.ts): evaluateCondition delega al registro reale così i test
 // esercitano le query di condizione.
 // I testi che il prodotto scrive nei ticket si risolvono nella lingua del cliente (lib/systemText.ts).
-vi.mock('../../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en'), languageForUser: vi.fn(async () => 'en') }))
+vi.mock('../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en'), languageForUser: vi.fn(async () => 'en') }))
 vi.mock('@opengraphity/workflow', () => ({
   // `conditions.js` registra anche chi scrive i compiti (20 set 2026): senza
   // questa, importarlo fa fallire tutta la suite prima del primo test.
@@ -35,7 +35,7 @@ vi.mock('@opengraphity/workflow', () => ({
     onStepEntered:     vi.fn(),
     hasCondition:      vi.fn(),
     evaluateCondition: vi.fn(async (session: unknown, name: string, ctx: unknown) => {
-      const { CHANGE_CONDITIONS } = await import('../../../../workflow/conditions.js')
+      const { CHANGE_CONDITIONS } = await import('../../../workflow/conditions.js')
       const c = CHANGE_CONDITIONS[name]
       if (!c) throw new Error(`Condizione di transizione sconosciuta: "${name}"`)
       return c.evaluate(session as never, ctx as never)
@@ -43,14 +43,14 @@ vi.mock('@opengraphity/workflow', () => ({
   },
 }))
 
-vi.mock('../../ci-utils.js', () => ({
+vi.mock('../../../lib/db.js', () => ({
   getSession:  vi.fn(),
   runQuery:    vi.fn(),
   runQueryOne: vi.fn(),
   mapCI:       vi.fn(),
 }))
 
-vi.mock('../../../../lib/logger.js', () => {
+vi.mock('../../../lib/logger.js', () => {
   const child = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
   return { logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => child } }
 })
@@ -59,13 +59,13 @@ vi.mock('../../../../lib/logger.js', () => {
 // importati dinamicamente da syncSuppressedEvents solo quando la change ha
 // eventi soppressi; la mutation ACCODA il job `reevaluate-change-window`, non
 // rivaluta in linea. Qui si verifica quando (e con che cosa) viene accodato.
-vi.mock('../../../../services/eventCorrelation.js', () => ({
+vi.mock('../../eventCorrelation.js', () => ({
   // Ondata 4 · A4-1: i passi di finestra vengono dallo SCOPO dei passi del
   // tenant, non da due letterali. Qui il tenant ha i nomi factory.
   resolveChangeWindowSteps: vi.fn().mockResolvedValue({ implementation: ['deployment'], planned: ['scheduled'], all: ['deployment', 'scheduled'] }),
   reevaluateSuppressedEvents: vi.fn().mockResolvedValue(2),
 }))
-vi.mock('../../../../jobs/eventCorrelateWorker.js', () => ({
+vi.mock('../../../jobs/eventCorrelateWorker.js', () => ({
   enqueueChangeWindowReevaluation: vi.fn().mockResolvedValue(undefined),
 }))
 // Servizi monitorati (revisione 2 · D6.1): ingresso e uscita dalla finestra
@@ -76,20 +76,20 @@ vi.mock('../../../../jobs/eventCorrelateWorker.js', () => ({
 // so the pipeline is a double; the tests at the bottom («il varco rifiuta»)
 // prove that the walker listens to its refusals.
 const transitionTicket = vi.fn()
-vi.mock('../../../../services/ticketTransition.js', () => ({ transitionTicket: (...a: unknown[]) => transitionTicket(...a) }))
+vi.mock('../../ticketTransition.js', () => ({ transitionTicket: (...a: unknown[]) => transitionTicket(...a) }))
 
-vi.mock('../../../../services/serviceImpact/sync.js', () => ({
+vi.mock('../../serviceImpact/sync.js', () => ({
   notifyChangeWindowChanged: vi.fn().mockResolvedValue(1),
 }))
 
 // ── Import after mocks ────────────────────────────────────────────────────────
 
 const { evaluateAutoTransitions } = await import('../autoTransitions.js')
-const { runQuery, runQueryOne } = await import('../../ci-utils.js')
-const { logger } = await import('../../../../lib/logger.js')
-const { reevaluateSuppressedEvents } = await import('../../../../services/eventCorrelation.js')
-const { enqueueChangeWindowReevaluation } = await import('../../../../jobs/eventCorrelateWorker.js')
-const { notifyChangeWindowChanged } = await import('../../../../services/serviceImpact/sync.js')
+const { runQuery, runQueryOne } = await import('../../../lib/db.js')
+const { logger } = await import('../../../lib/logger.js')
+const { reevaluateSuppressedEvents } = await import('../../eventCorrelation.js')
+const { enqueueChangeWindowReevaluation } = await import('../../../jobs/eventCorrelateWorker.js')
+const { notifyChangeWindowChanged } = await import('../../serviceImpact/sync.js')
 
 // ── Test context ──────────────────────────────────────────────────────────────
 
@@ -401,7 +401,7 @@ describe('sincronizzazione con problem e incident su workflow rinominati (A4-2/A
   beforeEach(async () => {
     vi.clearAllMocks()
     transitionTicket.mockResolvedValue({ moved: true })
-    const { invalidateWorkflowCache } = await import('../../../../lib/workflowHelpers.js')
+    const { invalidateWorkflowCache } = await import('../../../lib/workflowHelpers.js')
     invalidateWorkflowCache()
   })
 

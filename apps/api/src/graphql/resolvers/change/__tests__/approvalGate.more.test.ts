@@ -34,17 +34,17 @@ const transition = vi.hoisted(() => vi.fn())
 vi.mock('../../../../services/ticketTransition.js', () => ({ transitionTicket: transition }))
 const refused = (message: string, i18n?: { key: string }) => ({ moved: false, refusal: { guard: 'workflow', final: true, code: 'CONFLICT', message, ...(i18n ? { i18n } : {}) } })
 vi.mock('../queries.js', () => ({ change: vi.fn(async (_p: unknown, a: { id: string }) => ({ id: a.id })) }))
-vi.mock('../autoTransitions.js', () => ({ evaluateAutoTransitions: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('../helpers.js', () => ({
+vi.mock('../../../../services/change/autoTransitions.js', () => ({ evaluateAutoTransitions: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('../../../../services/change/helpers.js', () => ({
   afterEnterStep: vi.fn().mockResolvedValue(undefined),
   getInstanceId: vi.fn().mockResolvedValue('wi-1'),
   writeAudit: vi.fn().mockResolvedValue(undefined),
 }))
-vi.mock('../approvalCreation.js', () => ({ areAllApprovalsSatisfied: vi.fn() }))
+vi.mock('../../../../services/change/approvalCreation.js', () => ({ areAllApprovalsSatisfied: vi.fn() }))
 vi.mock('../../../../lib/workflowTargets.js', () => ({
   targetStepByPurpose: vi.fn(async (_s: unknown, _t: string, _e: string, purposes: string[]) => (purposes[0] === 'scheduled' ? 'in_calendar' : 'evaluation')),
 }))
-vi.mock('../scoring.js', () => ({ deriveChangePriority: vi.fn(async () => 'medium') }))
+vi.mock('../../../../services/change/scoring.js', () => ({ deriveChangePriority: vi.fn(async () => 'medium') }))
 vi.mock('../../../../lib/systemText.js', () => ({ systemText: vi.fn(async (_t: string, key: string) => `text:${key}`) }))
 vi.mock('../../../../lib/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
@@ -52,10 +52,10 @@ vi.mock('../../../../lib/logger.js', () => ({
 
 const { runQuery, runQueryOne } = await import('../../ci-utils.js')
 const { workflowEngine } = await import('@opengraphity/workflow')
-const { afterEnterStep, writeAudit } = await import('../helpers.js')
-const { areAllApprovalsSatisfied } = await import('../approvalCreation.js')
-const { evaluateAutoTransitions } = await import('../autoTransitions.js')
-const { deriveChangePriority } = await import('../scoring.js')
+const { afterEnterStep, writeAudit } = await import('../../../../services/change/helpers.js')
+const { areAllApprovalsSatisfied } = await import('../../../../services/change/approvalCreation.js')
+const { evaluateAutoTransitions } = await import('../../../../services/change/autoTransitions.js')
+const { deriveChangePriority } = await import('../../../../services/change/scoring.js')
 const { approveChangeApproval, rejectChangeApproval, changeApprovals } = await import('../approvalGate.js')
 
 const admin = { tenantId: 't1', userId: 'u-admin', userEmail: 'a@x', role: 'admin', permissions: perms('admin') } as never

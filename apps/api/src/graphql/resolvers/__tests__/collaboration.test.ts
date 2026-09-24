@@ -14,6 +14,9 @@ vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), 
 vi.mock('../ci-utils.js', () => ({
   withSession: vi.fn().mockImplementation(async (fn: (s: unknown) => Promise<unknown>) => fn(mockSession)),
 }))
+vi.mock('../../../lib/db.js', () => ({
+  withSession: vi.fn().mockImplementation(async (fn: (s: unknown) => Promise<unknown>) => fn(mockSession)),
+}))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 // M-16: i permessi del ruolo vengono dai ruoli del tenant; qui quelli di fabbrica.
 vi.mock('../../../lib/roles.js', () => ({

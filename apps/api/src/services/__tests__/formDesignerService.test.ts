@@ -124,7 +124,7 @@ const messagesCreate = vi.fn()
 // The first proposal loads the whole GraphQL schema (`nomiNonUsabili` imports
 // `schemaCache.js` lazily): seconds on a busy full-suite run. Load it once here,
 // with room, so no single test pays for it against the 5s test timeout.
-beforeAll(async () => { await import('../../lib/schemaCache.js') }, 60_000)
+beforeAll(async () => { await import('../../graphql/schemaCache.js') }, 60_000)
 
 const PROPOSTA = {
   voce: 'Nuovo PC', sezioni: [{ id: 'main', titleIt: 'Dati', titleEn: 'Data', columns: 1, items: [] }],

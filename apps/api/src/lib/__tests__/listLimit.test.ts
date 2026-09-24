@@ -7,7 +7,8 @@
 import { describe, it, expect, vi } from 'vitest'
 import { perms } from './testPermissions.js'
 
-vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
+// `toNumber` too: the change queries reach the workflow engine (through the task resolvers), which reads it at load.
+vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(), toNumber: (v: unknown) => Number(v ?? 0) }))
 vi.mock('../../graphql/resolvers/ci-utils.js', () => ({ withSession: vi.fn(async () => ({ items: [], total: 0 })) }))
 
 const { listPage, MAX_LIST_LIMIT } = await import('../listLimit.js')

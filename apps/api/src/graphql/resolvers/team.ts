@@ -18,6 +18,7 @@ import { cache } from '../../lib/cache.js'
 import { loadMetamodel } from '@opengraphity/schema-generator'
 import { ENUM_SCOPE } from '../../lib/enumScope.js'
 import { assertGroupRemovable } from '../../lib/ciGroups.js'
+import { backfillChangeManagerApprovals } from '../../services/change/approvalCreation.js'
 
 type Props = Record<string, unknown>
 
@@ -408,7 +409,6 @@ async function setChangeManagerTeam(_: unknown, args: { teamId: string; value: b
     if (!row) throw new NotFoundError('Team', args.teamId)
     // Le change già ferme in "approval" senza requisito CM lo ricevono ora.
     if (args.value) {
-      const { backfillChangeManagerApprovals } = await import('./change/approvalCreation.js')
       await backfillChangeManagerApprovals(session, ctx.tenantId, args.teamId)
     }
     void audit(ctx, 'team.change_manager_set', 'Team', args.teamId)

@@ -24,8 +24,8 @@ vi.mock('../../ci-utils.js', () => ({
   runQuery:    (...a: unknown[]) => runQuery(...(a as [])),
   runQueryOne: (...a: unknown[]) => runQueryOne(...a),
 }))
-vi.mock('../helpers.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../helpers.js')>()),
+vi.mock('../../../../services/change/helpers.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../services/change/helpers.js')>()),
   writeAudit:           (...a: unknown[]) => writeAudit(...a),
   getCIName:            (...a: unknown[]) => getCIName(...(a as [])),
   assertUserInCITeam:   (...a: unknown[]) => assertUserInCITeam(...a),

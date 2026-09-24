@@ -36,7 +36,7 @@ vi.mock('@opengraphity/neo4j', () => ({
       fn({ run: async (q, p) => { fake.writes.push({ q, p }) } }),
   }),
 }))
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
+vi.mock('../db.js', () => ({
   runQueryOne: async (_s: unknown, q: string, p: Record<string, unknown>) => {
     fake.queries.push({ q, p })
     return fake.one ? fake.one(q) : null

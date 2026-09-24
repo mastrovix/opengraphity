@@ -48,6 +48,7 @@ import { APPROVAL_GATED_TICKETS, ticketApprovalRefusal } from '../lib/ticketAppr
 import { applyOnEnterFields } from '../lib/onEnterFields.js'
 import { TransitionRefusedError } from '../lib/transitionRefused.js'
 import { systemText, type SystemTextKey } from '../lib/systemText.js'
+import * as gate from './change/windowGate.js'
 
 const log = logger.child({ module: 'ticket-transition' })
 
@@ -209,7 +210,6 @@ async function changeWindowRefusal(session: Session, req: TicketTransitionReques
     tenantId: req.tenantId, changeId: t.entityId, changeType: String(t.props['change_type'] ?? ''),
     currentStep: t.currentStep, toStep: req.toStep,
   }
-  const gate = await import('../graphql/resolvers/change/windowGate.js')
   if (req.actor.kind === 'person') {
     // The manual gate: its sentences name the two ways out, and needs
     // `approval.override` to leave the approval on behalf of the approvers

@@ -86,7 +86,7 @@ vi.mock('pdfkit', () => {
   return { default: FakePDF }
 })
 
-const mod = await import('../reportExport.js')
+const mod = { ...(await import('../../../services/reportExport.js')), ...(await import('../reportExport.js')) }
 globalThis.setInterval = h.realSetInterval
 const { reportExportResolvers, tenantReportDir, generateReportFile, loadTemplateForExport, REPORT_DIR } = mod
 

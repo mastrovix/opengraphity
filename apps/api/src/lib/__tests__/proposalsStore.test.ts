@@ -28,7 +28,7 @@ const finto = vi.hoisted(() => ({
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: () => ({ close: async () => undefined, executeWrite: async () => undefined }),
 }))
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
+vi.mock('../db.js', () => ({
   runQueryOne: async (_s: unknown, q: string) => {
     if (q.includes('MATCH (p:Proposal {tenant_id: $tenantId, area: $area, fingerprint')) return finto.esistente
     if (q.includes(':ProposalRejection')) return finto.lapide

@@ -32,6 +32,8 @@ const h = vi.hoisted(() => ({
 
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: h.runQueryOne }))
 vi.mock('../ci-utils.js', () => ({ withSession: h.withSession }))
+// The write is the service's (wave 7 · C1): the same session for it.
+vi.mock('../../../lib/db.js', () => ({ withSession: h.withSession }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn(async () => {}) }))
 vi.mock('../../../lib/ticketUpdated.js', () => ({ publishTicketUpdated: vi.fn(async () => {}) }))
 vi.mock('../../../lib/validateRequiredFields.js', () => ({ validateRequiredFields: vi.fn(async () => {}) }))

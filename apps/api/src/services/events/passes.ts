@@ -37,7 +37,7 @@ const log = logger.child({ module: 'event-correlation' })
 /**
  * Rivaluta gli eventi ancora silenziati da una change (job
  * `reevaluate-change-window`, accodato quando la change esce dai passi di
- * finestra; vedi graphql/resolvers/change/autoTransitions.ts; e
+ * finestra; vedi services/change/autoTransitions.ts; e
  * `deleteChange`). Ogni evento rientra nella pipeline: se un'altra change lo
  * copre resta soppresso, altrimenti torna firing e viene correlato. Un errore
  * su un evento non ferma gli altri ma fa fallire il job alla fine (ritenta; la

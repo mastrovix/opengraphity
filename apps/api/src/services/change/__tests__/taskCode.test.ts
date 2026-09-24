@@ -8,18 +8,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Ondata 6 di «Nulla cablato»: il formato dei numeri è del cliente; qui quello di fabbrica.
-vi.mock('../../../../lib/ticketNumbering.js', () => import('../../../../lib/__tests__/ticketNumberingFake.js'))
-vi.mock('../../ci-utils.js', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(), mapCI: vi.fn() }))
-vi.mock('../../../../lib/logger.js', () => ({
+vi.mock('../../../lib/ticketNumbering.js', () => import('../../../lib/__tests__/ticketNumberingFake.js'))
+vi.mock('../../../lib/db.js', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(), mapCI: vi.fn() }))
+vi.mock('../../../lib/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }))
-vi.mock('../../../../lib/workflowHelpers.js', () => ({ getInitialStepName: vi.fn().mockResolvedValue('assessment'), getWorkflowSteps: vi.fn().mockResolvedValue([]) }))
+vi.mock('../../../lib/workflowHelpers.js', () => ({ getInitialStepName: vi.fn().mockResolvedValue('assessment'), getWorkflowSteps: vi.fn().mockResolvedValue([]) }))
 const nextSequenceValue = vi.fn(async () => 42)
 const nextSequenceBlock = vi.fn(async (_s: unknown, _t: string, _k: string, count: number) => 40 + count)
-vi.mock('../../../../lib/sequence.js', () => ({ nextSequenceValue, nextSequenceBlock }))
+vi.mock('../../../lib/sequence.js', () => ({ nextSequenceValue, nextSequenceBlock }))
 
 const { getNextTaskCodes, nextChangeCode } = await import('../helpers.js')
-const { runQuery } = await import('../../ci-utils.js')
+const { runQuery } = await import('../../../lib/db.js')
 const session = {} as never
 
 beforeEach(() => vi.clearAllMocks())

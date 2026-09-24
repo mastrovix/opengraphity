@@ -25,6 +25,7 @@ import {
   type TicketTask,
 } from '../../lib/ticketTasks.js'
 import type { GraphQLContext } from '../../context.js'
+import { evaluateAutoTransitions } from '../../services/change/autoTransitions.js'
 import type { Permission } from '@opengraphity/types'
 
 /**
@@ -149,7 +150,6 @@ export async function claimTicketTask(
 async function riprovaLeTransizioniAutomatiche(ctx: GraphQLContext, task: TicketTask): Promise<void> {
   if (task.entityType !== 'change') return
   try {
-    const { evaluateAutoTransitions } = await import('./change/autoTransitions.js')
     const session = getSession(undefined, 'WRITE')
     try { await evaluateAutoTransitions(session, task.entityId, ctx) }
     finally { await session.close() }

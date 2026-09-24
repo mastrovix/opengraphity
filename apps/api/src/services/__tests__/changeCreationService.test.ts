@@ -60,7 +60,7 @@ vi.mock('../../lib/workflowHelpers.js', () => ({
   getWorkflowSteps:   vi.fn().mockResolvedValue([]),
 }))
 
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
+vi.mock('../../lib/db.js', () => ({
   withSession: vi.fn().mockImplementation(
     async (fn: (s: unknown) => Promise<unknown>, _write?: boolean) => fn(mockSession),
   ),
@@ -74,7 +74,7 @@ vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
 
 const { createChangeRFC } = await import('../changeCreationService.js')
 const { workflowEngine } = await import('@opengraphity/workflow')
-const { runQuery } = await import('../../graphql/resolvers/ci-utils.js')
+const { runQuery } = await import('../../lib/db.js')
 
 // ── Test context ──────────────────────────────────────────────────────────────
 

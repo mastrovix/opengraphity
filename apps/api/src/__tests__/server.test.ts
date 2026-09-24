@@ -73,7 +73,7 @@ const buildContext = vi.hoisted(() => vi.fn())
 vi.mock('../context.js', () => ({ buildContext }))
 
 const schemaCache = vi.hoisted(() => ({ getSchemaForTenant: vi.fn(), getSchemaState: vi.fn() }))
-vi.mock('../lib/schemaCache.js', () => schemaCache)
+vi.mock('../graphql/schemaCache.js', () => schemaCache)
 
 const slack = vi.hoisted(() => ({ commands: vi.fn(), actions: vi.fn(), oauth: vi.fn() }))
 vi.mock('../rest/slack.js', () => ({

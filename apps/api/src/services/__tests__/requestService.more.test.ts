@@ -37,7 +37,7 @@ vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: { createInstance: vi.fn() },
   initialStepSelection: vi.fn(),
 }))
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
+vi.mock('../../lib/db.js', () => ({
   withSession: vi.fn(async (fn: (s: unknown) => Promise<unknown>) => fn(h.session)),
 }))
 // The creation's event is recorded in its transaction and published after (wave 7 · B2).

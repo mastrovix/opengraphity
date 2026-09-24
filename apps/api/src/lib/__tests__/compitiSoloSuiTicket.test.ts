@@ -21,7 +21,7 @@ vi.mock('@opengraphity/neo4j', () => ({
 }))
 const finto = vi.hoisted(() => ({ esisteGia: false, numeriPresi: 0 }))
 
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
+vi.mock('../db.js', () => ({
   runQuery: async () => [{ id: 'task-1', teamId: null }],
   runQueryOne: async (_s: unknown, q: string) =>
     (q.includes('task_key: $chiave') && finto.esisteGia ? { id: 'task-vecchio' } : null),

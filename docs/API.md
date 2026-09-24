@@ -415,7 +415,7 @@ REST: `GET /api/slack/oauth/callback` (public, verifies the signed state, redire
 
 ## REST API v1
 
-All `/api/v1/*` routes authenticate with an API key (created via the `createApiKey` GraphQL mutation) sent in the `X-API-Key` header. Responses are JSON: `{ "data": ... }` on success (lists add `"meta": { page, limit, total }`), `{ "error": { "code", "message" } }` on failure. Requests are rate-limited per key. The ticket routes carry the tenant's custom fields as an object `customFields: { fieldName: value }` in responses, and accept it in `POST` (incidents, problems, changes) and in `PATCH /api/v1/incidents/:id`; a value must be a string, a number, a boolean or null.
+All `/api/v1/*` routes authenticate with an API key (created via the `createApiKey` GraphQL mutation) sent in the `X-API-Key` header. Responses are JSON: `{ "data": ... }` on success (lists add `"meta": { page, limit, total }`), `{ "error": { "code", "message" } }` on failure. Requests are rate-limited per key. The ticket routes carry the tenant's custom fields as an object `customFields: { fieldName: value }` in responses, and accept it in `POST` (incidents, problems, changes) and in `PATCH /api/v1/incidents/:id`; a value must be a string, a number, a boolean or null. The routes call the same services as the GraphQL mutations: an edit, a transition or a comment checks the same rules and sends the same events and notifications whichever of the two it came in by.
 
 ```http
 GET /api/v1/changes HTTP/1.1

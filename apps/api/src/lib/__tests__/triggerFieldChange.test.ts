@@ -11,7 +11,7 @@ const rows = [
   { id: 't-cat', name: 'Categoria', entity_type: 'incident', event_type: 'on_field_change', conditions: JSON.stringify([{ field: 'category', operator: 'is_not_null' }]), timer_delay_minutes: null, actions: '[]' },
 ]
 vi.mock('@opengraphity/neo4j', () => ({ runQuery: vi.fn(async () => rows) }))
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({ withSession: vi.fn(async (fn: (s: unknown) => unknown) => fn({})) }))
+vi.mock('../db.js', () => ({ withSession: vi.fn(async (fn: (s: unknown) => unknown) => fn({})) }))
 vi.mock('../bullmq.js', () => ({ getQueue: vi.fn() }))
 vi.mock('../actionExecutor.js', () => ({ executeActions: vi.fn(async () => []), parseActions: vi.fn(() => []) }))
 vi.mock('../audit.js', () => ({ audit: vi.fn() }))

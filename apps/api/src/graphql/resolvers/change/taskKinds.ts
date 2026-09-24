@@ -20,8 +20,8 @@ import {
 } from './mappers.js'
 import {
   CHANGE_NOT_DELETED, assertMayReopenTasks, writeAudit, getCIName, assertUserInCITeam, afterEnterStep, resetChangeRisk,
-} from './helpers.js'
-import { evaluateAutoTransitions } from './autoTransitions.js'
+} from '../../../services/change/helpers.js'
+import { evaluateAutoTransitions } from '../../../services/change/autoTransitions.js'
 
 export type TaskKind = 'assessment' | 'deploy-plan' | 'validation' | 'deployment' | 'review'
 

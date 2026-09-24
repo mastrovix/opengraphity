@@ -15,7 +15,7 @@ vi.mock('../actionExecutor.js', () => ({
   parseActions: (raw: string | null) => (raw ? JSON.parse(raw) : []),
 }))
 vi.mock('@opengraphity/neo4j', () => ({ runQuery: vi.fn() }))
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
+vi.mock('../db.js', () => ({
   withSession: vi.fn().mockImplementation((fn: (s: unknown) => unknown) => fn({})),
 }))
 vi.mock('../bullmq.js', () => ({ getQueue: vi.fn() }))

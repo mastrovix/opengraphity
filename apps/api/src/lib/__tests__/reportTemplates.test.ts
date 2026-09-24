@@ -162,7 +162,7 @@ describe('consumers of the single loader', () => {
     })
     vi.mocked(getSession).mockReturnValue(session as never)
 
-    const { loadTemplateForExport } = await import('../../graphql/resolvers/reportExport.js')
+    const { loadTemplateForExport } = await import('../../services/reportExport.js')
     const tpl = await loadTemplateForExport('tpl-1', 'tenant-1')
 
     expect(tpl?.name).toBe('Il mio report')

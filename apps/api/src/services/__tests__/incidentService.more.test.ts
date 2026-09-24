@@ -51,7 +51,7 @@ vi.mock('@opengraphity/neo4j', () => ({ runQuery: vi.fn(), runQueryOne: vi.fn(),
 vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: { createInstance: vi.fn(), getAvailableTransitions: vi.fn() },
 }))
-vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
+vi.mock('../../lib/db.js', () => ({
   withSession: vi.fn(async (fn: (s: unknown) => unknown) => fn(h.session)),
   getSession: vi.fn(),
 }))

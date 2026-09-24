@@ -460,7 +460,7 @@ seguente è in-process e non è condiviso:
 | Componente | Dove | Effetto con 2+ repliche |
 |---|---|---|
 | Client SSE (`/api/sse`) | `packages/notifications/src/sse.ts` (`Map` in memoria) | un evento raggiunge solo i client connessi alla replica che lo pubblica |
-| Cache schema/metamodello | `apps/api/src/lib/schemaCache.ts`, `lib/cache.ts` | invalidazione su una sola replica, divergenza fino al TTL |
+| Cache schema/metamodello | `apps/api/src/graphql/schemaCache.ts`, `lib/cache.ts` | invalidazione su una sola replica, divergenza fino al TTL |
 | Rate limit GraphQL / API key | `middleware/graphqlRateLimiter.ts`, `apiKeyAuth.ts` (bucket in memoria) | limite moltiplicato per il numero di repliche |
 | Scheduler BullMQ (backup, report, anomaly scan, digest, discovery, SLA, workflow timer) | avviati in `apps/api/src/index.ts` dentro il processo HTTP | ogni replica registra/esegue i job ripetibili → backup e scansioni duplicati |
 
