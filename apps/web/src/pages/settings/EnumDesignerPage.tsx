@@ -90,6 +90,26 @@ const iconBtn: React.CSSProperties = {
 /** Campo in sola lettura: lo stile è del sistema di design (`readOnlyInputS`). */
 const readOnlyS = readOnlyInputS
 
+/**
+ * A control in a value row: one height for inputs and selects, the text
+ * centred. At 26 px with the form's 7 px padding a select had 10 px left for
+ * 14 px of text, and «No color» showed only its top half.
+ */
+const rowControlS: React.CSSProperties = { ...inputS, height: 30, paddingTop: 0, paddingBottom: 0, fontWeight: 400, minWidth: 0, flex: '1 1 auto' }
+
+/**
+ * The columns of a value row, the same on every row so the list reads by
+ * column: the arrows (not on a shipped vocabulary), the value, one per
+ * language. Colour, icon and actions are added by the stylesheet when the
+ * editor is wide enough (`.og-dict-row` in index.css), or go to a second line.
+ */
+function valueRowColumns(shipped: boolean, labelColumns: number): React.CSSProperties {
+  return {
+    '--og-dict-cols': [...(shipped ? [] : ['20px']), 'minmax(80px, 160px)', ...Array.from({ length: labelColumns }, () => 'minmax(100px, 1fr)')].join(' '),
+    '--og-dict-tools-col': shipped ? '1 / -1' : '2 / -1',
+  } as React.CSSProperties
+}
+
 // ── CreateEnumDialog ──────────────────────────────────────────────────────────
 
 function CreateEnumDialog({
@@ -276,7 +296,7 @@ function ValueIconControl({ value, icon, disabled, style, onChange }: {
   const { t } = useTranslation()
   const Drawing = isValueIcon(icon) ? VALUE_ICON_DRAWINGS[icon] : null
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+    <span className="og-dict-cell">
       {Drawing && <Drawing size={13} aria-hidden="true" />}
       <Select style={style} value={icon} disabled={disabled} onChange={(ev) => onChange(ev.target.value)}
         aria-label={t('pages.dictionary.valueIconLabel', { value })}>
@@ -730,15 +750,11 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
             leggono il vocabolario per POSIZIONE (lo stato con cui nasce un CI,
             le fasce di rischio, l'impatto più alto). Una riga per valore, con
             le operazioni che mancavano: rinomina, ordine, valore di default. */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10, minHeight: 32 }}>
+        <div className="og-dict-values" style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10, minHeight: 32 }}>
           {values.map((v, i) => (
-            <div key={v} style={{
-              // `wrap` + una larghezza minima sul campo dell'etichetta: senza,
-              // la riga (frecce, valore, etichetta, stella, matita, ×) si
-              // stringeva finché l'input restava largo 22px, cioè inusabile.
-              // Andare a capo costa una riga, restringere costa il campo.
-              display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', flexWrap: 'wrap',
-              background: palette.info.bg, borderRadius: 6,
+            <div key={v} className="og-dict-row" style={{
+              ...valueRowColumns(shipped, senzaEtichette ? 0 : lingue.length),
+              padding: '4px 8px', background: palette.info.bg, borderRadius: 6,
               fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', fontWeight: 500,
             }}>
               {!shipped && (
@@ -755,10 +771,11 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
               )}
 
               {renamingFrom === v ? (
-                <>
+                // The rename takes the whole row after the arrows.
+                <span style={{ gridColumn: '2 / -1', display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                   <Input
                     ref={renameInputRef}
-                    style={{ ...inputS, flex: 1, height: 26 }}
+                    style={{ ...rowControlS, flex: 1 }}
                     value={renameTo}
                     onChange={(ev) => setRenameTo(ev.target.value)}
                     onKeyDown={(ev) => {
@@ -774,10 +791,11 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
                   <button type="button" onClick={() => setRenamingFrom(null)} style={iconBtn} aria-label={t('common.cancel')}>
                     <X size={11} aria-hidden="true" />
                   </button>
-                </>
+                </span>
               ) : (
                 <>
-                  <span style={{ flex: '0 0 auto', fontFamily: 'var(--font-mono, monospace)' }}>{v}</span>
+                  {/* The technical value: a long one ends in «…» and says itself whole on hover. */}
+                  <span title={v} style={{ fontFamily: 'var(--font-mono, monospace)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{v}</span>
                   {/*
                     L'ETICHETTA con cui il valore si legge a schermo (ondata 1).
                     Si scrive qui e si vede in ogni pastiglia, tendina e
@@ -791,14 +809,14 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
                       compilarle. */}
                   {!senzaEtichette && lingue.map(({ codice, nome }) => (
                     shipped ? (
-                      <span key={codice} style={{ flex: '1 1 120px', fontWeight: 400, color: 'var(--color-slate)' }}>
+                      <span key={codice} style={{ fontWeight: 400, color: 'var(--color-slate)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                         <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginRight: 4 }}>{codice}</span>
                         {etichettaSalvata(v, codice) || <span style={{ fontStyle: 'italic' }}>{t('pages.dictionary.valueLabelEmpty')}</span>}
                       </span>
                     ) : (
                       <Input
                         key={codice}
-                        style={{ ...inputS, flex: '1 1 120px', minWidth: 110, height: 26, fontWeight: 400 }}
+                        style={rowControlS}
                         value={etichettaInCampo(v, codice)}
                         placeholder={nome}
                         onChange={(ev) => setLabelDrafts((d) => ({ ...d, [`${v}|${codice}`]: ev.target.value }))}
@@ -811,52 +829,57 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
                       />
                     )
                   ))}
-                  {/* Il COLORE del valore (F9): una famiglia della palette, mai un esadecimale. */}
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                    <span aria-hidden="true" style={{
-                      width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
-                      background: coloreSalvato(v) ? valueColorStyle(coloreSalvato(v) as ValueColor).accent : 'transparent',
-                      border: `1px solid ${palette.neutral.borderStrong}`,
-                    }} />
-                    <Select
-                      style={{ ...inputS, height: 26, width: 'auto', fontWeight: 400, ...(shipped ? readOnlyS : {}) }}
-                      value={coloreSalvato(v)}
-                      disabled={shipped || saving || savingLabels}
-                      onChange={(ev) => salvaColore(v, ev.target.value)}
-                      aria-label={t('pages.dictionary.valueColorLabel', { value: v })}
-                    >
-                      <option value="">{t('pages.dictionary.valueColorNone')}</option>
-                      {VALUE_COLORS.map((c) => <option key={c} value={c}>{t(`pages.dictionary.valueColors.${c}`)}</option>)}
-                    </Select>
-                  </span>
-                  <ValueIconControl value={v} icon={savedIcon(e, v)} disabled={shipped || saving || savingLabels}
-                    style={{ ...inputS, height: 26, width: 'auto', fontWeight: 400, ...(shipped ? readOnlyS : {}) }}
-                    onChange={(icona) => salvaIcona(v, icona)} />
-                  {e.defaultValue === v && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 'var(--font-size-table)', fontWeight: 600 }}>
-                      <Star size={10} aria-hidden="true" /> {t('pages.dictionary.defaultBadge')}
+                  {/* How the value looks, and what can be done to it: its own line on a narrow editor. */}
+                  <span className="og-dict-tools">
+                    {/* Il COLORE del valore (F9): una famiglia della palette, mai un esadecimale. */}
+                    <span className="og-dict-cell">
+                      <span aria-hidden="true" style={{
+                        width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+                        background: coloreSalvato(v) ? valueColorStyle(coloreSalvato(v) as ValueColor).accent : 'transparent',
+                        border: `1px solid ${palette.neutral.borderStrong}`,
+                      }} />
+                      <Select
+                        style={{ ...rowControlS, ...(shipped ? readOnlyS : {}) }}
+                        value={coloreSalvato(v)}
+                        disabled={shipped || saving || savingLabels}
+                        onChange={(ev) => salvaColore(v, ev.target.value)}
+                        aria-label={t('pages.dictionary.valueColorLabel', { value: v })}
+                      >
+                        <option value="">{t('pages.dictionary.valueColorNone')}</option>
+                        {VALUE_COLORS.map((c) => <option key={c} value={c}>{t(`pages.dictionary.valueColors.${c}`)}</option>)}
+                      </Select>
                     </span>
-                  )}
-                  {!shipped && (
-                    <>
-                      {e.defaultValue !== v && (
-                        <button type="button" style={iconBtn} disabled={settingDefault}
-                          onClick={() => { void setDefault({ variables: { id: e.id, input: { defaultValue: v } } }) }}
-                          aria-label={t('pages.dictionary.setDefaultLabel', { value: v })}>
-                          <Star size={11} aria-hidden="true" />
-                        </button>
+                    <ValueIconControl value={v} icon={savedIcon(e, v)} disabled={shipped || saving || savingLabels}
+                      style={{ ...rowControlS, ...(shipped ? readOnlyS : {}) }}
+                      onChange={(icona) => salvaIcona(v, icona)} />
+                    <span className="og-dict-actions">
+                      {e.defaultValue === v && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 'var(--font-size-table)', fontWeight: 600 }}>
+                          <Star size={10} aria-hidden="true" /> {t('pages.dictionary.defaultBadge')}
+                        </span>
                       )}
-                      <button type="button" style={iconBtn}
-                        onClick={() => { setRenamingFrom(v); setRenameTo(v) }}
-                        aria-label={t('pages.dictionary.renameValueLabel', { value: v })}>
-                        <Pencil size={11} aria-hidden="true" />
-                      </button>
-                      <button type="button" onClick={() => removeValue(v)} style={iconBtn}
-                        aria-label={t('pages.dictionary.removeValueLabel', { value: v })}>
-                        <X size={11} aria-hidden="true" />
-                      </button>
-                    </>
-                  )}
+                      {!shipped && (
+                        <>
+                          {e.defaultValue !== v && (
+                            <button type="button" style={iconBtn} disabled={settingDefault}
+                              onClick={() => { void setDefault({ variables: { id: e.id, input: { defaultValue: v } } }) }}
+                              aria-label={t('pages.dictionary.setDefaultLabel', { value: v })}>
+                              <Star size={11} aria-hidden="true" />
+                            </button>
+                          )}
+                          <button type="button" style={iconBtn}
+                            onClick={() => { setRenamingFrom(v); setRenameTo(v) }}
+                            aria-label={t('pages.dictionary.renameValueLabel', { value: v })}>
+                            <Pencil size={11} aria-hidden="true" />
+                          </button>
+                          <button type="button" onClick={() => removeValue(v)} style={iconBtn}
+                            aria-label={t('pages.dictionary.removeValueLabel', { value: v })}>
+                            <X size={11} aria-hidden="true" />
+                          </button>
+                        </>
+                      )}
+                    </span>
+                  </span>
                 </>
               )}
             </div>

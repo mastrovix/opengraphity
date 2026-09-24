@@ -188,6 +188,45 @@ describe('Dizionario — di chi è il vocabolario', () => {
     expect(seen[0]).toEqual({ id: 'e-3', input: { valueIcons: [{ value: 'people', icon: 'users' }, { value: 'workplace', icon: 'building' }] } })
   })
 
+  /*
+   * The owner's screenshot of 24 Sep 2026: the row wrapped wherever it ran out
+   * of room (the pencil and the × of «Container runtime» alone on a second
+   * line), the columns started at a different point on every row, and the
+   * selects were 26 px with 7 px of padding — «No color» cut in half. The
+   * layout itself is the stylesheet's (a container query jsdom does not run):
+   * here the contract the stylesheet relies on.
+   */
+  it('every value row is the same grid: the same columns, colour/icon/actions grouped, controls tall enough for their text', async () => {
+    const OWN_LONG = enumType({ id: 'e-4', name: 'dev_tool', label: 'Developer tool', values: ['ide', 'container_runtime_for_long_names'], isSystem: false, isShipped: false, scope: 'itil' })
+    const { user } = renderWithProviders(<EnumDesignerPage />, { mocks: [{ ...listMock([SHIPPED, OWN_LONG]), maxUsageCount: Number.POSITIVE_INFINITY }] })
+    await user.click(await screen.findByRole('button', { name: /Developer tool/ }))
+    const rows = [screen.getByLabelText('Color of value ide'), screen.getByLabelText('Color of value container_runtime_for_long_names')]
+      .map((select) => select.closest('.og-dict-row') as HTMLElement)
+    expect(rows.every(Boolean)).toBe(true)
+    const columns = rows.map((r) => r.style.getPropertyValue('--og-dict-cols'))
+    expect(columns[0]).toBe(columns[1])
+    expect(columns[0]).toMatch(/^20px minmax\(80px, 160px\)( minmax\(100px, 1fr\))*$/)
+    for (const row of rows) {
+      const tools = row.querySelector('.og-dict-tools') as HTMLElement
+      // Colour, icon and every action live together: they move as one, never one by one.
+      expect(within(tools).getByRole('combobox', { name: /^Color of value/ })).toBeInTheDocument()
+      expect(within(tools).getByRole('combobox', { name: /^Icon of/ })).toBeInTheDocument()
+      expect(within(tools).getByRole('button', { name: /^Rename/ })).toBeInTheDocument()
+      expect(within(tools).getByRole('button', { name: /^Remove/ })).toBeInTheDocument()
+      for (const select of within(tools).getAllByRole('combobox')) expect(select).toHaveStyle({ height: '30px', paddingTop: '0px' })
+    }
+    // A long value ends in «…» and says itself whole on hover.
+    expect(screen.getByTitle('container_runtime_for_long_names')).toHaveStyle({ textOverflow: 'ellipsis' })
+  })
+
+  it('a shipped vocabulary has no arrows column, and its colour, icon and badge still sit on the row', async () => {
+    const { user } = renderWithProviders(<EnumDesignerPage />, { mocks: [{ ...listMock([SHIPPED, OWN]), maxUsageCount: Number.POSITIVE_INFINITY }] })
+    await user.click(await screen.findByRole('button', { name: /Severità/ }))
+    const row = screen.getByLabelText('Color of value high').closest('.og-dict-row') as HTMLElement
+    expect(row.style.getPropertyValue('--og-dict-cols')).toMatch(/^minmax\(80px, 160px\)/)
+    expect(row.style.getPropertyValue('--og-dict-tools-col')).toBe('1 / -1')
+  })
+
   it('su un vocabolario spedito il colore si vede ma non si cambia in posto', async () => {
     const SHIPPED_COLORED = enumType({ valueColors: [{ __typename: 'EnumValueColor', value: 'high', color: 'orange' }] })
     const { user } = renderWithProviders(<EnumDesignerPage />, { mocks: [{ ...listMock([SHIPPED_COLORED, OWN]), maxUsageCount: Number.POSITIVE_INFINITY }] })

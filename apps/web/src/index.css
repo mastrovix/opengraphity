@@ -1164,3 +1164,31 @@ a:focus-visible .og-kb-card {
 .og-markdown pre { background: var(--color-surface-2); padding: 10px; border-radius: 6px; overflow-x: auto; }
 .og-markdown ul, .og-markdown ol { margin: 4px 0 8px; padding-left: 20px; }
 .og-markdown li { margin-bottom: 2px; }
+
+/*
+ * DICTIONARY DESIGNER — the value rows (24 Sep 2026).
+ *
+ * A row is a grid, the same template on every row, so the columns line up and
+ * the list reads by column. The breakpoint is the EDITOR's width, not the
+ * window's: next to the list of dictionaries the editor is often ~640 px on a
+ * laptop. Wide: one line per value (value · labels · colour · icon · actions).
+ * Narrow: two lines — what the value is and says, then how it looks and what
+ * can be done to it. Before, the row wrapped wherever it ran out of room: the
+ * pencil and the × of a long value fell alone on a second line.
+ */
+.og-dict-values { container-type: inline-size; }
+.og-dict-row {
+  display: grid;
+  grid-template-columns: var(--og-dict-cols);
+  column-gap: 8px;
+  row-gap: 6px;
+  align-items: center;
+}
+.og-dict-tools { grid-column: var(--og-dict-tools-col); display: flex; align-items: center; gap: 8px; min-width: 0; }
+.og-dict-cell { display: flex; align-items: center; gap: 4px; min-width: 0; width: 150px; }
+.og-dict-actions { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-left: auto; }
+@container (min-width: 860px) {
+  .og-dict-row { grid-template-columns: var(--og-dict-cols) 150px 150px 112px; }
+  .og-dict-tools { display: contents; }
+  .og-dict-actions { margin-left: 0; }
+}
