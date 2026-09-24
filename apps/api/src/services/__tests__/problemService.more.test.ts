@@ -37,7 +37,8 @@ vi.mock('@opengraphity/workflow', () => ({ workflowEngine: { createInstance: vi.
 vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
   withSession: vi.fn(async (fn: (s: unknown) => Promise<unknown>) => fn(h.session)),
 }))
-vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn().mockResolvedValue(undefined) }))
+// The creation's event is recorded in its transaction and published after (wave 7 · B2).
+vi.mock('../../lib/publishEvent.js', () => import('../../lib/__tests__/publishEventFake.js'))
 vi.mock('../../lib/stepEnteredPublisher.js', () => ({ publishStepEnteredForEntity: vi.fn() }))
 vi.mock('../../lib/workflowHelpers.js', () => ({ getInitialStepName: vi.fn().mockResolvedValue('new') }))
 vi.mock('../../lib/ticketCustomFields.js', () => ({
@@ -67,7 +68,8 @@ let existingCIs = new Set<string>()
 beforeEach(() => {
   vi.clearAllMocks()
   existingCIs = new Set(['ci-1'])
-  h.session.executeWrite.mockResolvedValue({ records: [{ get: () => 1 }] })
+  // The counter, and the workflow instance with its recorded event (wave 7 · B2): each work runs on a fake tx.
+  h.session.executeWrite.mockImplementation(async (work: (tx: unknown) => unknown) => work({ run: vi.fn(async () => ({ records: [{ get: () => 1 }] })) }))
   vi.mocked(runQuery).mockImplementation((async (_s: unknown, cypher: string, params?: Record<string, unknown>) => {
     if (cypher.includes('CREATE (p:Problem')) return [{ props: { id: params?.['id'], tenant_id: params?.['tenantId'], ...(params?.['customProps'] as object) } }]
     if (cypher.includes('MERGE (p)-[r:AFFECTS]->(ci)')) return [{ linked: existingCIs.has(params?.['ciId'] as string) ? 1 : 0 }]

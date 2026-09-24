@@ -40,7 +40,8 @@ vi.mock('@opengraphity/workflow', () => ({
 vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
   withSession: vi.fn(async (fn: (s: unknown) => Promise<unknown>) => fn(h.session)),
 }))
-vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn().mockResolvedValue(undefined) }))
+// The creation's event is recorded in its transaction and published after (wave 7 · B2).
+vi.mock('../../lib/publishEvent.js', () => import('../../lib/__tests__/publishEventFake.js'))
 vi.mock('../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }))
 vi.mock('../../lib/catalogFormLimits.js', () => ({ catalogFormLimits: vi.fn(async () => ({ maxTableRows: 50 })) }))
 vi.mock('../../lib/catalogForm.js', () => ({

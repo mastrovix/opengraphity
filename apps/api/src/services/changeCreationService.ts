@@ -19,7 +19,7 @@ import { customFieldDefs, resolveCustomFieldWrites, type CustomFieldInput } from
 import { creationStepContext } from '../lib/customFieldSteps.js'
 import { workflowEngine } from '@opengraphity/workflow'
 import { ValidationError } from '../lib/errors.js'
-import { publishEvent } from '../lib/publishEvent.js'
+import { domainEvent, publishDomainEvent, recordDomainEventIn } from '../lib/publishEvent.js'
 import { TASK_STATUS, ASSESSMENT_ROLE } from '../lib/taskStatus.js'
 import { deriveChangePriority } from '../graphql/resolvers/change/scoring.js'
 import { assertDomainValue } from '../lib/domainMatrix.js'
@@ -126,6 +126,10 @@ export async function createChangeRFC(
     // as «(none)» in the reports, the «Open Changes» KPI left them out and the
     // assistant did not see them.
     const initialStatus = await getInitialStepName(session, ctx.tenantId, 'change')
+    // L'evento di creazione: prima le change non ne avevano uno, quindi nessun
+    // trigger, regola, notifica o webhook poteva reagire a una change nuova
+    // (revisione del 14 set 2026 · AU-1).
+    const createdEvent = domainEvent('change.created', ctx.tenantId, ctx.userId, { id, code, title, change_type: changeType }, now)
 
     // TRANSACTIONAL: all writes in single tx — Change + AFFECTS_CI + 2 AssessmentTask
     // e 1 DeployPlanTask per CI + ASSIGNED_TO_TEAM + WorkflowInstance + audit entry.
@@ -206,18 +210,18 @@ export async function createChangeRFC(
       })
 
       await workflowEngine.createInstance(tx, ctx.tenantId, id, 'change')
+      // `change.created` in the transaction that creates the change (wave 7 · B2).
+      await recordDomainEventIn(tx, createdEvent)
 
       await writeAudit(tx, id, ctx.tenantId, 'change_created', ctx.userId,
         `Change ${code} created with ${affectedCIIds.length} CIs`,
         { key: 'changeCreated', params: { code, count: String(affectedCIIds.length) } })
     })
 
-    return { id, code }
+    return { id, code, createdEvent }
   }, true)
 
-  // L'evento di creazione: prima le change non ne avevano uno, quindi nessun
-  // trigger, regola, notifica o webhook poteva reagire a una change nuova
-  // (revisione del 14 set 2026 · AU-1).
-  await publishEvent('change.created', ctx.tenantId, ctx.userId, { id: created.id, code: created.code, title, change_type: changeType }, new Date().toISOString())
-  return created
+  // The same event, now that the change is committed (it is already in the outbox).
+  await publishDomainEvent(created.createdEvent)
+  return { id: created.id, code: created.code }
 }

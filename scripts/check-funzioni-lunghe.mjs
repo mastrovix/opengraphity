@@ -128,7 +128,7 @@ const NOTE = new Map([
   ['apps/web/src/pages/settings/catalogForm/FormBuilderPanel.tsx#useTrascinamento', 115],
   ['apps/api/src/scripts/seed-demo-incidents.ts#main', 113],
   ['apps/web/src/pages/admin/KBAdminPage.tsx#KBAdminPage', 105],
-  ['packages/workflow/src/engine.ts#transition', 98],
+  ['packages/workflow/src/engine.ts#transition', 95],
   ['apps/web/src/pages/dashboard/useDashboard.ts#useDashboard', 103],
   ['apps/portal/src/pages/ServiceCatalogPage.tsx#ServiceCatalogPage', 111],
   ['apps/api/src/lib/filterBuilder.ts#buildAdvancedWhere', 108],

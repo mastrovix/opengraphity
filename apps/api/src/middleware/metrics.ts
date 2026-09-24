@@ -245,6 +245,15 @@ export const neo4jQueryDurationSeconds = createHistogram(
 )
 
 /** Queries the database stopped at a limit: `time` (the transaction timeout) or `memory` (the per-transaction cap). */
+/**
+ * The outbox of the domain events (wave 7 · B2, lib/outbox.ts): events written
+ * down and not sent after the grace period, by tenant, set by the repeater's
+ * pass every 30 s — above zero for minutes means events are not leaving.
+ */
+export const outboxPendingEvents = createGauge('outbox_pending_events', 'Domain events of the outbox not sent 30 s after they were written, by tenant', ['tenant'])
+/** Events the outbox repeater had to send again, by tenant: each one would have been lost before. */
+export const outboxResentTotal = createCounter('outbox_resent_total', 'Domain events sent again by the outbox repeater, by tenant', ['tenant'])
+
 export const neo4jQueryLimitHitsTotal = createCounter(
   'neo4j_query_limit_hits_total',
   'Neo4j queries stopped at the transaction time or memory limit, by limit and tenant',

@@ -39,6 +39,9 @@ export const OLA_SWEEP_EVERY_MS = 60_000
 /** Wave 7 · A1: the SLA timers Redis lost, fired from the graph (packages/sla/src/sweep.ts). */
 export const SLA_SWEEP_JOB = 'sla_sweep'
 export const SLA_SWEEP_EVERY_MS = 60_000
+/** Wave 7 · B2: the domain events written to the outbox and never marked sent, sent again (lib/outbox.ts). */
+export const OUTBOX_RESEND_JOB = 'outbox_resend'
+export const OUTBOX_RESEND_EVERY_MS = 30_000
 
 
 // ── Job data shape produced by packages/workflow/src/actions.ts ───────────────
@@ -128,6 +131,12 @@ const PASSATE: Record<string, ((tenantId: string) => Promise<void>) | undefined>
     const summary = await runSLASweep(tenantId)
     if (summary.warnings + summary.breaches + summary.responses + summary.failed > 0) logger.info({ tenantId, ...summary }, '[workflow-jobs] SLA sweep: timers recovered from the graph')
     if (summary.failed > 0) throw new Error(`SLA sweep: ${summary.failed} timer(s) could not fire (see the log)`)
+  },
+  [OUTBOX_RESEND_JOB]: async (tenantId) => {
+    const { resendPendingEvents } = await import('../lib/outbox.js')
+    const summary = await resendPendingEvents(tenantId)
+    if (summary.sent + summary.failed > 0) logger.warn({ tenantId, ...summary }, '[workflow-jobs] outbox: events that had not left were sent again')
+    if (summary.failed > 0) throw new Error(`Outbox: ${summary.failed} event(s) could not be sent again (see the log): the next pass tries again`)
   },
   [RIPRESA_JOB]: async (tenantId) => {
     const { riprendiTransizioniDi } = await import('../lib/riprendiTransizioni.js')
@@ -409,9 +418,10 @@ export async function scheduleWorkflowSweeps(queue: Queue, tenantId: string): Pr
   await queue.upsertJobScheduler('workflow-ola-sweep', { every: OLA_SWEEP_EVERY_MS }, { name: OLA_SWEEP_JOB, data: data(OLA_SWEEP_JOB), opts })
   await queue.upsertJobScheduler('workflow-sla-sweep', { every: SLA_SWEEP_EVERY_MS }, { name: SLA_SWEEP_JOB, data: data(SLA_SWEEP_JOB), opts })
   await queue.upsertJobScheduler('workflow-ripresa-transizioni', { every: RIPRESA_EVERY_MS }, { name: RIPRESA_JOB, data: data(RIPRESA_JOB), opts })
+  await queue.upsertJobScheduler('workflow-outbox-resend', { every: OUTBOX_RESEND_EVERY_MS }, { name: OUTBOX_RESEND_JOB, data: data(OUTBOX_RESEND_JOB), opts })
 }
 
-/** One worker per tenant on `workflow-jobs@<tenant>`, each with its tenant's three sweeps. */
+/** One worker per tenant on `workflow-jobs@<tenant>`, each with its tenant's periodic sweeps (scheduleWorkflowSweeps). */
 export function startWorkflowJobWorker(): TenantWorkerPool<WorkflowJobData> {
   return createTenantWorkers<WorkflowJobData>(WORKFLOW_JOBS_QUEUE, processWorkflowJob, {
     concurrency: 5,

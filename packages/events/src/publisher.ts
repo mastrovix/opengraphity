@@ -1,5 +1,11 @@
 import type { DomainEvent } from '@opengraphity/types'
 import { tenantQueue } from './tenantQueues.js'
+import { currentEventOutbox, type PublishOptions } from './outbox.js'
+
+/** What `publish` did: through the outbox, the process's extras (the webhooks) were part of the send. */
+export interface PublishResult {
+  throughOutbox: boolean
+}
 
 /**
  * One queue per consumer — fan-out by publishing to all. Each consumer's
@@ -32,10 +38,48 @@ const JOB_OPTIONS = {
  * chiamante ne genera uno nuovo a ogni tentativo la protezione non c'è, e i
  * consumatori vedono due eventi (vedi `packages/sla/src/scheduler.ts`).
  */
-export async function publish<T>(event: DomainEvent<T>): Promise<void> {
+export async function sendToConsumers<T>(event: DomainEvent<T>): Promise<void> {
   const queues = CONSUMER_QUEUES.map((name) => tenantQueue(name, event.tenant_id))
   await Promise.all(
     queues.map(q => q.add(event.type, event, { ...JOB_OPTIONS, jobId: event.id }))
   )
   console.log(`[publisher] Published: ${event.type} (id: ${event.id}, tenant: ${event.tenant_id})`)
+}
+
+/**
+ * Publishes a domain event (wave 7 · B2: through the outbox, outbox.ts).
+ *
+ * With an outbox the event is written down first, then sent to the
+ * consumers' queues and to what the process adds (the webhooks), then marked
+ * sent. Once it is written, a failed send is not the caller's failure — the
+ * change it describes is committed, and the repeater sends the event — so it
+ * is logged, not thrown. An event that could not even be written is sent all
+ * the same, and if that fails too the error is thrown: it is lost, loudly.
+ *
+ * Without an outbox (a script, a test) it is sent straight away, and a
+ * failure is thrown, as before.
+ */
+export async function publish<T>(event: DomainEvent<T>, options: PublishOptions = {}): Promise<PublishResult> {
+  const outbox = currentEventOutbox()
+  if (!outbox) {
+    await sendToConsumers(event)
+    return { throughOutbox: false }
+  }
+  const recorded = await outbox.record(event, options).then(() => true, (err: unknown) => {
+    console.error(`[publisher] ${event.type} (id: ${event.id}, tenant: ${event.tenant_id}) was NOT written to the outbox: it is sent without its safety net`, err)
+    return false
+  })
+  try {
+    await sendToConsumers(event)
+    await outbox.deliverExtras(event, options)
+  } catch (err) {
+    if (!recorded) throw err
+    console.warn(`[publisher] ${event.type} (id: ${event.id}, tenant: ${event.tenant_id}) could not be sent now: the outbox repeater sends it`, err)
+    return { throughOutbox: true }
+  }
+  // Sent but not marked: the repeater sends it again, and the consumers skip it (consumer.ts).
+  await outbox.markSent(event).catch((err: unknown) => {
+    console.warn(`[publisher] ${event.type} (id: ${event.id}) was sent but not marked: the repeater will send it again, the consumers skip it`, err)
+  })
+  return { throughOutbox: true }
 }

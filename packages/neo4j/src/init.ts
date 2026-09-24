@@ -321,6 +321,8 @@ const CONSTRAINTS: SchemaStatement[] = [
   { label: 'DeployPlanTask(tenant_id, change_key) unique', cypher: 'CREATE CONSTRAINT deploy_plan_task_change_key_unique IF NOT EXISTS FOR (t:DeployPlanTask) REQUIRE (t.tenant_id, t.change_key) IS UNIQUE' },
   { label: 'ValidationTest(tenant_id, change_key) unique', cypher: 'CREATE CONSTRAINT validation_test_change_key_unique IF NOT EXISTS FOR (t:ValidationTest) REQUIRE (t.tenant_id, t.change_key) IS UNIQUE' },
   { label: 'DeploymentTask(tenant_id, change_key) unique', cypher: 'CREATE CONSTRAINT deployment_task_change_key_unique IF NOT EXISTS FOR (t:DeploymentTask) REQUIRE (t.tenant_id, t.change_key) IS UNIQUE' },
+  // Wave 7 · B2: an event is written to the outbox once (MERGE on its id, apps/api lib/outbox.ts).
+  { label: 'OutboxEvent.id unique', cypher: 'CREATE CONSTRAINT outbox_event_id_unique IF NOT EXISTS FOR (o:OutboxEvent) REQUIRE o.id IS UNIQUE' },
   { label: 'ReviewTask(tenant_id, change_key) unique', cypher: 'CREATE CONSTRAINT review_task_change_key_unique IF NOT EXISTS FOR (t:ReviewTask) REQUIRE (t.tenant_id, t.change_key) IS UNIQUE' },
   // The ticket import finds each row's ticket by (tenant_id, import_external_id),
   // four times per row: every lookup scanned the tenant's tickets. Unique:
@@ -388,6 +390,16 @@ const INDEXES: SchemaStatement[] = [
   {
     label: 'SLAStatus(tenant_id, response_met)',
     cypher: 'CREATE INDEX sla_status_tenant_response IF NOT EXISTS FOR (n:SLAStatus) ON (n.tenant_id, n.response_met)',
+  },
+  // Wave 7 · B2: the outbox repeater reads the pending events of one tenant;
+  // the purge, the events sent before a date.
+  {
+    label: 'OutboxEvent(tenant_id, pending)',
+    cypher: 'CREATE INDEX outbox_event_tenant_pending IF NOT EXISTS FOR (o:OutboxEvent) ON (o.tenant_id, o.pending)',
+  },
+  {
+    label: 'OutboxEvent(sent_at)',
+    cypher: 'CREATE INDEX outbox_event_sent_at IF NOT EXISTS FOR (o:OutboxEvent) ON (o.sent_at)',
   },
   {
     label: 'Problem(tenant_id)',

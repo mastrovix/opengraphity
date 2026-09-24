@@ -42,6 +42,7 @@ import { ServiceImpactConsumer } from './consumers/serviceImpactConsumer.js'
 import { closeAllQueues } from './lib/bullmq.js'
 import { startTenantQueueLifecycle, stopTenantQueueLifecycle } from './lib/tenantQueueLifecycle.js'
 import { wireDomainEventFailureMetric } from './lib/domainEventFailures.js'
+import { installEventOutbox } from './lib/outbox.js'
 import { startMetricsServer } from './lib/metricsServer.js'
 import { runGracefulShutdown, type Closable } from './lib/shutdown.js'
 import { accendiSinkDeiLog, spegniSinkDeiLog } from './lib/serverLogSink.js'
@@ -57,6 +58,9 @@ import { assertMigrationsAppliedAtBoot } from './lib/migrationState.js'
 import { startInAppBus, stopInAppBus } from './lib/inAppBus.js'
 
 registerSessionTracker(trackNeo4jQuery)
+// Every domain event this process publishes goes through the outbox in the
+// graph (wave 7 · B2, lib/outbox.ts): installed before anything can publish.
+installEventOutbox()
 
 async function main() {
   // Revisione del 14 set 2026 · F8: come l'API (lib/migrationState.ts).

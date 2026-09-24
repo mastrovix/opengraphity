@@ -1929,6 +1929,40 @@ davvero durare di più, è lavoro di manutenzione e va dentro
 (`IN TRANSACTIONS`, `db.awaitIndexes`, la lettura di tutto il grafo) porta
 `MAINTENANCE_TX_CONFIG`: un guardiano lo verifica.
 
+### Eventi fermi nell'outbox
+
+Dal 24 set 2026 (ondata 7 · B2) ogni evento di dominio passa dall'outbox
+(`lib/outbox.ts`). Prima di partire viene scritto nel grafo come nodo
+`:OutboxEvent`, e quando è partito viene segnato come spedito. Chi lo
+consuma: SLA, notifiche, automazioni, escalation, servizi monitorati e webhook
+in uscita.
+
+La nascita di un ticket (`<tipo>.created`) e l'ingresso in un passo
+(`workflow.step_entered`) si scrivono nella stessa transazione del
+cambiamento. Se il processo si ferma subito dopo il salvataggio, l'evento
+non si perde.
+
+Un evento scritto e non segnato viene rispedito dopo 30 secondi da una
+passata di ogni tenant (coda `workflow-jobs@<tenant>`, job `outbox_resend`,
+200 eventi per giro, dal più vecchio). Un consumatore che lo aveva già
+trattato lo salta. Gli eventi spediti si tengono 7 giorni; poi li toglie la
+manutenzione (`purge_outbox`, alle 04:30). Un evento mai spedito resta finché
+non parte.
+
+Un evento fermo si vede così:
+
+- **nelle metriche**: `outbox_pending_events{tenant}` sopra zero per 5
+  minuti fa scattare l'allarme `OutboxEventsNotLeaving`;
+  `outbox_resent_total{tenant}` conta quelli rispediti, cioè quelli che prima
+  sarebbero andati persi;
+- **nel log**: `An event of the outbox could not be sent again`, con
+  l'errore e l'id dell'evento;
+- **sul nodo**: `attempts` e `last_error`.
+
+Cosa fare: quasi sempre è Redis che non risponde, e quando torna la passata
+successiva spedisce tutto da sola. Per vedere cosa aspetta:
+`MATCH (o:OutboxEvent {tenant_id: $t, pending: true}) RETURN o.type, o.created_at, o.attempts, o.last_error ORDER BY o.created_at`.
+
 ### Job falliti: cosa si rigioca e cosa no
 
 *Amministrazione → Code* elenca le code **del tenant** di chi guarda

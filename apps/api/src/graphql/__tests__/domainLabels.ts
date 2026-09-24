@@ -64,4 +64,6 @@ export const DOMAIN_LABELS = [
    * written with a tenant and not listed here fails that test.
    */
   'Task', 'Proposal', 'ProposalRejection', 'AIUsage', 'DemoDataRun',
+  /** The outbox of the domain events (wave 7 · B2, lib/outbox.ts): each event is its tenant's. */
+  'OutboxEvent',
 ] as const

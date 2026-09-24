@@ -12,9 +12,9 @@ import { assertDomainValue } from '../lib/domainMatrix.js'
 import { publishStepEnteredForEntity } from '../lib/stepEnteredPublisher.js'
 import { validateStringLength } from '../lib/validation.js'
 import { logger } from '../lib/logger.js'
-import { publishEvent } from '../lib/publishEvent.js'
+import { domainEvent, publishDomainEvent, recordDomainEventIn } from '../lib/publishEvent.js'
 import { getInitialStepName } from '../lib/workflowHelpers.js'
-import { type ProblemCreatedPayload } from '@opengraphity/types'
+import { type DomainEvent, type ProblemCreatedPayload } from '@opengraphity/types'
 import { ciLabelPredicateForTenant } from '../lib/ciLabelsForTenant.js'
 import { assertCIsLinkable } from '../lib/ticketCIExclusions.js'
 
@@ -182,10 +182,22 @@ export async function createProblem(
    * di workflow non si può muovere né chiudere, quindi se la creazione
    * dell'istanza non riesce il problem si annulla invece di restare lì.
    */
+  let createdEvent: DomainEvent<ProblemEventPayload>
   try {
-    await withSession(async (session) => {
-      await workflowEngine.createInstance(session, ctx.tenantId, id, 'problem', undefined, input.category ?? null)
-    }, true)
+    const initialStatus = await withSession((s) => getInitialStepName(s, ctx.tenantId, 'problem'))
+    createdEvent = domainEvent('problem.created', ctx.tenantId, ctx.userId, {
+      id,
+      title:      input.title,
+      priority,
+      status:     initialStatus,
+      assignedTo: '—',
+    } satisfies ProblemEventPayload)
+    // `problem.created` — where its SLA starts — in the transaction that makes
+    // the problem exist (wave 7 · B2): it exists if and only if the problem does.
+    await withSession((session) => session.executeWrite(async (tx) => {
+      await workflowEngine.createInstance(tx, ctx.tenantId, id, 'problem', undefined, input.category ?? null)
+      await recordDomainEventIn(tx, createdEvent)
+    }), true)
   } catch (err) {
     await withSession(async (session) => {
       await runQuery(session, 'MATCH (p:Problem {id: $id, tenant_id: $tenantId}) DETACH DELETE p', { id, tenantId: ctx.tenantId })
@@ -198,14 +210,7 @@ export async function createProblem(
     )
   }
 
-  const initialStatus = await withSession((s) => getInitialStepName(s, ctx.tenantId, 'problem'))
-  await publishEvent('problem.created', ctx.tenantId, ctx.userId, {
-    id,
-    title:      input.title,
-    priority,
-    status:     initialStatus,
-    assignedTo: '—',
-  } satisfies ProblemEventPayload)
+  await publishDomainEvent(createdEvent)
 
   // Trigger, Business Rule e trigger a tempo: li mette in moto `problem.created`
   // (consumers/automationConsumer.ts).

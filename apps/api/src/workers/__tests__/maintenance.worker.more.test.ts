@@ -62,6 +62,8 @@ const immettiEventiDaiLog = vi.fn()
 vi.mock('../../lib/serverLogEvents.js', () => ({ immettiEventiDaiLog: () => immettiEventiDaiLog() }))
 const purgeFormDrafts = vi.fn()
 vi.mock('../../lib/formDraftPurge.js', () => ({ purgeFormDrafts: (before: string) => purgeFormDrafts(before) }))
+const purgeSentEvents = vi.fn(async () => 0)
+vi.mock('../../lib/outbox.js', () => ({ purgeSentEvents: () => purgeSentEvents(), OUTBOX_KEEP_SENT_DAYS: 7 }))
 
 const logInfo = vi.fn()
 const logWarn = vi.fn()
@@ -181,5 +183,23 @@ describe('log registries', () => {
   it('a failure raising events fails the job (BullMQ retries it)', async () => {
     immettiEventiDaiLog.mockRejectedValueOnce(new Error('neo4j down'))
     await expect(processor(job('server_logs_to_events'))).rejects.toThrow('neo4j down')
+  })
+})
+
+// Wave 7 · B2: the outbox keeps what it sent for a week (lib/outbox.ts).
+describe('purge_outbox', () => {
+  it('deletes the events sent a week ago, and says so only when it deleted some', async () => {
+    purgeSentEvents.mockResolvedValueOnce(0)
+    await processor(job('purge_outbox'))
+    expect(logInfo).not.toHaveBeenCalledWith(expect.anything(), 'Sent domain events pruned from the outbox')
+
+    purgeSentEvents.mockResolvedValueOnce(1200)
+    await processor(job('purge_outbox'))
+    expect(logInfo).toHaveBeenCalledWith({ deleted: 1200, keptDays: 7 }, 'Sent domain events pruned from the outbox')
+  })
+
+  it('a failure fails the job', async () => {
+    purgeSentEvents.mockRejectedValueOnce(new Error('neo4j down'))
+    await expect(processor(job('purge_outbox'))).rejects.toThrow('neo4j down')
   })
 })

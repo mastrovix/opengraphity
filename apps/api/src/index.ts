@@ -27,6 +27,7 @@ import { getAllQueues, getQueue, getTenantQueue, closeAllQueues } from './lib/bu
 import { PLATFORM_QUEUE_NAMES, TENANT_QUEUE_BASES } from './lib/queueRegistry.js'
 import { startTenantQueueLifecycle, stopTenantQueueLifecycle, tenantsWithQueues } from './lib/tenantQueueLifecycle.js'
 import { wireDomainEventFailureMetric } from './lib/domainEventFailures.js'
+import { installEventOutbox } from './lib/outbox.js'
 import { runGracefulShutdown, type Closable } from './lib/shutdown.js'
 import { accendiSinkDeiLog, spegniSinkDeiLog } from './lib/serverLogSink.js'
 // Canale del metamodello (A-16): l'import registra i clearer dei moduli che
@@ -40,6 +41,9 @@ import './lib/notificationRuleCache.js'
 
 // Instrument every Neo4j session.run() — covers all 400+ call sites
 registerSessionTracker(trackNeo4jQuery)
+// Every domain event this process publishes goes through the outbox in the
+// graph (wave 7 · B2, lib/outbox.ts): installed before anything can publish.
+installEventOutbox()
 import { startReportScheduler } from './jobs/reportScheduler.js'
 import { startAnomalyScanner } from './anomaly/anomalyEngine.js'
 import { startProposalScanner } from './jobs/proposalScanner.js'

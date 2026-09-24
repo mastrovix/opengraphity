@@ -150,6 +150,8 @@ describe('startMaintenanceWorker', () => {
       // ...e le firme degli errori diventano eventi ogni quarto d'ora, perché
       // un guasto in corso non aspetta la notte.
       ['server_logs_to_events', '*/15 * * * *'],
+      // Wave 7 · B2: the outbox keeps the events it sent for a week.
+      ['purge_outbox', '30 4 * * *'],
     ])
     // Ogni ricorrenza dichiarata viene tolta per nome e rimessa: nessuna
     // chiave composta da riconoscere, e il conto deve tornare su entrambe.

@@ -58,7 +58,8 @@ vi.mock('../../lib/triggerEngine.js', () => ({
   scheduleTimerTriggers: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('../../lib/rulesEngine.js', () => ({ evaluateBusinessRules: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn().mockResolvedValue(undefined) }))
+// The creation's event is recorded in its transaction and published after (wave 7 · B2).
+vi.mock('../../lib/publishEvent.js', () => import('../../lib/__tests__/publishEventFake.js'))
 vi.mock('../../lib/stepEnteredPublisher.js', () => ({ publishStepEnteredForEntity: vi.fn() }))
 vi.mock('../../lib/workflowHelpers.js', () => ({
   getInitialStepName: vi.fn().mockResolvedValue('new'),
@@ -88,8 +89,9 @@ const queriesWith = (needle: string): Call[] =>
 
 beforeEach(() => {
   vi.clearAllMocks()
-  // Contatore atomico (lib/sequence.ts) → session.executeWrite
-  h.session.executeWrite.mockResolvedValue({ records: [{ get: () => 42 }] })
+  // Contatore atomico (lib/sequence.ts) → session.executeWrite; the workflow
+  // instance and the recorded event too, in their own transaction (wave 7 · B2).
+  h.session.executeWrite.mockImplementation(async (work: (tx: unknown) => unknown) => work({ run: vi.fn(async () => ({ records: [{ get: () => 42 }] })) }))
   vi.mocked(runQuery).mockImplementation(async (_s: unknown, cypher: string, params?: Record<string, unknown>) =>
     cypher.includes('CREATE (p:Problem')
       ? [{ props: { id: params?.['id'], number: params?.['number'], title: params?.['title'], priority: params?.['priority'],
@@ -185,8 +187,8 @@ describe('createProblem — priorità Impatto×Urgenza', () => {
 describe('createProblem — numero, workflow, evento e link', () => {
   it('numero PRB + 8 cifre dal contatore atomico (kind "problem", tenant corrente)', async () => {
     await createProblem({ title: 'Disco pieno', priority: 'high' }, ctx)
-    // contatore: MERGE (c:Counter …) via session.executeWrite
-    expect(h.session.executeWrite).toHaveBeenCalledTimes(1)
+    // contatore: MERGE (c:Counter …) via session.executeWrite (the first; the second creates the instance)
+    expect(h.session.executeWrite).toHaveBeenCalledTimes(2)
     const tx = { run: vi.fn().mockResolvedValue({ records: [{ get: () => 7 }] }) }
     await (h.session.executeWrite.mock.calls[0]![0] as (t: typeof tx) => Promise<unknown>)(tx)
     expect(tx.run.mock.calls[0]![0]).toMatch(/MERGE \(c:Counter \{tenant_id: \$tenantId, kind: \$kind\}\)/)
@@ -225,11 +227,20 @@ describe('createProblem — numero, workflow, evento e link', () => {
   it('crea l\'istanza di workflow "problem" con la categoria (o null)', async () => {
     await createProblem({ title: 'P', priority: 'high', category: 'network' }, ctx)
     expect(workflowEngine.createInstance).toHaveBeenCalledTimes(1)
-    expect(workflowEngine.createInstance).toHaveBeenCalledWith(h.session, 'tenant-1', expect.stringMatching(UUID_RE), 'problem', undefined, 'network')
+    expect(workflowEngine.createInstance).toHaveBeenCalledWith(expect.objectContaining({ run: expect.any(Function) }), 'tenant-1', expect.stringMatching(UUID_RE), 'problem', undefined, 'network')
 
     vi.clearAllMocks()
     await createProblem({ title: 'P', priority: 'high' }, ctx)
-    expect(workflowEngine.createInstance).toHaveBeenCalledWith(h.session, 'tenant-1', expect.any(String), 'problem', undefined, null)
+    expect(workflowEngine.createInstance).toHaveBeenCalledWith(expect.anything(), 'tenant-1', expect.any(String), 'problem', undefined, null)
+  })
+
+  // Wave 7 · B2: `problem.created` exists if and only if the problem does.
+  it('problem.created is written to the outbox in the transaction of the workflow instance, and that event is published', async () => {
+    const { recordDomainEventIn, publishDomainEvent } = await import('../../lib/__tests__/publishEventFake.js')
+    await createProblem({ title: 'P', priority: 'high' }, ctx)
+    const tx = vi.mocked(workflowEngine.createInstance).mock.calls[0]![0]
+    expect(recordDomainEventIn).toHaveBeenCalledWith(tx, expect.objectContaining({ type: 'problem.created', tenant_id: 'tenant-1' }))
+    expect(publishDomainEvent).toHaveBeenCalledWith(vi.mocked(recordDomainEventIn).mock.calls[0]![1])
   })
 
   /**

@@ -9,8 +9,7 @@
  */
 import { workflowEngine } from '@opengraphity/workflow'
 import { getSession } from '@opengraphity/neo4j'
-import { WORKFLOW_STEP_ENTERED_EVENT, type WorkflowStepEnteredPayload } from '@opengraphity/types'
-import { publishEvent } from '../lib/publishEvent.js'
+import { publishDomainEvent } from '../lib/publishEvent.js'
 import { publishStepEnteredForEntity } from '../lib/stepEnteredPublisher.js'
 import { publishStepNotifyRules } from '../lib/stepNotifyRules.js'
 import { logger } from '../lib/logger.js'
@@ -21,18 +20,10 @@ export function registerStepEnteredEvents(): void {
   if (registered) return
   registered = true
   workflowEngine.onStepEntered(async (info) => {
-    const payload: WorkflowStepEnteredPayload = {
-      entity_type:   info.entityType,
-      entity_id:     info.entityId,
-      from_step:     info.fromStep,
-      from_initial:  info.fromInitial,
-      step_name:     info.toStep,
-      step_category: info.category,
-      step_terminal: info.terminal,
-      entered_at:    info.enteredAt,
-      trigger_type:  info.triggerType,
-    }
-    await publishEvent(WORKFLOW_STEP_ENTERED_EVENT, info.tenantId, info.actorId, payload, info.enteredAt)
+    // The event the engine wrote to the outbox in the transition's own
+    // transaction (wave 7 · B2): published here, it is the same event, so a
+    // process that stops before this line leaves it to the outbox repeater.
+    await publishDomainEvent(info.event)
 
     // L'evento di DOMINIO dell'entità (`incident.step_entered` + l'alias
     // `incident.<passo>`): da qui passano TUTTI i cammini, compresi quelli

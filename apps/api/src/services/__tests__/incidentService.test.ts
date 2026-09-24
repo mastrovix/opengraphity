@@ -26,7 +26,8 @@ vi.mock('../../lib/ciLabelsForTenant.js', () => ({
 
 const mockSession = {
   executeRead:  vi.fn().mockResolvedValue({ records: [] }),
-  executeWrite: vi.fn().mockResolvedValue({ records: [{ get: () => 1 }] }),  // atomic counter returns a value
+  // The atomic counter returns a value; the workflow instance and its recorded event run on the same fake tx (wave 7 · B2).
+  executeWrite: vi.fn(async (work: (tx: unknown) => unknown) => work({ run: vi.fn(async () => ({ records: [{ get: () => 1 }] })) })),
   close:        vi.fn().mockResolvedValue(undefined),
 }
 
@@ -34,6 +35,8 @@ const mockSession = {
 
 vi.mock('@opengraphity/events', () => ({
   publish:             vi.fn().mockResolvedValue(undefined),
+  // No outbox in this process: nothing to record in the transaction (wave 7 · B2).
+  recordEventIn:       vi.fn(async () => undefined),
   getRedisOptions:     vi.fn(() => ({})),
   setTenantQueueHooks: vi.fn(),
   tenantQueue:         vi.fn(() => ({ add: vi.fn().mockResolvedValue(undefined) })),
@@ -215,8 +218,9 @@ describe('createIncident', () => {
     )
 
     expect(workflowEngine.createInstance).toHaveBeenCalledOnce()
+    // In a transaction of its own, with the recorded `incident.created` (wave 7 · B2).
     expect(workflowEngine.createInstance).toHaveBeenCalledWith(
-      mockSession,
+      expect.objectContaining({ run: expect.any(Function) }),
       ctx.tenantId,
       expect.any(String),  // generated uuid
       'incident',

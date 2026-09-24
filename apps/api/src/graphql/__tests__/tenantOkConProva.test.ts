@@ -117,7 +117,7 @@ const PRE_AUTH = ['apiKeyAuth.ts', 'webhooks-inbound.ts', 'slackInstallation.ts'
 const PIATTAFORMA = [
   'gauges.ts', 'serverLogRetention.ts', 'aiBudget.ts', 'formDraftPurge.ts', 'engine.ts',
   'problemDossier.ts', 'tenantLifecycle.ts', 'eventRetention.ts', 'storm.ts',
-  'tenantQueueLifecycle.ts', 'crossTenantEdges.ts',
+  'tenantQueueLifecycle.ts', 'crossTenantEdges.ts', 'outbox.ts',
 ]
 
 const GENERI: Record<string, Genere> = {

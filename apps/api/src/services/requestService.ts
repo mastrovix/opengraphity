@@ -14,7 +14,7 @@ import { nextTicketNumber } from '../lib/ticketNumbering.js'
 import { runQuery } from '@opengraphity/neo4j'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import type { ServiceCtx } from './incidentService.js'
-import { publishEvent } from '../lib/publishEvent.js'
+import { domainEvent, publishDomainEvent, recordDomainEventIn } from '../lib/publishEvent.js'
 import { logger } from '../lib/logger.js'
 import { ValidationError } from '../lib/errors.js'
 import { initialStepSelection, workflowEngine } from '@opengraphity/workflow'
@@ -146,6 +146,8 @@ export async function createRequest(
 
   const id  = uuidv4()
   const now = new Date().toISOString()
+  // `request.created` — where its SLA starts — is written in the creation's own transaction (wave 7 · B2).
+  const createdEvent = domainEvent('request.created', ctx.tenantId, ctx.userId, { id, title: input.title, priority: input.priority }, now)
 
   const created = await withSession(async (session) => {
     // Formato del cliente (verifica «Cosa resta cablato», ondata 6), contatore del prodotto.
@@ -295,12 +297,13 @@ export async function createRequest(
       tx, ctx.tenantId, id, 'service_request',
       input.workflowDefinitionId ?? undefined, input.category ?? null,
     )
+    await recordDomainEventIn(tx, createdEvent)
 
       return mapRequest(rows[0]!.props)
     })
   }, true)
 
-  await publishEvent('request.created', ctx.tenantId, ctx.userId, { id, title: input.title, priority: input.priority }, now)
+  await publishDomainEvent(createdEvent)
   return assignFulfilmentGroup(created, input.catalogItemId ?? null, ctx)
 }
 

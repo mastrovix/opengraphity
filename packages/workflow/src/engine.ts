@@ -3,7 +3,8 @@ import { parseLocalizedLabels } from './labels.js'
 import type { Session, ManagedTransaction } from 'neo4j-driver'
 import pino from 'pino'
 import { toNumber as neo4jToNumber } from '@opengraphity/neo4j'
-import { ENTITY_NEO4J_LABELS } from '@opengraphity/types'
+import { ENTITY_NEO4J_LABELS, WORKFLOW_STEP_ENTERED_EVENT, type DomainEvent, type WorkflowStepEnteredPayload } from '@opengraphity/types'
+import { recordEventIn } from '@opengraphity/events'
 import type {
   WorkflowInstance,
   WorkflowActionConfig,
@@ -13,6 +14,7 @@ import type {
   ActionContext,
   ConditionContext,
   ConditionEvaluator,
+  StepEnteredInfo,
   StepEnteredListener,
 } from './types.js'
 import { WAIT_EXIT_TRIGGERS, WORKFLOW_ACTION_TYPES, isWorkflowActionType } from './types.js'
@@ -97,6 +99,25 @@ export class WorkflowEngine {
    */
   onStepEntered(listener: StepEnteredListener): void {
     this.stepEnteredListeners.push(listener)
+  }
+
+  /**
+   * Tells every listener that a step was entered. A listener that fails does
+   * not undo the move, which is persisted: its error is returned, for the
+   * caller's `actionErrors`.
+   */
+  private async emitStepEntered(info: StepEnteredInfo): Promise<string[]> {
+    const errors: string[] = []
+    for (const listener of this.stepEnteredListeners) {
+      try {
+        await listener(info)
+      } catch (e) {
+        const msg = `step_entered listener: ${e instanceof Error ? e.message : String(e)}`
+        workflowLogger.error({ err: e, instanceId: info.instanceId, stepName: info.toStep }, `[workflow-engine] ${msg}`)
+        errors.push(msg)
+      }
+    }
+    return errors
   }
 
   constructor() {
@@ -553,6 +574,31 @@ export class WorkflowEngine {
       //    lock, DELETE su una relazione già cancellata da una tx committata
       //    NON fallisce in Neo4j e si otterrebbero due CURRENT_STEP.)
       const execId = uuidv4()
+      /*
+       * The domain event of the entry, written to the outbox INSIDE the
+       * transaction below (wave 7 · B2): it exists if and only if the move
+       * does. The SLA clocks, the automations and the notifications hang on
+       * it; the listeners publish this same event after the commit.
+       */
+      const stepEnteredEvent: DomainEvent<WorkflowStepEnteredPayload> = {
+        id:             uuidv4(),
+        type:           WORKFLOW_STEP_ENTERED_EVENT,
+        tenant_id:      wi['tenant_id'] as string,
+        timestamp:      now,
+        correlation_id: uuidv4(),
+        actor_id:       context.userId,
+        payload: {
+          entity_type:   entityType,
+          entity_id:     wi['entity_id'] as string,
+          from_step:     currentStepName,
+          from_initial:  currentStepInitial,
+          step_name:     nextStepName,
+          step_category: nextStepCategory,
+          step_terminal: nextStepTerminal,
+          entered_at:    now,
+          trigger_type:  input.triggerType,
+        },
+      }
       await session.executeWrite(async (tx) => {
         const res = await tx.run(`
           // Il tenant anche sull'istanza (22 set 2026): il motore riceve
@@ -699,6 +745,8 @@ export class WorkflowEngine {
             now,
           })
         }
+
+        await recordEventIn(tx, stepEnteredEvent, { webhooks: true })
       })
 
       // 6. Exit actions dello step corrente + enter actions del prossimo.
@@ -760,32 +808,25 @@ export class WorkflowEngine {
         if (problem) actionErrors.push(problem)
       }
 
-      for (const listener of this.stepEnteredListeners) {
-        try {
-          await listener({
-            tenantId:    wi['tenant_id'] as string,
-            instanceId:  input.instanceId,
-            entityType,
-            entityId:    wi['entity_id'] as string,
-            fromStep:    currentStepName,
-            fromInitial: currentStepInitial,
-            toStep:      nextStepName,
-            category:    nextStepCategory,
-            terminal:    nextStepTerminal,
-            enteredAt:   now,
-            // B-4: le note viaggiano con l'evento, così la nota sul ticket la
-            // scrive un punto solo per tutti i cammini.
-            notes:       input.notes ?? null,
-            actorId:     context.userId,
-            actorLabel:  input.actorLabel ?? null,
-            triggerType: input.triggerType,
-          })
-        } catch (e) {
-          const msg = `step_entered listener: ${e instanceof Error ? e.message : String(e)}`
-          workflowLogger.error({ err: e, instanceId: input.instanceId, stepName: nextStepName }, `[workflow-engine] ${msg}`)
-          actionErrors.push(msg)
-        }
-      }
+      actionErrors.push(...await this.emitStepEntered({
+        tenantId:    wi['tenant_id'] as string,
+        instanceId:  input.instanceId,
+        entityType,
+        entityId:    wi['entity_id'] as string,
+        fromStep:    currentStepName,
+        fromInitial: currentStepInitial,
+        toStep:      nextStepName,
+        category:    nextStepCategory,
+        terminal:    nextStepTerminal,
+        enteredAt:   now,
+        // B-4: le note viaggiano con l'evento, così la nota sul ticket la
+        // scrive un punto solo per tutti i cammini.
+        notes:       input.notes ?? null,
+        actorId:     context.userId,
+        actorLabel:  input.actorLabel ?? null,
+        triggerType: input.triggerType,
+        event:       stepEnteredEvent,
+      }))
 
       if (nextStepType === 'sub_workflow') {
         const msg = `sub_workflow step "${nextStepName}" is not implemented — no sub-workflow was created${subWorkflowId ? ` (definitionId ${subWorkflowId})` : ' and no subWorkflowId is configured'}`

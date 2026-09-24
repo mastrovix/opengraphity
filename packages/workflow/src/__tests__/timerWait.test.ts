@@ -40,6 +40,8 @@ vi.mock('@opengraphity/events', () => ({
     return { add, remove }
   },
   publish:               vi.fn(),
+  // The engine records the step-entered event in the transition (wave 7 · B2); no outbox here.
+  recordEventIn:         vi.fn(async () => undefined),
   assertSafeOutboundUrl: vi.fn(),
   loggableUrl:           (u: string) => u,
 }))

@@ -8,8 +8,9 @@ import type { StepEnteredInfo } from '@opengraphity/types'
 
 let listener: ((info: StepEnteredInfo) => Promise<void>) | null = null
 vi.mock('@opengraphity/workflow', () => ({ workflowEngine: { onStepEntered: (l: typeof listener) => { listener = l } } }))
-const publishEvent = vi.fn(async () => {})
-vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: (...a: unknown[]) => publishEvent(...a) }))
+// The engine's own event (wave 7 · B2): written to the outbox in the transition, published here.
+const publishDomainEvent = vi.fn(async () => {})
+vi.mock('../../lib/publishEvent.js', () => ({ publishDomainEvent: (...a: unknown[]) => publishDomainEvent(...a) }))
 const closeIncident = vi.fn(async () => {})
 const publishIncidentResolved = vi.fn(async () => {})
 vi.mock('../../services/incidentService.js', () => ({
@@ -68,15 +69,20 @@ await import('../stepEnteredEvents.js')
 
 const info = (over: Partial<StepEnteredInfo>): StepEnteredInfo => ({
   tenantId: 'c-test', instanceId: 'wi-1', entityType: 'incident', entityId: 'inc-1', fromStep: 'resolved', fromInitial: false,
-  toStep: 'closed', category: 'closed', terminal: true, enteredAt: '2026-09-20T10:00:00Z', actorId: 'automation', triggerType: 'timer', ...over,
+  toStep: 'closed', category: 'closed', terminal: true, enteredAt: '2026-09-20T10:00:00Z', actorId: 'automation', triggerType: 'timer',
+  event: { id: 'evt-step', type: 'workflow.step_entered', tenant_id: 'c-test', timestamp: '2026-09-20T10:00:00Z', correlation_id: 'c-1', actor_id: 'automation',
+    payload: { entity_type: 'incident', entity_id: 'inc-1', from_step: 'resolved', from_initial: false, step_name: over.toStep ?? 'closed', step_category: 'closed', step_terminal: true, entered_at: '2026-09-20T10:00:00Z', trigger_type: 'timer' } },
+  ...over,
 })
 
 beforeEach(() => { vi.clearAllMocks() })
 
 describe('stepEnteredEvents', () => {
   it('un incident che entra in un passo «closed» pubblica incident.closed, qualunque nome abbia il passo', async () => {
-    await listener!(info({ toStep: 'chiuso_definitivo' }))
-    expect(publishEvent).toHaveBeenCalledWith('workflow.step_entered', 'c-test', 'automation', expect.objectContaining({ step_name: 'chiuso_definitivo' }), '2026-09-20T10:00:00Z')
+    const entry = info({ toStep: 'chiuso_definitivo' })
+    await listener!(entry)
+    // The very event the engine recorded in its transaction, not a new one.
+    expect(publishDomainEvent).toHaveBeenCalledWith(entry.event)
     expect(closeIncident).toHaveBeenCalledWith('inc-1', { tenantId: 'c-test', userId: 'automation' })
     // L'evento di dominio dell'entità: è il cammino aggiunto da C-1, e senza
     // questa riga la sua sparizione non farebbe cadere niente.
@@ -123,7 +129,7 @@ describe('stepEnteredEvents', () => {
     await listener!(info({ entityType: 'problem', entityId: 'prb-1', toStep: 'chiuso_definitivo' }))
     expect(closeIncident).not.toHaveBeenCalled()
     expect(publishIncidentResolved).not.toHaveBeenCalled()
-    expect(publishEvent).toHaveBeenCalledTimes(2)
+    expect(publishDomainEvent).toHaveBeenCalledTimes(2)
   })
 })
 

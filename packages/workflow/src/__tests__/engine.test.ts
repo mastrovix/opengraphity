@@ -398,6 +398,36 @@ describe('WorkflowEngine — ingresso nel passo', () => {
     })])
   })
 
+  // Wave 7 · B2: the event of the entry is written to the outbox in the transition's own transaction.
+  it('the step-entered event is recorded in the transition\'s transaction, and the listener gets that same event', async () => {
+    const { registerEventOutbox, clearEventOutbox } = await import('@opengraphity/events')
+    const recordIn = vi.fn(async () => undefined)
+    registerEventOutbox({ record: vi.fn(), recordIn, deliverExtras: vi.fn(), markSent: vi.fn() })
+    try {
+      const session = makeWritableSession([stateRow({ currentStepInitial: true, nextStepName: 'approval', nextStepCategory: 'waiting', nextStepTerminal: false })], 1)
+      const engine = new WorkflowEngine()
+      const visti: Array<{ event: unknown }> = []
+      engine.onStepEntered(async (info) => { visti.push(info) })
+      await engine.transition(session as never, { ...manual, toStepName: 'approval' }, actx)
+
+      expect(recordIn).toHaveBeenCalledTimes(1)
+      const [tx, event, options] = recordIn.mock.calls[0] as unknown as [unknown, Record<string, unknown>, unknown]
+      // Inside the write transaction, with the move: the tx the transition's statements ran on.
+      expect(tx).toEqual(expect.objectContaining({ run: session.txRun }))
+      expect(options).toEqual({ webhooks: true })
+      expect(event).toMatchObject({
+        type: 'workflow.step_entered', tenant_id: 'c-one', actor_id: 'user-1',
+        payload: {
+          entity_type: 'incident', entity_id: 'inc-1', from_step: 'in_progress', from_initial: true,
+          step_name: 'approval', step_category: 'waiting', step_terminal: false, trigger_type: 'manual',
+        },
+      })
+      expect(visti[0]!.event).toBe(event)
+    } finally {
+      clearEventOutbox()
+    }
+  })
+
   it('un ascoltatore che fallisce non annulla la transizione: finisce in actionErrors', async () => {
     const session = makeWritableSession([stateRow()], 1)
     const engine = new WorkflowEngine()

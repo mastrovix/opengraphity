@@ -63,7 +63,8 @@ vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
   withSession: vi.fn(async (fn: (s: unknown) => Promise<unknown>) => fn(h.session)),
   getSession:  vi.fn(),
 }))
-vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn().mockResolvedValue(undefined) }))
+// The creation's event is recorded in its transaction and published after (wave 7 · B2).
+vi.mock('../../lib/publishEvent.js', () => import('../../lib/__tests__/publishEventFake.js'))
 vi.mock('../../lib/workflowHelpers.js', () => ({
   getInitialStepName: vi.fn().mockResolvedValue('submitted'),
   getWorkflowSteps:   vi.fn().mockResolvedValue([]),
@@ -134,6 +135,15 @@ beforeEach(() => {
 // ── createRequest ─────────────────────────────────────────────────────────────
 
 describe('createRequest', () => {
+  // Wave 7 · B2: `request.created` exists if and only if the request does.
+  it('request.created is written to the outbox in the creation\'s transaction, and that event is published', async () => {
+    const { recordDomainEventIn, publishDomainEvent } = await import('../../lib/__tests__/publishEventFake.js')
+    await createRequest({ title: 'Nuovo laptop', priority: 'medium' }, ctx)
+    const tx = vi.mocked(workflowEngine.createInstance).mock.calls[0]![0]
+    expect(recordDomainEventIn).toHaveBeenCalledWith(tx, expect.objectContaining({ type: 'request.created', tenant_id: 'tenant-1' }))
+    expect(publishDomainEvent).toHaveBeenCalledWith(vi.mocked(recordDomainEventIn).mock.calls[0]![1])
+  })
+
   it('numero REQ + 8 cifre dal contatore atomico (kind "service_request", tenant corrente)', async () => {
     await createRequest({ title: 'Nuovo laptop', priority: 'medium' }, ctx)
     // Il contatore passa da `tx.run`; tutto il resto della creazione da `runQuery`.

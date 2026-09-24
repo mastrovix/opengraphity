@@ -79,6 +79,8 @@ export const REPEATABLE_JOBS: ReadonlyArray<{ name: string; pattern: string; des
    * resto del filtro, e la pipeline degli eventi ha già la sua deduplica.
    */
   { name: 'server_logs_to_events', pattern: '*/15 * * * *', description: 'every 15 minutes' },
+  /** Wave 7 · B2: the outbox keeps the events it sent for a week (lib/outbox.ts). */
+  { name: 'purge_outbox', pattern: '30 4 * * *', description: 'daily at 04:30' },
 ]
 
 /**
@@ -259,6 +261,13 @@ async function processMaintenanceJob(job: Job): Promise<void> {
     case 'purge_server_logs': {
       const { server, browser, giorni } = await purgaIRegistriDeiLog()
       maintenanceLogger.info({ server, browser, retentionDays: giorni }, 'Server and browser log registries pruned')
+      break
+    }
+
+    case 'purge_outbox': {
+      const { purgeSentEvents, OUTBOX_KEEP_SENT_DAYS } = await import('../lib/outbox.js')
+      const deleted = await purgeSentEvents()
+      if (deleted > 0) maintenanceLogger.info({ deleted, keptDays: OUTBOX_KEEP_SENT_DAYS }, 'Sent domain events pruned from the outbox')
       break
     }
 

@@ -183,6 +183,15 @@ groups:
           description: "{{ $value }} quer(ies) stopped in 15 minutes. The log line «Neo4j query stopped at the database limit» names the operation and the query."
           runbook: "docs/OPERATIONS.md §9 «Query fermate dai limiti del database»"
 
+      - alert: OutboxEventsNotLeaving
+        expr: max by (tenant) (outbox_pending_events) > 0
+        for: 5m
+        labels: { severity: warning, subsystem: platform }
+        annotations:
+          summary: "Domain events of tenant {{ $labels.tenant }} are not leaving the outbox"
+          description: "{{ $value }} event(s) written to the outbox and not sent for over 5 minutes: SLA, notifications and webhooks wait for them. The log line «An event of the outbox could not be sent again» says why."
+          runbook: "docs/OPERATIONS.md §9 «Eventi fermi nell'outbox»"
+
       - alert: BackupStale
         expr: time() - max(opengrafo_backup_last_success_timestamp_seconds) > 25 * 3600
         labels: { severity: critical, subsystem: platform }

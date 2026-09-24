@@ -84,7 +84,8 @@ vi.mock('../ticketTransition.js', async () => {
   }
 })
 const refused = (message: string, guard = 'workflow') => ({ moved: false, refusal: { guard, final: true, code: 'CONFLICT', message } })
-vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn() }))
+// The creation's event is recorded in its transaction and published after (wave 7 · B2).
+vi.mock('../../lib/publishEvent.js', () => import('../../lib/__tests__/publishEventFake.js'))
 vi.mock('../../lib/stepEnteredPublisher.js', () => ({ publishStepEnteredForEntity: vi.fn() }))
 vi.mock('../../jobs/embeddingWorker.js', () => ({ enqueueEmbedding: vi.fn(async () => undefined) }))
 vi.mock('../../lib/ticketCustomFields.js', () => ({
@@ -188,6 +189,17 @@ describe('setIncidentTitle', () => {
 })
 
 describe('createIncident — paths not covered elsewhere', () => {
+  // Wave 7 · B2: `incident.created` — where the SLA starts — exists if and only if the incident does.
+  it('incident.created is written to the outbox with the workflow instance, and that event is published', async () => {
+    const { recordDomainEventIn, publishDomainEvent } = await import('../../lib/__tests__/publishEventFake.js')
+    vi.mocked(runQuery).mockImplementation(async (_s: unknown, cypher: string) =>
+      (cypher.includes('CREATE (i:Incident') ? [{ props: { id: 'inc-1', number: 'INC00000042' } }] : cypher.includes('AFFECTED_BY') ? [{ linked: 1 }] : []) as never)
+    await svc.createIncident({ title: 'T', affectedCIIds: ['ci-1'] }, ctx)
+    const tx = vi.mocked(workflowEngine.createInstance).mock.calls[0]![0]
+    expect(recordDomainEventIn).toHaveBeenCalledWith(tx, expect.objectContaining({ type: 'incident.created', tenant_id: 't-1', payload: expect.objectContaining({ affected_ci_ids: ['ci-1'] }) }))
+    expect(publishDomainEvent).toHaveBeenCalledWith(vi.mocked(recordDomainEventIn).mock.calls[0]![1])
+  })
+
   function primeCreate(opts: { created?: boolean; linked?: number } = {}) {
     vi.mocked(runQuery).mockImplementation(async (_s: unknown, cypher: string) => {
       if (cypher.includes('CREATE (i:Incident')) return (opts.created === false ? [] : [{ props: { id: 'inc-1', number: 'INC00000042' } }]) as never

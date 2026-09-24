@@ -12,11 +12,11 @@ import { mapIncident } from '../lib/mappers.js'
 import { NotFoundError, ValidationError } from '../lib/errors.js'
 import { validateStringLength } from '../lib/validation.js'
 import { enqueueEmbedding } from '../jobs/embeddingWorker.js'
-import { publishEvent } from '../lib/publishEvent.js'
+import { domainEvent, publishDomainEvent, publishEvent, recordDomainEventIn } from '../lib/publishEvent.js'
 import { publishStepEnteredForEntity } from '../lib/stepEnteredPublisher.js'
 import { getInitialStepName, getWorkflowSteps } from '../lib/workflowHelpers.js'
 import { targetStepByCategory } from '../lib/workflowTargets.js'
-import { TICKET_TEAM_ASSIGNED_EVENT, type Permission, type TicketTeamAssignedPayload } from '@opengraphity/types'
+import { TICKET_TEAM_ASSIGNED_EVENT, type DomainEvent, type Permission, type TicketTeamAssignedPayload } from '@opengraphity/types'
 import { ciLabelPredicateForTenant } from '../lib/ciLabelsForTenant.js'
 import { assertUserInAssignedTeam, setTicketTeam, setTicketUser } from './ticketAssignment.js'
 import { systemText } from '../lib/systemText.js'
@@ -416,10 +416,23 @@ export async function createIncident(
    * né chiudere, e l'unico rimedio era il database. Si annulla come per i CI
    * mancanti, e si dice perché.
    */
+  // Il CI e l'assegnatario VERI nel payload (revisione totale · B-7): erano
+  // scritti a mano come «—», e una regola di notifica che mette il CI nel
+  // testo mostrava «—» anche su un incident con tre CI. Il payload si rilegge
+  // dal grafo, come fa `assignIncidentToUser`.
+  let createdEvent: DomainEvent<IncidentEventPayload & { affected_ci_ids: string[] }>
   try {
-    await withSession(async (session) => {
-      await workflowEngine.createInstance(session, ctx.tenantId, id, 'incident', undefined, input.category ?? null)
-    }, true)
+    createdEvent = domainEvent('incident.created', ctx.tenantId, ctx.userId, {
+      ...requirePayload(await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId)), id),
+      affected_ci_ids: input.affectedCIIds ?? [],
+    } satisfies IncidentEventPayload, now)
+    // The instance makes the incident exist; `incident.created` — where its
+    // SLA starts — is written to the outbox in the same transaction (wave 7 ·
+    // B2): it exists if and only if the incident does.
+    await withSession((session) => session.executeWrite(async (tx) => {
+      await workflowEngine.createInstance(tx, ctx.tenantId, id, 'incident', undefined, input.category ?? null)
+      await recordDomainEventIn(tx, createdEvent)
+    }), true)
   } catch (err) {
     await withSession(async (session) => {
       await runQuery(session, 'MATCH (i:Incident {id: $id, tenant_id: $tenantId}) DETACH DELETE i', { id, tenantId: ctx.tenantId })
@@ -446,15 +459,7 @@ export async function createIncident(
       `, { userId: ctx.userId, tenantId: ctx.tenantId, entityId: id, now }))
     }, true)
 
-    // Il CI e l'assegnatario VERI nel payload (revisione totale · B-7): erano
-    // scritti a mano come «—», e una regola di notifica che mette il CI nel
-    // testo mostrava «—» anche su un incident con tre CI. Il payload si rilegge
-    // dal grafo, come fa `assignIncidentToUser`.
-    const createdPayload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))
-    await publishEvent('incident.created', ctx.tenantId, ctx.userId, {
-      ...requirePayload(createdPayload, id),
-      affected_ci_ids: input.affectedCIIds ?? [],
-    } satisfies IncidentEventPayload, now)
+    await publishDomainEvent(createdEvent)
 
     // Trigger, Business Rule e trigger a tempo: li mette in moto `incident.created`
     // (consumers/automationConsumer.ts), come per ogni altro ticket e evento.

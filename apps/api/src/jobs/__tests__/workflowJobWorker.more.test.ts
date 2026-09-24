@@ -67,6 +67,8 @@ const runSLASweep = vi.fn()
 vi.mock('@opengraphity/sla', () => ({ runSLASweep: (...a: unknown[]) => runSLASweep(...a) }))
 const riprendiTransizioniDi = vi.fn()
 vi.mock('../../lib/riprendiTransizioni.js', () => ({ riprendiTransizioniDi: (...a: unknown[]) => riprendiTransizioniDi(...a) }))
+const resendPendingEvents = vi.fn()
+vi.mock('../../lib/outbox.js', () => ({ resendPendingEvents: (...a: unknown[]) => resendPendingEvents(...a) }))
 const loadAutomationEntity = vi.fn()
 vi.mock('../../lib/automationEntity.js', () => ({ loadAutomationEntity: (...a: unknown[]) => loadAutomationEntity(...a) }))
 const executeActions = vi.fn()
@@ -222,11 +224,27 @@ describe('periodic sweeps', () => {
     expect(logInfo).toHaveBeenCalledWith({ tenantId: 't1', mosse: 2, candidate: 3, rifiutateDalVarco: 1 }, 'automatic transitions resumed')
   })
 
+  // Wave 7 · B2: the events of the outbox that never left, sent again every 30 s.
+  it('the outbox job sends again the tenant\'s pending events, speaks only when there were some, and fails when one could not leave', async () => {
+    resendPendingEvents.mockResolvedValueOnce({ sent: 0, failed: 0, pending: 0 })
+    await workflowProcessor(job(mod.OUTBOX_RESEND_JOB, { tenantId: 't1' }))
+    expect(resendPendingEvents).toHaveBeenCalledWith('t1')
+    expect(logWarn).not.toHaveBeenCalled()
+
+    resendPendingEvents.mockResolvedValueOnce({ sent: 3, failed: 0, pending: 0 })
+    await workflowProcessor(job(mod.OUTBOX_RESEND_JOB, { tenantId: 't1' }))
+    expect(logWarn).toHaveBeenCalledWith({ tenantId: 't1', sent: 3, failed: 0, pending: 0 }, '[workflow-jobs] outbox: events that had not left were sent again')
+
+    resendPendingEvents.mockResolvedValueOnce({ sent: 1, failed: 2, pending: 2 })
+    await expect(workflowProcessor(job(mod.OUTBOX_RESEND_JOB, { tenantId: 't1' }))).rejects.toThrow('Outbox: 2 event(s) could not be sent again')
+  })
+
   it('the OLA and resume sweeps are registered with fixed ids and their period, in the tenant\'s queue', async () => {
     await mod.scheduleWorkflowSweeps({ upsertJobScheduler: upsertScheduler } as never, 't1')
     expect(upsertScheduler).toHaveBeenCalledWith('workflow-ola-sweep', { every: 60_000 }, expect.objectContaining({ name: mod.OLA_SWEEP_JOB, data: expect.objectContaining({ tenantId: 't1' }) }))
     expect(upsertScheduler).toHaveBeenCalledWith('workflow-ripresa-transizioni', { every: 5 * 60_000 }, expect.objectContaining({ name: mod.RIPRESA_JOB }))
     expect(upsertScheduler).toHaveBeenCalledWith('workflow-sla-sweep', { every: 60_000 }, expect.objectContaining({ name: mod.SLA_SWEEP_JOB, data: expect.objectContaining({ tenantId: 't1' }) }))
+    expect(upsertScheduler).toHaveBeenCalledWith('workflow-outbox-resend', { every: 30_000 }, expect.objectContaining({ name: mod.OUTBOX_RESEND_JOB, data: expect.objectContaining({ tenantId: 't1' }) }))
   })
 })
 

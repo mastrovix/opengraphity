@@ -58,7 +58,8 @@ vi.mock('../../lib/triggerEngine.js', () => ({
   scheduleTimerTriggers: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('../../lib/rulesEngine.js', () => ({ evaluateBusinessRules: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn().mockResolvedValue(undefined) }))
+// The creation's event is recorded in its transaction and published after (wave 7 · B2).
+vi.mock('../../lib/publishEvent.js', () => import('../../lib/__tests__/publishEventFake.js'))
 vi.mock('../../jobs/embeddingWorker.js', () => ({ enqueueEmbedding: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../lib/workflowHelpers.js', () => ({
   getInitialStepName: vi.fn().mockResolvedValue('new'),

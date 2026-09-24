@@ -26,7 +26,8 @@ const mockSession = {
 vi.mock('../../lib/ticketCIExclusions.js', () => import('../../lib/__tests__/ticketCIExclusionsFake.js'))
 vi.mock('../../lib/ticketNumbering.js', () => import('../../lib/__tests__/ticketNumberingFake.js'))
 vi.mock('../../lib/domainMatrix.js', () => import('../../lib/__tests__/domainMatrixFake.js'))
-vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn() }))
+// The creation's event is recorded in its transaction and published after (wave 7 · B2).
+vi.mock('../../lib/publishEvent.js', () => import('../../lib/__tests__/publishEventFake.js'))
 // CH-2: i codici vengono dai contatori atomici; qui il contatore change parte da maxChgNum.
 let maxChgNum = 0
 let taskCounter = 0
@@ -189,6 +190,18 @@ describe('createChangeRFC', () => {
     await expect(
       createChangeRFC({ changeType: 'normal', title: 'Upgrade', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1'] }, ctx),
     ).rejects.toThrow('CI App Portale has no Owner Group or Support Group')
+  })
+
+  // Wave 7 · B2: `change.created` exists if and only if the change does.
+  it('change.created is written to the outbox in the creation\'s transaction, and that event is published', async () => {
+    const { recordDomainEventIn, publishDomainEvent } = await import('../../lib/__tests__/publishEventFake.js')
+    mockQueries({ ciRows: [{ id: 'ci-1', name: 'App Portale', ownerTeamId: 'team-a', supportTeamId: 'team-b' }], maxChgNum: 41 })
+    const created = await createChangeRFC({ changeType: 'normal', title: 'Upgrade', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1'] }, ctx)
+    expect(created).toEqual({ id: expect.any(String), code: expect.any(String) })
+    expect(recordDomainEventIn).toHaveBeenCalledWith(mockTx, expect.objectContaining({
+      type: 'change.created', payload: { id: created.id, code: created.code, title: 'Upgrade', change_type: 'normal' },
+    }))
+    expect(publishDomainEvent).toHaveBeenCalledWith(vi.mocked(recordDomainEventIn).mock.calls[0]![1])
   })
 
   it('crea il change: id + code progressivo, tasks, workflow instance e audit', async () => {

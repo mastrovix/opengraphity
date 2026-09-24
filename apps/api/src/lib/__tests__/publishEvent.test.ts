@@ -6,19 +6,29 @@
  * declared again) was taken for a duplicate and never delivered. They are
  * keyed by the event's own id now. The enqueue is not awaited by choice (the
  * caller's write is already committed): a failure is logged with the event.
+ *
+ * Wave 7 · B2: in a process with the outbox, the webhooks are part of the
+ * send (lib/outbox.ts) and `publishDomainEvent` leaves them to it; a process
+ * without one (a script, a test) enqueues them here, as before.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const published: Array<{ id: string; type: string }> = []
-vi.mock('@opengraphity/events', () => ({ publish: vi.fn(async (e: { id: string; type: string }) => { published.push(e) }) }))
+const throughOutbox = vi.hoisted(() => ({ value: false }))
+const recordEventIn = vi.fn(async () => undefined)
+vi.mock('@opengraphity/events', () => ({
+  publish: vi.fn(async (e: { id: string; type: string }) => { published.push(e); return { throughOutbox: throughOutbox.value } }),
+  recordEventIn: (...a: unknown[]) => recordEventIn(...a),
+}))
 const enqueue = vi.fn()
 vi.mock('../../jobs/webhookDeliveryWorker.js', () => ({ enqueueOutboundWebhooks: (...a: unknown[]) => enqueue(...a) }))
 const logError = vi.fn()
 vi.mock('../logger.js', () => ({ logger: { error: (...a: unknown[]) => logError(...a) } }))
 
-const { publishEvent } = await import('../publishEvent.js')
+const { publishEvent, publishDomainEvent, domainEvent, recordDomainEventIn } = await import('../publishEvent.js')
+const { publish } = await import('@opengraphity/events')
 
-beforeEach(() => { published.length = 0; enqueue.mockReset(); logError.mockReset() })
+beforeEach(() => { published.length = 0; enqueue.mockReset(); logError.mockReset(); throughOutbox.value = false })
 
 describe('publishEvent', () => {
   it('two events with the same payload reach the webhooks as two events, each by its own id', async () => {
@@ -38,5 +48,32 @@ describe('publishEvent', () => {
       expect.objectContaining({ eventType: 'ticket.updated', eventId: published[0]!.id, tenantId: 't1' }),
       expect.stringContaining('reaches no webhook'),
     ))
+  })
+})
+
+describe('the outbox (wave 7 · B2)', () => {
+  it('an event goes to publish with its webhooks; with the outbox the webhooks are its send, not enqueued here', async () => {
+    throughOutbox.value = true
+    await publishEvent('incident.created', 't1', 'u1', { id: 'inc-1' }, '2026-09-24T10:00:00.000Z')
+    expect(publish).toHaveBeenCalledWith(expect.objectContaining({ type: 'incident.created', tenant_id: 't1', actor_id: 'u1', timestamp: '2026-09-24T10:00:00.000Z' }), { webhooks: true })
+    expect(enqueue).not.toHaveBeenCalled()
+  })
+
+  it('domainEvent gives every event its own id and correlation, and the time now when none is given', () => {
+    const a = domainEvent('ticket.updated', 't1', 'u1', { id: 'x' })
+    const b = domainEvent('ticket.updated', 't1', 'u1', { id: 'x' })
+    expect(a.id).not.toBe(b.id)
+    expect(a.correlation_id).not.toBe(a.id)
+    expect(Date.parse(a.timestamp)).not.toBeNaN()
+  })
+
+  it('an event recorded in a transaction is published as the SAME event, with the webhooks', async () => {
+    enqueue.mockResolvedValue(undefined)
+    const event = domainEvent('request.created', 't1', 'u1', { id: 'sr-1' })
+    const tx = { run: vi.fn() }
+    await recordDomainEventIn(tx, event)
+    expect(recordEventIn).toHaveBeenCalledWith(tx, event, { webhooks: true })
+    await publishDomainEvent(event)
+    expect(published[0]).toBe(event)
   })
 })

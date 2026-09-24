@@ -4,7 +4,7 @@ import type { Session } from 'neo4j-driver'
 // web (parallel_fork/join) usavano liste diverse dello stesso enum. Dall'ondata
 // 10 vive in `@opengraphity/types`, che leggono anche il disegnatore e l'API:
 // là accanto c'è scritto QUALI il motore esegue davvero.
-import type { WorkflowStepType } from '@opengraphity/types'
+import type { DomainEvent, WorkflowStepEnteredPayload, WorkflowStepType } from '@opengraphity/types'
 export type { WorkflowStepType }
 
 // ── Condizioni di transizione ────────────────────────────────────────────────
@@ -421,6 +421,13 @@ export interface StepEnteredInfo {
   notes?:      string | null
   /** Who signs the note when it is not a person (TransitionInput.actorLabel). */
   actorLabel?: string | null
+  /**
+   * The domain event of this entry (`workflow.step_entered`), already written
+   * to the outbox in the transition's own transaction (wave 7 · B2): the
+   * listener publishes THIS event, so that a process stopping between the
+   * commit and the listener leaves it to the outbox repeater, not lost.
+   */
+  event:        DomainEvent<WorkflowStepEnteredPayload>
 }
 
 export type StepEnteredListener = (info: StepEnteredInfo) => Promise<void>
