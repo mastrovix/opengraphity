@@ -24,16 +24,14 @@ const GET_ARTICLE = gql`
   query KBArticleBySlug($slug: String!) {
     kbArticleBySlug(slug: $slug) {
       id title slug body category tags status
-      authorId authorName views helpfulCount notHelpfulCount
+      authorId authorName views helpfulCount notHelpfulCount myVote audience
       createdAt updatedAt publishedAt
     }
   }
 `
 const GET_RELATED = gql`
-  query KBRelated($category: String!) {
-    kbArticles(category: $category, status: "published", pageSize: 5) {
-      items { id title slug category views }
-    }
+  query KBRelated($id: ID!) {
+    kbRelatedArticles(id: $id, limit: 4) { id title slug category views }
   }
 `
 const GET_ATTACHMENTS = gql`
@@ -55,6 +53,7 @@ const ARTICLE = {
   __typename: 'KBArticle', id: 'kb-1', title: 'Reset della password VPN', slug: 'reset-vpn', body: 'Apri il **portale** e segui i passi.',
   category: 'how-to', tags: ['vpn', 'password'], status: 'published', authorId: 'u1', authorName: 'Mario Rossi',
   views: 42, helpfulCount: 3, notHelpfulCount: 1, createdAt: '2026-09-01T10:00:00Z', updatedAt: '2026-09-02T10:00:00Z', publishedAt: '2026-09-02T10:00:00Z',
+  myVote: null as boolean | null, audience: 'everyone' as 'staff' | 'everyone',
 }
 
 const articleMock = (data: typeof ARTICLE | null): GqlMock => ({
@@ -62,11 +61,10 @@ const articleMock = (data: typeof ARTICLE | null): GqlMock => ({
   result: { data: { kbArticleBySlug: data } },
 })
 const relatedMock: GqlMock = {
-  request: { query: GET_RELATED, variables: { category: 'how-to' } },
-  result: { data: { kbArticles: { __typename: 'KBArticlePage', items: [
-    { __typename: 'KBArticle', id: 'kb-2', title: 'Configurare la VPN', slug: 'config-vpn', category: 'how-to', views: 7 },
-    { __typename: 'KBArticle', id: 'kb-1', title: 'Reset della password VPN', slug: 'reset-vpn', category: 'how-to', views: 42 },
-  ] } } },
+  request: { query: GET_RELATED, variables: { id: 'kb-1' } },
+  result: { data: { kbRelatedArticles: [
+    { __typename: 'KBRelatedArticle', id: 'kb-2', title: 'Configurare la VPN', slug: 'config-vpn', category: 'how-to', views: 7 },
+  ] } },
 }
 const attachmentsMock: GqlMock = {
   request: { query: GET_ATTACHMENTS, variables: { entityType: 'kb_article', entityId: 'kb-1' } },
@@ -77,7 +75,7 @@ const ROUTE = { route: '/knowledge-base/reset-vpn', path: '/knowledge-base/:slug
 
 const RATE_ARTICLE = gql`
   mutation RateKBArticle($id: ID!, $helpful: Boolean!) {
-    rateKBArticle(id: $id, helpful: $helpful) { id helpfulCount notHelpfulCount }
+    rateKBArticle(id: $id, helpful: $helpful) { id helpfulCount notHelpfulCount myVote }
   }
 `
 
@@ -88,7 +86,7 @@ describe('KBArticlePage: vote and retry', () => {
     const seen: unknown[] = []
     const rate: GqlMock = {
       request: { query: RATE_ARTICLE, variables: (v) => { seen.push(v); return true } },
-      result: { data: { rateKBArticle: { __typename: 'KBArticle', id: 'kb-1', helpfulCount: 4, notHelpfulCount: 1 } } },
+      result: { data: { rateKBArticle: { __typename: 'KBArticle', id: 'kb-1', helpfulCount: 4, notHelpfulCount: 1, myVote: true } } },
     }
     const { user } = renderWithProviders(<KBArticlePage />, { ...ROUTE, mocks: pageMocks(rate) })
     await user.click(await screen.findByRole('button', { name: /Yes \(3\)/ }))
@@ -100,7 +98,7 @@ describe('KBArticlePage: vote and retry', () => {
     const seen: unknown[] = []
     const rate: GqlMock = {
       request: { query: RATE_ARTICLE, variables: (v) => { seen.push(v); return true } },
-      result: { data: { rateKBArticle: { __typename: 'KBArticle', id: 'kb-1', helpfulCount: 3, notHelpfulCount: 2 } } },
+      result: { data: { rateKBArticle: { __typename: 'KBArticle', id: 'kb-1', helpfulCount: 3, notHelpfulCount: 2, myVote: false } } },
     }
     const { user } = renderWithProviders(<KBArticlePage />, { ...ROUTE, mocks: pageMocks(rate) })
     await user.click(await screen.findByRole('button', { name: /No \(1\)/ }))
@@ -126,6 +124,21 @@ describe('KBArticlePage: vote and retry', () => {
     } finally {
       process.off('unhandledRejection', onUnhandled)
     }
+  })
+
+  it('one vote per person: the reader\'s own vote shows as chosen and pressing it again sends nothing (G8)', async () => {
+    const seen: unknown[] = []
+    const rate: GqlMock = {
+      request: { query: RATE_ARTICLE, variables: (v) => { seen.push(v); return true } },
+      result: { data: { rateKBArticle: { __typename: 'KBArticle', id: 'kb-1', helpfulCount: 2, notHelpfulCount: 2, myVote: false } } },
+    }
+    const { user } = renderWithProviders(<KBArticlePage />, { ...ROUTE, mocks: [articleMock({ ...ARTICLE, myVote: true }), relatedMock, attachmentsMock, rate] })
+    const yes = await screen.findByRole('button', { name: /Yes \(3\)/ })
+    expect(yes).toHaveAttribute('aria-pressed', 'true')
+    await user.click(yes)
+    expect(seen).toEqual([])
+    await user.click(screen.getByRole('button', { name: /No \(1\)/ }))
+    await waitFor(() => expect(seen).toEqual([{ id: 'kb-1', helpful: false }]))
   })
 
   it('Retry after a failed load reads the article again and shows it', async () => {

@@ -47,12 +47,12 @@ async function searchUsers(_: unknown, args: { search: string; limit?: number; p
   const roles = await rolesGranting(ctx.tenantId, args.permission)
   if (roles !== null && roles.length === 0) return []
   return withSession(async (s) => {
-    const rows = await runQuery<{ id: string; name: string; email: string }>(s, `
+    const rows = await runQuery<{ id: string; name: string; email: string; role: string | null }>(s, `
       MATCH (u:User {tenant_id: $tenantId})
       WHERE (toLower(u.name) CONTAINS toLower($search) OR toLower(u.email) CONTAINS toLower($search))
         AND coalesce(u.active, true) = true
         AND ($roles IS NULL OR u.role IN $roles)
-      RETURN u.id AS id, u.name AS name, u.email AS email
+      RETURN u.id AS id, u.name AS name, u.email AS email, u.role AS role
       ORDER BY u.name LIMIT toInteger($limit)
     `, { tenantId: ctx.tenantId, search: args.search, limit, roles })
     return rows

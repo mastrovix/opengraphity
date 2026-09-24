@@ -77,7 +77,7 @@ export function CreateIncidentPage() {
   const [ciSearch,    setCiSearch]    = useState('')
   const [selectedCIs, setSelectedCIs] = useState<CIRef[]>([])
   // The team: the CI's support group, unless chosen by hand (incidentTeam.ts).
-  const { team, fromCI, prefilled, choose: chooseTeam, suggest: suggestTeam } = useIncidentTeam(selectedCIs)
+  const { team, fromCI, prefilled, overriddenSuggestion, choose: chooseTeam, suggest: suggestTeam } = useIncidentTeam(selectedCIs)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   // Campi personalizzati del cliente (verifica «Cosa resta cablato», ondata 4).
@@ -364,6 +364,11 @@ export function CreateIncidentPage() {
             {prefilled && fromCI && (
               <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>
                 {t('pages.createIncident.teamFromCI', { ci: fromCI.name })}
+              </p>
+            )}
+            {overriddenSuggestion && fromCI && (
+              <p role="note" style={{ margin: '4px 0 0', fontSize: 'var(--font-size-label)', color: palette.warning.text }}>
+                {t('pages.createIncident.suggestionOverridden', { suggested: overriddenSuggestion.name, ci: fromCI.name })}
               </p>
             )}
             {selectedCIs.length > 0 && !fromCI && team === null && (

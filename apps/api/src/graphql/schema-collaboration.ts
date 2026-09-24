@@ -5,6 +5,8 @@ export const collaborationSchema = `
     id: ID!
     name: String!
     email: String!
+    """The key of the person's role (the picker shows its name)."""
+    role: String
   }
 
   # ── Watchers ────────────────────────────────────────────────────────────────

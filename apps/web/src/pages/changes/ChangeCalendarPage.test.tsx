@@ -151,18 +151,24 @@ describe('ChangeCalendarPage — the bars', () => {
   it('the tooltip says what the bar is: change, type and step, CI and task, dates, and whom it collides with', () => {
     mount()
     expect(bar('CHG00000001')).toHaveAttribute('title',
-      'CHG00000001 · Upgrade DB\nRelease · Deploy 16\ndb-prod · TASK00000001\n22 Sept 2026, 22:00 → 23 Sept 2026, 01:00\nSame CI as: CHG00000002')
+      'CHG00000001 · Upgrade DB\nDeploy · Deploy 16\ndb-prod · TASK00000001\n22 Sept 2026, 22:00 → 23 Sept 2026, 01:00\nSame CI as: CHG00000002')
     // Without a task code, no dangling separator.
     expect(bar('CHG00000002').getAttribute('title')).toContain('\ndb-prod\n')
     expect(bar('CHG00000003').getAttribute('title')).toMatch(/\nOverlaps with: CHG00000004$/)
     expect(bar('CHG00000006').getAttribute('title')).not.toMatch(/Same CI|Overlaps/)
   })
 
-  it('a clash and an overlap are drawn differently from a quiet release', () => {
-    mount()
+  it('a clash is always drawn; an overlap on other CIs only when asked for (tour of 24 Sep 2026, G26)', async () => {
+    const { user } = mount()
     expect(bar('CHG00000001')).toHaveStyle({ background: 'var(--color-danger-tint)' })
+    // By default an overlap on another CI is a quiet release: 198 yellow windows out of 237 hid the clashes.
+    expect(bar('CHG00000003')).toHaveStyle({ background: 'var(--color-purple-tint)' })
+    expect(bar('CHG00000006')).toHaveStyle({ background: 'var(--color-purple-tint)' })
+    expect(screen.queryByText('Overlapping deploys, different CIs')).toBeNull()
+    await user.click(screen.getByRole('checkbox', { name: '2 overlapping deploys' }))
     expect(bar('CHG00000003')).toHaveStyle({ background: 'var(--color-warning-tint)' })
     expect(bar('CHG00000006')).toHaveStyle({ background: 'var(--color-purple-tint)' })
+    expect(screen.getByText('Overlapping deploys, different CIs')).toBeInTheDocument()
   })
 
   it('a window that starts before the week, or ends after it, is drawn open on that side', () => {
@@ -179,31 +185,31 @@ describe('ChangeCalendarPage — the bars', () => {
 describe('ChangeCalendarPage — summary and filters', () => {
   it('the summary counts changes, release windows, clashes, overlaps and plans left outside', () => {
     mount()
-    expect(screen.getByText('6 changes · 5 release windows')).toBeInTheDocument()
+    expect(screen.getByText('6 changes · 5 deploy windows')).toBeInTheDocument()
     expect(screen.getByText('2 windows on the same CI')).toBeInTheDocument()
-    expect(screen.getByText('2 overlapping releases')).toBeInTheDocument()
+    expect(screen.getByText('2 overlapping deploys')).toBeInTheDocument()
     expect(screen.getByText('1 plan with unusable dates, outside the calendar')).toBeInTheDocument()
   })
 
   // Tour of 23 Sep 2026: the summary was one key with both counts, and read
-  // «1 changes · 1 release windows». Each count now has its own plural.
+  // «1 changes · 1 deploy windows». Each count now has its own plural.
   it('one change with one release window is counted in the singular', () => {
     entries = [entry(6, { start: at(26, 20), end: at(26, 21) })]
     mount()
-    expect(screen.getByText('1 change · 1 release window')).toBeInTheDocument()
+    expect(screen.getByText('1 change · 1 deploy window')).toBeInTheDocument()
   })
 
   it('a quiet week has no clash, overlap or unreadable line', () => {
     entries = [entry(3, { start: at(24, 21), end: at(24, 22) }), entry(6, { start: at(26, 20), end: at(26, 21) })]
     apolloFinto.risposte['GetChangeCalendar'] = { changeCalendar: { entries, unreadablePlans: 0 } }
     mount()
-    expect(screen.getByText('2 changes · 2 release windows')).toBeInTheDocument()
+    expect(screen.getByText('2 changes · 2 deploy windows')).toBeInTheDocument()
     expect(screen.queryByText(/on the same CI|overlapping|unusable dates/)).not.toBeInTheDocument()
   })
 
   it('the type filter changes what is drawn, never the summary', async () => {
     const { user } = mount()
-    expect(segment('Release')).toHaveAttribute('aria-pressed', 'true')
+    expect(segment('Deploy')).toHaveAttribute('aria-pressed', 'true')
     await user.click(segment('Validation'))
     expect(bars()).toEqual(['CHG00000005'])
     // The validation bar: its own tint, and the tooltip says it is a validation.
@@ -268,7 +274,7 @@ describe('ChangeCalendarPage — the preview of a change', () => {
     expect(within(dialog).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['db-prod · Production', 'cache-01', 'mq-01 · Staging'])
     expect(within(dialog).getAllByRole('row').map((r) => within(r).getAllByRole('cell').map((c) => c.textContent))).toEqual([
       ['22 Sept 2026, 20:00 → 21:00', 'Validation', 'Deploy 16', 'db-prod'],
-      ['22 Sept 2026, 22:00 → 23:30', 'Release', 'Deploy 16', 'db-prod'],
+      ['22 Sept 2026, 22:00 → 23:30', 'Deploy', 'Deploy 16', 'db-prod'],
     ])
     // The plans that cannot be put in order are named: by task, or by CI when there is no task yet.
     expect(within(dialog).getByText('2 plans with no dates: TASK00000019, mq-01')).toBeInTheDocument()

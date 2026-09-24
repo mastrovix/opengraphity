@@ -17,6 +17,7 @@
  * Each field carries how a requester answers it (`answer`), so the 15,000
  * requests carry plausible answers and not random strings.
  */
+import type { ValueIcon } from '@opengraphity/types'
 
 export type DemoFieldType =
   | 'text' | 'textarea' | 'number' | 'date' | 'datetime' | 'boolean' | 'enum' | 'multi_enum'
@@ -152,15 +153,17 @@ export function vocabularyValues(v: (typeof DEMO_VOCABULARIES)[number]): string[
  * twelve models of fifty sat in «Other» — cloud machines, databases,
  * onboarding, desk moves. A customer adds the categories its catalog needs.
  */
-export const CATALOG_CATEGORIES: ReadonlyArray<readonly [value: string, en: string, it: string]> = [
-  ['infrastructure', 'Infrastructure', 'Infrastruttura'],
-  ['workplace', 'Workplace', 'Postazione di lavoro'],
-  ['people', 'People', 'Persone'],
+export const CATALOG_CATEGORIES: ReadonlyArray<readonly [value: string, en: string, it: string, icon: ValueIcon]> = [
+  // Each with the icon the customer chose in the Dictionary (G40).
+  ['infrastructure', 'Infrastructure', 'Infrastruttura', 'server'],
+  ['workplace', 'Workplace', 'Postazione di lavoro', 'building'],
+  ['people', 'People', 'Persone', 'users'],
 ]
 
 // ── The fields every company shares across its forms (D26) ─────────────────
 const SITE: DemoFieldSpec = { key: 'office_site', shared: true, type: 'enum', label: 'Office site', labelIt: 'Sede', vocabulary: 'office_site', required: true, width: 'half', inList: true }
-const fullName = (samples: string[]): DemoFieldSpec => ({ key: 'full_name', shared: true, type: 'text', label: 'Full name', labelIt: 'Nome e cognome', required: true, inList: true, width: 'half', answer: { samples } })
+// Not a list column (tour of 24 Sep 2026, G27): three catalog items ask for it, and the column was empty on almost every row.
+const fullName = (samples: string[]): DemoFieldSpec => ({ key: 'full_name', shared: true, type: 'text', label: 'Full name', labelIt: 'Nome e cognome', required: true, inList: false, width: 'half', answer: { samples } })
 const model = (values: string[]): DemoFieldSpec => ({ key: 'device_model', shared: true, type: 'enum', label: 'Model', labelIt: 'Modello', vocabulary: 'device_model', required: true, inList: true, width: 'half', answer: { values } })
 const SOFTWARE: DemoFieldSpec = { key: 'software', shared: true, type: 'enum', label: 'Software', labelIt: 'Software', vocabulary: 'software_title', required: true, inList: true, width: 'half' }
 const size = (values: string[]): DemoFieldSpec => ({ key: 'size', shared: true, type: 'enum', label: 'Size', labelIt: 'Dimensione', vocabulary: 'equipment_size', required: true, width: 'half', answer: { values } })

@@ -420,6 +420,8 @@ export function planCMDB(rng: Rng, clock: DemoClock, counts: DemoCounts, people:
   // How many applications already carry each first word: a family of five.
   const family = new Map<string, number>()
   const baIdsForApps: string[] = []
+  /** The business application each application realizes first: a database is shared only within it (G34). */
+  const appPrimaryBA = new Map<string, string>()
   // Every business application is realized by at least one application, then the rest at random.
   for (const ba of r.links.shuffle(bas)) baIdsForApps.push(ba.id)
   while (baIdsForApps.length < counts.applications && bas.length) baIdsForApps.push(r.links.pick(bas).id)
@@ -476,6 +478,7 @@ export function planCMDB(rng: Rng, clock: DemoClock, counts: DemoCounts, people:
     })
     ci.updatedAtMs = updatedAfter(ci.createdAtMs)
     for (const b of realized) relate(b.id, 'REALIZES', ci.id)
+    appPrimaryBA.set(ci.id, primary.id)
     for (const h of hosts) relate(ci.id, 'HOSTED_ON', h.id)
     appServers.set(ci.id, hosts.map((h) => h.id))
   }
@@ -496,9 +499,19 @@ export function planCMDB(rng: Rng, clock: DemoClock, counts: DemoCounts, people:
     const running = isRunning({ status } as PlannedCI)
     const instance = instanceFor(r.links, instances, instancesByEnv, env, running)
     const appPool = appsByEnv.get(instance.environment) ?? apps
-    const users = r.links.sample(appPool, r.links.weighted([[1, 70], [2, 22], [3, 8]]))
-    const owner = users[0]!
-    const baseSlug = slug(owner.name, '_').slice(0, 30)
+    // A database is its application's; another one uses it only when it serves
+    // the same business application (tour of 24 Sep 2026, G34: «Buckthorn
+    // Search» used «meadowsweet_notification»'s database).
+    const owner = r.links.pick(appPool)
+    const siblings = appPool.filter((a) => a.id !== owner.id && appPrimaryBA.get(a.id) === appPrimaryBA.get(owner.id))
+    const users = [owner, ...r.links.sample(siblings, Math.min(siblings.length, r.links.weighted([[0, 70], [1, 22], [2, 8]])))]
+    // Cut at a whole word, never in the middle of one («…notification_servi»).
+    let baseSlug = ''
+    for (const word of slug(owner.name, '_').split('_')) {
+      const next = baseSlug ? `${baseSlug}_${word}` : word
+      if (next.length > 30) break
+      baseSlug = next
+    }
     let name = ''
     for (const purpose of r.names.shuffle(DATABASE_PURPOSES)) {
       const candidate = `${baseSlug}_${purpose}`

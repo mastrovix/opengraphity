@@ -91,6 +91,7 @@ export function changeSDL(): string {
     approvedAt:     String
     canApprove:     Boolean!  # l'utente corrente può approvare questo requisito
     onBehalf:       Boolean!  # vero quando l'utente approva come admin a nome di un team di cui non fa parte
+    ownChange:      Boolean!  # true when the viewer asked for the change: another member decides (24 Sep 2026)
   }
 
   # Riferimento leggero a un ticket collegato alla change.

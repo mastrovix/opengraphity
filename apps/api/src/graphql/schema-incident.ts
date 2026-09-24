@@ -57,6 +57,8 @@ export function incidentSDL(): string {
     responseDeadline: String!
     resolveDeadline:  String!
     responseMet:      Boolean!
+    """When the response was given; after \`responseDeadline\` it was late (24 Sep 2026, G14). Null before, and on SLAs older than the field."""
+    respondedAt:      String
     resolveMet:       Boolean!
     breached:         Boolean!
     pausedAt:         String

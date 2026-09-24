@@ -17,7 +17,9 @@ import { EmptyState } from '@/components/EmptyState'
 import { StatusBadge } from '@/components/StatusBadge'
 import { EnvBadge } from '@/components/Badges'
 import { Select } from '@/components/ui/FormControls'
-import { GET_TEAM, GET_USERS } from '@/graphql/queries'
+import { GET_TEAM, SEARCH_USERS } from '@/graphql/queries'
+import { useDebounced } from '@/hooks/useDebounced'
+import { USER_PICKER_PAGE } from '@/components/pickers/UserPicker'
 import { UPDATE_TEAM } from '@/graphql/mutations'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { TEAM_TYPE_VOCABULARY } from '@/lib/teamVocabularies'
@@ -28,6 +30,7 @@ import { toast } from 'sonner'
 import { colors, palette } from '@/lib/tokens'
 import { vocabularyValueStyle } from '@/lib/domainStyle'
 import { formatDate } from '@/lib/datetime'
+import { useConfirm } from '@/hooks/useConfirm'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { showError } from '@/lib/showError'
 import { useCILabels } from '@/hooks/useCILabels'
@@ -36,7 +39,7 @@ interface Member {
   id:    string
   name:  string
   email: string
-  role:  string
+  role:  string | null
 }
 
 interface CIRef {
@@ -114,6 +117,7 @@ export function TeamDetailPage() {
   const { labelOf: roleLabel } = useRoles()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const confirm = useConfirm()
   const [showManagerModal, setShowManagerModal] = useState(false)
   const [managerSearch, setManagerSearch] = useState('')
   const [pendingManagerUser, setPendingManagerUser] = useState<{ id: string; name: string } | null>(null)
@@ -152,7 +156,16 @@ export function TeamDetailPage() {
     onError: (err) => showError(err),
   })
 
-  const { data: usersData } = useQuery<{ users: Member[] }>(GET_USERS, { skip: !showMemberModal })
+  /*
+   * The people who can be members of a support team: those whose role takes
+   * tickets (`ticket.assignable`) — an end user of the portal is not one
+   * (tour of 24 Sep 2026, G38). Searched on the server, like every picker.
+   */
+  const memberQuery = useDebounced(memberSearch.trim(), 250)
+  const { data: usersData } = useQuery<{ searchUsers: Member[] }>(SEARCH_USERS, {
+    variables: { search: memberQuery, limit: USER_PICKER_PAGE, permission: 'ticket.assignable' },
+    skip: !showMemberModal,
+  })
   const [setTeamMember, { loading: savingMember }] = useMutation(SET_TEAM_MEMBER, {
     onCompleted: (_d, opts) => {
       toast.success(t(opts?.variables?.['member'] ? 'toast.team.memberAdded' : 'toast.team.memberRemoved'))
@@ -285,7 +298,17 @@ export function TeamDetailPage() {
                   type="checkbox"
                   checked={!!team.isChangeManager}
                   disabled={settingCM}
-                  onChange={(e) => void setChangeManager({ variables: { teamId: team.id, value: e.target.checked } })}
+                  onChange={(e) => {
+                    const value = e.target.checked
+                    // One click moved the Change Manager away from its team, on ANY team's page
+                    // (tour of 24 Sep 2026, G43): it asks first, naming what changes.
+                    void (async () => {
+                      const ok = await confirm(value
+                        ? { title: t('pages.teamDetail.makeChangeManagerTitle'), body: t('pages.teamDetail.makeChangeManagerBody', { team: team.name }), confirmLabel: t('pages.teams.makeChangeManager') }
+                        : { title: t('pages.teamDetail.unsetChangeManagerTitle'), body: t('pages.teamDetail.unsetChangeManagerBody', { team: team.name }), confirmLabel: t('common.confirm'), danger: true })
+                      if (ok) void setChangeManager({ variables: { teamId: team.id, value } })
+                    })()
+                  }}
                 />
                 <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
                   {t(team.isChangeManager ? 'pages.teams.isChangeManager' : 'pages.teams.makeChangeManager')}
@@ -427,7 +450,7 @@ export function TeamDetailPage() {
         {showMemberModal && (() => {
           const memberIds = new Set(team.members.map((m) => m.id))
           const q = memberSearch.trim().toLowerCase()
-          const candidates = (usersData?.users ?? [])
+          const candidates = (usersData?.searchUsers ?? [])
             .filter((u) => !memberIds.has(u.id))
             .filter((u) => !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
           return (

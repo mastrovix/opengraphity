@@ -7,7 +7,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, screen } from '@testing-library/react'
 import { CREATE_SERVICE_REQUEST } from '@/graphql/mutations'
-import { GET_SERVICE_CATALOG_ADMIN } from '@/graphql/queries'
+import { GET_SERVICE_CATALOG_ADMIN, SEARCH_USERS } from '@/graphql/queries'
 import { fieldRulesMocks } from '@/test/mocks/gql'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { CreateServiceRequestPage } from '../CreateServiceRequestPage'
@@ -36,6 +36,28 @@ describe('CreateServiceRequestPage', () => {
     await user.click(screen.getByRole('button', { name: 'Create the request' }))
     await vi.waitFor(() => expect(seen).toHaveLength(1))
     expect(seen[0]).toMatchObject({ input: { title: 'Portatile', dueDate: '2026-09-18', priority: 'high' } })
+  })
+
+  it('opened for a colleague, the request carries them; once created its own page opens (G28, G29)', async () => {
+    const seen: unknown[] = []
+    const mocks: GqlMock[] = [
+      { request: { query: GET_SERVICE_CATALOG_ADMIN }, result: { data: { serviceCatalogItems: [] } }, maxUsageCount: Number.POSITIVE_INFINITY },
+      { request: { query: SEARCH_USERS, variables: () => true }, result: { data: { searchUsers: [{ __typename: 'UserSuggestion', id: 'u-9', name: 'Kelvin Ong', email: 'kelvin@x' }] } }, maxUsageCount: Number.POSITIVE_INFINITY },
+      {
+        request: { query: CREATE_SERVICE_REQUEST, variables: (v) => { seen.push(v); return true } },
+        result: { data: { createServiceRequest: { __typename: 'ServiceRequest', id: 'sr-77', title: 'Headset', priority: 'low', status: 'submitted', createdAt: 'x' } } },
+      },
+      ...fieldRulesMocks('service_request'),
+    ]
+    const { user } = renderWithProviders(<CreateServiceRequestPage />, { mocks, route: '/requests/new', path: '/requests/new' })
+    await user.type(await screen.findByPlaceholderText('What do you need?'), 'Headset')
+    await user.selectOptions(screen.getByLabelText(/Priority/), 'low')
+    await user.type(screen.getByLabelText('Requested for'), 'Kel')
+    await user.click(await screen.findByRole('option', { name: /Kelvin Ong/ }))
+    await user.click(screen.getByRole('button', { name: 'Create the request' }))
+    await vi.waitFor(() => expect(seen).toHaveLength(1))
+    expect(seen[0]).toMatchObject({ input: { title: 'Headset', requestedForId: 'u-9' } })
+    await vi.waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/requests/sr-77'))
   })
 
   /** Verifica «Cosa resta cablato», ondata 1: la priorità non parte più da «medium». */

@@ -150,6 +150,11 @@ import { slaSweepIndexes } from './20261009_1010_sla_sweep_indexes.js'
 import { outboxEvents } from './20261010_1010_outbox_events.js'
 import { ticketTeamSegments } from './20260930_1030_ticket_team_segments.js'
 import { changeTaskTeamSegments } from './20260930_1040_change_task_team_segments.js'
+import { majorIncidentPriorityMatrix } from './20261011_1010_major_incident_priority_matrix.js'
+import { kbAudience } from './20261011_1020_kb_audience.js'
+import { incidentStartWorkLabel } from './20261011_1030_incident_start_work_label.js'
+import { ciTypeStatusExcluded } from './20261011_1040_ci_type_status_excluded.js'
+import { requestStatusVocabulary } from './20261011_1050_request_status_vocabulary.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -281,4 +286,9 @@ export const MIGRATIONS: readonly Migration[] = [
   changeTaskAndImportKeys,
   slaSweepIndexes,
   outboxEvents,
+  majorIncidentPriorityMatrix,
+  kbAudience,
+  incidentStartWorkLabel,
+  ciTypeStatusExcluded,
+  requestStatusVocabulary,
 ]

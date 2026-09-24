@@ -69,3 +69,24 @@ describe('CIDynamicForm — campo enum', () => {
     expect(screen.queryByRole('option', { name: /no longer in the vocabulary/ })).not.toBeInTheDocument()
   })
 })
+
+/** Tour of 24 Sep 2026 (G35): a server offered «Expired» and «Revoked», the statuses of a certificate. */
+describe('CIDynamicForm — the statuses a type offers', () => {
+  it('a type that excludes some statuses does not offer them', async () => {
+    renderWithProviders(
+      <CIDynamicForm
+        ciType={{ ...ciType([]), statusesExcluded: ['expired', 'revoked'] }}
+        initialValues={{}}
+        onSubmit={vi.fn().mockResolvedValue(undefined)}
+        onCancel={vi.fn()}
+      />,
+      { mocks: [baseCITypeMock(['active', 'inactive', 'expired', 'revoked'])] },
+    )
+    const status = await screen.findByLabelText('Status')
+    await screen.findByRole('option', { name: /inactive/i })
+    const values = Array.from(status.querySelectorAll('option')).map((o) => o.value)
+    expect(values).toContain('active')
+    expect(values).not.toContain('expired')
+    expect(values).not.toContain('revoked')
+  })
+})

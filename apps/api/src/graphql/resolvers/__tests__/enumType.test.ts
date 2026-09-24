@@ -284,7 +284,7 @@ describe('updateEnumType', () => {
     // `valueLabels` e sempre fra i parametri: `null` quando il vocabolario non
     // ha etichette, com'e qui. Le etichette per valore sono dell'ondata 1 —
     // il valore resta quello che e, l'etichetta e come si legge a schermo.
-    expect(params).toEqual({ id: 'e-1', tenantId: 'tenant-1', label: 'Nuova', values: null, scope: null, finalDefault: null, valueLabels: null, valueColors: null, now: expect.any(String) })
+    expect(params).toEqual({ id: 'e-1', tenantId: 'tenant-1', label: 'Nuova', values: null, scope: null, finalDefault: null, valueLabels: null, valueColors: null, valueIcons: null, now: expect.any(String) })
     expect(out.label).toBe('Nuova')
   })
 

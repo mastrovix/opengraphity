@@ -153,6 +153,8 @@ interface Draft {
   writtenFrom: string[]
   /** Written with «Draft from incident»: the model wrote it from `writtenFrom[0]` (D52). */
   draftedByAI?: boolean
+  /** Who it is for (24 Sep 2026): a known error for the staff, a how-to or a FAQ for everyone. */
+  audience: 'staff' | 'everyone'
 }
 
 /**
@@ -170,15 +172,22 @@ const AI_DRAFT_SHARE = 0.6
 
 interface Review { approver: PlannedUser; request: Record<string, unknown> }
 
-/** Sent for review (`pending_review`): the administrators get an approval request, one of them will answer it. */
+/**
+ * Sent for review (`pending_review`): the administrators get an approval
+ * request, one of them will answer it — never the author, who does not
+ * approve their own article (24 Sep 2026), as `createStepApprovalRequest`
+ * leaves them out.
+ */
 function openReview(
   rng: Rng, trail: TicketTrail, d: Draft, at: number, author: ReturnType<World['actor']>,
   admins: readonly PlannedUser[], approvals: Array<Record<string, unknown>>,
 ): Review {
   trail.transition('pending_review', at, author, 'manual', null)
-  const approver = rng.pick(admins)
+  const approvers = admins.filter((a) => a.id !== d.author.id)
+  if (!approvers.length) throw new Error(`Demo tenant: the article "${d.title}" has no administrator other than its author to approve it`)
+  const approver = rng.pick(approvers)
   const request = { id: rng.uuid(), entity_type: 'kb_article', entity_id: d.id, title: `Publication: ${d.title}`, description: null,
-    status: 'pending', requested_by: d.author.id, requested_at: new Date(at).toISOString(), approvers: JSON.stringify(admins.map((a) => a.id)),
+    status: 'pending', requested_by: d.author.id, requested_at: new Date(at).toISOString(), approvers: JSON.stringify(approvers.map((a) => a.id)),
     approved_by: '[]', rejected_by: null, approval_type: 'any', due_date: null, resolved_at: null, resolution_note: null }
   approvals.push(request)
   return { approver, request }
@@ -248,7 +257,7 @@ function liveArticle(rng: Rng, w: World, d: Draft, admins: readonly PlannedUser[
   const views = Math.round(liveDays * d.readsPerDay * rng.float(0.5, 1.6))
   const props = {
     id: d.id, title: d.title, slug: `${d.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60)}-${d.id.slice(0, 8)}`,
-    body: d.body(full), category: d.category, tags: JSON.stringify(d.tags), status: trail.current.name,
+    body: d.body(full), category: d.category, tags: JSON.stringify(d.tags), status: trail.current.name, audience: d.audience,
     author_id: d.author.id, author_name: d.author.email, views, helpful_count: Math.round(views * rng.float(0.04, 0.12)),
     not_helpful_count: Math.round(views * rng.float(0.005, 0.02)), version: versions.length + 1,
     last_edited_by: editor.id, last_edited_by_name: editor.name, last_edited_at: new Date(editor.at).toISOString(),
@@ -265,17 +274,23 @@ export function planKnowledgeBase(
   const admins = w.people.users.filter((u) => u.role === 'admin')
   const now = w.clock.nowMs
   const drafts: Draft[] = []
-  // Known errors: about half are written up, a few days after the workaround.
+  // Known errors: about half are written up, a few days after the workaround —
+  // once per title: two problems with the same symptoms share the article
+  // already written (tour of 24 Sep 2026, G5: two «Workaround: Certificates
+  // renewed too late»).
+  const written = new Set<string>()
   for (const k of knownErrors) {
     if (!rng.chance(0.45)) continue
+    if (written.has(k.title)) continue
     const createdAtMs = Math.min(k.knownAtMs + rng.int(1, 10) * DAY, now - HOUR)
     if (createdAtMs <= k.knownAtMs) continue
     const category = k.ciLabel === 'Database' || k.ciLabel === 'DatabaseInstance' ? 'database' : kbCategoryOf(k)
     const draftedByAI = createdAtMs >= now - AI_SINCE_DAYS * DAY && k.incidentIds.length > 0 && rng.chance(AI_DRAFT_SHARE)
+    written.add(k.title)
     drafts.push({
       id: rng.uuid(), title: `Workaround: ${k.title}`, category, tags: ['known error', k.ciLabel.toLowerCase()],
       body: (full) => knownErrorBody(k, full), author: w.usersById.get(k.authorId)!, createdAtMs, readsPerDay: rng.float(0.05, 0.6),
-      writtenFrom: draftedByAI ? k.incidentIds.slice(0, 1) : k.incidentIds.slice(0, 3), draftedByAI,
+      writtenFrom: draftedByAI ? k.incidentIds.slice(0, 1) : k.incidentIds.slice(0, 3), draftedByAI, audience: 'staff',
     })
   }
   // How-tos: the service desk writes one for each question people keep asking, over the years.
@@ -287,7 +302,7 @@ export function planKnowledgeBase(
     const answered = portalIncidents.filter((p) => p.storyKey === h.story && p.createdAtMs < createdAtMs).slice(-rng.int(1, 3)).map((p) => p.id)
     drafts.push({
       id: rng.uuid(), title: h.title, category: h.category, tags: h.tags, body: (full) => howToBody(h, full),
-      author: w.memberOf(rng, desk.id, createdAtMs), createdAtMs, readsPerDay: rng.float(1, 8), writtenFrom: answered,
+      author: w.memberOf(rng, desk.id, createdAtMs), createdAtMs, readsPerDay: rng.float(1, 8), writtenFrom: answered, audience: 'everyone',
     })
   })
   return drafts.sort((a, b) => a.createdAtMs - b.createdAtMs).map((d) => liveArticle(rng.fork(`kb/${d.id}`), w, d, admins))

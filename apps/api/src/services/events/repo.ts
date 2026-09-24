@@ -57,6 +57,15 @@ export async function setCorrelation(session: Session, tenantId: string, eventId
 }
 
 /** MERGE CORRELATED_INTO; true se la relazione è nuova (per non ripetere il commento a ogni ricorrenza). */
+/** An incident born from an alarm is the monitoring's (G39): the portal does not list it as the request of whoever opened it. */
+export async function markIncidentFromEvent(session: Session, tenantId: string, incidentId: string): Promise<void> {
+  await runQueryOne(session, `
+    MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
+    SET i.origin = 'event'
+    RETURN i.id AS id
+  `, { incidentId, tenantId })
+}
+
 export async function attachEventToIncident(session: Session, tenantId: string, eventId: string, incidentId: string, manual: boolean, now: string): Promise<boolean> {
   const row = await runQueryOne<{ created: boolean }>(session, `
     MATCH (e:Event {id: $eventId, tenant_id: $tenantId})

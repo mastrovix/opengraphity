@@ -51,6 +51,8 @@ vi.mock('@opengraphity/schema-generator', () => ({
 vi.mock('../../lib/domainMatrix.js', () => ({
   domainVocabulary: vi.fn(async () => fake.severities),
 }))
+// The production environments come from the event policy (G32).
+vi.mock('../../services/events/policy.js', () => ({ getEventPolicy: vi.fn(async () => ({ production_environments: ['production'] })) }))
 vi.mock('../../lib/ciMetamodelForTenant.js', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   impactRelPatternForTenant: vi.fn(async () => fake.impactPattern),
@@ -152,7 +154,7 @@ describe('assertAnomalyRuleSettings: shape errors carry an i18n key', () => {
 
   it('treats missing optional lists as empty', () => {
     const out = assertAnomalyRuleSettings('orphan_ci', { enabled: false, severity: 'low' }, options)
-    expect(out).toEqual({ enabled: false, severity: 'low', ciTypes: [], relations: [], threshold: null, incidentSeverities: [], forbidden: [] })
+    expect(out).toEqual({ enabled: false, severity: 'low', ciTypes: [], relations: [], threshold: null, incidentSeverities: [], forbidden: [], nonProductionSeverity: null })
   })
 
   it('refuses incident severities on a rule that does not look at incidents', () => {
@@ -173,7 +175,7 @@ describe('assertAnomalyRuleSettings: shape errors carry an i18n key', () => {
 
   it('returns only the known fields, dropping anything extra the client sent', () => {
     const out = assertAnomalyRuleSettings('spof', { ...spof, isDefault: true, ruleKey: 'spof', junk: 1 }, options)
-    expect(Object.keys(out).sort()).toEqual(['ciTypes', 'enabled', 'forbidden', 'incidentSeverities', 'relations', 'severity', 'threshold'])
+    expect(Object.keys(out).sort()).toEqual(['ciTypes', 'enabled', 'forbidden', 'incidentSeverities', 'nonProductionSeverity', 'relations', 'severity', 'threshold'])
   })
 })
 
@@ -248,5 +250,24 @@ describe('saveAnomalyRuleConfig', () => {
     fake.writeFails = true
     await expect(saveAnomalyRuleConfig('t-acme', 'orphan_ci', FACTORY_ANOMALY_RULES.orphan_ci)).rejects.toThrow('neo4j down')
     expect(fake.closed).toBe(1)
+  })
+})
+
+// Tour of 24 Sep 2026 (G32): critical SPOFs on staging and disaster-recovery instances.
+describe('the severity outside production', () => {
+  const options: AnomalyRuleOptions = { ciTypes: [], relations: ['DEPENDS_ON'], incidentSeverities: [], productionEnvironments: ['production'] }
+  const spof = { enabled: true, severity: 'critical', ciTypes: [], relations: ['DEPENDS_ON'], threshold: 5, incidentSeverities: [], forbidden: [] }
+
+  it('a rule that weighs the environment takes one of the scale, or none', async () => {
+    const { assertAnomalyRuleSettings } = await import('../ruleConfig.js')
+    expect(assertAnomalyRuleSettings('spof', { ...spof, nonProductionSeverity: 'medium' }, options).nonProductionSeverity).toBe('medium')
+    expect(assertAnomalyRuleSettings('spof', spof, options).nonProductionSeverity).toBeNull()
+    expect(() => assertAnomalyRuleSettings('spof', { ...spof, nonProductionSeverity: 'huge' }, options)).toThrow(/outside production must be one of/)
+  })
+
+  it('a rule that does not weigh it refuses one', async () => {
+    const { assertAnomalyRuleSettings } = await import('../ruleConfig.js')
+    expect(() => assertAnomalyRuleSettings('orphan_ci', { ...spof, relations: [], threshold: null, severity: 'medium', nonProductionSeverity: 'low' }, options))
+      .toThrow(/does not weigh the environment/)
   })
 })

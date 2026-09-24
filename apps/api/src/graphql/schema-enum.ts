@@ -73,6 +73,8 @@ export function enumTypeSDL(): string {
     scritte nel web, e un valore del cliente appariva grigio.
     """
     valueColors: [EnumValueColor!]!
+    """The icon of each value that has one, in the order of the values: a name of the product's list (G40)."""
+    valueIcons: [EnumValueIcon!]!
     """
     Perche questo vocabolario NON porta etichette per valore, come chiave i18n —
     \`null\` quando le porta (e quindi un'etichetta vuota e vuota davvero).
@@ -146,6 +148,18 @@ export function enumTypeSDL(): string {
     defaultValue: String
     """I colori per valore, SOSTITUITI in blocco (la lista mandata è quella che resta)."""
     valueColors: [EnumValueColorInput!]
+    """The icons per value, replaced as a whole (the list sent is the one that stays)."""
+    valueIcons: [EnumValueIconInput!]
+  }
+
+  type EnumValueIcon {
+    value: String!
+    icon:  String!
+  }
+
+  input EnumValueIconInput {
+    value: String!
+    icon:  String!
   }
 
   input EnumValueColorInput {

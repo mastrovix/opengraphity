@@ -100,6 +100,14 @@ export const DOMAIN_MATRIX_KINDS = {
    * scritto nel codice (down → high, degraded → medium).
    */
   service_urgency:  { inputs: ['service_health'], output: 'urgency', inputScales: { service_health: ['degraded', 'down'] } },
+  /**
+   * The priority an incident takes when it is declared a Major Incident
+   * (owner's decision of 24 Sep 2026: «Diventa Critical»). The input is a
+   * product scale with one value — the declaration — and the output the
+   * customer's priority: a tenant that renamed «critical» chooses here which
+   * of its values a major incident gets. Revoking does not lower it.
+   */
+  major_incident_priority: { inputs: ['incident_major'], output: 'priority', inputScales: { incident_major: ['declared'] } },
 } as const
 
 /**
@@ -214,6 +222,9 @@ export const DOMAIN_MATRIX_SEEDS: Readonly<Record<DomainMatrixKind, DomainMatrix
   /** Trascritto da `URGENCY_BY_HEALTH` (services/serviceImpact/incident.ts): down → high, degraded → medium. */
   service_urgency: {
     down: 'high', degraded: 'medium',
+  },
+  major_incident_priority: {
+    declared: 'critical',
   },
 }
 

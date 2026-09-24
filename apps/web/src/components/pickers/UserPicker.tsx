@@ -34,8 +34,8 @@ export const USER_PICKER_PAGE = 20
 interface UserSuggestion { id: string; name: string; email: string }
 
 export interface UserPickerProps {
-  /** Only the people whose role grants this permission are offered. */
-  permission:  string
+  /** Only the people whose role grants this permission are offered; absent = every active person. */
+  permission?: string
   /** The line under the box: which people these are. */
   hint:        string
   value:       { id: string; name: string } | null

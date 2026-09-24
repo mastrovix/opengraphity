@@ -1149,3 +1149,18 @@ a:focus-visible .og-kb-card {
   border-color: var(--color-brand);
   box-shadow: 0 2px 8px var(--color-icon-accent-a12);
 }
+
+/*
+ * THE TEXT A MODEL WRITES (tour of 24 Sep 2026, G11): the assistant answers in
+ * markdown — bold numbers, tables — and the chat printed it raw, `**CHG…**`
+ * and `|---|` included. The same rules as the reports' answers.
+ */
+.og-markdown p { margin: 0 0 8px; }
+.og-markdown p:last-child { margin-bottom: 0; }
+.og-markdown table { border-collapse: collapse; font-size: var(--font-size-table); margin: 8px 0; display: block; max-width: 100%; overflow-x: auto; }
+.og-markdown th, .og-markdown td { border: 1px solid var(--color-border); padding: 5px 9px; text-align: left; }
+.og-markdown th { background: var(--color-surface-2); font-weight: 600; }
+.og-markdown code { background: var(--color-surface-2); padding: 1px 5px; border-radius: 3px; font-size: var(--font-size-table); }
+.og-markdown pre { background: var(--color-surface-2); padding: 10px; border-radius: 6px; overflow-x: auto; }
+.og-markdown ul, .og-markdown ol { margin: 4px 0 8px; padding-left: 20px; }
+.og-markdown li { margin-bottom: 2px; }

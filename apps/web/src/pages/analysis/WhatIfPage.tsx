@@ -133,7 +133,7 @@ export function WhatIfPage() {
   const typeIconMap = useMemo(() => buildTypeIconMap(ciTypesData?.ciTypes ?? []), [ciTypesData])
 
   // CI search
-  const { data: ciData } = useQuery<{ allCIs: { items: CIOption[] } }>(GET_ALL_CIS, {
+  const { data: ciData, loading: ciSearching } = useQuery<{ allCIs: { items: CIOption[] } }>(GET_ALL_CIS, {
     variables: { search: ciSearch || null, limit: 20 },
     skip: ciSearch.length < 1,
   })
@@ -256,6 +256,12 @@ export function WhatIfPage() {
             onFocus={() => { if (ciSearch.length >= 1) setDropdownOpen(true) }}
             onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
           />
+          {/* While the search runs it says so, and an empty answer too (tour of 24 Sep 2026, G33): the menu was a blank box for seconds. */}
+          {dropdownOpen && ciSearch.length >= 1 && ciOptions.length === 0 && (
+            <div role="status" style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: colors.white, border: '1px solid var(--color-border)', borderRadius: 6, marginTop: 2, padding: '8px 12px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', boxShadow: '0 4px 12px var(--color-black-a10)' }}>
+              {ciSearching ? t('common.searching') : t('common.noResults')}
+            </div>
+          )}
           {dropdownOpen && ciOptions.length > 0 && (
             <CIOptionsList options={ciOptions} onPick={(ci) => { setSelectedCI(ci); setCiSearch(''); setDropdownOpen(false) }} />
           )}

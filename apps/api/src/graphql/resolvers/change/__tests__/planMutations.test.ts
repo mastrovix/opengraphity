@@ -164,6 +164,16 @@ describe('saveDeployPlan — l\'inviluppo nasce QUI, nella stessa istruzione dei
     expect(String(txRun.mock.calls[0]![0])).toContain(TASK_STATUS.IN_PROGRESS)
   })
 
+  it('chi salva il piano lo prende, se nessuno lo tiene e se e\' del team del piano (G30)', async () => {
+    await saveDeployPlan(null, { taskId: 'dp1', steps: [passo()] }, ctx)
+    const [cypher, params] = txRun.mock.calls[0] as unknown as [string, Record<string, unknown>]
+    // Nella STESSA istruzione dello stato: stato e assegnatario non si smentiscono.
+    expect(String(cypher)).toContain('OPTIONAL MATCH (dp)-[held:ASSIGNED_TO]->(:User)')
+    expect(String(cypher)).toContain('(dp)-[:ASSIGNED_TO_TEAM]->(:Team)<-[:MEMBER_OF]-(starter:User {id: $userId, tenant_id: $tenantId})')
+    expect(String(cypher)).toContain('WHEN holders = 0 AND starter IS NOT NULL')
+    expect(params['userId']).toBe('u1')
+  })
+
   it('nella storia della change finiscono quanti passi e quali', async () => {
     await saveDeployPlan(null, { taskId: 'dp1', steps: [passo('Riavvio'), passo('Verifica')] }, ctx)
     const [, , , azione, , frase, i18n] = writeAudit.mock.calls[0] as unknown as [unknown, unknown, unknown, string, unknown, string, { key: string; params: Record<string, string> }]

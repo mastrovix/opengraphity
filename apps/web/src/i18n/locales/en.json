@@ -48,7 +48,8 @@
     "showAllCount_one": "Show all ({{count}})",
     "showAllCount_other": "Show all ({{count}})",
     "any": "any",
-    "number": "Number"
+    "number": "Number",
+    "searching": "Searching…"
   },
   "bulk": {
     "selected_one": "{{count}} selected",
@@ -260,7 +261,8 @@
       "count_one": "{{count}} request",
       "count_other": "{{count}} requests",
       "notFound": "Service request not found.",
-      "rejectionReason": "Reason for rejection"
+      "rejectionReason": "Reason for rejection",
+      "requester": "Requester"
     },
     "cmdb": {
       "health": "Health",
@@ -575,7 +577,7 @@
     },
     "dictionary": {
       "title": "Dictionary Designer",
-      "subtitle": "Define and manage value dictionaries for enum fields in the application",
+      "subtitle": "Define and manage the dictionaries of values the fields of the application use",
       "listHeader": "Dictionaries",
       "newButton": "New",
       "loading": "Loading…",
@@ -584,7 +586,7 @@
       "addValueLabel": "Add value",
       "removeValueLabel": "Remove value {{value}}",
       "systemBadge": "System",
-      "systemNote": "System enum — you can add values but cannot delete this enum.",
+      "systemNote": "System dictionary — you can add values but cannot delete it.",
       "nameLabel": "Technical name",
       "labelLabel": "Label",
       "scopeLabel": "Scope",
@@ -594,14 +596,14 @@
       "scopeCmdb": "CMDB",
       "confirmDelete": "Confirm deletion?",
       "confirmYes": "Yes, delete",
-      "created": "Enum \"{{label}}\" created",
-      "updated": "Enum updated",
-      "deleted": "Enum deleted",
-      "createTitle": "New Enum Type",
+      "created": "Dictionary «{{label}}» created",
+      "updated": "Dictionary saved",
+      "deleted": "Dictionary deleted",
+      "createTitle": "New dictionary",
       "nameFieldLabel": "Name (snake_case)",
       "namePlaceholder": "e.g. priority",
       "labelPlaceholder": "e.g. Priority",
-      "invalidName": "Name must be snake_case (e.g. \"my_enum\")",
+      "invalidName": "The name must be snake_case (e.g. \"my_dictionary\")",
       "shippedBadge": "Shipped with the product",
       "ownBadge": "Yours",
       "customizedFromShipped": "Customized from the dictionary shipped with the product: this copy applies to you in its place. Deleting it brings the shipped one back.",
@@ -662,7 +664,39 @@
       "noValueLabels": {
         "workflowStep": "These values are the names of the workflow steps, so their language is written on the step itself — open Configuration → Workflow Designer and edit the step label. Writing a label here would not change what anyone reads.",
         "importKeys": "These values are recognition keys for data arriving from other systems (p1, sev1, crit, blocker…), not menu entries: nobody reads them on screen, so they carry no label."
-      }
+      },
+      "discardTitle": "Leave without saving?",
+      "discardBody": "The values changed in «{{label}}» are not saved: leaving loses them. Stay and press Save to keep them.",
+      "discardLeave": "Leave without saving",
+      "valueIcons": {
+        "monitor": "Monitor",
+        "laptop": "Laptop",
+        "server": "Server",
+        "database": "Database",
+        "cloud": "Cloud",
+        "wifi": "Wi-Fi",
+        "network": "Network",
+        "code": "Code",
+        "app": "Application",
+        "key": "Key",
+        "lock": "Lock",
+        "shield": "Shield",
+        "user": "Person",
+        "users": "People",
+        "building": "Building",
+        "briefcase": "Briefcase",
+        "phone": "Phone",
+        "printer": "Printer",
+        "mail": "Mail",
+        "calendar": "Calendar",
+        "wrench": "Wrench",
+        "box": "Box",
+        "globe": "Globe",
+        "help": "Help",
+        "tag": "Tag"
+      },
+      "valueIconLabel": "Icon of {{value}}",
+      "valueIconNone": "No icon"
     },
     "sync": {
       "sourceCreated": "Sync source created",
@@ -807,7 +841,8 @@
         "columnRequired": "{{column}} is required",
         "vocabularyUnknown": "{{column}} «{{value}}» is not in the dictionary of this organization ({{allowed}})",
         "integerOutOfRange": "{{column}} «{{value}}» must be an integer between {{min}} and {{max}}",
-        "commentInternalNotBoolean": "comments[{{index}}]: «internal» must be true or false (false = a reply the requester sees in the portal)."
+        "commentInternalNotBoolean": "comments[{{index}}]: «internal» must be true or false (false = a reply the requester sees in the portal).",
+        "kbAudienceUnknown": "audience «{{audience}}» is not one of {{allowed}}"
       },
       "columnsProblems": "external_id*, title*, priority*, impact, urgency, description, workaround, root_cause, status, number, created_at, updated_at, resolved_at, assignee_email, team_name, comments",
       "columnsChanges": "external_id*, title*, change_type*, priority, why, what, aggregate_risk_score, status, number, created_at, updated_at, completed_at, comments",
@@ -904,7 +939,10 @@
       "decideInTicket": "You approve or reject it in the ticket page.",
       "entity": {
         "kb_article": "KB article"
-      }
+      },
+      "onBehalfTitle_one": "{{count}} approval you can decide for another team",
+      "onBehalfTitle_other": "{{count}} approvals you can decide for another team",
+      "onBehalfHint": "They belong to teams you are not a member of: they are not counted as yours, and deciding one is recorded with your name."
     },
     "kb": {
       "title": "Knowledge Base",
@@ -932,7 +970,8 @@
       "newArticle": "New article",
       "notFound": "Article not found",
       "notFoundHint": "The article {{id}} no longer exists, or it was never published.",
-      "backToKb": "Back to the knowledge base"
+      "backToKb": "Back to the knowledge base",
+      "updatedOn": "Updated {{date}}"
     },
     "kbAdmin": {
       "title": "Knowledge Base Admin",
@@ -976,7 +1015,13 @@
       "openApprovals": "open Approvals",
       "colVersion": "Version",
       "colStatus": "Status",
-      "colViews": "Views"
+      "colViews": "Views",
+      "audience": "Audience",
+      "audienceValue": {
+        "staff": "Staff only",
+        "everyone": "Everyone (portal too)"
+      },
+      "audienceHint": "A known error names internal systems: keep it for the staff. A how-to or a FAQ can be for everyone, and the portal shows it."
     },
     "workflow": {
       "title": "Workflow",
@@ -1101,7 +1146,7 @@
         "rejected": "Rejected"
       },
       "validation": {
-        "intro": "Verify the CI in the pre-production environment and record the outcome.",
+        "intro": "Verify the change on the CI in the environment planned for validation, and record the outcome.",
         "pass": "Pass",
         "fail": "Fail"
       },
@@ -1305,6 +1350,10 @@
         "service_urgency": {
           "title": "Service health → incident urgency",
           "description": "The urgency of the incident that Monitored services open when a service goes down or degraded. Together with the impact from the application criticality it gives the priority. A health with no value stops the incident from opening and says so."
+        },
+        "major_incident_priority": {
+          "title": "Major incident → priority",
+          "description": "The priority an incident takes when it is declared a Major Incident; its SLA follows the new priority. Revoking the declaration does not lower it. With no value, the declaration stops and says so."
         }
       },
       "missingWarning_one": "One combination with no value ({{keys}}). While it stays empty, the operation that needs it — opening an incident, or an incoming alarm — stops and says so: fill it in here.",
@@ -1701,7 +1750,8 @@
         "overlap": "Overlap",
         "unreadable_one": "Careful: {{count}} deployment plan could not be read ({{plans}}), so the comparison is incomplete — «no conflict» below only covers the plans that opened.",
         "unreadable_other": "Careful: {{count}} deployment plans could not be read ({{plans}}), so the comparison is incomplete — «no conflict» below only covers the plans that opened."
-      }
+      },
+      "ownChangeNote": "You asked for it: another member decides"
     },
     "changeCalendar": {
       "title": "Change calendar",
@@ -1716,18 +1766,18 @@
       "previous": "Previous period",
       "next": "Next period",
       "toList": "Go to the list",
-      "typeRelease": "Release",
+      "typeRelease": "Deploy",
       "typeValidation": "Validation",
       "legendClash": "Same CI at the same time",
-      "legendWarn": "Overlapping releases, different CIs",
+      "legendWarn": "Overlapping deploys, different CIs",
       "clashWith": "Same CI as: {{codes}}",
       "warnWith": "Overlaps with: {{codes}}",
-      "releaseWindows_one": "{{count}} release window",
-      "releaseWindows_other": "{{count}} release windows",
+      "releaseWindows_one": "{{count}} deploy window",
+      "releaseWindows_other": "{{count}} deploy windows",
       "clashes_one": "{{count}} window on the same CI",
       "clashes_other": "{{count}} windows on the same CI",
-      "warns_one": "{{count}} overlapping release",
-      "warns_other": "{{count}} overlapping releases",
+      "warns_one": "{{count}} overlapping deploy",
+      "warns_other": "{{count}} overlapping deploys",
       "unreadable_one": "{{count}} plan with unusable dates, outside the calendar",
       "unreadable_other": "{{count}} plans with unusable dates, outside the calendar",
       "empty": "No window planned in this period.",
@@ -1977,7 +2027,9 @@
       "dossierHelp": "Everything needed to investigate, gathered here: error signatures, modules to grep for, processes affected and the model’s analysis. Paste it into a development session, where the sources are.",
       "dossierCopy": "Copy the dossier",
       "dossierCopied": "Dossier copied.",
-      "dossierCopyFailed": "Could not copy: select it by hand."
+      "dossierCopyFailed": "Could not copy: select it by hand.",
+      "knownErrorHint": "A known error is a problem whose cause is known and that has a workaround: write both, so whoever meets the problem again can use them.",
+      "savedOnLeave": "Not saved yet: it is saved when you leave the field."
     },
     "createChange": {
       "titlePlaceholder": "E.g. Upgrade the production database to PostgreSQL 16",
@@ -2084,8 +2136,8 @@
       "task": "Task",
       "ci": "CI",
       "typeValidation": "Validation",
-      "typeRelease": "Release",
-      "envelope": "Release, end to end",
+      "typeRelease": "Deploy",
+      "envelope": "Deploy, end to end",
       "noWindowYet": "no window yet",
       "windowsApart_one": "{{count}} separate window, not contiguous",
       "windowsApart_other": "{{count}} separate windows, not contiguous",
@@ -2122,7 +2174,7 @@
       },
       "suggestion": {
         "changesInFlight": "Which changes are in flight and which CIs do they touch?",
-        "shutdownImpact": "If I shut down SRV-009, what do I impact?",
+        "shutdownImpact": "Which server do the most services depend on, and what would shutting it down impact?",
         "similarOpenIncidents": "Are there open incidents similar to one another?"
       },
       "thinking": "Looking through the graph…"
@@ -2146,7 +2198,8 @@
       "submit": "Create the incident",
       "teamFromCI": "The support group of {{ci}}: you can choose another team.",
       "noSupportGroup_one": "This CI has no support group: choose a team, or the incident will be created without one.",
-      "noSupportGroup_other": "None of these CIs has a support group: choose a team, or the incident will be created without one."
+      "noSupportGroup_other": "None of these CIs has a support group: choose a team, or the incident will be created without one.",
+      "suggestionOverridden": "The triage suggested {{suggested}}: the incident goes to the support group of {{ci}} instead. Choose {{suggested}} above if it should take it."
     },
     "createTicket": {
       "searchByName": "Search by name...",
@@ -2202,12 +2255,15 @@
       "submit": "Create the request",
       "priorityPlaceholder": "— Choose the priority —",
       "titleLabel": "Title",
-      "priorityLabel": "Priority"
+      "priorityLabel": "Priority",
+      "requestedFor": "Requested for",
+      "requestedForHint": "Leave it empty when the request is yours; choose a colleague to open it for them: they become the requester.",
+      "requestedForMe": "Myself"
     },
     "planTask": {
       "validation": "Validation *",
       "validationEnd": "End of validation",
-      "deployEnd": "End of the release",
+      "deployEnd": "End of the deploy",
       "complete": "Complete the plan",
       "wrongTeam": "You are not in the right team",
       "fillAll": "Fill in every step before completing",
@@ -2223,7 +2279,11 @@
       "addMemberTitle": "Add a member to {{team}}",
       "searchUser": "Search a user...",
       "noUserToAdd": "No user to add",
-      "removeMember": "Remove {{name}} from the team"
+      "removeMember": "Remove {{name}} from the team",
+      "makeChangeManagerTitle": "Make it the Change Manager team?",
+      "makeChangeManagerBody": "{{team}} becomes the team that approves every change as Change Manager, in place of the team that is it now. The changes waiting for approval keep the team they asked.",
+      "unsetChangeManagerTitle": "Stop being the Change Manager team?",
+      "unsetChangeManagerBody": "Without a Change Manager team the changes cannot ask for their approval: choose another team right after."
     },
     "olaContracts": {
       "subtitle": "Operational level agreements between internal teams, and underpinning contracts with suppliers.",
@@ -2291,7 +2351,10 @@
         "risk_concentration": "A CI with many open incidents of the severities you count as critical."
       },
       "orphanChip": "{{value}} (no longer exists)",
-      "orphanValue": "«{{value}}» is saved in this rule but is no longer among this organization's values: click to remove it, otherwise saving will be refused."
+      "orphanValue": "«{{value}}» is saved in this rule but is no longer among this organization's values: click to remove it, otherwise saving will be refused.",
+      "outsideProduction": "Outside production",
+      "outsideProductionSame": "Same severity",
+      "outsideProductionHint": "The severity for a CI whose environment is not among the production environments of the event policy. A CI without an environment counts as production."
     },
     "roles": {
       "title": "Roles",
@@ -2801,7 +2864,9 @@
       "openProblemHelp": "A Problem is created carrying the analysis and the measures. You choose impact and urgency: the product derives the priority from your organization’s matrix.",
       "impact": "Impact",
       "urgency": "Urgency",
-      "pickOne": "Pick one…"
+      "pickOne": "Pick one…",
+      "lastRunNow": "Analysis run at {{time}}: {{outcome}}",
+      "runningHint": "Analysing the tickets and the configuration: it can take a minute."
     },
     "dailyWork": {
       "title": "Daily work",
@@ -3141,7 +3206,9 @@
       "manual": "Manual",
       "automatic": "Automatic",
       "slaBreach": "SLA breach",
-      "timer": "Timer (auto-close)"
+      "timer": "Timer (auto-close)",
+      "show": "Legend",
+      "hide": "Hide legend"
     },
     "actionParams": {
       "approvalTitleExample": "Publication: {title}",
@@ -3319,7 +3386,9 @@
       "reportSections_other": "{{count}} report sections",
       "assessmentQuestionLinks_one": "the link to {{count}} assessment question (the question stays)",
       "assessmentQuestionLinks_other": "the links to {{count}} assessment questions (the questions stay)"
-    }
+    },
+    "statusesOffered": "Statuses of this type",
+    "statusesOfferedHint": "The statuses a CI of this type can take: «Expired» and «Revoked» belong to certificates. At least one."
   },
   "fieldRules": {
     "show": "Show",
@@ -3461,7 +3530,8 @@
       "problems": "Problems",
       "serviceRequests": "Service Requests",
       "tasks": "Tasks",
-      "kbArticles": "Knowledge Base"
+      "kbArticles": "Knowledge Base",
+      "teams": "Teams"
     },
     "error": "Search error"
   },
@@ -3643,7 +3713,8 @@
     "response": "Response",
     "resolve": "Resolution",
     "paused": "SLA paused",
-    "none": "No SLA"
+    "none": "No SLA",
+    "responseLateBy": "response late by {{time}}"
   },
   "confirm": {
     "irreversible": "This action cannot be undone."
@@ -4010,7 +4081,9 @@
       "systemDelete": "A product dictionary cannot be deleted.",
       "inUseByFields_one": "The dictionary is used by {{count}} field: detach it first.",
       "inUseByFields_other": "The dictionary is used by {{count}} fields: detach them first.",
-      "noChanges": "Nothing to save on «{{name}}»: what you sent is identical to what is already stored."
+      "noChanges": "Nothing to save on «{{name}}»: what you sent is identical to what is already stored.",
+      "unknownValueIcon": "The icon «{{icon}}» for «{{value}}» is not in the list ({{available}}).",
+      "valueIconNotInValues": "«{{value}}» is not a value of «{{name}}» ({{values}}): it cannot have an icon."
     },
     "ciType": {
       "shipped": "Type \"{{label}}\" ({{name}}) ships with the product: it is one type for every tenant. {{consequence}}",
@@ -4056,7 +4129,9 @@
       "inTicketsDelete": "Type \"{{label}}\" ({{name}}) was not deleted: {{cis}} of its CIs are linked to {{tickets}} ticket(s) (incidents, problems, changes or requests, closed ones included). Without the type those CIs would disappear from the tickets' history.",
       "inTicketsDeactivate": "Type \"{{label}}\" ({{name}}) was not deactivated: {{cis}} of its CIs are linked to {{tickets}} ticket(s) (incidents, problems, changes or requests, closed ones included). Without the type those CIs would disappear from the tickets' history.",
       "hasCIsDeactivate": "Type \"{{label}}\" ({{name}}) was not deactivated: there are still {{count}} CIs of type {{type}}, and a deactivated type disappears from reads as if it were deleted. Delete the type instead (its CIs go with it), or move those CIs first.",
-      "labelWithoutLanguage": "A label arrived without the language it belongs to: the change was not saved."
+      "labelWithoutLanguage": "A label arrived without the language it belongs to: the change was not saved.",
+      "statusUnknown": "{{values}} are not in the CI status dictionary ({{allowed}}).",
+      "noStatusLeft": "A type must keep at least one status."
     },
     "titleRequired": "The title is required.",
     "assignment": {
@@ -4073,7 +4148,8 @@
       "workflowInstance": "The incident was not created: its workflow could not be started ({{reason}}). Check the incident workflow of this category in the designer: it needs exactly one initial step.",
       "teamNotFound": "The chosen team no longer exists in this organization: choose another one.",
       "createdButNotAnnounced": "Incident {{number}} was created, but announcing it failed: {{reason}}",
-      "createdButNotAssigned": "Incident {{number}} was created, but assigning it to its team failed: {{reason}}"
+      "createdButNotAssigned": "Incident {{number}} was created, but assigning it to its team failed: {{reason}}",
+      "majorOnClosed": "The incident is closed: it cannot be declared a Major Incident."
     },
     "change": {
       "ownerNotFound": "The change owner is not an active person of this organization.",
@@ -4194,7 +4270,8 @@
       "lastActiveDefinition": "\"{{name}}\" is the last active {{entityType}} workflow without a category: switching it off would stop every new {{entityType}} from being created. Activate another one first.",
       "stepTypeNotImplemented": "Step type «{{type}}» is not executed by the workflow engine: such a step would behave like a standard step, following a single transition. It cannot be added until the engine implements it.",
       "taskOnlyOnEnter": "A task can only be created ENTERING a step, not leaving one ({{field}}): on exit it would be stamped with the next step, and would hold the wrong one.",
-      "manualTransitionNeedsLabel": "The manual transition «{{from}}» → «{{to}}» would be left without a label: its label is the text of the button people click on the ticket. Give it a label, or change its trigger."
+      "manualTransitionNeedsLabel": "The manual transition «{{from}}» → «{{to}}» would be left without a label: its label is the text of the button people click on the ticket. Give it a label, or change its trigger.",
+      "onlyAskerApproves": "Approval cannot start: the only people configured to approve are the ones who asked for it. Add another approver."
     },
     "channel": {
       "platform": "Platform \"{{platform}}\" is not supported. Allowed: {{allowed}}."
@@ -4368,7 +4445,10 @@
       "noPublishedStep": "The knowledge base workflow has no arrow from here to a published step: the approval cannot publish the article. Add it in the workflow designer.",
       "transitionRefused": "The knowledge base workflow refused the transition: the article was not moved.",
       "pendingOnStep": "The ticket is waiting for an approval in step \"{{step}}\": the approvers decide, from the Approvals page.",
-      "rejectedOnStep": "The approval in step \"{{step}}\" was rejected: the ticket can only be closed or cancelled."
+      "rejectedOnStep": "The approval in step \"{{step}}\" was rejected: the ticket can only be closed or cancelled.",
+      "ownChange": "You asked for this change: another member of the team decides its approval.",
+      "ownRequest": "You asked for this: another member of the approving group approves it.",
+      "ownArticle": "You wrote this article: another member of the group approves its publication."
     },
     "fieldRule": {
       "sameField": "The field that triggers the rule and the field it acts on cannot be the same.",
@@ -4391,7 +4471,8 @@
     "kb": {
       "onlyFromConcluded": "The Knowledge Base draft is generated only from resolved or closed incidents: this one is in step \"{{step}}\". Concluding steps of the incident workflow: {{concluded}}.",
       "onlyFromConcludedNone": "The Knowledge Base draft is generated only from resolved or closed incidents: this one is in step \"{{step}}\", and the incident workflow has no concluding step declared. Mark a step as terminal, or of category \"resolved\", in the designer.",
-      "concurrentEdit": "This article was modified by someone else while you were writing (it is now at version {{version}}{{by, select, undefined{} other{, by {{by}}}}}). **Reload the page and apply your changes again**: saving now would wipe their work from the published page."
+      "concurrentEdit": "This article was modified by someone else while you were writing (it is now at version {{version}}{{by, select, undefined{} other{, by {{by}}}}}). **Reload the page and apply your changes again**: saving now would wipe their work from the published page.",
+      "invalidAudience": "The audience «{{value}}» is not valid: choose one of {{allowed}}."
     },
     "comment": {
       "entityType": "This entity type cannot be commented on: {{entityType}}.",
@@ -4500,7 +4581,9 @@
       "catalogItemInactive": "The catalog item \"{{item}}\" is not active: no new request can be opened from it. Re-activate it in Admin → Service catalog, or pick another item.",
       "priorityRequired": "Choose the priority of the request.",
       "catalogItemPriorityRequired": "A catalog item must have a priority.",
-      "createdButNotAssigned": "Request {{number}} was created, but assigning it to its team failed: {{reason}}"
+      "createdButNotAssigned": "Request {{number}} was created, but assigning it to its team failed: {{reason}}",
+      "requestedForPortal": "From the portal a request is opened for yourself.",
+      "requestedForUnknown": "The person the request is for is not an active person of this organization."
     },
     "serviceCalendar": {
       "name": "A service calendar needs a name of at most {{max}} characters.",

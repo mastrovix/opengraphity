@@ -21,6 +21,20 @@ export function knowledgeBaseSDL(): string {
     currentStep:        String
     version:            Int!
     lastEditedByName:   String
+    """Who the article is for: \`staff\` (the portal does not show it) or \`everyone\` (24 Sep 2026)."""
+    audience:           String!
+    """The vote of the person reading: true helpful, false not helpful, null none (one vote per person)."""
+    myVote:             Boolean
+  }
+
+  type KBRelatedArticle {
+    id:         ID!
+    title:      String!
+    slug:       String!
+    category:   String!
+    views:      Int!
+    """How many tags it shares with the article it is related to."""
+    sharedTags: Int!
   }
 
   type KBArticleVersion {

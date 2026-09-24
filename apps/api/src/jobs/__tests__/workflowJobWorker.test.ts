@@ -76,7 +76,7 @@ vi.mock('../../lib/workflowHelpers.js', () => ({
 const runStepDeadlineSweep = vi.fn()
 vi.mock('../../lib/stepDeadlines.js', () => ({
   runStepDeadlineSweep: (...a: unknown[]) => runStepDeadlineSweep(...a),
-  DEADLINE_REASON: { change_window: 'approval_gate', request_approval: 'request_approval', named_approval: 'approval_request', required_fields: 'required_fields', step_metadata: 'step_metadata', type_permission: 'type_permission', workflow: 'transition' },
+  DEADLINE_REASON: { change_window: 'approval_gate', request_approval: 'request_approval', own_approval: 'own_approval', named_approval: 'approval_request', required_fields: 'required_fields', step_metadata: 'step_metadata', type_permission: 'type_permission', workflow: 'transition' },
 }))
 
 const executeActions = vi.fn()

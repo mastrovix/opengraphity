@@ -82,7 +82,7 @@ describe('ReleasePlanCard — when there is something to show', () => {
   it('no window yet but some task closed: the card shows the progress and says there is no window yet', () => {
     mount([ci('db-prod-01', null, { assessments: ['completed', 'pending'] })])
     expect(screen.getByRole('button', { name: /Consolidated plan/ })).toHaveAttribute('aria-expanded', 'true')
-    expect(screen.getByText('Release, end to end').nextElementSibling).toHaveTextContent('no window yet')
+    expect(screen.getByText('Deploy, end to end').nextElementSibling).toHaveTextContent('no window yet')
     expect(screen.getByText('Tasks closed').nextElementSibling).toHaveTextContent('1 of 3')
     // Nothing to look at yet: no views, no filter.
     expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
@@ -95,18 +95,18 @@ describe('ReleasePlanCard — the timeline', () => {
     mount([APP, DB])
     expect(tableRows()).toEqual([
       ['21 Sept 2026, 20:00 → 20:15', 'Validation', 'Backup', 'TASK00000051', 'db-prod-01'],
-      ['21 Sept 2026, 22:00 → 23:30', 'Release', 'Backup', 'TASK00000051', 'db-prod-01'],
+      ['21 Sept 2026, 22:00 → 23:30', 'Deploy', 'Backup', 'TASK00000051', 'db-prod-01'],
       ['22 Sept 2026, 21:00 → 22:00', 'Validation', 'Deploy 4.2', 'TASK00000052', 'srv-app-01'],
       // Across midnight both dates are written: "23:00 → 01:30" alone would read backwards.
-      ['22 Sept 2026, 23:00 → 23 Sept 2026, 01:30', 'Release', 'Deploy 4.2', 'TASK00000052', 'srv-app-01'],
+      ['22 Sept 2026, 23:00 → 23 Sept 2026, 01:30', 'Deploy', 'Deploy 4.2', 'TASK00000052', 'srv-app-01'],
     ])
   })
 
   it('sums it up: the releases end to end, how many blocks they are, tasks and plans closed', () => {
     mount([APP, DB])
     const box = (label: string) => screen.getByText(label).nextElementSibling as HTMLElement
-    expect(box('Release, end to end')).toHaveTextContent('21 Sept 2026, 22:00 → 23 Sept 2026, 01:30')
-    expect(box('Release, end to end')).toHaveTextContent('2 separate windows, not contiguous')
+    expect(box('Deploy, end to end')).toHaveTextContent('21 Sept 2026, 22:00 → 23 Sept 2026, 01:30')
+    expect(box('Deploy, end to end')).toHaveTextContent('2 separate windows, not contiguous')
     expect(box('Tasks closed')).toHaveTextContent('5 of 6')
     // One plan of two still open: the count is drawn as a warning.
     expect(box('Plans completed')).toHaveTextContent('1 of 2')
@@ -116,8 +116,8 @@ describe('ReleasePlanCard — the timeline', () => {
   it('a single block of release is not announced as separate windows, and all plans closed is not a warning', () => {
     mount([DB])
     const box = (label: string) => screen.getByText(label).nextElementSibling as HTMLElement
-    expect(box('Release, end to end')).toHaveTextContent('21 Sept 2026, 22:00 → 23:30')
-    expect(box('Release, end to end')).not.toHaveTextContent(/separate/)
+    expect(box('Deploy, end to end')).toHaveTextContent('21 Sept 2026, 22:00 → 23:30')
+    expect(box('Deploy, end to end')).not.toHaveTextContent(/separate/)
     expect(box('Plans completed')).toHaveTextContent('1 of 1')
     expect(box('Plans completed')).not.toHaveStyle({ color: 'var(--color-danger-text)' })
   })
@@ -128,16 +128,16 @@ describe('ReleasePlanCard — the type filter', () => {
     mount([APP, DB])
     expect(filter(/^Both/)).toHaveAttribute('aria-pressed', 'true')
     expect(filter(/^Both/)).toHaveTextContent(/4$/)
-    expect(filter(/^Release/)).toHaveTextContent(/2$/)
+    expect(filter(/^Deploy/)).toHaveTextContent(/2$/)
     expect(filter(/^Validation/)).toHaveTextContent(/2$/)
   })
 
   it('keeps only the kind chosen, in the same order', async () => {
     const { user } = mount([APP, DB])
-    await user.click(filter(/^Release/))
-    expect(filter(/^Release/)).toHaveAttribute('aria-pressed', 'true')
+    await user.click(filter(/^Deploy/))
+    expect(filter(/^Deploy/)).toHaveAttribute('aria-pressed', 'true')
     expect(filter(/^Both/)).toHaveAttribute('aria-pressed', 'false')
-    expect(tableRows().map((r) => r[1] + ' ' + r[4])).toEqual(['Release db-prod-01', 'Release srv-app-01'])
+    expect(tableRows().map((r) => r[1] + ' ' + r[4])).toEqual(['Deploy db-prod-01', 'Deploy srv-app-01'])
     await user.click(filter(/^Validation/))
     expect(tableRows().map((r) => r[1] + ' ' + r[4])).toEqual(['Validation db-prod-01', 'Validation srv-app-01'])
     await user.click(filter(/^Both/))

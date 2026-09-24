@@ -48,7 +48,7 @@ export function mapRequest(props: Props) {
 }
 
 export async function createRequest(
-  input: { title: string; description?: string; priority: string; category?: string | null; dueDate?: string; catalogItemId?: string; requiresApproval?: boolean; acknowledgeNoSla?: boolean | null; customFields?: CustomFieldInput[] | null; formAnswers?: FormAnswerInput[] | null; formDraftId?: string | null; formRevision?: number | null; workflowDefinitionId?: string | null },
+  input: { title: string; description?: string; priority: string; category?: string | null; dueDate?: string; catalogItemId?: string; requiresApproval?: boolean; acknowledgeNoSla?: boolean | null; customFields?: CustomFieldInput[] | null; formAnswers?: FormAnswerInput[] | null; formDraftId?: string | null; formRevision?: number | null; workflowDefinitionId?: string | null; requestedForId?: string | null },
   ctx: ServiceCtx,
   channel: 'agent' | 'portal' = 'agent',
 ) {
@@ -247,16 +247,34 @@ export async function createRequest(
     })
     if (!rows[0]) throw new Error('Failed to create service request')
 
+    /*
+     * The requester is the person it is FOR (G28): whoever opens it, or the
+     * colleague the service desk opens it for — a person of the tenant, active,
+     * or the creation stops saying so. Both follow the request.
+     */
+    const requesterId = input.requestedForId ?? ctx.userId
+    if (input.requestedForId) {
+      const found = await runQuery<{ id: string }>(tx, `
+        MATCH (u:User {id: $requesterId, tenant_id: $tenantId}) WHERE coalesce(u.active, true) RETURN u.id AS id
+      `, { requesterId, tenantId: ctx.tenantId })
+      if (!found[0]) throw new ValidationError(`The person the request is for (${requesterId}) is not an active person of this organization`, { key: 'errors.serviceRequest.requestedForUnknown' })
+    }
     await runQuery(tx, `
       MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})
-      OPTIONAL MATCH (u:User {id: $userId, tenant_id: $tenantId})
+      OPTIONAL MATCH (u:User {id: $requesterId, tenant_id: $tenantId})
       FOREACH (_ IN CASE WHEN u IS NOT NULL THEN [1] ELSE [] END |
         MERGE (r)-[:REQUESTED_BY]->(u)
-        // Chi apre la richiesta la segue, come per gli incident.
         MERGE (u)-[w:WATCHES]->(r)
           ON CREATE SET w.watched_at = $now
       )
-    `, { id, tenantId: ctx.tenantId, userId: ctx.userId, now })
+      WITH r
+      // Chi apre la richiesta la segue, come per gli incident.
+      OPTIONAL MATCH (me:User {id: $userId, tenant_id: $tenantId})
+      FOREACH (_ IN CASE WHEN me IS NOT NULL THEN [1] ELSE [] END |
+        MERGE (me)-[w:WATCHES]->(r)
+          ON CREATE SET w.watched_at = $now
+      )
+    `, { id, tenantId: ctx.tenantId, userId: ctx.userId, requesterId, now })
 
     /**
      * I riferimenti del modulo (ondata 2) diventano relazioni, e i file della

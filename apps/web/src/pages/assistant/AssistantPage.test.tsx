@@ -287,7 +287,18 @@ describe('the conversation', () => {
     expect(screen.queryByText('First answer.')).toBeNull()
     expect(screen.queryByText('Second answer.')).toBeNull()
     // Back to the empty chat, suggestions included.
-    expect(screen.getByRole('button', { name: 'If I shut down SRV-009, what do I impact?' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Which server do the most services depend on, and what would shutting it down impact?' })).toBeInTheDocument()
+  })
+
+  it('the answer is markdown and is drawn as such: bold, tables; the question stays as typed (G11)', async () => {
+    answerWith(answered(frame('done', { text: 'There are **284** open changes.\n\n| Step | Count |\n|---|---|\n| Approval | 12 |' })))
+    const { user } = renderWithProviders(<AssistantPage />)
+    await ask(user, 'How many **changes**?')
+    expect((await screen.findByText('284')).tagName).toBe('STRONG')
+    expect(screen.getByRole('table')).toHaveTextContent('Approval12')
+    expect(screen.queryByText(/\|---\|/)).toBeNull()
+    // What the person typed is not interpreted.
+    expect(screen.getByText('How many **changes**?')).toBeInTheDocument()
   })
 
   it('the chat scrolls to the newest message', async () => {

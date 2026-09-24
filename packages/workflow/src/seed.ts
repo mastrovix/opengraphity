@@ -123,7 +123,10 @@ export const INCIDENT_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId'>
       fromStepName:  'assigned',
       toStepName:    'in_progress',
       trigger:       'manual',
-      label:         'Take charge', labels: { it: 'Prendi in carico' },
+      // «Take charge» promised «I take it», and the incident stayed with its
+      // assignee when someone else pressed it (tour of 24 Sep 2026, G16): the
+      // arc starts the work, it does not reassign.
+      label:         'Start work', labels: { it: 'Inizia la lavorazione' },
       condition:     null,
       requiresInput: false,
       inputField:    null,

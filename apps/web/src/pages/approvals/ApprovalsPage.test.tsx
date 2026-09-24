@@ -72,7 +72,7 @@ const approval = (over: Partial<ApprovalFixture> = {}): ApprovalFixture => ({
 
 const ticketApproval = (over: Record<string, unknown> = {}) => ({
   kind: 'change', entityId: 'chg-7', number: 'CHG00000007', title: 'Rotate the certificates',
-  detail: 'Network', approvalKind: 'change_manager', requestedAt: '2026-09-11T07:00:00Z', ...over,
+  detail: 'Network', approvalKind: 'change_manager', requestedAt: '2026-09-11T07:00:00Z', onBehalf: false, ...over,
 })
 
 const KB_ARTICLE = {
@@ -153,6 +153,25 @@ describe('Pending my approval', () => {
     apolloFinto.risposte['PendingTicketApprovals'] = { pendingTicketApprovals: [ticketApproval()] }
     renderWithProviders(<ApprovalsPage />)
     expect(mineTab()).toHaveTextContent(/^Pending my approval2$/)
+  })
+
+  it('what I can decide only for another team is shown apart, outside the count (24 Sep 2026)', () => {
+    apolloFinto.risposte['PendingTicketApprovals'] = { pendingTicketApprovals: [
+      ticketApproval(),
+      ticketApproval({ entityId: 'chg-9', title: 'Replace the storage', detail: 'Storage', onBehalf: true }),
+    ] }
+    renderWithProviders(<ApprovalsPage />)
+    expect(mineTab()).toHaveTextContent(/^Pending my approval1$/)
+    const apart = screen.getByRole('region', { name: '1 approval you can decide for another team' })
+    expect(within(apart).getByText(/Replace the storage/)).toBeInTheDocument()
+    expect(within(apart).queryByText(/Rotate the certificates/)).toBeNull()
+  })
+
+  it('with only approvals of other teams, mine is empty and says so, and theirs are still listed', () => {
+    apolloFinto.risposte['PendingTicketApprovals'] = { pendingTicketApprovals: [ticketApproval({ onBehalf: true })] }
+    renderWithProviders(<ApprovalsPage />)
+    expect(screen.getByText('No pending approvals')).toBeInTheDocument()
+    expect(within(screen.getByRole('region')).getByText(/Rotate the certificates/)).toBeInTheDocument()
   })
 
   it('approving sends the note that was typed, confirms, and reloads the lists', async () => {

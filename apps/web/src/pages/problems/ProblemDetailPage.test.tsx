@@ -362,7 +362,10 @@ describe('ProblemDetailPage — the information card', () => {
     await user.tab()
     expect(apolloFinto.chiamata('UpdateProblem')).toBeUndefined()
     await user.type(rootCause, 'Pool too small')
+    // While written, the field says when it is saved (G23).
+    expect(screen.getByRole('status')).toHaveTextContent('Not saved yet: it is saved when you leave the field.')
     await user.tab()
+    expect(screen.queryByText('Not saved yet: it is saved when you leave the field.')).toBeNull()
     expect(apolloFinto.chiamata('UpdateProblem')).toEqual({ id: 'prb-1', input: { rootCause: 'Pool too small' } })
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('field locked'))
     await user.click(screen.getByRole('button', { name: /^Workaround/ }))
@@ -528,6 +531,26 @@ describe('ProblemDetailPage — the workflow', () => {
     expect(apolloFinto.chiamata('ExecuteProblemTransition')).toEqual({ problemId: 'prb-1', toStep: 'known_error' })
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Transition completed'))
     expect(apolloFinto.refetch).toHaveBeenCalled()
+  })
+
+  it('a step of purpose known_error asks for the cause and the workaround, saves them, then moves (G22)', async () => {
+    const steps = (apolloFinto.risposte['GetWorkflowDefinition'] as { workflowDefinition: { steps: Array<{ name: string; purpose: string | null }> } }).workflowDefinition.steps
+    apolloFinto.risposte['GetWorkflowDefinition'] = { workflowDefinition: { steps: steps.map((st) => (st.name === 'known_error' ? { ...st, purpose: 'known_error' } : st)) } }
+    apolloFinto.esiti['UpdateProblem'] = { data: { updateProblem: { id: 'prb-1' } } }
+    const { user } = mount()
+    await user.click(screen.getByRole('button', { name: 'Mark as known error' }))
+    const dialog = screen.getByRole('dialog', { name: 'Transition → Known error' })
+    const cause = within(dialog).getByLabelText('Root cause *')
+    const workaround = within(dialog).getByLabelText('Workaround *')
+    await user.clear(cause)
+    await user.clear(workaround)
+    expect(within(dialog).getByRole('button', { name: 'Confirm' })).toBeDisabled()
+    expect(apolloFinto.chiamata('ExecuteProblemTransition')).toBeUndefined()
+    await user.type(cause, 'The pool is too small')
+    await user.type(workaround, 'Restart the pool')
+    await user.click(within(dialog).getByRole('button', { name: 'Confirm' }))
+    await waitFor(() => expect(apolloFinto.chiamata('ExecuteProblemTransition')).toEqual({ problemId: 'prb-1', toStep: 'known_error' }))
+    expect(apolloFinto.chiamata('UpdateProblem')).toEqual({ id: 'prb-1', input: { rootCause: 'The pool is too small', workaround: 'Restart the pool' } })
   })
 
   it('a transition whose step actions partly failed says which ones, instead of "completed"', async () => {

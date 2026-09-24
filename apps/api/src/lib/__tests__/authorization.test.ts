@@ -57,6 +57,8 @@ describe('policy ↔ schema', () => {
       // che l'utente ha scelto, quindi la query entra nella sua superficie.
       'catalogFormToFill',
       'fieldRequirementRules', 'fieldVisibilityRules', 'kbArticle', 'kbArticleBySlug', 'kbArticles', 'kbCategories',
+      // The articles that share a tag with the one open, among those for everyone (tour of 24 Sep 2026, G9).
+      'kbRelatedArticles',
       'me', 'myTicket', 'myTicketStats', 'myTickets', 'portalCustomFields',
       /*
        * Le scelte di un campo «riferimento» del modulo (20 set 2026,

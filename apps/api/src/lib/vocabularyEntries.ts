@@ -7,12 +7,15 @@
 import { getSession } from '@opengraphity/neo4j'
 import { parseValueLabels, type EnumValueLabels } from './enumValueLabels.js'
 import { parseValueColors, type EnumValueColors } from './enumValueColors.js'
+import { parseValueIcons, type EnumValueIcons } from './enumValueIcons.js'
 import { SYSTEM_TENANT } from './enumScope.js'
 
 export interface VocabularyEntries {
   values: readonly string[]
   labels: EnumValueLabels
   colors: EnumValueColors
+  /** The icon the customer chose for a value (G40). */
+  icons: EnumValueIcons
 }
 
 export async function loadVocabularyEntries(tenantId: string, name: string): Promise<VocabularyEntries> {
@@ -21,7 +24,7 @@ export async function loadVocabularyEntries(tenantId: string, name: string): Pro
     const res = await session.executeRead((tx) => tx.run(`
       MATCH (e:EnumTypeDefinition {name: $name})
       WHERE e.tenant_id IN [$tenantId, $systemTenant]
-      RETURN e.tenant_id AS owner, e.values AS values, e.value_labels AS labels, e.value_colors AS colors
+      RETURN e.tenant_id AS owner, e.values AS values, e.value_labels AS labels, e.value_colors AS colors, e.value_icons AS icons
     `, { name, tenantId, systemTenant: SYSTEM_TENANT }))
     const rows = res.records
     const row = rows.find((r) => r.get('owner') === tenantId) ?? rows.find((r) => r.get('owner') === SYSTEM_TENANT)
@@ -32,6 +35,7 @@ export async function loadVocabularyEntries(tenantId: string, name: string): Pro
       values: values as string[],
       labels: parseValueLabels(row.get('labels')).labels,
       colors: parseValueColors(row.get('colors')).colors,
+      icons: parseValueIcons(row.get('icons')).icons,
     }
   } finally {
     await session.close()

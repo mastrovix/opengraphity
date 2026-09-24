@@ -65,7 +65,7 @@ export const GET_USER = gql`
  */
 export const SEARCH_USERS = gql`
   query SearchUsers($search: String!, $limit: Int, $permission: String) {
-    searchUsers(search: $search, limit: $limit, permission: $permission) { id name email }
+    searchUsers(search: $search, limit: $limit, permission: $permission) { id name email role }
   }
 `
 

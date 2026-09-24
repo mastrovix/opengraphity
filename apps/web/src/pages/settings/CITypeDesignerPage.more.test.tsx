@@ -195,6 +195,8 @@ describe('settings tab: what "Save settings" sends', () => {
         validationScript: null,
         chainFamilies: ['Application'],
         serviceRole: null,
+        // Every status offered: none excluded (G35).
+        statusesExcluded: [],
       },
     })
     expect(toast.success).toHaveBeenCalledWith('Saved')

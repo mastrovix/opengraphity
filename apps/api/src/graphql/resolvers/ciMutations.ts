@@ -101,6 +101,14 @@ export async function validateCIInput(
       )
       continue
     }
+    // A status this type does not offer (G35): «Expired» on a server.
+    if (
+      field.name === 'status' && value != null && value !== '' && (touched === undefined || touched.has(field.name)) &&
+      (ciType.statusesExcluded ?? []).includes(String(value))
+    ) {
+      errors.push(`${field.label || field.name}: "${String(value)}" is not a status of ${ciType.label || ciType.name}`)
+      continue
+    }
     if (field.validationScript && value != null) {
       const err = await runValidationScript(field.validationScript, { input, value }, `${ciType.name}.${field.name}.validation_script`, tenantId, field.scope)
       if (err) errors.push(`${field.label || field.name}: ${err}`)

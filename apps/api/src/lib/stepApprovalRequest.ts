@@ -14,6 +14,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { sseManager } from '@opengraphity/notifications'
 import type { StepActionActor, StepActionEntity, StepApprovalRequestParams } from '@opengraphity/workflow'
 import { systemText } from './systemText.js'
+import { askersOf } from './ownApproval.js'
 
 /**
  * CHI APPROVA (moduli del catalogo, ondata 3).
@@ -60,7 +61,17 @@ export async function createStepApprovalRequest(
     ))).records.map((r) => r.get('id') as string)
     : []
 
-  const finalApprovers = [...new Set([...perRuolo, ...perNome, ...perSquadra])]
+  // Nobody approves what they asked for (24 Sep 2026): the person moving the
+  // ticket, whoever it was opened for and the author of an article are not
+  // among the approvers; another member of the group decides.
+  const askers = await askersOf(session, actor.tenantId, entity.type, entity.id, actor.userId)
+  const candidates = [...new Set([...perRuolo, ...perNome, ...perSquadra])]
+  const finalApprovers = candidates.filter((id) => !askers.has(id))
+  if (finalApprovers.length === 0 && candidates.length > 0) {
+    throw new GraphQLError('Approval cannot start: the only people configured to approve are the ones who asked for it', {
+      extensions: { code: 'NO_APPROVER', i18n: { key: 'errors.workflow.onlyAskerApproves', params: {} } },
+    })
+  }
   if (finalApprovers.length === 0) {
     // Il messaggio dice QUALE delle tre sorgenti era stata chiesta: «nessun
     // admin» e «la squadra indicata è vuota» si correggono in due posti diversi.

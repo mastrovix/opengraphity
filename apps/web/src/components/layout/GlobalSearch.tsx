@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { gql } from '@apollo/client'
 import {
   Search, Loader2, Server, GitPullRequest, AlertCircle, SearchCheck,
-  ClipboardList, BookOpen, Inbox,
+  ClipboardList, BookOpen, Inbox, UsersRound,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { apolloClient } from '@/lib/apollo'
@@ -25,6 +25,7 @@ const GLOBAL_SEARCH = gql`
       serviceRequests { id number title }
       tasks      { id code taskType status changeCode changeId ciName entityType }
       kbArticles { id title slug }
+      teams      { id name type }
     }
   }
 `
@@ -34,6 +35,7 @@ interface SearchChange  { id: string; code: string; title: string }
 interface SearchTicket  { id: string; number: string; title: string }
 interface SearchTask    { id: string; code: string; taskType: string; status: string; changeCode: string; changeId: string; ciName: string; entityType: string }
 interface SearchArticle { id: string; title: string; slug: string }
+interface SearchTeam    { id: string; name: string; type: string | null }
 
 interface GlobalSearchResults {
   cis:        SearchCI[]
@@ -43,9 +45,11 @@ interface GlobalSearchResults {
   serviceRequests: SearchTicket[]
   tasks:      SearchTask[]
   kbArticles: SearchArticle[]
+  /** Teams by name (tour of 24 Sep 2026, G37). */
+  teams:      SearchTeam[]
 }
 
-const EMPTY: GlobalSearchResults = { cis: [], changes: [], incidents: [], problems: [], serviceRequests: [], tasks: [], kbArticles: [] }
+const EMPTY: GlobalSearchResults = { cis: [], changes: [], incidents: [], problems: [], serviceRequests: [], tasks: [], kbArticles: [], teams: [] }
 
 interface FlatItem {
   key:      string
@@ -71,9 +75,10 @@ const GROUP_ICONS: Record<keyof GlobalSearchResults, LucideIcon> = {
   serviceRequests: Inbox,
   tasks:      ClipboardList,
   kbArticles: BookOpen,
+  teams:      UsersRound,
 }
 
-const GROUP_ORDER: (keyof GlobalSearchResults)[] = ['cis', 'changes', 'incidents', 'problems', 'serviceRequests', 'tasks', 'kbArticles']
+const GROUP_ORDER: (keyof GlobalSearchResults)[] = ['cis', 'changes', 'incidents', 'problems', 'serviceRequests', 'tasks', 'kbArticles', 'teams']
 
 /** What the rows need to be read in the viewer's words: the customer's CI type names and the task kinds. */
 interface Wording { ciLabels: CILabels; t: (key: string) => string }
@@ -108,6 +113,8 @@ function toFlatItems(type: keyof GlobalSearchResults, results: GlobalSearchResul
       }))
     case 'kbArticles':
       return results.kbArticles.map((a) => ({ key: `kb-${a.id}`, route: `/knowledge-base/${a.slug}`, primary: '', title: a.title }))
+    case 'teams':
+      return results.teams.map((tm) => ({ key: `team-${tm.id}`, route: `/teams/${tm.id}`, primary: '', title: tm.name }))
   }
 }
 

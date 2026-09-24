@@ -8,7 +8,7 @@ export const GET_INCIDENTS = gql`
       items {
         id number title severity status createdAt
         customFields { name value }
-        slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt warningMinutes }
+        slaStatus { startedAt responseDeadline resolveDeadline responseMet respondedAt resolveMet breached pausedAt warningMinutes }
       }
     }
   }
@@ -56,7 +56,7 @@ export const GET_INCIDENT = gql`
         author { id name email }
         editedAt editedByName deletedAt deletedByName
       }
-      slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt warningMinutes }
+      slaStatus { startedAt responseDeadline resolveDeadline responseMet respondedAt resolveMet breached pausedAt warningMinutes }
       # history: who opened the incident from the alarm (monitoring or an operator)
       correlatedEvents { ...EventRowFields history(limit: 20) { kind incident { id } } }
       correlatedEventCount
@@ -82,6 +82,7 @@ export const GET_SERVICE_REQUESTS = gql`
         priority
         status
         createdAt
+        requestedBy { id name }
         customFields { name value }
         formFieldValues { name label fieldType displayValue displayValues }
       }
@@ -107,7 +108,7 @@ export const GET_SERVICE_REQUEST = gql`
       team { id name }
       workflowInstance { id currentStep status }
       availableTransitions { toStep label labels { language label } requiresInput inputField }
-      slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt warningMinutes }
+      slaStatus { startedAt responseDeadline resolveDeadline responseMet respondedAt resolveMet breached pausedAt warningMinutes }
       customFields { ...CustomFieldValueFields }
       affectedCIs { id name type status environment }
       formRevision

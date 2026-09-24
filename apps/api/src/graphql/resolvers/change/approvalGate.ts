@@ -34,8 +34,19 @@ import { hasPermission } from '../../../lib/permissions.js'
 
 type Session = Parameters<typeof runQueryOne>[0]
 
-/** Può agire su un requisito del team: chi ne è membro, o chi decide per qualunque team. */
-async function assertEligible(session: Session, teamId: string, ctx: GraphQLContext): Promise<void> {
+/**
+ * Può agire su un requisito del team: chi ne è membro, o chi decide per
+ * qualunque team — mai chi ha chiesto la change (decisione del 24 set 2026:
+ * «No, mai. La approva un altro membro del suo gruppo»), neanche con
+ * `approval.override`.
+ */
+async function assertEligible(session: Session, changeId: string, teamId: string, ctx: GraphQLContext): Promise<void> {
+  const own = await runQueryOne<{ own: boolean }>(session, `
+    RETURN exists((:Change {id: $changeId, tenant_id: $tenantId})-[:REQUESTED_BY]->(:User {id: $userId, tenant_id: $tenantId})) AS own
+  `, { changeId, userId: ctx.userId, tenantId: ctx.tenantId })
+  if (own?.own === true) {
+    throw new ForbiddenError('You asked for this change: another member of the team decides its approval', { key: 'errors.approval.ownChange' })
+  }
   if (hasPermission(ctx, 'approval.override')) return
   const row = await runQueryOne<{ ok: boolean }>(session, `
     RETURN exists((:User {id: $userId, tenant_id: $tenantId})-[:MEMBER_OF]->(:Team {id: $teamId, tenant_id: $tenantId})) AS ok
@@ -77,7 +88,7 @@ async function assertInApproval(session: Session, changeId: string, teamId: stri
 export async function approveChangeApproval(_: unknown, args: { changeId: string; teamId: string; note?: string }, ctx: GraphQLContext) {
   return withSession(async (session) => {
     const { teamName } = await assertInApproval(session, args.changeId, args.teamId, ctx.tenantId)
-    await assertEligible(session, args.teamId, ctx)
+    await assertEligible(session, args.changeId, args.teamId, ctx)
 
     const now = new Date().toISOString()
     const upd = await runQueryOne<{ id: string }>(session, `
@@ -148,7 +159,7 @@ export async function rejectChangeApproval(_: unknown, args: { changeId: string;
   }
   return withSession(async (session) => {
     const { changeType, teamName } = await assertInApproval(session, args.changeId, args.teamId, ctx.tenantId)
-    await assertEligible(session, args.teamId, ctx)
+    await assertEligible(session, args.changeId, args.teamId, ctx)
     const now = new Date().toISOString()
     // Priorità dal tipo con rischio azzerato: letta PRIMA della transazione
     // (legge la matrice del cliente, che è un'altra sessione).
@@ -204,13 +215,14 @@ export async function changeApprovals(parent: { id: string }, _: unknown, ctx: G
     const rows = await runQuery<{
       kind: string; teamId: string | null; teamName: string | null
       status: string; approvedByName: string | null; approvedAt: string | null
-      isMember: boolean
+      isMember: boolean; ownChange: boolean
     }>(session, `
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_APPROVAL]->(a:ChangeApproval)
       OPTIONAL MATCH (team:Team {id: a.team_id, tenant_id: $tenantId})
       RETURN a.kind AS kind, a.team_id AS teamId, team.name AS teamName,
              a.status AS status, a.approved_by_name AS approvedByName, a.approved_at AS approvedAt,
-             exists((:User {id: $userId, tenant_id: $tenantId})-[:MEMBER_OF]->(team)) AS isMember
+             exists((:User {id: $userId, tenant_id: $tenantId})-[:MEMBER_OF]->(team)) AS isMember,
+             exists((c)-[:REQUESTED_BY]->(:User {id: $userId, tenant_id: $tenantId})) AS ownChange
       ORDER BY CASE a.kind WHEN 'change_manager' THEN 0 ELSE 1 END, team.name
     `, { changeId: parent.id, tenantId: ctx.tenantId, userId: ctx.userId })
     const isAdmin = hasPermission(ctx, 'approval.override')
@@ -221,10 +233,12 @@ export async function changeApprovals(parent: { id: string }, _: unknown, ctx: G
       status:         r.status,
       approvedByName: r.approvedByName,
       approvedAt:     r.approvedAt,
-      canApprove:     r.status === 'pending' && (isAdmin || r.isMember),
+      canApprove:     r.status === 'pending' && !r.ownChange && (isAdmin || r.isMember),
       // Giro del 14 set 2026 (#34): l'admin approva anche a nome di un team di
       // cui non fa parte; la pagina glielo dice e chiede conferma.
-      onBehalf:       r.status === 'pending' && isAdmin && !r.isMember,
+      onBehalf:       r.status === 'pending' && !r.ownChange && isAdmin && !r.isMember,
+      // The requester sees why they cannot decide (24 Sep 2026).
+      ownChange:      r.status === 'pending' && r.ownChange,
     }))
   })
 }

@@ -81,6 +81,8 @@ export function cmdbSDL(): string {
     chainFamilies: [String!]!
     """Ruolo del tipo nella mappa di un servizio: component | infrastructure | certificate. \`null\` = non dichiarato, il ruolo lo propone il prodotto (seme dei tipi spediti, poi le famiglie di catena)."""
     serviceRole: String
+    """The values of the status vocabulary this type does not offer (G35): «Expired», «Revoked» are a certificate's. Empty = every value."""
+    statusesExcluded: [String!]!
     fields: [CIFieldDef!]!
     relations: [CIRelationDef!]!
     systemRelations: [CISystemRelationDef!]!

@@ -136,6 +136,12 @@ export function serviceRequestSDL(): string {
     manda (un client vecchio): si accetta come prima.
     """
     formRevision: Int
+    """
+    The person the request is for, when someone of the staff opens it for them
+    (tour of 24 Sep 2026, G28: the service desk could not open a request for a
+    colleague). Absent = the person opening it. Not from the portal.
+    """
+    requestedForId: ID
   }
 
   input UpdateServiceRequestInput {

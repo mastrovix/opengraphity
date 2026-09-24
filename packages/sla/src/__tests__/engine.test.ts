@@ -75,7 +75,8 @@ describe('SLAEngine — response met cancels the response timer (D-01)', () => {
   it('incident.assigned → markResponseMet then cancelSLAJobs(tenant, id, "response")', async () => {
     const engine = new SLAEngine()
     await engine.process(event('incident.assigned', { id: 'inc-1', assignedTo: 'u2' }))
-    expect(markResponseMet).toHaveBeenCalledWith('t1', 'inc-1')
+    // With the instant of the response, from the event (G14): a late response stays late.
+    expect(markResponseMet).toHaveBeenCalledWith('t1', 'inc-1', new Date('2026-05-01T10:00:00.000Z'))
     expect(cancelSLAJobs).toHaveBeenCalledWith('t1', 'inc-1', 'response')
     // Only the response timer: warning/breach stay armed.
     expect(cancelSLAJobs).toHaveBeenCalledTimes(1)
@@ -273,7 +274,7 @@ describe('SLAEngine — workflow.step_entered', () => {
   it('lasciare il passo iniziale segna la risposta e spegne solo il timer di risposta', async () => {
     getSLAStatus.mockResolvedValue({ ...baseStatus, entity_id: 'prb-1', response_met: false })
     await new SLAEngine().process(step({ from_initial: true }))
-    expect(markResponseMet).toHaveBeenCalledWith('t1', 'prb-1')
+    expect(markResponseMet).toHaveBeenCalledWith('t1', 'prb-1', new Date('2026-05-01T11:00:00.000Z'))
     expect(cancelSLAJobs).toHaveBeenCalledWith('t1', 'prb-1', 'response')
     expect(markResolveMet).not.toHaveBeenCalled()
   })
@@ -365,7 +366,7 @@ describe('SLAEngine — azioni di passo sla_start / sla_stop', () => {
 
   it('sla.response.stop → obiettivo di risposta raggiunto', async () => {
     await new SLAEngine().process(event('sla.response.stop', { entity_id: 'inc-1', sla_type: 'response' }))
-    expect(markResponseMet).toHaveBeenCalledWith('t1', 'inc-1')
+    expect(markResponseMet).toHaveBeenCalledWith('t1', 'inc-1', new Date('2026-05-01T10:00:00.000Z'))
     expect(cancelSLAJobs).toHaveBeenCalledWith('t1', 'inc-1', 'response')
   })
 })
@@ -437,6 +438,31 @@ describe('SLAEngine — coerenza fra i ticket', () => {
     await new SLAEngine().process(event('ticket.team_assigned', { entity_type: 'incident', entity_id: 'inc-1', team_id: 'x' }))
     expect(repolicySLA).not.toHaveBeenCalled()
   })
+
+  it('the priority changed (a Major Incident declared): same policy, another tier, deadlines recomputed (24 Sep 2026)', async () => {
+    getSLAStatus.mockResolvedValueOnce({ ...baseStatus, policy_id: 'pol-all', tier: { ...baseStatus.tier, severity: 'medium' } })
+    repolicySLA.mockResolvedValueOnce({ ...baseStatus, policy_id: 'pol-all' })
+    await new SLAEngine().process(event('ticket.updated', { entity_type: 'incident', entity_id: 'inc-1', changed_fields: ['impact', 'severity', 'urgency'], previous: { severity: 'medium' } }))
+    expect(repolicySLA).toHaveBeenCalledWith('t1', 'inc-1', expect.objectContaining({ id: 'pol-all' }), 'high')
+    expect(scheduleBreachCheck).toHaveBeenCalled()
+  })
+
+  it('an update that does not touch the priority leaves the SLA alone; a problem reads «priority»', async () => {
+    await new SLAEngine().process(event('ticket.updated', { entity_type: 'incident', entity_id: 'inc-1', changed_fields: ['title'], previous: {} }))
+    await new SLAEngine().process(event('ticket.updated', { entity_type: 'problem', entity_id: 'prb-1', changed_fields: ['severity'], previous: {} }))
+    await new SLAEngine().process(event('ticket.updated', { entity_type: 'change', entity_id: 'chg-1', changed_fields: ['priority'], previous: {} }))
+    expect(getSLAStatus).not.toHaveBeenCalled()
+    getSLAStatus.mockResolvedValueOnce({ ...baseStatus, entity_id: 'prb-1', policy_id: 'pol-all', tier: { ...baseStatus.tier, severity: 'low' } })
+    repolicySLA.mockResolvedValueOnce({ ...baseStatus, policy_id: 'pol-all' })
+    await new SLAEngine().process(event('ticket.updated', { entity_type: 'problem', entity_id: 'prb-1', changed_fields: ['priority'], previous: {} }))
+    expect(repolicySLA).toHaveBeenCalled()
+  })
+
+  it('same policy and same tier: nothing to move', async () => {
+    getSLAStatus.mockResolvedValueOnce({ ...baseStatus, policy_id: 'pol-all' })
+    await new SLAEngine().process(event('ticket.updated', { entity_type: 'incident', entity_id: 'inc-1', changed_fields: ['severity'], previous: {} }))
+    expect(repolicySLA).not.toHaveBeenCalled()
+  })
 })
 
 /**
@@ -462,12 +488,12 @@ describe('SLAEngine — which events it takes, and which it drops', () => {
     'request.created', 'request.completed',
     'sla.resolve.pause', 'sla.resolve.resume', 'sla.resolve.start', 'sla.resolve.stop',
     'sla.response.pause', 'sla.response.resume', 'sla.response.start', 'sla.response.stop',
-    'ticket.team_assigned', 'workflow.step_entered',
+    'ticket.team_assigned', 'ticket.updated', 'workflow.step_entered',
   ])('%s is handled', (type) => {
     expect(new Probe().takes(type)).toBe(true)
   })
 
-  it.each(['ci.health_changed', 'event.received', 'ticket.updated', 'change.created', ''])(
+  it.each(['ci.health_changed', 'event.received', 'change.created', ''])(
     '%s is dropped before the dedup, so the fan-out costs nothing', (type) => {
       // It used to run an EXISTS and a SET on Redis for each of these, plus a
       // "no SLA rule, skipping" log line: thousands of operations a minute

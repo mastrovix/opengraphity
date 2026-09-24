@@ -332,12 +332,28 @@ describe('writing a new article', () => {
     await user.type(bodyField(), 'Hello')
     expect(screen.getByText('5 / 50000 characters')).toBeInTheDocument()
     await user.click(saveButton())
-    expect(apolloFinto.chiamata('CreateKBArticle')).toEqual({ title: 'Reset the VPN client', body: 'Hello', category: 'access', tags: ['vpn', 'windows'] })
+    // A new article is for the staff until its author says otherwise (24 Sep 2026).
+    expect(apolloFinto.chiamata('CreateKBArticle')).toEqual({ title: 'Reset the VPN client', body: 'Hello', category: 'access', tags: ['vpn', 'windows'], audience: 'staff' })
     expect(toast.success).toHaveBeenCalledWith('Article created')
     await waitFor(() => expect(formHeading('New article')).toBeNull())
     expect(apolloFinto.refetch).toHaveBeenCalled()
     // Saving is not submitting: nothing is sent for review.
     expect(apolloFinto.chiamate['KBTransition']).toBeUndefined()
+  })
+
+  it('the author chooses who the article is for: everyone puts it on the portal', async () => {
+    apolloFinto.esiti['CreateKBArticle'] = { data: { createKBArticle: { id: 'kb-9', title: 'x', slug: 'x', status: 'draft', workflowInstanceId: 'wi-9', currentStep: 'draft' } } }
+    const { user } = mount()
+    await openNew(user)
+    const audience = screen.getByLabelText('Audience')
+    expect(audience).toHaveValue('staff')
+    expect(within(audience).getAllByRole('option').map((o) => o.textContent)).toEqual(['Staff only', 'Everyone (portal too)'])
+    await user.type(titleField(), 'Connect to the Wi-Fi')
+    await user.selectOptions(categoryField(), 'access')
+    await user.selectOptions(audience, 'everyone')
+    await user.type(bodyField(), 'Pick the network.')
+    await user.click(saveButton())
+    expect(apolloFinto.chiamata('CreateKBArticle')).toMatchObject({ audience: 'everyone' })
   })
 
   it('a refused creation keeps the form and what was typed, and shows the error', async () => {
@@ -368,6 +384,25 @@ describe('writing a new article', () => {
     await user.click(saveButton())
     expect(toast.error).toHaveBeenCalledWith('Choose a category for the article.')
     expect(apolloFinto.chiamate['CreateKBArticle']).toBeUndefined()
+  })
+
+  it('a form opened by ?new=1 leaves the address once saved: a reload does not open an empty form again (G10)', async () => {
+    apolloFinto.esiti['CreateKBArticle'] = { data: { createKBArticle: { id: 'kb-9', title: 'x', slug: 'x', status: 'draft', workflowInstanceId: 'wi-9', currentStep: 'draft' } } }
+    const { user } = mount('/admin/kb?new=1')
+    await user.type(titleField(), 'Reset the VPN client')
+    await user.selectOptions(categoryField(), 'access')
+    await user.type(bodyField(), 'Body')
+    await user.click(saveButton())
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(/^\/admin\/kb$/))
+  })
+
+  it('the title in the list opens the article, as the pencil does (G10)', async () => {
+    list([article()])
+    const { user } = mount()
+    const row = rowOf('Reset the VPN client')
+    await user.click(within(row).getByRole('button', { name: 'Reset the VPN client' }))
+    expect(formHeading('Edit article')).toBeInTheDocument()
+    expect(titleField()).toHaveValue('Reset the VPN client')
   })
 
   it('Cancel closes the form without saving', async () => {

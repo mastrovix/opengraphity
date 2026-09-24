@@ -48,7 +48,7 @@ vi.mock('@opengraphity/workflow', () => ({
 vi.mock('../ci-utils.js', () => ({ withSession: vi.fn(async (fn: (s: unknown) => Promise<unknown>) => fn(session)) }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn() }))
 vi.mock('../../../lib/publishEvent.js', () => ({ publishEvent: vi.fn() }))
-vi.mock('../../../lib/vocabularyEntries.js', () => ({ loadVocabularyEntries: vi.fn(async () => ({ values: ['hardware', 'security'], labels: { security: { it: 'Sicurezza', en: 'Security' } }, colors: {} })) }))
+vi.mock('../../../lib/vocabularyEntries.js', () => ({ loadVocabularyEntries: vi.fn(async () => ({ values: ['hardware', 'security'], labels: { security: { it: 'Sicurezza', en: 'Security' } }, colors: {}, icons: { security: 'shield' } })) }))
 vi.mock('../../../lib/workflowHelpers.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../lib/workflowHelpers.js')>()),
   getWorkflowSteps: vi.fn(async () => [
@@ -138,6 +138,8 @@ describe('portale — lingua, numero, categorie', () => {
     const cats = await portalResolvers.Query.ticketCategories(null, { language: 'it' }, ctx)
     expect(cats.map((c: { name: string }) => c.name)).toEqual(['hardware', 'security'])
     expect(cats[1]).toMatchObject({ label: 'Sicurezza' })
+    // The icon chosen in the Dictionary travels with the category (G40); none chosen, none sent.
+    expect(cats.map((c: { icon: string | null }) => c.icon)).toEqual([null, 'shield'])
   })
 })
 

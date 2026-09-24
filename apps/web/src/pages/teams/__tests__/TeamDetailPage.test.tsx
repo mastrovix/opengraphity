@@ -4,7 +4,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import { screen } from '@testing-library/react'
-import { GET_TEAM, GET_USERS } from '@/graphql/queries'
+import { GET_TEAM, SEARCH_USERS } from '@/graphql/queries'
 import { SET_TEAM_MEMBER } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { TeamDetailPage } from '../TeamDetailPage'
@@ -24,7 +24,7 @@ describe('TeamDetailPage — membri', () => {
     const seen: unknown[] = []
     const mocks: GqlMock[] = [
       { request: { query: GET_TEAM, variables: { id: 'team-1' } }, result: { data: { team } }, maxUsageCount: Number.POSITIVE_INFINITY },
-      { request: { query: GET_USERS }, result: { data: { users: [{ ...u('u-1', 'Anna Membro'), createdAt: 'x', teams: [] }, { ...u('u-2', 'Bruno Nuovo'), createdAt: 'x', teams: [] }] } } },
+      { request: { query: SEARCH_USERS, variables: () => true }, result: { data: { searchUsers: [{ ...u('u-1', 'Anna Membro'), __typename: 'UserSuggestion' }, { ...u('u-2', 'Bruno Nuovo'), __typename: 'UserSuggestion' }] } }, maxUsageCount: Number.POSITIVE_INFINITY },
       { request: { query: SET_TEAM_MEMBER, variables: (v) => { seen.push(v); return true } }, result: { data: { setTeamMember: { __typename: 'Team', id: 'team-1' } } } },
     ]
     const { user } = renderWithProviders(<TeamDetailPage />, { mocks, route: '/teams/team-1', path: '/teams/:id' })

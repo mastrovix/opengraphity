@@ -119,6 +119,8 @@ describe('ProposalsPage: running the analysis', () => {
     const { user } = mount()
     await user.click(screen.getByRole('button', { name: 'Analyse now' }))
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Nothing new to propose.'))
+    // The outcome stays on the page, next to the button (G44): a notice may not be seen.
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/^Analysis run at \d{2}:\d{2}: Nothing new to propose\.$/))
   })
 
   // Tour of 23 Sep 2026: a reload that failed after a run that worked was

@@ -34,6 +34,7 @@ const ALL = {
     { id: 'k-1', code: 'TSK0002', taskType: 'task', status: 'open', changeCode: 'INC0001', changeId: 'inc-1', ciName: 'Call the vendor', entityType: 'incident' },
   ],
   kbArticles: [{ id: 'kb-1', title: 'How to restart the DB', slug: 'restart-db' }],
+  teams: [{ id: 'team-9', name: 'Database Operations', type: 'support' }],
 }
 
 beforeEach(() => { query.mockReset() })
@@ -58,6 +59,8 @@ describe('GlobalSearch — results', () => {
       'TSK0001Deployment planCHG0001',
       'TSK0002Call the vendorINC0001',
       'How to restart the DB',
+      // Teams by name (G37).
+      'Database Operations',
     ])
     expect(query).toHaveBeenCalledWith(expect.objectContaining({ variables: { query: 'db', limit: 5 } }))
     // A CI without a type opens on `/cis/<id>`, which resolves the type (`/ci/unknown/…` was a dead end).
@@ -66,6 +69,7 @@ describe('GlobalSearch — results', () => {
   })
 
   it.each([
+    [/Database Operations/, '/teams/team-9'],
     [/CHG0001Patch/, '/changes/chg-1'],
     [/INC0001DB down/, '/incidents/inc-1'],
     [/PRB0001/, '/problems/prb-1'],
@@ -120,7 +124,7 @@ describe('GlobalSearch — results', () => {
     query
       .mockImplementationOnce(() => new Promise((res) => { resolveOld = res }))
       .mockImplementationOnce(() => new Promise((_res, rej) => { rejectOld = rej }))
-      .mockResolvedValue({ data: { globalSearch: { ...ALL, cis: [], changes: [], problems: [], tasks: [], kbArticles: [] } } })
+      .mockResolvedValue({ data: { globalSearch: { ...ALL, cis: [], changes: [], problems: [], tasks: [], kbArticles: [], teams: [] } } })
     const { user } = renderWithProviders(<GlobalSearch />)
     await user.type(box(), 'db')
     await waitFor(() => expect(query).toHaveBeenCalledTimes(1))
@@ -176,7 +180,7 @@ describe('GlobalSearch — keyboard', () => {
   })
 
   it('arrows and Enter with no results do nothing', async () => {
-    query.mockResolvedValue({ data: { globalSearch: { ...ALL, cis: [], changes: [], incidents: [], problems: [], tasks: [], kbArticles: [] } } })
+    query.mockResolvedValue({ data: { globalSearch: { ...ALL, cis: [], changes: [], incidents: [], problems: [], tasks: [], kbArticles: [], teams: [] } } })
     const { user } = renderWithProviders(<GlobalSearch />)
     await user.type(box(), 'zz')
     await screen.findByText("No results for 'zz'")

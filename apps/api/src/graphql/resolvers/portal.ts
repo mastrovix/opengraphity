@@ -35,7 +35,28 @@ import { matchById } from '../../lib/cypherLookups.js'
  * label (`created_by` is filtered on the tenant's nodes of each label). A
  * pattern without a label here scanned every node of the database (D25).
  */
-const MY_TICKETS = `CALL () { MATCH (e:Incident {tenant_id: $tenantId, created_by: $userId}) RETURN e UNION MATCH (e:ServiceRequest {tenant_id: $tenantId, created_by: $userId}) RETURN e }`
+/*
+ * WHOSE A TICKET IS, on the portal (tour of 24 Sep 2026):
+ *  - an incident the person opened — not one opened from an alarm, which is
+ *    the monitoring's even when a person pressed «Open incident» (G39);
+ *  - a request the person opened or the one it is FOR: the service desk opens
+ *    requests for colleagues (G28), and the colleague follows it here.
+ */
+const MY_TICKETS = `CALL () {
+  MATCH (e:Incident {tenant_id: $tenantId, created_by: $userId}) WHERE coalesce(e.origin, '') <> 'event' RETURN e
+  UNION MATCH (e:ServiceRequest {tenant_id: $tenantId, created_by: $userId}) RETURN e
+  UNION MATCH (e:ServiceRequest {tenant_id: $tenantId})-[:REQUESTED_BY]->(:User {id: $userId, tenant_id: $tenantId}) RETURN e
+}`
+
+/** What the rule reads of one ticket: who opened it, where from, who asked for it. */
+const OWNERSHIP_COLUMNS = `e.created_by AS createdBy, e.origin AS origin,
+  COLLECT { MATCH (e)-[:REQUESTED_BY]->(req:User {tenant_id: e.tenant_id}) RETURN req.id }[0] AS requesterId`
+
+/** The same rule as MY_TICKETS, for one ticket. */
+export function isPortalTicketOf(row: { createdBy?: unknown; origin?: unknown; requesterId?: unknown; kind: PortalTicketKind }, userId: string): boolean {
+  if (row.kind === 'service_request' && row.requesterId === userId) return true
+  return row.createdBy === userId && row.origin !== 'event'
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -278,15 +299,18 @@ async function myTicket(
         ${matchById('e', { labels: ['Incident', 'ServiceRequest'], id: '$id' })}
         OPTIONAL MATCH (e)-[:ASSIGNED_TO_TEAM]->(t:Team)
         OPTIONAL MATCH (e)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-        RETURN properties(e) AS props, labels(e) AS labels, t.name AS assignedTeam, wi.id AS instanceId
+        RETURN properties(e) AS props, labels(e) AS labels, t.name AS assignedTeam, wi.id AS instanceId,
+               COLLECT { MATCH (e)-[:REQUESTED_BY]->(req:User {tenant_id: e.tenant_id}) RETURN req.id }[0] AS requesterId
       `, { id, tenantId: ctx.tenantId }),
     )
 
     if (!ticketResult.records.length) throw new ForbiddenError('Ticket not found')
 
     const props = ticketResult.records[0].get('props') as Record<string, unknown>
-    if (props['created_by'] !== ctx.userId) throw new ForbiddenError('Access denied')
     const kind = kindOfLabels(ticketResult.records[0].get('labels') as string[], id)
+    if (!isPortalTicketOf({ createdBy: props['created_by'], origin: props['origin'], requesterId: ticketResult.records[0].get('requesterId'), kind }, ctx.userId)) {
+      throw new ForbiddenError('Access denied')
+    }
 
     const mapped = mapTicket(props, kind)
     const ticket = {
@@ -522,7 +546,7 @@ async function ticketCategories(_: unknown, args: { language?: string | null }, 
   if (vocabulary.values.length === 0) {
     throw new ValidationError(`Tenant "${ctx.tenantId}": the "category" dictionary has no values, so a portal ticket cannot be opened. Add them in Settings → Dictionary.`, { key: 'errors.portal.noCategories' })
   }
-  return vocabulary.values.map((name) => ({ name, label: labelFor(name, vocabulary.labels, language, fallback) }))
+  return vocabulary.values.map((name) => ({ name, label: labelFor(name, vocabulary.labels, language, fallback), icon: vocabulary.icons[name] ?? null }))
 }
 
 // ── Mutation: createTicket ────────────────────────────────────────────────────
@@ -596,13 +620,13 @@ async function addTicketComment(
     const check = await session.executeRead((tx) =>
       tx.run(`
         ${matchById('e', { labels: ['Incident', 'ServiceRequest'], id: '$ticketId' })}
-        RETURN e.created_by AS createdBy, labels(e) AS labels
+        RETURN ${OWNERSHIP_COLUMNS}, labels(e) AS labels
       `, { ticketId, tenantId: ctx.tenantId }),
     )
 
     if (!check.records.length) throw new ForbiddenError('Ticket not found')
     const kind = kindOfLabels(check.records[0].get('labels') as string[], ticketId)
-    if (check.records[0].get('createdBy') !== ctx.userId) throw new ForbiddenError('Access denied')
+    if (!isPortalTicketOf({ createdBy: check.records[0].get('createdBy'), origin: check.records[0].get('origin'), requesterId: check.records[0].get('requesterId'), kind }, ctx.userId)) throw new ForbiddenError('Access denied')
     if (await isEntityClosed(session, ticketId, ctx.tenantId)) {
       throw new ValidationError('The ticket is closed: open a new one', { key: 'errors.comment.ticketClosed' })
     }
@@ -655,18 +679,18 @@ async function reopenTicket(
       tx.run(`
         ${matchById('e', { labels: ['Incident', 'ServiceRequest'], id: '$ticketId' })}
         OPTIONAL MATCH (e)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-        RETURN e.created_by AS createdBy, e.status AS status, wi.id AS instanceId, labels(e) AS labels
+        RETURN ${OWNERSHIP_COLUMNS}, e.status AS status, wi.id AS instanceId, labels(e) AS labels
       `, { ticketId, tenantId: ctx.tenantId }),
     )
 
     if (!check.records.length) throw new ForbiddenError('Ticket not found')
 
     const r          = check.records[0]
-    const createdBy  = r.get('createdBy')  as string
+    const mine       = isPortalTicketOf({ createdBy: r.get('createdBy'), origin: r.get('origin'), requesterId: r.get('requesterId'), kind: kindOfLabels(r.get('labels') as string[], ticketId) }, ctx.userId)
     const status     = r.get('status')     as string
     const instanceId = r.get('instanceId') as string | null
 
-    if (createdBy !== ctx.userId) throw new ForbiddenError('Access denied')
+    if (!mine) throw new ForbiddenError('Access denied')
     if (!instanceId) throw new ValidationError(`Ticket ${ticketId} has no workflow instance and cannot be reopened`)
 
     const kind = kindOfLabels(r.get('labels') as string[], ticketId)
@@ -758,12 +782,12 @@ async function confirmTicketResolution(
       tx.run(`
         ${matchById('e', { labels: ['Incident', 'ServiceRequest'], id: '$ticketId' })}
         OPTIONAL MATCH (e)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-        RETURN e.created_by AS createdBy, e.status AS status, wi.id AS instanceId, labels(e) AS labels
+        RETURN ${OWNERSHIP_COLUMNS}, e.status AS status, wi.id AS instanceId, labels(e) AS labels
       `, { ticketId, tenantId: ctx.tenantId }),
     )
     if (!check.records.length) throw new ForbiddenError('Ticket not found')
     const r = check.records[0]
-    if (r.get('createdBy') !== ctx.userId) throw new ForbiddenError('Access denied')
+    if (!isPortalTicketOf({ createdBy: r.get('createdBy'), origin: r.get('origin'), requesterId: r.get('requesterId'), kind: kindOfLabels(r.get('labels') as string[], ticketId) }, ctx.userId)) throw new ForbiddenError('Access denied')
     const kind = kindOfLabels(r.get('labels') as string[], ticketId)
     const status = r.get('status') as string
     const instanceId = (r.get('instanceId') ?? null) as string | null

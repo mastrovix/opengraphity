@@ -36,7 +36,7 @@ export const CONFIRM_TICKET_RESOLUTION = gql`
 export const RATE_KB_ARTICLE = gql`
   mutation RateKBArticle($id: ID!, $helpful: Boolean!) {
     rateKBArticle(id: $id, helpful: $helpful) {
-      id helpfulCount notHelpfulCount
+      id helpfulCount notHelpfulCount myVote
     }
   }
 `

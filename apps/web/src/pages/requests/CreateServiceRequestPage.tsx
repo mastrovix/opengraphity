@@ -1,4 +1,5 @@
 import { useId, useMemo, useState } from 'react'
+import { UserPicker } from '@/components/pickers/UserPicker'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
@@ -76,7 +77,7 @@ export function CreateServiceRequestPage() {
   const styleOf = useValueStyle()
   const { labelOf } = useDomainVocabularies()
   const navigate = useNavigate()
-  const ids = { catalog: useId(), title: useId(), priority: useId(), dueDate: useId(), description: useId() }
+  const ids = { catalog: useId(), title: useId(), priority: useId(), dueDate: useId(), description: useId(), requestedFor: useId() }
 
   const [title, setTitle]           = useState('')
   // Nessuna priorità di ripiego: la porta la voce del catalogo, o la sceglie l'operatore (verifica «Cosa resta cablato», ondata 1).
@@ -84,6 +85,8 @@ export function CreateServiceRequestPage() {
   const [description, setDescription] = useState('')
   const [dueDate, setDueDate]       = useState('')
   const [catalogItemId, setCatalogItemId] = useState('')
+  /** Who it is for, when the service desk opens it for a colleague (G28); null = the person opening it. */
+  const [requestedFor, setRequestedFor] = useState<{ id: string; name: string } | null>(null)
   const { values: priorityValues, loading: priorityLoading } = useEnumValues('service_request', 'priority')
   const [submitted, setSubmitted]   = useState(false)
 
@@ -156,7 +159,7 @@ export function CreateServiceRequestPage() {
    */
   const priorityError = submitted && !priority ? t('forms.fieldRequired') : ''
 
-  const [createRequest, { loading }] = useMutation(CREATE_SERVICE_REQUEST, {
+  const [createRequest, { loading }] = useMutation<{ createServiceRequest?: { id?: string } | null }>(CREATE_SERVICE_REQUEST, {
     /**
      * Il refetch per NOME dell'operazione (revisione totale · F-14):
      * `[{ query: GET_X }]` senza variabili rinfresca solo la voce di cache
@@ -166,7 +169,12 @@ export function CreateServiceRequestPage() {
      * siano le sue variabili.
      */
     refetchQueries: ['GetServiceRequests'],
-    onCompleted: () => { toast.success(t('toast.request.created')); navigate('/requests') },
+    // The new request opens, as a new incident or change does (tour of 24 Sep 2026, G29).
+    onCompleted: (d) => {
+      toast.success(t('toast.request.created'))
+      const id = d.createServiceRequest?.id
+      navigate(id ? `/requests/${id}` : '/requests')
+    },
     onError: (err) => {
       showError(err)
       /*
@@ -446,6 +454,7 @@ export function CreateServiceRequestPage() {
           // si raccoglieva e non si inviava).
           dueDate:     dueDate || undefined,
           catalogItemId: catalogItemId || undefined,
+          ...(requestedFor ? { requestedForId: requestedFor.id } : {}),
           customFields: customFieldsInput(customDefs, customValues),
           // Le risposte al modulo della voce (moduli del catalogo, ondata 1).
           formAnswers: risposteDaInviare(),
@@ -541,6 +550,21 @@ export function CreateServiceRequestPage() {
             {titleError && (
               <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>{titleError}</p>
             )}
+          </div>
+
+          {/* Requested for (G28): the service desk opens a request for a colleague. */}
+          <div style={{ marginBottom: 24 }}>
+            <label htmlFor={ids.requestedFor} style={{ display: 'block', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6, letterSpacing: '0.01em' }}>
+              {t('pages.createRequest.requestedFor')}
+            </label>
+            <UserPicker
+              inputId={ids.requestedFor}
+              label={t('pages.createRequest.requestedFor')}
+              hint={t('pages.createRequest.requestedForHint')}
+              value={requestedFor}
+              onChange={setRequestedFor}
+              clearLabel={t('pages.createRequest.requestedForMe')}
+            />
           </div>
 
           {/* Priority + Due date in grid */}

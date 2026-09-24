@@ -251,6 +251,8 @@ export function buildBaseSDL(): string {
     kbArticles(search: String, category: String, status: String, page: Int, pageSize: Int): KBArticlesResult!
     kbArticle(id: ID!): KBArticle!
     kbArticleBySlug(slug: String!): KBArticle!
+    """The published articles that share tags with this one, the closest first (24 Sep 2026)."""
+    kbRelatedArticles(id: ID!, limit: Int): [KBRelatedArticle!]!
     kbCategories(language: String): [KBCategory!]!
     kbArticleVersions(articleId: ID!): [KBArticleVersion!]!
 
@@ -758,10 +760,10 @@ export function buildBaseSDL(): string {
     deleteComment(id: ID!): Boolean!
 
     # Knowledge Base
-    createKBArticle(title: String!, body: String!, category: String!, tags: [String!], status: String): KBArticle!
+    createKBArticle(title: String!, body: String!, category: String!, tags: [String!], status: String, audience: String): KBArticle!
     # AI: bozza KB da incident risolto — crea un articolo in stato iniziale (draft)
     createKbDraftFromIncident(incidentId: ID!): KBArticle!
-    updateKBArticle(id: ID!, title: String, body: String, category: String, tags: [String!], expectedVersion: Int): KBArticle!
+    updateKBArticle(id: ID!, title: String, body: String, category: String, tags: [String!], audience: String, expectedVersion: Int): KBArticle!
     restoreKBArticleVersion(articleId: ID!, version: Int!): KBArticle!
     createOLAContract(input: CreateOLAContractInput!): OLAContract!
     updateOLAContract(id: ID!, input: UpdateOLAContractInput!): OLAContract!
@@ -902,6 +904,8 @@ export function buildBaseSDL(): string {
     serviceRequests: [ServiceRequest!]!
     tasks:      [SearchTaskResult!]!
     kbArticles: [KBArticle!]!
+    """Teams by name (24 Sep 2026)."""
+    teams:      [Team!]!
   }
 
   type SearchTaskResult {

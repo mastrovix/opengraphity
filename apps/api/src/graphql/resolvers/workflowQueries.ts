@@ -5,6 +5,7 @@ import { withSession } from './ci-utils.js'
 import { loadTransitionRows, mapWorkflowDefinition } from './workflowMapping.js'
 import { parseLocalizedLabels } from '@opengraphity/types'
 import { requestApprovalWouldBeSkipped } from '../../lib/requestApproval.js'
+import { isOwnRequestApproval } from '../../lib/ownApproval.js'
 import { transitionsOpenToApproval } from '../../lib/ticketApprovalGate.js'
 import { hasPermission } from '../../lib/permissions.js'
 
@@ -446,7 +447,10 @@ export async function serviceRequestAvailableTransitionsField(
     const transitions = await workflowEngine.getAvailableTransitions(session, instanceId)
     const allowed = []
     for (const tr of transitions) {
-      if (!(await requestApprovalWouldBeSkipped(session, ctx.tenantId, instanceId, tr.toStep, { byPerson: true }))) allowed.push(tr)
+      if (await requestApprovalWouldBeSkipped(session, ctx.tenantId, instanceId, tr.toStep, { byPerson: true })) continue
+      // The requester does not see the approval of their own request (24 Sep 2026).
+      if (await isOwnRequestApproval(session, ctx.tenantId, instanceId, tr.toStep, ctx.userId)) continue
+      allowed.push(tr)
     }
     return transitionsOpenToApproval(session, ctx.tenantId, instanceId, allowed, hasPermission(ctx, 'approval.override'))
   })

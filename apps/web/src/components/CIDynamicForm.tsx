@@ -406,7 +406,8 @@ export function CIDynamicForm({
           <label htmlFor={fieldId('status')} style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>{t('pages.cmdb.status')}</label>
           <select id={fieldId('status')} value={String(formValues['status'] ?? '')} onChange={e => handleChange('status', e.target.value)} style={inputBase}>
             <option value="">—</option>
-            {baseEnums.statuses.map(s => <option key={s} value={s}>{optionLabel('status', s)}</option>)}
+            {/* Only the statuses this type offers (G35); the current one stays, to be seen. */}
+            {baseEnums.statuses.filter(s => !(ciType.statusesExcluded ?? []).includes(s) || s === formValues['status']).map(s => <option key={s} value={s}>{optionLabel('status', s)}</option>)}
           </select>
         </div>
         <div>

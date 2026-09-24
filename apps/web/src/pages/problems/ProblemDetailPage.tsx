@@ -14,6 +14,7 @@ import { PageContainer } from '@/components/PageContainer'
 import { QueryError } from '@/components/QueryError'
 import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
+import { KnownErrorDialog } from './KnownErrorDialog'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -156,6 +157,8 @@ export function ProblemDetailPage() {
 
   const [ciSearch,      setCiSearch]      = useState('')
 
+  /** «Record as Known Error» asks for the cause and the workaround first (tour of 24 Sep 2026, G22). */
+  const [knownErrorMove, setKnownErrorMove] = useState<WorkflowTransition | null>(null)
   const [editRootCause,     setEditRootCause]     = useState<string | null>(null)
   const [editWorkaround,    setEditWorkaround]    = useState<string | null>(null)
   const [editAffectedUsers, setEditAffectedUsers] = useState<string | null>(null)
@@ -271,6 +274,12 @@ export function ProblemDetailPage() {
     if (wfPurposeOf(tr.toStep) === 'change_requested') {
       if (!problem) return
       navigate(`/changes/new?problemId=${problem.id}`)
+      return
+    }
+    // A known error is a problem with its cause and its workaround: the step's
+    // purpose says so, whatever it is called, and the API refuses it without them.
+    if (wfPurposeOf(tr.toStep) === 'known_error') {
+      setKnownErrorMove(tr)
       return
     }
     if (tr.requiresInput) {
@@ -471,6 +480,10 @@ export function ProblemDetailPage() {
                   rows={4}
                   style={{ padding: '8px 12px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }}
                 />
+                {/* The field saves itself when left: say so while it is being written (tour of 24 Sep 2026, G23). */}
+                {editRootCause !== null && editRootCause !== (problem.rootCause ?? '') && (
+                  <div role="status" style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate)', marginTop: 4 }}>{t('pages.problemDetail.savedOnLeave')}</div>
+                )}
           </SectionCard>
 
           {/* Workaround */}
@@ -490,6 +503,9 @@ export function ProblemDetailPage() {
                   rows={3}
                   style={{ padding: '8px 12px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }}
                 />
+                {editWorkaround !== null && editWorkaround !== (problem.workaround ?? '') && (
+                  <div role="status" style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate)', marginTop: 4 }}>{t('pages.problemDetail.savedOnLeave')}</div>
+                )}
           </SectionCard>
 
           <AffectedCIList
@@ -563,6 +579,19 @@ export function ProblemDetailPage() {
 
         </div>
       </DetailLayout>
+
+      {/* Known Error: cause and workaround, then the move (G22) */}
+      {knownErrorMove && (
+        <KnownErrorDialog
+          stepLabel={wfLabelFor(knownErrorMove.toStep)}
+          rootCause={problem.rootCause ?? ''}
+          workaround={problem.workaround ?? ''}
+          busy={transitioning}
+          onClose={() => setKnownErrorMove(null)}
+          save={(rootCause, workaround) => updateProblem({ variables: { id: problem.id, input: { rootCause, workaround } } }).then(() => true, () => false)}
+          move={(notes) => execTransition({ variables: { problemId: problem.id, toStep: knownErrorMove.toStep, ...(knownErrorMove.requiresInput ? { notes } : {}) } })}
+        />
+      )}
 
       {/* Transition Dialog */}
       {isTransitionDialogOpen && pendingTransition && (

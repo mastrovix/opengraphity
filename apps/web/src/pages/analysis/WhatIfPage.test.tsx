@@ -34,6 +34,13 @@ describe('WhatIfPage — the CI search', () => {
     expect(within(screen.getByRole('button', { name: /orders-app-01/ })).getByText('Server')).toBeInTheDocument()
   })
 
+  it('a search that finds nothing says so, instead of leaving a blank menu (G33)', async () => {
+    apolloFinto.risposte['GetAllCIs'] = { allCIs: { items: [] } }
+    const { user } = renderWithProviders(<WhatIfPage />)
+    await user.type(screen.getByRole('textbox', { name: /Search CI by name/i }), 'zzz')
+    expect(screen.getByRole('status')).toHaveTextContent('No results')
+  })
+
   it('choosing a CI puts its name in the box', async () => {
     const { user } = renderWithProviders(<WhatIfPage />)
     const box = screen.getByRole('textbox', { name: /Search CI by name/i })

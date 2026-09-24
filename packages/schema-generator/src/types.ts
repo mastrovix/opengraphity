@@ -16,6 +16,12 @@ export interface CITypeDefinition {
    * (`lib/ciMetamodelForTenant.ts`), mai su un ruolo inventato qui.
    */
   serviceRole: string | null
+  /**
+   * The values of the status vocabulary this type does NOT offer (tour of 24
+   * Sep 2026, G35): «Expired» and «Revoked» are the lifecycle of a
+   * certificate, and a server offered them. Empty = every value.
+   */
+  statusesExcluded?: string[]
 }
 
 export interface CIFieldDefinition {

@@ -82,7 +82,20 @@ describe('MentionInput', () => {
     expect(valueNow()).toBe('Hi @[Marta Bianchi](u2) ')
     expect(screen.queryByRole('listbox')).toBeNull()
     await waitFor(() => { expect(box()).toHaveFocus() })
-    expect(box().selectionStart).toBe('Hi @[Marta Bianchi](u2) '.length)
+    // The field shows the name, not the token with the id (tour of 24 Sep 2026, G15).
+    expect(box()).toHaveValue('Hi @Marta Bianchi ')
+    expect(box().selectionStart).toBe('Hi @Marta Bianchi '.length)
+  })
+
+  it('writing after a mention keeps its token; editing the name turns it into plain text', async () => {
+    const user = userEvent.setup()
+    render(<Harness initial="Hi @[Marta Bianchi](u2) " />)
+    expect(box()).toHaveValue('Hi @Marta Bianchi ')
+    await user.type(box(), 'please check')
+    expect(valueNow()).toBe('Hi @[Marta Bianchi](u2) please check')
+    await user.clear(box())
+    await user.type(box(), 'Hi @Marta Bianc')
+    expect(valueNow()).toBe('Hi @Marta Bianc')
   })
 
   it('clicking a suggestion inserts it and keeps the text after the cursor', async () => {

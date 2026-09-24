@@ -21,7 +21,7 @@ import { colors } from '@/lib/tokens'
 const MY_PENDING_APPROVALS_COUNT = gql`
   query MyPendingApprovalsCount {
     myPendingApprovals { id }
-    pendingTicketApprovals { kind entityId }
+    pendingTicketApprovals { kind entityId onBehalf }
   }
 `
 
@@ -109,11 +109,13 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
 
   // Il badge conta tutto quello che la pagina Approvazioni elenca: le richieste
   // generiche e le approvazioni che si decidono nel ticket (change, richieste).
-  const { data: pendingApprovalsData } = useQuery<{ myPendingApprovals: { id: string }[]; pendingTicketApprovals: { kind: string; entityId: string }[] }>(
+  const { data: pendingApprovalsData } = useQuery<{ myPendingApprovals: { id: string }[]; pendingTicketApprovals: { kind: string; entityId: string; onBehalf: boolean }[] }>(
     MY_PENDING_APPROVALS_COUNT,
     { ...pausedWhenHidden(60_000), fetchPolicy: 'cache-and-network', skip: !opens('/approvals') },
   )
-  const pendingApprovalsCount = (pendingApprovalsData?.myPendingApprovals?.length ?? 0) + (pendingApprovalsData?.pendingTicketApprovals?.length ?? 0)
+  // Only the approvals of my teams: what I could decide for another team does not count (24 Sep 2026).
+  const pendingApprovalsCount = (pendingApprovalsData?.myPendingApprovals?.length ?? 0)
+    + (pendingApprovalsData?.pendingTicketApprovals ?? []).filter((a) => !a.onBehalf).length
 
   const anomalyBadge = (anomalyCritical > 0 || anomalyError) ? (
     <span
@@ -160,7 +162,8 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
         }}
       >
         {collapsed ? (
-          <img src="/opengrafo-icon-dark.svg" alt="OPENGRAFO" style={{ width: 32, height: 32 }} />
+          // The icon's drawing has room around it: at 32 px it read as a dot (tour of 24 Sep 2026, G6).
+          <img src="/opengrafo-icon-dark.svg" alt="OPENGRAFO" style={{ width: 44, height: 44 }} />
         ) : (
           <img src="/opengrafo_logo_v2.svg" alt="OPENGRAFO" style={{ height: 36, width: 'auto' }} />
         )}

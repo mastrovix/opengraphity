@@ -19,6 +19,7 @@ type Params = Record<string, string | number>
 
 export const SYSTEM_TEXTS = {
   'event.incident.title':       { en: 'Monitoring event: {title}',                          it: 'Evento di monitoraggio: {title}' },
+  'event.incident.titleOnResource': { en: '{title} on {resource}',                             it: '{title} su {resource}' },
   'event.incident.resource':    { en: 'Resource: {resource} ({kind})',                        it: 'Risorsa: {resource} ({kind})' },
   'event.incident.severity':    { en: 'Severity: {severity}',                                 it: 'Severità: {severity}' },
   'event.incident.occurrences': { en: 'Occurrences: {count} (first: {first}, last: {last})', it: 'Occorrenze: {count} (prima: {first}, ultima: {last})' },
@@ -72,6 +73,7 @@ export const SYSTEM_TEXTS = {
   'workflow.refusedBy.change_window':    { en: 'the change is not approved for the release window', it: 'la change non è approvata per la finestra di rilascio' },
   'workflow.refusedBy.assessments':      { en: 'the assessment tasks or the deploy plan are not complete', it: 'le valutazioni o il piano di deploy non sono completi' },
   'workflow.refusedBy.request_approval': { en: 'the request needs its approval first', it: 'la richiesta deve prima essere approvata' },
+  'workflow.refusedBy.own_approval':     { en: 'the requester cannot approve their own request', it: 'chi ha chiesto la richiesta non può approvarla' },
   'workflow.refusedBy.approval_pending': { en: 'the approval of the step is still pending', it: 'l\'approvazione del passo è ancora in attesa' },
   'workflow.refusedBy.approval_rejected': { en: 'the approval of the step was rejected', it: 'l\'approvazione del passo è stata rifiutata' },
   'workflow.refusedBy.required_fields':  { en: 'required fields are empty ({fields})', it: 'ci sono campi obbligatori vuoti ({fields})' },

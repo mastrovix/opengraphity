@@ -192,11 +192,12 @@ describe('l\'incident nato da un allarme, come lo tratta il motore', () => {
   const critical = { impact: 'high', urgency: 'high', severity: 'critical' }
   const sims = plan.born.map((b) => simulateIncident(rng.fork(`b/${b.incidentId}`), w, bornIncidentSkeleton(w, b, critical), null))
 
-  it('lo apre `monitoring`, senza categoria, col titolo dell\'allarme', () => {
+  it('lo apre `monitoring`, senza categoria, col titolo dell\'allarme e la risorsa (G13)', () => {
     for (const s of sims) {
       expect(s.skeleton.creatorId).toBe('monitoring')
       expect(s.skeleton.category).toBeNull()
-      expect(s.title).toBe(s.skeleton.born!.title)
+      const b = s.skeleton.born!
+      expect(s.title).toBe(b.resource.trim() ? `${b.title} on ${b.resource}` : b.title)
       expect(s.skeleton.severity).toBe('critical')
       expect(s.watchers).toEqual([])
       expect(s.description).toContain(s.skeleton.born!.alarmDescription)

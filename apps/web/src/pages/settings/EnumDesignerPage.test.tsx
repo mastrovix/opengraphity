@@ -46,7 +46,7 @@ const enumType = (over: Record<string, unknown>) => {
     createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
     ...over,
   }
-  return { ...base, valueLabels: base.valueLabels ?? etichette(base.values as string[]), valueColors: base.valueColors ?? [] }
+  return { ...base, valueLabels: base.valueLabels ?? etichette(base.values as string[]), valueColors: base.valueColors ?? [], valueIcons: base.valueIcons ?? [] }
 }
 
 const SHIPPED = enumType({})
@@ -169,6 +169,25 @@ describe('Dizionario — di chi è il vocabolario', () => {
     expect(seen[0]).toEqual({ id: 'e-2', input: { valueColors: [{ value: 'rosso', color: 'danger' }, { value: 'verde', color: 'success' }] } })
   })
 
+  // Tour of 24 Sep 2026 (G40): the portal drew a generic tag for the customer's own categories.
+  it('the icon of a value is chosen here and saved with the others', async () => {
+    const seen: unknown[] = []
+    const OWN_ICONS = enumType({ id: 'e-3', name: 'category', label: 'Categoria', values: ['people', 'workplace'], isSystem: false, isShipped: false, scope: 'itil',
+      valueIcons: [{ __typename: 'EnumValueIcon', value: 'people', icon: 'users' }] })
+    const update: GqlMock = {
+      request: { query: UPDATE_ENUM_TYPE, variables: (v) => { seen.push(v); return true } },
+      result: { data: { updateEnumType: { ...OWN_ICONS } } },
+    }
+    const { user } = renderWithProviders(<EnumDesignerPage />, {
+      mocks: [{ ...listMock([SHIPPED, OWN_ICONS]), maxUsageCount: Number.POSITIVE_INFINITY }, update],
+    })
+    await user.click(await screen.findByRole('button', { name: /Categoria/ }))
+    expect(screen.getByLabelText('Icon of people')).toHaveValue('users')
+    await user.selectOptions(screen.getByLabelText('Icon of workplace'), 'building')
+    await vi.waitFor(() => expect(seen).toHaveLength(1))
+    expect(seen[0]).toEqual({ id: 'e-3', input: { valueIcons: [{ value: 'people', icon: 'users' }, { value: 'workplace', icon: 'building' }] } })
+  })
+
   it('su un vocabolario spedito il colore si vede ma non si cambia in posto', async () => {
     const SHIPPED_COLORED = enumType({ valueColors: [{ __typename: 'EnumValueColor', value: 'high', color: 'orange' }] })
     const { user } = renderWithProviders(<EnumDesignerPage />, { mocks: [{ ...listMock([SHIPPED_COLORED, OWN]), maxUsageCount: Number.POSITIVE_INFINITY }] })
@@ -237,7 +256,7 @@ describe('Dizionario — creare un vocabolario', () => {
       result: { data: { createEnumType: enumType({ id: 'e-9', name: 'change_outcome', label: 'Change outcome', values: ['successful', 'failed'], isSystem: false, isShipped: false }) } },
     }
     const { user } = renderWithProviders(<EnumDesignerPage />, { mocks: mocks([createMock]) })
-    await user.click(await screen.findByRole('button', { name: /New Enum Type/ }))
+    await user.click(await screen.findByRole('button', { name: /New dictionary/ }))
     await user.type(screen.getByLabelText(/Name/), 'change_outcome')
     await user.type(screen.getByLabelText(/^Label/), 'Change outcome')
     await user.type(screen.getByLabelText('Values'), 'successful{enter}failed,  successful{enter}{enter}')
@@ -248,7 +267,7 @@ describe('Dizionario — creare un vocabolario', () => {
   it('senza valori non parte: lo dice', async () => {
     const { toast } = await import('sonner')
     const { user } = renderWithProviders(<EnumDesignerPage />, { mocks: mocks() })
-    await user.click(await screen.findByRole('button', { name: /New Enum Type/ }))
+    await user.click(await screen.findByRole('button', { name: /New dictionary/ }))
     await user.type(screen.getByLabelText(/Name/), 'change_outcome')
     await user.type(screen.getByLabelText(/^Label/), 'Change outcome')
     await user.click(screen.getByRole('button', { name: /Create/ }))

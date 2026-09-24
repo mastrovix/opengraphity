@@ -199,7 +199,7 @@ interface FormAnswerGraphQLInput {
 
 async function createServiceRequest(
   _: unknown,
-  args: { input: { title: string; description?: string; priority?: string | null; dueDate?: string; catalogItemId?: string; acknowledgeNoSla?: boolean | null; customFields?: CustomFieldInput[] | null; formAnswers?: FormAnswerGraphQLInput[] | null } },
+  args: { input: { title: string; description?: string; priority?: string | null; dueDate?: string; catalogItemId?: string; acknowledgeNoSla?: boolean | null; customFields?: CustomFieldInput[] | null; formAnswers?: FormAnswerGraphQLInput[] | null; requestedForId?: string | null } },
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
@@ -220,6 +220,10 @@ async function createServiceRequest(
     let priority = args.input.priority ?? null
     // Review of 23 Sep 2026: without an item a portal user chose the priority
     // and skipped the item's approval. From the portal a request comes from the catalog.
+    // From the portal a person asks for themselves: «for someone else» is the service desk's.
+    if (isPortalOnly(ctx) && args.input.requestedForId && args.input.requestedForId !== ctx.userId) {
+      throw new ValidationError('From the portal a request is opened for oneself.', { key: 'errors.serviceRequest.requestedForPortal' })
+    }
     if (isPortalOnly(ctx) && !args.input.catalogItemId) {
       throw new ValidationError(
         'A request from the portal is opened from a catalog item.',

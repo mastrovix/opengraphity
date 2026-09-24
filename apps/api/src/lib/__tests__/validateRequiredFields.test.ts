@@ -99,6 +99,33 @@ describe('validateStepRequirements', () => {
     expect(err?.extensions).toMatchObject({ code: 'VALIDATION_ERROR', fields: ['closure_code'] })
   })
 
+  it('a problem entering a step of purpose known_error needs its cause and its workaround, whatever the step is called (G22)', async () => {
+    runQuery.mockImplementation(async (_s: unknown, cypher: string) => (cypher.includes('s.purpose') ? [{ purpose: 'known_error' }] : []))
+    const err = await failure(validateStepRequirements(session, {
+      entityType: 'problem', entityProps: { root_cause: '  ', workaround: null }, tenantId: 't1', toStep: 'errore_noto',
+    }))
+    expect(err?.extensions).toMatchObject({ code: 'VALIDATION_ERROR', fields: ['root_cause', 'workaround'] })
+    const purpose = runQuery.mock.calls.find(([, c]) => String(c).includes('s.purpose'))!
+    expect(purpose[2]).toEqual({ tenantId: 't1', entityType: 'problem', toStep: 'errore_noto' })
+    // Both written: it passes. The notes of the move count as the cause, as for any step.
+    await expect(validateStepRequirements(session, {
+      entityType: 'problem', entityProps: { root_cause: 'A leak', workaround: 'Restart it' }, tenantId: 't1', toStep: 'errore_noto',
+    })).resolves.toBeUndefined()
+    const onlyWorkaround = await failure(validateStepRequirements(session, {
+      entityType: 'problem', entityProps: { workaround: 'Restart it' }, notes: 'A leak in the pool', tenantId: 't1', toStep: 'errore_noto',
+    }))
+    expect(onlyWorkaround).toBeNull()
+  })
+
+  it('another purpose, or another type of ticket, asks nothing more', async () => {
+    runQuery.mockImplementation(async (_s: unknown, cypher: string) => (cypher.includes('s.purpose') ? [{ purpose: 'investigation' }] : []))
+    await expect(validateStepRequirements(session, { entityType: 'problem', entityProps: {}, tenantId: 't1', toStep: 'x' })).resolves.toBeUndefined()
+    runQuery.mockReset()
+    runQuery.mockResolvedValue([])
+    await expect(validateStepRequirements(session, { entityType: 'incident', entityProps: {}, tenantId: 't1', toStep: 'known_error' })).resolves.toBeUndefined()
+    expect(runQuery.mock.calls.some(([, c]) => String(c).includes('s.purpose'))).toBe(false)
+  })
+
   it('without notes a rule on the root cause holds', async () => {
     runQuery.mockResolvedValue([rule('root_cause', 'resolved')])
     const err = await failure(validateStepRequirements(session, {

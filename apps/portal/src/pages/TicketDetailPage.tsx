@@ -12,7 +12,7 @@ import { CommentBubble } from '@/components/CommentBubble'
 import { downloadAttachment } from '@/lib/attachments'
 import { notifyError } from '@/lib/notify'
 import { TICKET_POLL_INTERVAL_MS } from '@/lib/apollo'
-import { fmtDateTimeLong, fmtRelative } from '@/lib/format'
+import { fmtDate, fmtDateTime, fmtRelative } from '@/lib/format'
 import { colors, palette } from '@/lib/tokens'
 
 interface EntityComment {
@@ -98,6 +98,9 @@ function RispostaLetta({ risposta, emptyLabel, yesLabel, noLabel }: {
   if (a.displayValues.length > 0) return <>{a.displayValues.join(', ')}</>
   if (a.displayValue != null && a.displayValue !== '') {
     if (a.fieldType === 'boolean') return <>{a.displayValue === 'true' ? yesLabel : noLabel}</>
+    // A date is written in the reader's language, as every other date of the page (tour of 24 Sep 2026, G41).
+    if (a.fieldType === 'date') return <>{fmtDate(a.displayValue)}</>
+    if (a.fieldType === 'datetime') return <>{fmtDateTime(a.displayValue)}</>
     return <>{a.displayValue}</>
   }
   return <span style={{ color: colors.slateLight }}>{emptyLabel}</span>
@@ -243,7 +246,8 @@ export function TicketDetailPage() {
             <span>{categoryLabel(ticket.category)}</span>
             <span>·</span>
           </>}
-          <span>{t('ticket.createdAt')}: {fmtDateTimeLong(ticket.createdAt)}</span>
+          {/* One format for the instants of the page, the comments' (G41: two formats side by side). */}
+          <span>{t('ticket.createdAt')}: {fmtDateTime(ticket.createdAt)}</span>
           <span>·</span>
           <span>{t('ticket.updatedAt')}: {fmtRelative(ticket.updatedAt)}</span>
           {ticket.assignedTeam && (

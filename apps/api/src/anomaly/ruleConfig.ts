@@ -31,6 +31,7 @@ import { ValidationError } from '../lib/errors.js'
 import { ENUM_SCOPE } from '../lib/enumScope.js'
 import { domainVocabulary } from '../lib/domainMatrix.js'
 import { RELATIONSHIP_TYPE_RE, impactRelPatternForTenant, splitRelationshipTypes } from '../lib/ciMetamodelForTenant.js'
+import { getEventPolicy } from '../services/events/policy.js'
 
 export const ANOMALY_RULE_KEYS = [
   'orphan_ci', 'spof', 'dependency_cycle', 'missing_owner', 'unauthorized_relation', 'isolated_cluster', 'risk_concentration',
@@ -53,6 +54,14 @@ export interface AnomalyRuleSettings {
   /** Valori del vocabolario `severity` del cliente. */
   incidentSeverities: string[]
   forbidden:          ForbiddenRelation[]
+  /**
+   * The severity on a CI outside production (tour of 24 Sep 2026, G32): 56
+   * critical anomalies out of 67 were «single point of failure» on staging
+   * and disaster-recovery instances. Null = the same as `severity`. Which
+   * environments are production is the tenant's own declaration, in the event
+   * policy (`production_environments`).
+   */
+  nonProductionSeverity: AnomalySeverity | null
 }
 
 export interface AnomalyRuleConfig extends AnomalyRuleSettings {
@@ -70,11 +79,13 @@ export interface AnomalyRuleSpec {
   threshold:          { min: number; max: number } | null
   incidentSeverities: boolean
   forbidden:          boolean
+  /** The rule weighs a CI by its environment: a severity outside production can be chosen. */
+  environment?:       boolean
 }
 
 export const ANOMALY_RULE_SPECS: Readonly<Record<AnomalyRuleKey, AnomalyRuleSpec>> = {
   orphan_ci:             { ciTypes: true,  relations: false, threshold: null,                 incidentSeverities: false, forbidden: false },
-  spof:                  { ciTypes: true,  relations: true,  threshold: { min: 1, max: 1000 }, incidentSeverities: false, forbidden: false },
+  spof:                  { ciTypes: true,  relations: true,  threshold: { min: 1, max: 1000 }, incidentSeverities: false, forbidden: false, environment: true },
   /** La soglia è la lunghezza MASSIMA del ciclo cercato (la minima, 2, è la definizione di ciclo). */
   dependency_cycle:      { ciTypes: true,  relations: true,  threshold: { min: 2, max: 10 },   incidentSeverities: false, forbidden: false },
   missing_owner:         { ciTypes: true,  relations: false, threshold: null,                 incidentSeverities: false, forbidden: false },
@@ -84,12 +95,12 @@ export const ANOMALY_RULE_SPECS: Readonly<Record<AnomalyRuleKey, AnomalyRuleSpec
   risk_concentration:    { ciTypes: true,  relations: false, threshold: { min: 1, max: 1000 }, incidentSeverities: true,  forbidden: false },
 }
 
-const empty = { ciTypes: [], relations: [], threshold: null, incidentSeverities: [], forbidden: [] }
+const empty = { ciTypes: [], relations: [], threshold: null, incidentSeverities: [], forbidden: [], nonProductionSeverity: null }
 
 /** Trascritti dalle Cypher costanti di `rules.ts` prima di questa ondata, regola per regola. */
 export const FACTORY_ANOMALY_RULES: Readonly<Record<AnomalyRuleKey, AnomalyRuleSettings>> = {
   orphan_ci:             { ...empty, enabled: true, severity: 'medium' },
-  spof:                  { ...empty, enabled: true, severity: 'critical', relations: ['DEPENDS_ON'], threshold: 5 },
+  spof:                  { ...empty, enabled: true, severity: 'critical', relations: ['DEPENDS_ON'], threshold: 5, nonProductionSeverity: 'medium' },
   dependency_cycle:      { ...empty, enabled: true, severity: 'high', relations: ['DEPENDS_ON'], threshold: 6 },
   missing_owner:         { ...empty, enabled: true, severity: 'low' },
   unauthorized_relation: { ...empty, enabled: true, severity: 'medium', forbidden: [{ fromType: 'server', relation: 'DEPENDS_ON', toType: 'application' }] },
@@ -116,6 +127,8 @@ export interface AnomalyRuleOptions {
   ciTypes:            Array<{ name: string; label: string; neo4jLabel: string }>
   relations:          string[]
   incidentSeverities: string[]
+  /** The environments the tenant declares as production (event policy). */
+  productionEnvironments: string[]
 }
 
 export async function anomalyRuleOptions(tenantId: string): Promise<AnomalyRuleOptions> {
@@ -133,6 +146,7 @@ export async function anomalyRuleOptions(tenantId: string): Promise<AnomalyRuleO
       .sort((a, b) => a.label.localeCompare(b.label)),
     relations: [...relations].sort(),
     incidentSeverities: [...await domainVocabulary(tenantId, 'severity')],
+    productionEnvironments: [...(await getEventPolicy(tenantId)).production_environments],
   }
 }
 
@@ -219,14 +233,26 @@ export function assertAnomalyRuleSettings(ruleKey: AnomalyRuleKey, raw: unknown,
   }
   if (spec.forbidden && forbidden.length === 0) fail(ruleKey, 'declare at least one forbidden relation', 'forbiddenRequired')
 
-  return { enabled: obj['enabled'] as boolean, severity: severity as AnomalySeverity, ciTypes, relations, threshold, incidentSeverities, forbidden }
+  const nonProductionSeverity = obj['nonProductionSeverity'] ?? null
+  if (nonProductionSeverity !== null) {
+    if (!spec.environment) fail(ruleKey, 'this rule does not weigh the environment', 'notApplicable', { field: 'nonProductionSeverity' })
+    if (typeof nonProductionSeverity !== 'string' || !(ANOMALY_SEVERITIES as readonly string[]).includes(nonProductionSeverity)) {
+      fail(ruleKey, `the severity outside production must be one of ${ANOMALY_SEVERITIES.join(', ')}`, 'severity', { allowed: ANOMALY_SEVERITIES.join(', ') })
+    }
+  }
+
+  return {
+    enabled: obj['enabled'] as boolean, severity: severity as AnomalySeverity, ciTypes, relations, threshold, incidentSeverities, forbidden,
+    nonProductionSeverity: nonProductionSeverity as AnomalySeverity | null,
+  }
 }
 
 // ── Lettura e scrittura ──────────────────────────────────────────────────────
 
 function parseSettings(raw: unknown, tenantId: string, ruleKey: string): AnomalyRuleSettings {
   try {
-    return JSON.parse(String(raw)) as AnomalyRuleSettings
+    // Saved before the severity outside production existed: the same severity everywhere, as it was.
+    return { nonProductionSeverity: null, ...(JSON.parse(String(raw)) as Partial<AnomalyRuleSettings>) } as AnomalyRuleSettings
   } catch (e) {
     throw new Error(`Tenant ${tenantId}: AnomalyRuleConfig ${ruleKey} is not valid JSON (${e instanceof Error ? e.message : String(e)})`, { cause: e })
   }

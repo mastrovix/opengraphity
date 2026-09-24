@@ -95,6 +95,7 @@ describe('Incident.slaStatus', () => {
       responseDeadline: '2026-07-01T11:00:00Z',
       resolveDeadline:  '2026-07-01T18:00:00Z',
       responseMet:      true,
+      respondedAt:      null,
       resolveMet:       false,
       breached:         false,
       pausedAt:         null,

@@ -43,6 +43,12 @@ export function approvalSDL(): string {
     """
     approvalKind: String
     requestedAt: String
+    """
+    True when the person may decide it only for a team they are not a member
+    of (\`approval.override\`, or \`approval.decide\` for a request): the page
+    shows it apart, outside the counter (24 Sep 2026).
+    """
+    onBehalf: Boolean!
   }
 
   type ApprovalRequestsResult {

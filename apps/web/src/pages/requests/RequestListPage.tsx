@@ -32,6 +32,7 @@ interface ServiceRequest {
   priority:  string
   status:    string
   createdAt: string
+  requestedBy?: { id: string; name: string } | null
 }
 
 const PAGE_SIZE = 50
@@ -62,6 +63,16 @@ export function RequestListPage() {
     // chiave non era mai stata scritta.
     { key: 'number',   label: t('common.number'),                               width: '120px', sortable: true },
     { key: 'title',    label: t('pages.requests.title_col'), sortable: true },
+    // Who asked for it (tour of 24 Sep 2026, G27): the list had no requester at all.
+    {
+      key:    'requestedBy',
+      label:  t('pages.requests.requester'),
+      width:  '170px',
+      render: (v) => {
+        const who = v as ServiceRequest['requestedBy']
+        return who ? who.name : <span style={{ color: 'var(--color-slate-light)' }}>—</span>
+      },
+    },
     {
       key:      'priority',
       label:    t('pages.requests.priority'),

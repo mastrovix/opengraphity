@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
+import { isValueIcon } from '@opengraphity/types'
+import { VALUE_ICON_DRAWINGS } from '@/lib/valueIcons'
 import { useMutation, useLazyQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
@@ -17,11 +19,17 @@ import { PortalCustomFields } from '@/components/PortalCustomFields'
 
 /**
  * Icone per i valori spediti del vocabolario `category`. Le categorie vengono
- * dal Dizionario del cliente (useTicketCategories): un valore che il cliente ha
- * aggiunto ha l'icona generica, non manca.
+ * dal Dizionario del cliente (useTicketCategories): l'icona scelta nel
+ * Dizionario vince (G40, 24 set 2026); un valore senza icona scelta prende
+ * quella del valore spedito, se lo è, altrimenti l'icona generica.
  */
 const CATEGORY_ICONS: Readonly<Record<string, LucideIcon>> = {
   hardware: Monitor, software: Code, access: Key, network: Wifi, security: ShieldAlert, other: HelpCircle,
+}
+
+function categoryIcon(name: string, icon: string | null | undefined): LucideIcon {
+  if (icon && isValueIcon(icon)) return VALUE_ICON_DRAWINGS[icon]
+  return CATEGORY_ICONS[name] ?? Tag
 }
 
 interface KBArticle { id: string; title: string; slug: string; category: string }
@@ -161,7 +169,7 @@ export function TicketNewPage() {
           {t('ticket.fields.category')} *
         </label>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 10 }}>
-          {categories.map(({ name: key, label }) => { const Icon = CATEGORY_ICONS[key] ?? Tag; return (
+          {categories.map(({ name: key, label, icon }) => { const Icon = categoryIcon(key, icon); return (
             <button
               key={key}
               onClick={() => setCategory(key)}

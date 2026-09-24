@@ -119,6 +119,11 @@ describe('submitAssessmentResponse', () => {
     expect(cypher).toContain('AssessmentQuestion {id: $questionId, tenant_id: $tenantId})-[:HAS_OPTION]->(opt:AnswerOption {id: $optionId})')
     expect(cypher).toContain("SET t.status = 'in-progress'")
     expect(params).toMatchObject({ tenantId: 'c-test', questionId: 'q1', optionId: 'o1', userId: 'u1' })
+    // Who starts the work holds the task, when nobody holds it and they belong
+    // to the task's team (G30): «My tasks» showed tasks in progress with nobody on them.
+    expect(cypher).toContain('OPTIONAL MATCH (t)-[held:ASSIGNED_TO]->(:User)')
+    expect(cypher).toContain('(t)-[:ASSIGNED_TO_TEAM]->(:Team)<-[:MEMBER_OF]-(starter:User {id: $userId, tenant_id: $tenantId})')
+    expect(cypher).toContain('WHEN holders = 0 AND starter IS NOT NULL')
 
     expect(assertUserInCITeam).toHaveBeenCalledWith(expect.anything(), 'ci-1', 'c-test', ctx, 'owner')
     expect(writeAudit.mock.calls[0]![3]).toBe('assessment_response_submitted')

@@ -264,6 +264,29 @@ describe('WorkflowCanvas — legend and panels', () => {
     for (const entry of LEGEND) expect(screen.getByText(entry)).toBeInTheDocument()
     expect(screen.getByRole('complementary', { name: 'side panel' })).toHaveTextContent('Edit the step')
   })
+
+  it('on a narrow screen the legend folds into a button and the minimap steps aside: open, they covered the steps (G47)', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ media: q, matches: true, addEventListener: () => {}, removeEventListener: () => {} }))
+    try {
+      const { user } = canvas({ nodes: [stepNode(step('s1', 'new', 'start'))] })
+      expect(screen.queryByRole('list', { name: 'minimap' })).toBeNull()
+      expect(screen.queryByText('Manual')).toBeNull()
+      await user.click(screen.getByRole('button', { name: 'Legend' }))
+      for (const entry of LEGEND) expect(screen.getByText(entry)).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Hide legend' }))
+      expect(screen.queryByText('Manual')).toBeNull()
+      expect(screen.getByRole('button', { name: 'Legend' })).toHaveAttribute('aria-expanded', 'false')
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('on a wide screen the legend stays open, with no button to fold it, and the minimap is drawn', () => {
+    canvas({ nodes: [stepNode(step('s1', 'new', 'start'))] })
+    expect(screen.getByRole('list', { name: 'minimap' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Hide legend' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Legend' })).toBeNull()
+  })
 })
 
 // Review of 23 Sep 2026: React Flow sends Enter and Space to its own selection only.

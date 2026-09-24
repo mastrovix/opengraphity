@@ -56,7 +56,7 @@ vi.mock('../../lib/logger.js', () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }), info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
 
-const { draftResolutionNotes, draftKbContent, problemCandidates } = await import('../postIncidentService.js')
+const { draftResolutionNotes, draftKbContent, problemCandidates, clusterBySimilarity } = await import('../postIncidentService.js')
 const { runQuery } = await import('@opengraphity/neo4j')
 const { tenantTimezone } = await import('../../lib/tenantTimezone.js')
 const { requestEmbedding } = await import('../../jobs/embeddingWorker.js')
@@ -66,13 +66,14 @@ import { config } from '../../lib/config.js'
 
 const TENANT = 'tenant-A'
 
-type Ctx = { props: Record<string, unknown>; comments: Array<{ text: string | null; created_at: string }>; steps: Array<{ step: string | null; at: string | null; trigger: string | null }>; cis: string[] }
+type Ctx = { props: Record<string, unknown>; comments: Array<{ text: string | null; created_at: string; by: string | null }>; steps: Array<{ step: string | null; at: string | null; trigger: string | null; by: string | null }>; cis: string[]; openedBy: string | null }
 
 const CTX: Ctx = {
-  props: { id: 'inc-1', title: 'DB down', description: 'timeout', severity: 'critical', category: 'database', status: 'sistemato', created_at: '2026-01-01T08:55:00Z', resolved_at: '2026-01-01T11:00:00Z' },
-  comments: [{ text: 'Riavviato il servizio', created_at: '2026-01-01T10:00:00Z' }, { text: null, created_at: '2026-01-01T10:01:00Z' }],
-  steps: [{ step: 'new', at: '2026-01-01T09:00:00Z', trigger: 'system' }, { step: null, at: null, trigger: null }, { step: 'sistemato', at: '2026-01-01T11:00:00Z', trigger: 'manual' }],
+  props: { id: 'inc-1', title: 'DB down', description: 'timeout', severity: 'critical', category: 'database', status: 'sistemato', created_at: '2026-01-01T08:55:00Z', resolved_at: '2026-01-01T11:00:00Z', channel: 'agent' },
+  comments: [{ text: 'Riavviato il servizio', created_at: '2026-01-01T10:00:00Z', by: 'Kelvin Ong' }, { text: null, created_at: '2026-01-01T10:01:00Z', by: null }],
+  steps: [{ step: 'new', at: '2026-01-01T09:00:00Z', trigger: 'system', by: 'Ada Admin' }, { step: null, at: null, trigger: null, by: null }, { step: 'sistemato', at: '2026-01-01T11:00:00Z', trigger: 'manual', by: 'Ada Admin' }],
   cis: ['db-01'],
+  openedBy: 'Ada Admin',
 }
 
 /** Incident (o null = non trovato) restituito da loadIncidentContext. */
@@ -135,13 +136,16 @@ describe('draftResolutionNotes', () => {
     expect(userContent()).toEqual({
       title: 'DB down', description: 'timeout', severity: 'critical', category: 'database',
       opened_at: '2026-01-01 09:55', resolved_at: '2026-01-01 12:00', affected_cis: ['db-01'],
-      comments: [{ at: '2026-01-01 11:00', text: 'Riavviato il servizio' }],
-      workflow_steps: [{ step: 'new', at: '2026-01-01 10:00', trigger: 'system' }, { step: 'sistemato', at: '2026-01-01 12:00', trigger: 'manual' }],
+      // Who opened it, who wrote, who moved it (G18, 24 Sep 2026).
+      opened_by: 'Ada Admin', opened_through: 'agent',
+      comments: [{ at: '2026-01-01 11:00', by: 'Kelvin Ong', text: 'Riavviato il servizio' }],
+      workflow_steps: [{ step: 'new', at: '2026-01-01 10:00', by: 'Ada Admin', trigger: 'system' }, { step: 'sistemato', at: '2026-01-01 12:00', by: 'Ada Admin', trigger: 'manual' }],
     })
     const system = (h.create.mock.calls[0]![0]['system'] as Array<{ text: string }>)[0]!.text
     expect(system).toContain("local time in the organization's time zone, Europe/Rome")
     expect(system).toContain('never convert them')
     expect(system).toContain('Write the text in English')
+    expect(system).toContain('never say the incident was opened automatically unless opened_through says monitoring')
   })
 
   it('the history is reached from the incident, never by scanning every workflow instance or step execution', async () => {
@@ -316,9 +320,10 @@ describe('problemCandidates', () => {
     expect(peers[2]).toMatchObject({ tenantId: TENANT, selfId: 'i1', embedding: [1], index: 'incident_embedding_test', closedSteps: ['archiviato'] })
   })
 
-  it('union-find: cluster ≥ 3 → il modello nomina i cluster; candidati con cluster_index inesistente scartati; vicini estranei ignorati', async () => {
+  it('cluster ≥ 3 → il modello nomina i cluster; candidati con cluster_index inesistente scartati; vicini estranei ignorati', async () => {
+    // i1, i2 and i3 are all alike (a tight group); i4 and i5 a pair, too small.
     cluster([inc(1), inc(2), inc(3), inc(4), inc(5)], {
-      i1: ['i2', 'ghost'], i2: ['i3'], i3: [], i4: ['i5'], i5: ['i4'],
+      i1: ['i2', 'i3', 'ghost'], i2: ['i3'], i3: [], i4: ['i5'], i5: ['i4'],
     })
     h.create.mockResolvedValue(modelReply(JSON.stringify({ candidates: [
       { cluster_index: 0, title: 'Timeout DB ricorrente', motivation: 'Tre incident simili' },
@@ -343,7 +348,7 @@ describe('problemCandidates', () => {
   })
 
   it('con cluster validi ma chiave assente → FAILED_PRECONDITION; JSON non parsabile → errore', async () => {
-    cluster([inc(1), inc(2), inc(3)], { i1: ['i2', 'i3'] })
+    cluster([inc(1), inc(2), inc(3)], { i1: ['i2', 'i3'], i2: ['i3'] })
     h.cfg.anthropicApiKey = undefined
     await graphqlFailure(problemCandidates(TENANT), 'FAILED_PRECONDITION')
     h.cfg.anthropicApiKey = 'sk-test'
@@ -352,5 +357,45 @@ describe('problemCandidates', () => {
       .toEqual({ key: 'errors.ai.badAnswer' })
     h.create.mockResolvedValue(modelReply(null))
     await graphqlFailure(problemCandidates(TENANT), 'INTERNAL_SERVER_ERROR')
+  })
+})
+
+/** Tour of 24 Sep 2026, G20: one giant candidate of heterogeneous incidents, chained by single linkage. */
+describe('clusterBySimilarity: groups that do not chain', () => {
+  const n = (pairs: Array<[string, string, number]>) => {
+    const m = new Map<string, Map<string, number>>()
+    for (const [a, b, s] of pairs) {
+      if (!m.has(a)) m.set(a, new Map())
+      m.get(a)!.set(b, s)
+    }
+    return m
+  }
+
+  it('A like B, B like C, C like D is not one group: A and D have nothing in common', () => {
+    const groups = clusterBySimilarity(['A', 'B', 'C', 'D'], n([['A', 'B', 0.9], ['B', 'C', 0.9], ['C', 'D', 0.9]]), 0.72)
+    expect(Math.max(...groups.map((g) => g.length))).toBe(2)
+    expect(groups.flat().sort()).toEqual(['A', 'B', 'C', 'D'])
+  })
+
+  it('a clique is one group; a similarity known in one direction only counts', () => {
+    const groups = clusterBySimilarity(['A', 'B', 'C'], n([['A', 'B', 0.8], ['A', 'C', 0.8], ['C', 'B', 0.75]]), 0.72)
+    expect(groups).toEqual([['A', 'B', 'C']])
+  })
+
+  it('a hub alike to everything does not glue the unlike together: each joins only if alike to every member', () => {
+    // H is near all; the X's are alike among themselves, the Y's too, X and Y are not.
+    const pairs: Array<[string, string, number]> = [
+      ['H', 'X1', 0.9], ['H', 'X2', 0.89], ['H', 'X3', 0.88], ['H', 'Y1', 0.87], ['H', 'Y2', 0.86], ['H', 'Y3', 0.85],
+      ['X1', 'X2', 0.9], ['X1', 'X3', 0.9], ['X2', 'X3', 0.9], ['Y1', 'Y2', 0.9], ['Y1', 'Y3', 0.9], ['Y2', 'Y3', 0.9],
+    ]
+    const groups = clusterBySimilarity(['H', 'X1', 'X2', 'X3', 'Y1', 'Y2', 'Y3'], n(pairs), 0.72)
+    const withH = groups.find((g) => g.includes('H'))!
+    expect(withH.sort()).toEqual(['H', 'X1', 'X2', 'X3'])
+    expect(groups.find((g) => g.includes('Y1'))!.sort()).toEqual(['Y1', 'Y2', 'Y3'])
+  })
+
+  it('below the similarity nobody joins; every incident is in one group only', () => {
+    const groups = clusterBySimilarity(['A', 'B'], n([['A', 'B', 0.5]]), 0.72)
+    expect(groups).toEqual([['A'], ['B']])
   })
 })

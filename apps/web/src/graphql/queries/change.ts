@@ -49,7 +49,7 @@ export const GET_CHANGE = gql`
       availableTransitions { toStep label labels { language label } requiresInput inputField condition }
       resolvesIncidents { id number title status severity removable }
       resolvesProblems { id number title status priority removable }
-      approvals { kind teamId teamName status approvedByName approvedAt canApprove onBehalf }
+      approvals { kind teamId teamName status approvedByName approvedAt canApprove onBehalf ownChange }
       # Release conflicts: other changes deploying on the same CI in an
       # overlapping window. Validation windows are not compared.
       deployConflicts {

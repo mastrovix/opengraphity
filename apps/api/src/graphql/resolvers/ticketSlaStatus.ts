@@ -46,6 +46,7 @@ export function ticketSlaStatusResolver(label: TicketSlaLabel) {
       responseDeadline: s['response_deadline'],
       resolveDeadline:  s['resolve_deadline'],
       responseMet:      Boolean(s['response_met']),
+      respondedAt:      (s['response_met_at'] ?? null) as string | null,
       resolveMet:       Boolean(s['resolve_met']),
       breached:         Boolean(s['breached']),
       pausedAt:         (s['paused_at'] ?? null) as string | null,

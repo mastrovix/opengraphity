@@ -140,7 +140,7 @@ describe('the dictionary list', () => {
 describe('creating a dictionary', () => {
   async function openCreate() {
     const r = renderWithProviders(<EnumDesignerPage />)
-    await r.user.click(await screen.findByRole('button', { name: /New Enum Type/ }))
+    await r.user.click(await screen.findByRole('button', { name: /New dictionary/ }))
     return r
   }
 
@@ -170,7 +170,7 @@ describe('creating a dictionary', () => {
     expect(screen.getByText(/1 value\./)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /^Create$/ }))
     expect(apolloFinto.chiamata('CreateEnumType')).toEqual({ input: { name: 'outcome', label: 'Outcome', values: ['ok'], scope: 'itil' } })
-    expect(toast.success).toHaveBeenCalledWith('Enum "Outcome" created')
+    expect(toast.success).toHaveBeenCalledWith('Dictionary «Outcome» created')
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(screen.getByLabelText('Technical name')).toHaveValue('outcome')
   })
@@ -201,7 +201,7 @@ describe('a system dictionary of the tenant', () => {
     const { user } = renderWithProviders(<EnumDesignerPage />)
     await user.click(await screen.findByRole('button', { name: /Impact/ }))
     expect(screen.getByText('System')).toBeInTheDocument()
-    expect(screen.getByText(/System enum/)).toBeInTheDocument()
+    expect(screen.getByText(/System dictionary/)).toBeInTheDocument()
     expect(screen.getByLabelText('Scope')).toBeDisabled()
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument()
   })
@@ -240,8 +240,22 @@ describe('editing the value list', () => {
     // No removed value, so no usage query and no replacements.
     expect(apolloFinto.query).not.toHaveBeenCalled()
     expect(apolloFinto.chiamata('UpdateEnumType')).toEqual({ id: 'o1', input: { label: 'Colours', values: ['red', 'green', 'blue', 'pink'], scope: 'shared' } })
-    expect(toast.success).toHaveBeenCalledWith('Enum updated')
+    expect(toast.success).toHaveBeenCalledWith('Dictionary saved')
     await waitFor(() => expect(screen.queryByRole('button', { name: /Save/ })).not.toBeInTheDocument())
+  })
+
+  // Tour of 24 Sep 2026 (G45): a value added and not saved was lost opening another dictionary, without a word.
+  it('another dictionary with values not saved asks first; staying keeps them', async () => {
+    const { user } = await openOwn()
+    await user.type(screen.getByRole('textbox', { name: 'Add value' }), 'pink{enter}')
+    await user.click(screen.getByRole('button', { name: /^Impact/ }))
+    const dialog = await screen.findByRole('dialog', { name: 'Leave without saving?' })
+    expect(dialog).toHaveTextContent('The values changed in «Site colour» are not saved')
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(screen.getByText('pink')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /^Impact/ }))
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Leave without saving' }))
+    await waitFor(() => expect(screen.queryByText('pink')).toBeNull())
   })
 
   it('Cancel brings back the saved list, label and scope', async () => {
@@ -490,7 +504,7 @@ describe('labels per value and language (written at once, from the saved values)
       { value: 'red', language: 'it', label: 'Rosso' },
       { value: 'green', language: 'en', label: 'Green' },
     ] } })
-    expect(toast.success).toHaveBeenCalledWith('Enum updated')
+    expect(toast.success).toHaveBeenCalledWith('Dictionary saved')
   })
 
   it('Enter writes too; clearing a label removes it from the list', async () => {
@@ -585,7 +599,7 @@ describe('deleting a dictionary', () => {
     await user.click(screen.getByRole('button', { name: 'Delete' }))
     await user.click(screen.getByRole('button', { name: 'Yes, delete' }))
     expect(apolloFinto.chiamata('DeleteEnumType')).toEqual({ id: 'o1' })
-    expect(toast.success).toHaveBeenCalledWith('Enum deleted')
+    expect(toast.success).toHaveBeenCalledWith('Dictionary deleted')
     expect(await screen.findByText('No results')).toBeInTheDocument()
   })
 

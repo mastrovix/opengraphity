@@ -569,7 +569,9 @@ export function simulateMonitoringIncident(rng: Rng, w: World, s: IncidentSkelet
       entityType: 'incident', priority: s.severity, category: null, teamId: trail.teamId,
       createdAtMs: s.createdAtMs, moves: trail.moves,
     })
-    return { skeleton: s, trail, title: b.title, description, sla, watchers: [], resolvingChange: null }
+    // The title as `openIncidentFromEvent` writes it: the alarm and where it rang (G13, 24 Sep 2026).
+    const title = b.resource.trim() ? w.trail.text('event.incident.titleOnResource', { title: b.title, resource: b.resource }) : b.title
+    return { skeleton: s, trail, title, description, sla, watchers: [], resolvingChange: null }
   }
 }
 

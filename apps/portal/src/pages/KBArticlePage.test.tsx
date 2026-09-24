@@ -12,7 +12,7 @@
 import { describe, it, expect } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import { KBArticlePage } from './KBArticlePage'
-import { GET_KB_ARTICLE_BY_SLUG, GET_KB_ARTICLES, GET_KB_CATEGORIES, GET_ME } from '@/graphql/queries'
+import { GET_KB_ARTICLE_BY_SLUG, GET_KB_RELATED, GET_KB_CATEGORIES, GET_ME } from '@/graphql/queries'
 import { RATE_KB_ARTICLE } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 
@@ -21,7 +21,7 @@ const sempre = Number.POSITIVE_INFINITY
 const articolo = (over: Record<string, unknown> = {}) => ({
   __typename: 'KBArticle', id: 'a1', title: 'Reset the VPN', slug: 'reset-vpn',
   body: '## Steps\n\n1. Open the client\n2. Sign in again', category: 'how-to', tags: [],
-  authorName: 'Anna Rossi', views: 42, helpfulCount: 7, notHelpfulCount: 1,
+  authorName: 'Anna Rossi', views: 42, helpfulCount: 7, notHelpfulCount: 1, myVote: null,
   createdAt: '2026-01-10T09:00:00Z', publishedAt: '2026-02-01T09:00:00Z', ...over,
 })
 
@@ -35,9 +35,9 @@ const categorie: GqlMock = {
   result: { data: { kbCategories: [{ __typename: 'KBCategory', name: 'how-to', label: 'How-to guides', count: 3 }] } },
   maxUsageCount: sempre,
 }
-const correlati = (items: unknown[]): GqlMock => ({
-  request: { query: GET_KB_ARTICLES, variables: () => true },
-  result: { data: { kbArticles: { __typename: 'KBArticlesResult', total: items.length, items } } },
+const correlati = (items: Array<Record<string, unknown>>): GqlMock => ({
+  request: { query: GET_KB_RELATED, variables: () => true },
+  result: { data: { kbRelatedArticles: items.map((a) => ({ __typename: 'KBRelatedArticle', id: a['id'], title: a['title'], slug: a['slug'], category: a['category'], views: a['views'] })) } },
   maxUsageCount: sempre,
 })
 const uno = (a: unknown = articolo()): GqlMock => ({
@@ -88,9 +88,8 @@ describe('the article', () => {
 })
 
 describe('related articles', () => {
-  it('lists others of the same category, and never the article itself', async () => {
+  it('lists the articles the server finds related (sharing tags, G7), linked by their slug', async () => {
     mostra([me, categorie, uno(), correlati([
-      articolo(),                                                     // itself
       articolo({ id: 'a2', title: 'Change your password', slug: 'change-password' }),
     ])])
     await screen.findByRole('heading', { name: 'Reset the VPN' })
@@ -103,7 +102,7 @@ describe('related articles', () => {
   })
 
   it('with no related article the section simply is not there', async () => {
-    mostra([me, categorie, uno(), correlati([articolo()])])
+    mostra([me, categorie, uno(), correlati([])])
     await screen.findByRole('heading', { name: 'Reset the VPN' })
     await waitFor(() => { expect(screen.queryByText('Change your password')).toBeNull() })
   })
@@ -112,7 +111,7 @@ describe('related articles', () => {
 describe('was this helpful?', () => {
   const voto = (helpful: boolean, counts: [number, number]): GqlMock => ({
     request: { query: RATE_KB_ARTICLE, variables: { id: 'a1', helpful } },
-    result: { data: { rateKBArticle: { __typename: 'KBArticle', id: 'a1', helpfulCount: counts[0], notHelpfulCount: counts[1] } } },
+    result: { data: { rateKBArticle: { __typename: 'KBArticle', id: 'a1', helpfulCount: counts[0], notHelpfulCount: counts[1], myVote: helpful } } },
   })
 
   it('shows both counters as they are today', async () => {
@@ -127,6 +126,12 @@ describe('was this helpful?', () => {
     const { user } = mostra([me, categorie, uno(), correlati([]), voto(true, [8, 1])])
     await user.click(await screen.findByRole('button', { name: /\(7\)/ }))
     expect(await screen.findByText(/thank|Thank/i)).toBeInTheDocument()
+  })
+
+  it('a vote given on another visit counts: no buttons, the thanks (one vote per person, G8)', async () => {
+    mostra([me, categorie, uno(articolo({ myVote: true })), correlati([])])
+    expect(await screen.findByText(/thank|Thank/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /\(7\)/ })).toBeNull()
   })
 
   it('once voted the buttons are gone: a vote is cast once', async () => {

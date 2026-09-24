@@ -120,6 +120,7 @@ const { suppressedSummary, STILL_FIRING_STATUSES } = await import('../events/aut
 const { changeWindowsForCIs, pickChangeWindow } = await import('../events/suppression.js')
 // Cronologia dell'allarme: il frammento condiviso, per verificare che gli statement della pipeline lo contengano.
 const { historyWriteCypher } = await import('../events/history.js')
+const { incidentTitleOf } = await import('../events/grouping.js')
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { workflowEngine, INCIDENT_WORKFLOW_BASE } = await import('@opengraphity/workflow')
 const { publishEvent } = await import('../../lib/publishEvent.js')
@@ -189,6 +190,8 @@ const Q = {
   closedPrev:  /WHERE wi\.current_step IN \$terminalSteps AND wi\.current_step <> \$resolvedStep AND i\.id <> \$openedId/,
   // cronologia dell'allarme: la voce scritta da sola (appendEventHistory: chiusura automatica); le altre stanno dentro gli statement qui sopra
   history:     /MATCH \(e:Event \{id: \$eventId, tenant_id: \$tenantId\}\)\s+FOREACH \(_ IN CASE WHEN true THEN \[1\] ELSE \[\] END \|/,
+  // an incident born from an alarm is marked as the monitoring's (tour of 24 Sep 2026, G39)
+  fromEvent:   /MATCH \(i:Incident \{id: \$incidentId, tenant_id: \$tenantId\}\)\s+SET i\.origin = 'event'/,
   // tour of 23 Sep 2026: the environment of the CI, read before opening when the policy has a map outside production
   target:      /MATCH \(ci:ConfigurationItem \{id: \$ciId, tenant_id: \$tenantId\}\)\s+RETURN ci\.environment AS environment/,
 }
@@ -243,6 +246,7 @@ function baseRules(ev: Record<string, unknown> = {}, ciId: string | null = 'ci-1
     [Q.closedPrev, null],
     [Q.history, { id: 'ev-1' }],
     [Q.target, { environment: 'production' }],
+    [Q.fromEvent, { id: 'inc-new' }],
   ]
 }
 
@@ -764,7 +768,8 @@ describe('raggruppamento per CI', () => {
     const out = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
     expect(out).toEqual({ outcome: 'opened', status: 'firing', suppressedByChangeId: null, incidentId: 'inc-new' })
     expect(incidentService.createIncident).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'DiskFull', severity: 'critical', impact: 'high', urgency: 'high', affectedCIIds: ['ci-1'] }),
+      // The alarm AND where it rang, in the tenant's language (tour of 24 Sep 2026, G13): dozens of «DiskFull» rows told nothing apart.
+      expect.objectContaining({ title: 'DiskFull su db-01', severity: 'critical', impact: 'high', urgency: 'high', affectedCIIds: ['ci-1'] }),
       { tenantId: 't1', userId: 'monitoring' },
     )
     const desc = vi.mocked(incidentService.createIncident).mock.calls[0]![0].description!
@@ -773,6 +778,8 @@ describe('raggruppamento per CI', () => {
     expect(desc).toContain('Occorrenze: 3')
     expect(desc).toContain('dettaglio')
     expect(callMatching(Q.attach)!.params).toMatchObject({ eventId: 'ev-1', incidentId: 'inc-new', manual: false })
+    // The monitoring's incident, not a request of whoever opened it: the portal leaves it out (G39).
+    expect(callMatching(Q.fromEvent)!.params).toEqual({ incidentId: 'inc-new', tenantId: 't1' })
     expect(callMatching(Q.setCorr)!.params['correlation']).toBe('opened')
     expect(published()).toEqual(['event.correlated'])
     expect(vi.mocked(publishEvent).mock.calls[0]![3]).toMatchObject({ incident_id: 'inc-new', outcome: 'opened' })
@@ -823,11 +830,13 @@ describe('openIncidentFromEvent', () => {
     expect(err!.message).toMatch(/Orphan event.*linkEventToCI/)
     expect(incidentService.createIncident).not.toHaveBeenCalled()
 
-    onCypher([[Q.attach, { created: true }], [Q.setCorr, null], [Q.target, { environment: null }]])
+    onCypher([[Q.attach, { created: true }], [Q.setCorr, null], [Q.target, { environment: null }], [Q.fromEvent, { id: 'inc-new' }]])
     const inc = await openIncidentFromEvent({ tenantId: 't1', props: props({ severity: 'warning' }), ciId: 'ci-1', actorId: 'op-1', manual: true, now: NOW })
     expect(inc).toMatchObject({ id: 'inc-new' })
     expect(incidentService.createIncident).toHaveBeenCalledWith(expect.objectContaining({ severity: 'medium', impact: 'medium', urgency: 'medium' }), { tenantId: 't1', userId: 'op-1' })
     expect(callMatching(Q.attach)!.params).toMatchObject({ manual: true, now: NOW })
+    // Opened by hand from the alarm, still the monitoring's: not a portal request of who pressed the button (G39).
+    expect(callMatching(Q.fromEvent)!.params).toEqual({ incidentId: 'inc-new', tenantId: 't1' })
     expect(callMatching(Q.setCorr)!.params['correlation']).toBe('opened')
   })
 })
@@ -840,7 +849,7 @@ describe('openIncidentFromEvent', () => {
  */
 describe('the severity of a monitoring incident outside production', () => {
   const open = (targetRow: Record<string, unknown> | null, over: Partial<typeof DEFAULT_EVENT_POLICY> = {}) => {
-    onCypher([[Q.attach, { created: true }], [Q.setCorr, null], [Q.target, targetRow]])
+    onCypher([[Q.attach, { created: true }], [Q.setCorr, null], [Q.target, targetRow], [Q.fromEvent, { id: 'inc-new' }]])
     return openIncidentFromEvent({ tenantId: 't1', props: props(), ciId: 'ci-1', actorId: 'monitoring', manual: false, now: NOW, policy: policy(over) })
   }
   const NON_PROD = {
@@ -1389,7 +1398,7 @@ describe('metriche della pipeline', () => {
   })
 
   it('openIncidentFromEvent manuale → nessun incremento di incidents_auto_opened', async () => {
-    onCypher([[Q.attach, { created: true }], [Q.setCorr, null], [Q.target, { environment: 'production' }]])
+    onCypher([[Q.attach, { created: true }], [Q.setCorr, null], [Q.target, { environment: 'production' }], [Q.fromEvent, { id: 'inc-new' }]])
     await openIncidentFromEvent({ tenantId: 't1', props: props(), ciId: 'ci-1', actorId: 'op-1', manual: true, now: NOW })
     expect(metrics.incidentsAutoOpenedTotal.inc).not.toHaveBeenCalled()
   })
@@ -1982,5 +1991,14 @@ describe('cronologia dell\'allarme', () => {
     await openIncidentFromEvent({ tenantId: 't1', props: props(), ciId: 'ci-1', actorId: 'u-7', manual: true, now: NOW })
     expect(historyWrites()).toEqual([{ kind: 'incident_opened_manually', outcome: null, incidentId: 'inc-new', changeId: null, actorId: 'u-7', note: null, at: NOW, when: 'true' }])
     expect(callMatching(Q.setCorr)!.params).toMatchObject({ correlation: 'opened', dueAt: null })
+  })
+})
+
+describe('the title of an incident opened by an alarm (G13, 24 Sep 2026)', () => {
+  it('is the alarm and where it rang, in the language of the tenant; without a resource the alarm alone', () => {
+    expect(incidentTitleOf('en', { title: 'HostDown', resource: 'srv-ams-01' })).toBe('HostDown on srv-ams-01')
+    expect(incidentTitleOf('it', { title: 'HostDown', resource: 'srv-ams-01' })).toBe('HostDown su srv-ams-01')
+    expect(incidentTitleOf('en', { title: 'HostDown', resource: '  ' })).toBe('HostDown')
+    expect(incidentTitleOf('en', { title: 'HostDown' })).toBe('HostDown')
   })
 })

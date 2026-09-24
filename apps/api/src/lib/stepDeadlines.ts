@@ -197,6 +197,7 @@ async function recordOutcome(
 export const DEADLINE_REASON: Readonly<Record<TransitionGuard, string>> = {
   change_window:    'approval_gate',
   request_approval: 'request_approval',
+  own_approval:     'own_approval',
   named_approval:   'approval_request',
   required_fields:  'required_fields',
   step_metadata:    'step_metadata',

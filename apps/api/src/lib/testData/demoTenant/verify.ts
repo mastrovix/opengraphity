@@ -255,6 +255,16 @@ async function changeRules(v: Verifier): Promise<void> {
     WHERE (t:Incident OR t:Problem) AND c.created_at < t.created_at
     RETURN t.number AS ticket, c.code AS change LIMIT 5`)
   v.check(backwards.length === 0, `changes created before the ticket they resolve: ${backwards.map((b) => `${b.change} < ${b.ticket}`).join(', ')}`)
+  // G30: a task somebody is working on is held by somebody, as the product does
+  // when the first answer or the saved plan starts it.
+  const unheld = await v.one(`
+    CALL {
+      MATCH (t:AssessmentTask {tenant_id: $tenantId, status: 'in-progress'}) WHERE NOT (t)-[:ASSIGNED_TO]->(:User) RETURN t
+      UNION ALL
+      MATCH (t:DeployPlanTask {tenant_id: $tenantId, status: 'in-progress'}) WHERE NOT (t)-[:ASSIGNED_TO]->(:User) RETURN t
+    }
+    RETURN count(t) AS n`)
+  v.check(unheld === 0, `change tasks in progress with nobody holding them: ${String(unheld)}`)
 }
 
 // ── Il monitoraggio ──────────────────────────────────────────────────────────

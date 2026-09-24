@@ -54,10 +54,10 @@ import {
  * si somigliano, e chi non li separa bene distingue comunque la riga
  * tratteggiata da quella piena (17 set 2026).
  */
-function stileVoce(v: VoceSegnata): { bg: string; fg: string; bordo: string; tratteggio: boolean } {
+function stileVoce(v: VoceSegnata, mostraAvvisi: boolean): { bg: string; fg: string; bordo: string; tratteggio: boolean } {
   const tratteggio = v.kind === 'validation'
   if (v.sovrapposizione === 'clash') return { bg: palette.danger.tint, fg: palette.danger.text, bordo: palette.danger.border, tratteggio }
-  if (v.sovrapposizione === 'warn')  return { bg: palette.warning.tint, fg: palette.warning.text, bordo: palette.warning.border, tratteggio }
+  if (v.sovrapposizione === 'warn' && mostraAvvisi) return { bg: palette.warning.tint, fg: palette.warning.text, bordo: palette.warning.border, tratteggio }
   if (v.kind === 'release')          return { bg: palette.purple.tint, fg: palette.purple.text, bordo: palette.purple.border, tratteggio: false }
   return { bg: palette.info.tint, fg: palette.info.text, bordo: palette.info.border, tratteggio: true }
 }
@@ -75,10 +75,10 @@ function stileVoce(v: VoceSegnata): { bg: string; fg: string; bordo: string; tra
  * dentro la barra quando c'è spazio (`span` maggiore di uno), altrimenti solo
  * l'inizio: il suggerimento porta comunque le date intere.
  */
-function Barra({ b, onClick }: { b: BarraDiCalendario; onClick: () => void }) {
+function Barra({ b, onClick, mostraAvvisi }: { b: BarraDiCalendario; onClick: () => void; mostraAvvisi: boolean }) {
   const { t } = useTranslation()
   const v = b.v
-  const s = stileVoce(v)
+  const s = stileVoce(v, mostraAvvisi)
   const tipo = t(v.kind === 'release' ? 'pages.changeCalendar.typeRelease' : 'pages.changeCalendar.typeValidation')
   // Each change under its own relation (tour of 23 Sep 2026): one line for all
   // of them named a change that only overlaps elsewhere as «same CI».
@@ -279,13 +279,13 @@ function Segmenti<T extends string>({ valore, scelte, onScegli }: {
   )
 }
 
-function Legenda() {
+function Legenda({ mostraAvvisi }: { mostraAvvisi: boolean }) {
   const { t } = useTranslation()
   const voci: Array<{ k: string; stile: Sovrapposizione | 'release' | 'validation' }> = [
     { k: 'pages.changeCalendar.typeRelease',    stile: 'release' },
     { k: 'pages.changeCalendar.typeValidation', stile: 'validation' },
     { k: 'pages.changeCalendar.legendClash',    stile: 'clash' },
-    { k: 'pages.changeCalendar.legendWarn',     stile: 'warn' },
+    ...(mostraAvvisi ? [{ k: 'pages.changeCalendar.legendWarn', stile: 'warn' as const }] : []),
   ]
   const tinta = (s: string) =>
     s === 'clash' ? palette.danger.tint
@@ -329,6 +329,14 @@ export function ChangeCalendarPage() {
   // change; le validazioni sono un secondo sguardo.
   const [tipo, setTipo] = useState<FiltroTipo>('release')
   const [stato, setStato] = useState<FiltroStato>('all')
+  /*
+   * THE OVERLAPS ON OTHER CIs ARE ASKED FOR (tour of 24 Sep 2026, G26): 198
+   * windows out of 237 were yellow — every release at the same time as any
+   * other, on CIs with nothing in common — and the 24 real clashes on the
+   * same CI were lost among them. The clashes are always drawn; the overlaps
+   * only on request, and the summary still counts them.
+   */
+  const [mostraAvvisi, setMostraAvvisi] = useState(false)
   // La change di cui si sta leggendo l'anteprima; `null` = nessun modale.
   const [anteprima, setAnteprima] = useState<string | null>(null)
   // Il riferimento è un giorno qualsiasi dentro il periodo mostrato.
@@ -438,9 +446,10 @@ export function ChangeCalendarPage() {
           </span>
         )}
         {conti.avvisi > 0 && (
-          <span style={{ color: palette.warning.text, fontWeight: 600 }}>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: mostraAvvisi ? palette.warning.text : 'var(--color-slate)', fontWeight: mostraAvvisi ? 600 : 400, cursor: 'pointer' }}>
+            <input type="checkbox" checked={mostraAvvisi} onChange={(e) => setMostraAvvisi(e.target.checked)} />
             {t('pages.changeCalendar.warns', { count: conti.avvisi })}
-          </span>
+          </label>
         )}
         {illeggibili > 0 && (
           <span style={{ color: palette.danger.text }}>
@@ -504,7 +513,7 @@ export function ChangeCalendarPage() {
                     borderTop: 'none', borderRadius: '0 0 6px 6px',
                   }}
                 >
-                  {barre.map((b) => <Barra key={`${b.v.changeId}-${b.v.kind}-${b.v.start}`} b={b} onClick={() => setAnteprima(b.v.changeId)} />)}
+                  {barre.map((b) => <Barra key={`${b.v.changeId}-${b.v.kind}-${b.v.start}`} b={b} mostraAvvisi={mostraAvvisi} onClick={() => setAnteprima(b.v.changeId)} />)}
                 </div>
               </div>
             )
@@ -512,7 +521,7 @@ export function ChangeCalendarPage() {
         </div>
       </div>
 
-      <div style={{ marginTop: 14 }}><Legenda /></div>
+      <div style={{ marginTop: 14 }}><Legenda mostraAvvisi={mostraAvvisi} /></div>
 
       {anteprima && <AnteprimaChange changeId={anteprima} onClose={() => setAnteprima(null)} />}
 

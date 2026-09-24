@@ -199,8 +199,9 @@ describe('createRequest', () => {
   it('collega il richiedente con REQUESTED_BY (tenant-scoped) e crea l\'istanza di workflow service_request', async () => {
     await createRequest({ title: 'T', priority: 'low' }, ctx)
     const [[cypher, params]] = queriesWith('MERGE (r)-[:REQUESTED_BY]->(u)')
-    expect(cypher).toContain('OPTIONAL MATCH (u:User {id: $userId, tenant_id: $tenantId})')
-    expect(params).toMatchObject({ tenantId: 'tenant-1', userId: 'user-1' })
+    // The requester is whoever opens it, when it is not opened for someone else (G28).
+    expect(cypher).toContain('OPTIONAL MATCH (u:User {id: $requesterId, tenant_id: $tenantId})')
+    expect(params).toMatchObject({ tenantId: 'tenant-1', userId: 'user-1', requesterId: 'user-1' })
     expect(workflowEngine.createInstance).toHaveBeenCalledTimes(1)
     /**
      * Moduli del catalogo, ondata 3: l'istanza nasce sull'ITER della voce di
@@ -213,6 +214,18 @@ describe('createRequest', () => {
     expect(workflowEngine.createInstance).toHaveBeenCalledWith(
       h.tx, 'tenant-1', expect.stringMatching(UUID_RE), 'service_request', undefined, null,
     )
+  })
+
+  it('opened for a colleague (G28): the colleague is the requester, both follow it; an unknown person stops the creation', async () => {
+    const base = vi.mocked(runQuery).getMockImplementation()!
+    vi.mocked(runQuery).mockImplementation(async (sess: unknown, cypher: string, params?: Record<string, unknown>) =>
+      (cypher.includes('WHERE coalesce(u.active, true) RETURN u.id AS id') ? (params?.['requesterId'] === 'u-colleague' ? [{ id: 'u-colleague' }] : []) : base(sess as never, cypher, params)))
+    await createRequest({ title: 'T', priority: 'low', requestedForId: 'u-colleague' }, ctx)
+    const [[cypher, params]] = queriesWith('MERGE (r)-[:REQUESTED_BY]->(u)')
+    expect(params).toMatchObject({ requesterId: 'u-colleague', userId: 'user-1' })
+    expect(cypher).toContain('MERGE (me)-[w:WATCHES]->(r)')
+    await expect(createRequest({ title: 'T', priority: 'low', requestedForId: 'u-ghost' }, ctx))
+      .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.serviceRequest.requestedForUnknown' } } })
   })
 
   it('pubblica request.created con tenant, attore e payload minimo', async () => {

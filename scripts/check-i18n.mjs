@@ -650,6 +650,17 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   'changeTasks.kind.review',
   'changeTasks.phaseName.deploy',
   'changeTasks.phaseName.review',
+  // The kind of a window in the change plan and calendar is the same «Deploy»
+  // (owner's choice, 24 Sep 2026: «cambia etichetta da release a deploy»).
+  'pages.changeCalendar.typeRelease',
+  'pages.releasePlan.typeRelease',
+  // The icons a vocabulary value can carry (tour of 24 Sep 2026, G41): these
+  // five are said in English in Italian too, as the CI types «Server» and «Database».
+  'pages.dictionary.valueIcons.monitor',
+  'pages.dictionary.valueIcons.server',
+  'pages.dictionary.valueIcons.database',
+  'pages.dictionary.valueIcons.cloud',
+  'pages.dictionary.valueIcons.wifi',
   'events.aliases.kind.fqdn',
   'events.aliases.kind.hostname',
   'events.aliases.kind.ip',

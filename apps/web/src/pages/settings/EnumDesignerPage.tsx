@@ -12,6 +12,7 @@ import { toast } from 'sonner'
 import { GET_ENUM_TYPES, GET_ENUM_SHIPPED_DRIFT, GET_ENUM_VALUE_USAGE } from '@/graphql/queries'
 import { useLingue } from '@/hooks/useLingue'
 import { useConfirm } from '@/hooks/useConfirm'
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard'
 import { dictionaryList } from '@/lib/dictionaryList'
 import {
   CREATE_ENUM_TYPE,
@@ -24,7 +25,8 @@ import {
   ACKNOWLEDGE_SHIPPED_VALUES,
 } from '@/graphql/mutations'
 import { colors, palette } from '@/lib/tokens'
-import { VALUE_COLORS, type ValueColor } from '@opengraphity/types'
+import { VALUE_COLORS, VALUE_ICONS, isValueIcon, type ValueColor } from '@opengraphity/types'
+import { VALUE_ICON_DRAWINGS } from '@/lib/valueIcons'
 import { valueColorStyle } from '@/lib/domainStyle'
 import { clientLogger } from '@/lib/clientLogger'
 import { errorMessage, showError } from '@/lib/showError'
@@ -51,6 +53,8 @@ interface EnumType {
   valueLabels: EnumValueLabel[]
   /** Il colore dei valori che ne hanno uno (revisione del 14 set 2026 · F9). */
   valueColors: { value: string; color: ValueColor }[]
+  /** The icon of the values that have one (G40): the portal draws it next to a category. */
+  valueIcons?: { value: string; icon: string }[]
   /**
    * Il valore con cui si nasce quando nessuno lo indica (`null` = non
    * dichiarato). Serve a togliere una regola di dominio dalla POSIZIONE: lo
@@ -248,12 +252,49 @@ function fullLabelList(
   )
 }
 
-function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomized }: {
+/** The icon saved for a value of the vocabulary, or '' (G40). */
+function savedIcon(e: EnumType, value: string): string {
+  return e.valueIcons?.find((x) => x.value === value)?.icon ?? ''
+}
+
+/** The whole icon list with ONE value changed: the list is replaced as a whole, as for the colours (G40). */
+function withValueIcon(e: EnumType, value: string, icon: string): { value: string; icon: string }[] {
+  return e.values.flatMap((v) => {
+    const i = v === value ? icon : savedIcon(e, v)
+    return i === '' ? [] : [{ value: v, icon: i }]
+  })
+}
+
+/** The ICON of a value (G40): a name of the product's list, drawn next to its select; the portal draws it too. */
+function ValueIconControl({ value, icon, disabled, style, onChange }: {
+  value: string
+  icon: string
+  disabled: boolean
+  style: React.CSSProperties
+  onChange: (icon: string) => void
+}) {
+  const { t } = useTranslation()
+  const Drawing = isValueIcon(icon) ? VALUE_ICON_DRAWINGS[icon] : null
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      {Drawing && <Drawing size={13} aria-hidden="true" />}
+      <Select style={style} value={icon} disabled={disabled} onChange={(ev) => onChange(ev.target.value)}
+        aria-label={t('pages.dictionary.valueIconLabel', { value })}>
+        <option value="">{t('pages.dictionary.valueIconNone')}</option>
+        {VALUE_ICONS.map((i) => <option key={i} value={i}>{t(`pages.dictionary.valueIcons.${i}`)}</option>)}
+      </Select>
+    </span>
+  )
+}
+
+function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomized, onDirtyChange }: {
   enumType:     EnumType
   /** Copia del cliente di un vocabolario spedito (U-17): l'originale non è più nell'elenco. */
   customizedFromShipped: boolean
   onDeleted:    () => void
   onCustomized: (copy: EnumType) => void
+  /** The values changed and not saved yet: the page asks before showing another dictionary (G45). */
+  onDirtyChange?: (dirty: boolean) => void
 }) {
   const { t } = useTranslation()
   // G-12: le lingue del cliente, dichiarate dall'API.
@@ -278,6 +319,7 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
   const [values, setValues] = useState<string[]>(e.values)
   const [newVal, setNewVal] = useState('')
   const [dirty, setDirty]   = useState(false)
+  useEffect(() => { onDirtyChange?.(dirty) }, [dirty, onDirtyChange])
   /** Il valore che si sta rinominando, e il nome nuovo (null = nessuno). */
   const [renamingFrom, setRenamingFrom] = useState<string | null>(null)
   /**
@@ -565,8 +607,16 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
     void updateLabels({ variables: { id: e.id, input: { valueColors: lista } } })
   }
 
+  /** Writes the icon of ONE value (G40). */
+  const salvaIcona = (v: string, icona: string) => {
+    if (dirty) { toast.error(t('pages.dictionary.saveValuesFirst')); return }
+    void updateLabels({ variables: { id: e.id, input: { valueIcons: withValueIcon(e, v, icona) } } })
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Values added and not saved were lost leaving the page, without a word (tour of 24 Sep 2026, G45). */}
+      <UnsavedChangesGuard when={dirty} title={t('pages.dictionary.discardTitle')} body={t('pages.dictionary.discardBody', { label: e.label })} confirmLabel={t('pages.dictionary.discardLeave')} />
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <Tag size={18} style={{ color: 'var(--color-brand)' }} aria-hidden="true" />
@@ -779,6 +829,9 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
                       {VALUE_COLORS.map((c) => <option key={c} value={c}>{t(`pages.dictionary.valueColors.${c}`)}</option>)}
                     </Select>
                   </span>
+                  <ValueIconControl value={v} icon={savedIcon(e, v)} disabled={shipped || saving || savingLabels}
+                    style={{ ...inputS, height: 26, width: 'auto', fontWeight: 400, ...(shipped ? readOnlyS : {}) }}
+                    onChange={(icona) => salvaIcona(v, icona)} />
                   {e.defaultValue === v && (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 'var(--font-size-table)', fontWeight: 600 }}>
                       <Star size={10} aria-hidden="true" /> {t('pages.dictionary.defaultBadge')}
@@ -913,6 +966,17 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
 export function EnumDesignerPage() {
   const { t } = useTranslation()
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [editorDirty, setEditorDirty] = useState(false)
+  const confirm = useConfirm()
+  /** Another dictionary replaces the editor: unsaved values would be lost, so it asks first (G45). */
+  const choose = (id: string | null) => void (async () => {
+    if (editorDirty && id !== selectedId) {
+      const ok = await confirm({ title: t('pages.dictionary.discardTitle'), body: t('pages.dictionary.discardBody', { label: selected?.label ?? '' }), confirmLabel: t('pages.dictionary.discardLeave'), danger: true })
+      if (!ok) return
+    }
+    setEditorDirty(false)
+    setSelectedId(id)
+  })()
   const [showCreate, setShowCreate] = useState(false)
 
   const { data, loading } = useQuery<{ enumTypes: EnumType[] }>(GET_ENUM_TYPES, {
@@ -988,7 +1052,7 @@ export function EnumDesignerPage() {
                   <button
                     key={e.id}
                     type="button"
-                    onClick={() => setSelectedId(e.id)}
+                    onClick={() => choose(e.id)}
                     style={{
                       width: '100%', textAlign: 'left', padding: '8px 16px',
                       background: selectedId === e.id ? palette.info.light : 'transparent',
@@ -1041,6 +1105,7 @@ export function EnumDesignerPage() {
               customizedFromShipped={selected.customizedFromShipped}
               onDeleted={() => setSelectedId(null)}
               onCustomized={(copy) => setSelectedId(copy.id)}
+              onDirtyChange={setEditorDirty}
             />
           ) : (
             <div style={{

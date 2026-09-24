@@ -9,13 +9,16 @@ import { meMock, anomalyStatsMock, anomalyStatsErrorMock } from '@/test/mocks/gq
 const MY_PENDING_APPROVALS_COUNT = gql`
   query MyPendingApprovalsCount {
     myPendingApprovals { id }
-    pendingTicketApprovals { kind entityId }
+    pendingTicketApprovals { kind entityId onBehalf }
   }
 `
-function pendingMock(n = 0): GqlMock {
+function pendingMock(n = 0, tickets: Array<{ onBehalf: boolean }> = []): GqlMock {
   return {
     request: { query: MY_PENDING_APPROVALS_COUNT },
-    result: { data: { myPendingApprovals: Array.from({ length: n }, (_, i) => ({ __typename: 'ApprovalRequest', id: `a${i}` })), pendingTicketApprovals: [] } },
+    result: { data: {
+      myPendingApprovals: Array.from({ length: n }, (_, i) => ({ __typename: 'ApprovalRequest', id: `a${i}` })),
+      pendingTicketApprovals: tickets.map((t, i) => ({ __typename: 'PendingTicketApproval', kind: 'change', entityId: `c${i}`, ...t })),
+    } },
     maxUsageCount: Number.POSITIVE_INFINITY,
   }
 }
@@ -142,6 +145,11 @@ describe('Sidebar — badge', () => {
 
   it('approvazioni pendenti → badge sulla voce Approvals', async () => {
     renderSidebar('operator', { mocks: [meMock('operator'), anomalyStatsMock(0), pendingMock(2)] })
+    expect(await screen.findByLabelText('2 pending')).toHaveTextContent('2')
+  })
+
+  it('what I could decide only for another team does not count (24 Sep 2026)', async () => {
+    renderSidebar('admin', { mocks: [meMock('admin'), anomalyStatsMock(0), pendingMock(1, [{ onBehalf: false }, { onBehalf: true }, { onBehalf: true }])] })
     expect(await screen.findByLabelText('2 pending')).toHaveTextContent('2')
   })
 })

@@ -18,7 +18,7 @@
  * Keyboard: arrows move, Enter chooses, Escape closes. The options take the
  * mouse on `mousedown`, so the box does not lose focus before the choice.
  */
-import { useId, useMemo, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
+import { useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { alpha, colors, palette } from '@/lib/tokens'
 import { controlStyle } from '@/components/ui/FormControls'
@@ -85,6 +85,37 @@ const listStyle: CSSProperties = {
   boxShadow: `0 4px 12px ${alpha.black10}`, margin: 0, padding: 0, listStyle: 'none',
 }
 
+/**
+ * WHERE THE LIST FITS (tour of 24 Sep 2026, G36): in the «Add: Server» dialog
+ * at 800 px the list of teams ran under the dialog's bottom edge and had to be
+ * scrolled into view. The list opens below when it fits there, above when
+ * there is more room above, and never taller than the room it has — measured
+ * against the viewport and every scrolling or clipping container around it.
+ */
+export function clippingBounds(el: HTMLElement): { top: number; bottom: number } {
+  let top = 0
+  let bottom = window.innerHeight
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const oy = getComputedStyle(p).overflowY
+    if (oy === 'auto' || oy === 'scroll' || oy === 'hidden') {
+      const r = p.getBoundingClientRect()
+      top = Math.max(top, r.top)
+      bottom = Math.min(bottom, r.bottom)
+    }
+  }
+  return { top, bottom }
+}
+
+const LIST_MAX_HEIGHT = 280
+const LIST_MIN_HEIGHT = 120
+
+export function listPlacement(input: { top: number; bottom: number }, bounds: { top: number; bottom: number }): { up: boolean; maxHeight: number } {
+  const below = bounds.bottom - input.bottom - 8
+  const above = input.top - bounds.top - 8
+  const up = below < LIST_MAX_HEIGHT && above > below
+  return { up, maxHeight: Math.max(LIST_MIN_HEIGHT, Math.min(LIST_MAX_HEIGHT, up ? above : below)) }
+}
+
 const rowStyle = (active: boolean): CSSProperties => ({
   padding: '7px 12px', cursor: 'pointer', fontSize: 'var(--font-size-body)',
   // Full names: they wrap, they are never cut.
@@ -127,9 +158,15 @@ export function SearchPicker({
   const choose = (row: Row) => { onChange(row.kind === 'clear' ? null : row.option); close() }
   const { active, setActive, onKeyDown } = useKeyboard(rows, open, setOpen, choose, close)
   const activeId = open ? rows[active]?.id : undefined
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const [placement, setPlacement] = useState<{ up: boolean; maxHeight: number }>({ up: false, maxHeight: LIST_MAX_HEIGHT })
+  useLayoutEffect(() => {
+    if (!open || !wrapRef.current) return
+    setPlacement(listPlacement(wrapRef.current.getBoundingClientRect(), clippingBounds(wrapRef.current)))
+  }, [open])
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div ref={wrapRef} style={{ position: 'relative' }}>
       <input
         id={inputId}
         type="text"
@@ -155,7 +192,10 @@ export function SearchPicker({
         style={{ ...controlStyle, ...(invalid ? { borderColor: palette.warning.border } : {}), ...style }}
       />
       {open && !disabled && (
-        <ul id={listId} role="listbox" aria-label={label} style={listStyle}>
+        <ul id={listId} role="listbox" aria-label={label} style={{
+          ...listStyle, maxHeight: placement.maxHeight,
+          ...(placement.up ? { top: 'auto', bottom: '100%', marginTop: 0, marginBottom: 4 } : {}),
+        }}>
           {loading && <li role="presentation" style={noteStyle}>{t('common.loading')}</li>}
           {error !== null && <li role="presentation" style={{ ...noteStyle, color: 'var(--color-danger)' }}>{t('pickers.loadFailed', { error })}</li>}
           {rows.map((row, i) => (

@@ -70,7 +70,7 @@ describe('PlanTaskForm: the windows, in the organization\'s time zone', () => {
     expect(screen.getByLabelText(/^Validation \*/)).toHaveValue('2026-10-01T04:00')
     expect(screen.getByLabelText('End of validation')).toHaveValue('2026-10-01T06:00')
     expect(screen.getByLabelText(/^Deploy \*/)).toHaveValue('2026-10-02T16:00')
-    expect(screen.getByLabelText('End of the release')).toHaveValue('2026-10-02T18:00')
+    expect(screen.getByLabelText('End of the deploy')).toHaveValue('2026-10-02T18:00')
     expect(screen.getAllByText('(America/New_York)')).toHaveLength(2)
   })
 
@@ -88,7 +88,7 @@ describe('PlanTaskForm: the windows, in the organization\'s time zone', () => {
     fireEvent.change(screen.getByLabelText('End of validation'), { target: { value: '2026-10-01T23:00' } })
     expect(lastSteps()[0]!.validationWindow.end).toBe('2026-10-02T03:00:00.000Z')
     fireEvent.change(screen.getByLabelText(/^Deploy \*/), { target: { value: '2026-10-03T21:00' } })
-    fireEvent.change(screen.getByLabelText('End of the release'), { target: { value: '2026-10-03T23:30' } })
+    fireEvent.change(screen.getByLabelText('End of the deploy'), { target: { value: '2026-10-03T23:30' } })
     expect(lastSteps()[0]!.releaseWindow).toEqual({ start: '2026-10-04T01:00:00.000Z', end: '2026-10-04T03:30:00.000Z' })
     expect(reported.dirty).toHaveBeenLastCalledWith(true)
   })
@@ -104,7 +104,7 @@ describe('PlanTaskForm: editing the steps', () => {
     await user.type(titles[1]!, 'Web tier')
     expect(lastSteps()[1]!.title).toBe('Web tier')
     // An empty window shows an empty field, not a wrong date.
-    expect(screen.getAllByLabelText('End of the release')[1]).toHaveValue('')
+    expect(screen.getAllByLabelText('End of the deploy')[1]).toHaveValue('')
     // The remove button of the FIRST step removes the first step only.
     await user.click(screen.getByRole('button', { name: 'Remove step 1' }))
     expect(lastSteps().map((s) => s.title)).toEqual(['Web tier'])
@@ -168,7 +168,7 @@ describe('PlanTaskForm: completing the plan', () => {
   it('a completed plan is read-only and has nothing left to do', () => {
     setup({ status: 'completed', dirty: true })
     expect(screen.getByLabelText('Title *')).toBeDisabled()
-    expect(screen.getByLabelText('End of the release')).toBeDisabled()
+    expect(screen.getByLabelText('End of the deploy')).toBeDisabled()
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 

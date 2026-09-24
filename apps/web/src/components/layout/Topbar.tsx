@@ -119,14 +119,16 @@ export function Breadcrumb() {
   }
 
   return (
-    <nav aria-label={t('topbar.breadcrumb')} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+    // One line at any width (tour of 24 Sep 2026, G6: «Knowledge / Base» wrapped at 800 px):
+    // the crumbs do not wrap, and the last one is cut with an ellipsis, its full text in the title.
+    <nav aria-label={t('topbar.breadcrumb')} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, whiteSpace: 'nowrap', minWidth: 0 }}>
       {crumbs.map((c, i) => {
         const isLast = i === crumbs.length - 1
         return (
-          <span key={c.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span key={c.key} style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flexShrink: isLast ? 1 : 0 }}>
             {i > 0 && <span aria-hidden="true" style={{ color: C.textMuted }}>/</span>}
             {isLast ? (
-              <span aria-current="page" style={{ color: C.textDefault, fontWeight: 600 }}>{c.label}</span>
+              <span aria-current="page" title={c.label} style={{ color: C.textDefault, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.label}</span>
             ) : c.to === null ? (
               <span style={{ color: C.textMuted }}>{c.label}</span>
             ) : (

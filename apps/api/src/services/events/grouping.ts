@@ -28,7 +28,7 @@ import { incidentsAutoOpenedTotal, incidentsReopenedTotal } from '../../middlewa
 import { incidents, queue } from './deps.js'
 import { MONITORING_ACTOR, SEVERITY_RANK, assertSeverity, incidentSeverityFromEvent, mapEventPayload, monitoringContext, toNumber, toStr, type Props } from './shared.js'
 import { getEventPolicy } from './policy.js'
-import { attachEventToIncident, setCorrelation } from './repo.js'
+import { markIncidentFromEvent, attachEventToIncident, setCorrelation } from './repo.js'
 import { incidentStep, incidentStepInfo, reopenIncident, type IncidentStepInfo, type OpenIncidentRow } from './incidentWorkflow.js'
 import { replaceClosedStormIncident, stormLockKey, STORM_LOCK_TTL_SECONDS, STORM_LOCK_WAIT_MS, STORM_LOCK_POLL_MS, type StormState } from './storm.js'
 import type { EventRecord, PipelineMode, PipelineOutcome, PipelineResult } from './types.js'
@@ -119,6 +119,19 @@ async function severityFor(tenantId: string, ciId: string, severity: EventSeveri
 }
 
 /**
+ * The title of an incident opened by an alarm: the alarm AND where it rang
+ * (tour of 24 Sep 2026, G13). Only the alarm's name — «HostDown»,
+ * «HostDiskWillFillIn4Hours» — made dozens of identical rows in the list,
+ * with the host only in the description. An alarm without a resource keeps
+ * its name alone.
+ */
+export function incidentTitleOf(lingua: Parameters<typeof systemTextIn>[0], props: Record<string, unknown>): string {
+  const title = toStr(props['title'])
+  const resource = toStr(props['resource']).trim()
+  return resource ? systemTextIn(lingua, 'event.incident.titleOnResource', { title, resource }) : title
+}
+
+/**
  * Crea l'incident dall'evento (priorità e impatto/urgenza dalla severity_map
  * della policy, il CI come impattato), lo collega con CORRELATED_INTO e
  * scrive `correlation = 'opened'`. Un evento orfano è rifiutato: un incident
@@ -158,7 +171,7 @@ export async function openIncidentFromEvent(args: OpenIncidentArgs) {
   let failure: unknown = null
   try {
     const created = await service.createIncident({
-      title:         toStr(props['title']),
+      title:         incidentTitleOf(lingua, props),
       description,
       severity:      await incidentSeverityFromEvent(tenantId, severity),
       impact:        iu.impact,
@@ -177,6 +190,9 @@ export async function openIncidentFromEvent(args: OpenIncidentArgs) {
   const session = args.session ?? own!
   try {
     await attachEventToIncident(session, tenantId, eventId, incident.id, manual, now)
+    // Born from an alarm: the monitoring's, not the request of whoever pressed «Open incident» —
+    // the portal does not list it among that person's tickets (tour of 24 Sep 2026, G39).
+    await markIncidentFromEvent(session, tenantId, incident.id)
     // Cronologia: `incident_opened_manually` con l'utente dalla mutation, `correlated` (opened) dalla correlazione automatica; un incident nuovo è sempre una voce.
     await setCorrelation(session, tenantId, eventId, 'opened', now, null, { kind: manual ? 'incident_opened_manually' : 'correlated', incidentId: incident.id, actorId, always: true })
   } finally { if (own) await own.close() }

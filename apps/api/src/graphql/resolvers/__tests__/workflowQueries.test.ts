@@ -49,6 +49,8 @@ const transitionsOpenToApproval = vi.fn(async (_s: unknown, _t: string, _i: stri
 vi.mock('../../../lib/ticketApprovalGate.js', () => ({
   transitionsOpenToApproval: (...a: unknown[]) => (transitionsOpenToApproval as (...x: unknown[]) => unknown)(...a),
 }))
+// Nobody approves what they asked for (lib/ownApproval.ts): here nobody asked.
+vi.mock('../../../lib/ownApproval.js', () => ({ isOwnRequestApproval: vi.fn(async () => false) }))
 vi.mock('../../../lib/requestApproval.js', () => ({
   requestApprovalWouldBeSkipped: (...a: unknown[]) => requestApprovalWouldBeSkipped(...a),
 }))

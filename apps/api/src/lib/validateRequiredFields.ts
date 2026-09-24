@@ -27,9 +27,11 @@ export async function validateRequiredFields(
     tenantId:             string
     toStep?:              string | null
     visibilityExclusions?: string[]   // field names currently hidden — skip them
+    /** Fields the step needs by what it IS, not by a rule (a known error: its cause and workaround). */
+    requiredByPurpose?:   readonly string[]
   },
 ): Promise<void> {
-  const { entityType, fieldValues, tenantId, toStep, visibilityExclusions = [] } = opts
+  const { entityType, fieldValues, tenantId, toStep, visibilityExclusions = [], requiredByPurpose = [] } = opts
 
   type Row = { r: { properties: Record<string, unknown> } }
   const rows = await runQuery<Row>(session, `
@@ -48,6 +50,8 @@ export async function validateRequiredFields(
   })
 
   const missing: string[] = []
+  const isEmptyValue = (value: unknown) => value === null || value === undefined || (typeof value === 'string' && value.trim() === '')
+  for (const f of requiredByPurpose) if (isEmptyValue(fieldValues[f])) missing.push(f)
 
   for (const rule of rules) {
     // Skip rules for other workflow steps
@@ -60,7 +64,7 @@ export async function validateRequiredFields(
       value === null || value === undefined ||
       (typeof value === 'string' && value.trim() === '')
 
-    if (isEmpty) missing.push(rule.fieldName)
+    if (isEmpty && !missing.includes(rule.fieldName)) missing.push(rule.fieldName)
   }
 
   if (missing.length > 0) {
@@ -112,5 +116,27 @@ export async function validateStepRequirements(
     // In both conventions, like the stored fields.
     for (const f of ['resolution_notes', 'resolutionNotes', 'root_cause', 'rootCause']) fieldValues[f] = opts.notes
   }
-  await validateRequiredFields(session, { entityType: opts.entityType, fieldValues, tenantId: opts.tenantId, toStep: opts.toStep })
+  const requiredByPurpose = await fieldsRequiredByPurpose(session, opts.tenantId, opts.entityType, opts.toStep)
+  await validateRequiredFields(session, { entityType: opts.entityType, fieldValues, tenantId: opts.tenantId, toStep: opts.toStep, requiredByPurpose })
+}
+
+/**
+ * A KNOWN ERROR HAS ITS CAUSE AND ITS WORKAROUND (tour of 24 Sep 2026, G22).
+ *
+ * «Record as Known Error» passed with both empty: a known error nobody could
+ * use, listed in the Known Error Database. It is what the purpose
+ * `known_error` means (ITIL: a problem with a documented root cause and a
+ * workaround), whatever the step is called: a problem entering a step of that
+ * purpose needs both. The customer's own rules add to this, they cannot
+ * remove it.
+ */
+export const KNOWN_ERROR_FIELDS = ['root_cause', 'workaround'] as const
+
+async function fieldsRequiredByPurpose(session: Session, tenantId: string, entityType: string, toStep: string): Promise<readonly string[]> {
+  if (entityType !== 'problem') return []
+  const rows = await runQuery<{ purpose: string | null }>(session, `
+    MATCH (:WorkflowDefinition {tenant_id: $tenantId, entity_type: $entityType})-[:HAS_STEP]->(s:WorkflowStep {name: $toStep})
+    RETURN s.purpose AS purpose
+  `, { tenantId, entityType, toStep })
+  return rows.some((r) => r.purpose === 'known_error') ? KNOWN_ERROR_FIELDS : []
 }

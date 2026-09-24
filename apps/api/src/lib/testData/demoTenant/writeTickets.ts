@@ -60,6 +60,8 @@ export async function writeIncidents(w: DemoWriter, sims: readonly SimulatedInci
     id: s.skeleton.id, number: numbers.get(s.skeleton.id)!, title: s.title, description: s.description,
     severity: s.skeleton.severity, impact: s.skeleton.impact, urgency: s.skeleton.urgency, category: s.skeleton.category,
     created_at: iso(s.skeleton.createdAtMs), created_by: s.skeleton.creatorId, channel: s.skeleton.channel,
+    // Born from an alarm, as `openIncidentFromEvent` marks it (G39).
+    ...(s.skeleton.born ? { origin: 'event' } : {}),
     ...lifecycleProps(s.trail),
   })))
   await w.relationships('Incident', 'AFFECTED_BY', 'ConfigurationItem', sims.flatMap((s) => s.skeleton.ciIds.map((ci) => ({ from: s.skeleton.id, to: ci }))))
@@ -105,6 +107,7 @@ export async function writeChanges(w: DemoWriter, sims: readonly SimulatedChange
       parent: t.props['id'] as string,
       props: { id: t.segmentId, team_id: t.teamId, started_at: iso(t.createdAtMs), inferred: false },
     })))
+    await w.relationships(label, 'ASSIGNED_TO', 'User', tasks.filter(({ t }) => t.assigneeId).map(({ t }) => ({ from: t.props['id'] as string, to: t.assigneeId! })))
     for (const doneRel of ['COMPLETED_BY', 'TESTED_BY', 'DEPLOYED_BY', 'REVIEWED_BY']) {
       await w.relationships(label, doneRel, 'User', tasks.filter(({ t }) => t.doneBy?.rel === doneRel).map(({ t }) => ({ from: t.props['id'] as string, to: t.doneBy!.userId })))
     }

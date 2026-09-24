@@ -1,6 +1,6 @@
 import { BaseConsumer } from '@opengraphity/events'
 import type { DomainEvent, WorkflowStepEnteredPayload } from '@opengraphity/types'
-import { WORKFLOW_STEP_ENTERED_EVENT, TICKET_TEAM_ASSIGNED_EVENT, type TicketTeamAssignedPayload } from '@opengraphity/types'
+import { WORKFLOW_STEP_ENTERED_EVENT, TICKET_TEAM_ASSIGNED_EVENT, TICKET_UPDATED_EVENT, type TicketTeamAssignedPayload, type TicketUpdatedPayload } from '@opengraphity/types'
 import type {
   IncidentCreatedPayload,
   IncidentResolvedPayload,
@@ -88,7 +88,7 @@ const SLA_HANDLED_EVENTS: ReadonlySet<string> = new Set([
   'problem.created', 'problem.resolved',
   'sla.resolve.pause', 'sla.resolve.stop', 'sla.resolve.resume', 'sla.resolve.start',
   'sla.response.pause', 'sla.response.resume', 'sla.response.start', 'sla.response.stop',
-  TICKET_TEAM_ASSIGNED_EVENT, WORKFLOW_STEP_ENTERED_EVENT,
+  TICKET_TEAM_ASSIGNED_EVENT, TICKET_UPDATED_EVENT, WORKFLOW_STEP_ENTERED_EVENT,
 ])
 
 export class SLAEngine extends BaseConsumer<unknown> {
@@ -192,6 +192,12 @@ export class SLAEngine extends BaseConsumer<unknown> {
 
       case TICKET_TEAM_ASSIGNED_EVENT:
         await this.handleTeamAssigned(event as DomainEvent<TicketTeamAssignedPayload>)
+        break
+
+      // The priority changed (a person, a rule, a Major Incident declared):
+      // the SLA follows it (24 Sep 2026). The other fields do not concern it.
+      case TICKET_UPDATED_EVENT:
+        await this.handlePriorityChanged(event as DomainEvent<TicketUpdatedPayload>)
         break
 
       // Ogni transizione del motore di workflow, da qualunque cammino: prima
@@ -317,23 +323,42 @@ export class SLAEngine extends BaseConsumer<unknown> {
   private async handleTeamAssigned(event: DomainEvent<TicketTeamAssignedPayload>): Promise<void> {
     const p = event.payload
     if (p.entity_type !== 'incident' && p.entity_type !== 'problem' && p.entity_type !== 'service_request') return
-    const severity = await getEntityPriority(event.tenant_id, p.entity_type, p.entity_id)
+    await this.reselectSLA(event.tenant_id, p.entity_type, p.entity_id, 'team assignment')
+  }
+
+  /**
+   * The priority of the ticket changed: the policy may be another one (a
+   * policy by priority) and the tier is surely another one. The deadlines are
+   * recomputed from the same start; a breach already recorded stays recorded.
+   * The field is `severity` on an incident, `priority` on a problem or a
+   * request (getEntityPriority).
+   */
+  private async handlePriorityChanged(event: DomainEvent<TicketUpdatedPayload>): Promise<void> {
+    const p = event.payload
+    const field = p.entity_type === 'incident' ? 'severity' : 'priority'
+    if (p.entity_type !== 'incident' && p.entity_type !== 'problem' && p.entity_type !== 'service_request') return
+    if (!p.changed_fields.includes(field)) return
+    await this.reselectSLA(event.tenant_id, p.entity_type, p.entity_id, 'priority change')
+  }
+
+  private async reselectSLA(tenantId: string, entityType: 'incident' | 'problem' | 'service_request', entityId: string, reason: string): Promise<void> {
+    const severity = await getEntityPriority(tenantId, entityType, entityId)
     if (typeof severity !== 'string' || severity === '') return
-    const status = await getSLAStatus(event.tenant_id, p.entity_id)
+    const status = await getSLAStatus(tenantId, entityId)
     if (!status) {
-      await this.startSLA(event.tenant_id, p.entity_type, p.entity_id, severity, await getEntityCreatedAt(event.tenant_id, p.entity_id))
+      await this.startSLA(tenantId, entityType, entityId, severity, await getEntityCreatedAt(tenantId, entityId))
       return
     }
     if (status.resolved_at || !status.policy_id) return
-    const policy = await resolvePolicy(event.tenant_id, p.entity_type, severity, p.entity_id)
-    if (!policy || policy.id === status.policy_id) return
-    const updated = await repolicySLA(event.tenant_id, p.entity_id, policy, severity)
+    const policy = await resolvePolicy(tenantId, entityType, severity, entityId)
+    if (!policy || (policy.id === status.policy_id && status.tier.severity === severity)) return
+    const updated = await repolicySLA(tenantId, entityId, policy, severity)
     if (!updated) return
     if (!updated.paused_at) {
       if (!updated.response_met) await scheduleResponseCheck(updated)
       if (!updated.breached) { await scheduleWarning(updated); await scheduleBreachCheck(updated) }
     }
-    console.log(`[sla:engine] SLA of ${p.entity_type} ${p.entity_id} moved to policy "${policy.name}" after team assignment: resolve by ${updated.resolve_deadline}`)
+    console.log(`[sla:engine] SLA of ${entityType} ${entityId} moved to policy "${policy.name}", tier ${severity}, after ${reason}: resolve by ${updated.resolve_deadline}`)
   }
 
   private async handleSLAPause(event: DomainEvent<unknown>, slaType: SLAPauseType): Promise<void> {
@@ -373,7 +398,7 @@ export class SLAEngine extends BaseConsumer<unknown> {
     const entityId = (event.payload as { id?: string; entity_id?: string }).id
       ?? (event.payload as { entity_id?: string }).entity_id
     if (!entityId) throw new Error(`${entityType}.assigned event missing entity id`)
-    await markResponseMet(event.tenant_id, entityId)
+    await markResponseMet(event.tenant_id, entityId, eventInstant(event))
     // The response target is met: the pending response-breach timer must not
     // fire a false "response breach" warning (D-01).
     await cancelSLAJobs(event.tenant_id, entityId, 'response')
@@ -418,7 +443,8 @@ export class SLAEngine extends BaseConsumer<unknown> {
     if (!status) return
 
     if (p.from_initial && !status.response_met) {
-      await markResponseMet(event.tenant_id, p.entity_id)
+      const enteredAtOrEvent = Number.isNaN(Date.parse(p.entered_at)) ? eventInstant(event) : new Date(p.entered_at)
+      await markResponseMet(event.tenant_id, p.entity_id, enteredAtOrEvent)
       await cancelSLAJobs(event.tenant_id, p.entity_id, 'response')
       console.log(`[sla:engine] Response met for ${p.entity_type} ${p.entity_id} (left the initial step "${p.from_step}")`)
     }

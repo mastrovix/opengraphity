@@ -112,6 +112,14 @@ describe('the list', () => {
     expect(apolloFinto.chiamata('GetTeams')).toEqual({ sortField: 'name', sortDirection: 'desc', filters: null })
   })
 
+  // Tour of 24 Sep 2026 (G38): «the CREATED column does not sort» — it does, on the server.
+  it('the Created column sorts on the server too', async () => {
+    const { user } = renderPage()
+    await user.click(within(screen.getByRole('columnheader', { name: /Created/ })).getByRole('button'))
+    await attendiURL('/teams', { sort: 'createdAt:asc' })
+    expect(apolloFinto.chiamata('GetTeams')).toMatchObject({ sortField: 'createdAt', sortDirection: 'asc' })
+  })
+
   it('sorting a column writes it in the address', async () => {
     const { user } = renderPage()
     await user.click(within(screen.getByRole('columnheader', { name: /Name/ })).getByRole('button'))

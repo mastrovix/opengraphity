@@ -12,7 +12,7 @@ const query = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/apollo', () => ({ apolloClient: { query } }))
 
 const results = {
-  cis: [], changes: [], incidents: [], problems: [], tasks: [], kbArticles: [],
+  cis: [], changes: [], incidents: [], problems: [], tasks: [], kbArticles: [], teams: [],
   serviceRequests: [{ id: 'sr-1', number: 'SR00000007', title: 'Portatile nuovo' }],
 }
 

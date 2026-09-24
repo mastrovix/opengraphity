@@ -26,7 +26,7 @@ export const CREATE_CI_TYPE = gql`
 export const UPDATE_CI_TYPE = gql`
   mutation UpdateCIType($id: ID!, $input: UpdateCITypeInput!) {
     updateCIType(id: $id, input: $input) {
-      id name label labels { language label } icon color active scope tenantId validationScript chainFamilies serviceRole
+      id name label labels { language label } icon color active scope tenantId validationScript chainFamilies serviceRole statusesExcluded
       fields { id name label fieldType required enumValues order
         validationScript visibilityScript defaultScript }
       relations { id name label relationshipType targetType

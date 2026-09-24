@@ -32,14 +32,14 @@ describe('pendingTicketApprovals', () => {
     righe = {
       // `approvalKind` (20 set 2026): una change ne pretende due dello STESSO
       // team, e senza questo la pagina mostrava due righe identiche.
-      change:  [{ entityId: 'chg-2', number: 'CHG00000002', title: 'Log', detail: 'Operazioni di rete', approvalKind: 'change_manager', requestedAt: '2026-09-13T22:55:51Z' }],
-      request: [{ entityId: 'req-2', number: 'REQ00000002', title: 'Portatile', detail: 'Approvazione', requestedAt: '2026-09-13T23:00:00Z' }],
+      change:  [{ entityId: 'chg-2', number: 'CHG00000002', title: 'Log', detail: 'Operazioni di rete', approvalKind: 'change_manager', requestedAt: '2026-09-13T22:55:51Z', onBehalf: false }],
+      request: [{ entityId: 'req-2', number: 'REQ00000002', title: 'Portatile', detail: 'Approvazione', requestedAt: '2026-09-13T23:00:00Z', onBehalf: true }],
     }
     const out = await pendingTicketApprovals(null, null, ctx('admin'))
     expect(out).toEqual([
-      { kind: 'change', entityId: 'chg-2', number: 'CHG00000002', title: 'Log', detail: 'Operazioni di rete', approvalKind: 'change_manager', requestedAt: '2026-09-13T22:55:51Z' },
+      { kind: 'change', entityId: 'chg-2', number: 'CHG00000002', title: 'Log', detail: 'Operazioni di rete', approvalKind: 'change_manager', requestedAt: '2026-09-13T22:55:51Z', onBehalf: false },
       // Una richiesta ha un passo solo: nessuna parte da distinguere.
-      { kind: 'service_request', entityId: 'req-2', number: 'REQ00000002', title: 'Portatile', detail: 'Approvazione', approvalKind: null, requestedAt: '2026-09-13T23:00:00Z' },
+      { kind: 'service_request', entityId: 'req-2', number: 'REQ00000002', title: 'Portatile', detail: 'Approvazione', approvalKind: null, requestedAt: '2026-09-13T23:00:00Z', onBehalf: true },
     ])
     expect(runs[0]!.q).toContain("ChangeApproval {status: 'pending'}")
     // La parte viene dal nodo dell'approvazione, non dal team.
@@ -47,13 +47,27 @@ describe('pendingTicketApprovals', () => {
     expect(runs[1]!.q).toContain("purpose: 'approval'")
   })
 
-  it('l\'admin vede i requisiti di ogni team; gli altri solo quelli dei loro team', async () => {
+  it('«mine» are the requirements of my teams; the others only with approval.override, flagged onBehalf (24 Sep 2026)', async () => {
     await pendingTicketApprovals(null, null, ctx('admin'))
-    expect(runs[0]!.p['isAdmin']).toBe(true)
+    expect(runs[0]!.p['override']).toBe(true)
+    expect(runs[0]!.q).toContain('WHERE member OR $override')
+    expect(runs[0]!.q).toContain('NOT member AS onBehalf')
     runs.length = 0
     await pendingTicketApprovals(null, null, ctx('operator'))
-    expect(runs[0]!.p['isAdmin']).toBe(false)
+    expect(runs[0]!.p['override']).toBe(false)
     expect(runs[0]!.q).toContain('MEMBER_OF')
+  })
+
+  it('what I asked for is not waiting for my approval: neither my change nor my request', async () => {
+    await pendingTicketApprovals(null, null, ctx('admin'))
+    expect(runs[0]!.q).toContain('NOT exists((c)-[:REQUESTED_BY]->(:User {id: $userId, tenant_id: $tenantId}))')
+    expect(runs[1]!.q).toContain('NOT exists((r)-[:REQUESTED_BY]->(:User {id: $userId, tenant_id: $tenantId}))')
+    expect(runs[1]!.p).toEqual({ tenantId: 't1', userId: 'u1' })
+  })
+
+  it('a request is mine when it is assigned to my team (or to no team); otherwise onBehalf', async () => {
+    await pendingTicketApprovals(null, null, ctx('operator'))
+    expect(runs[1]!.q).toContain('team IS NULL OR exists((:User {id: $userId, tenant_id: $tenantId})-[:MEMBER_OF]->(team)) AS member')
   })
 
   it('le richieste in approvazione le vede chi può farle avanzare (admin, operator), non un viewer', async () => {

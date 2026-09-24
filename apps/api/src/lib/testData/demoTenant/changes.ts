@@ -83,6 +83,12 @@ export interface TaskRow {
   teamId: string | null
   /** COMPLETED_BY / TESTED_BY / DEPLOYED_BY / REVIEWED_BY. */
   doneBy: { rel: string; userId: string } | null
+  /**
+   * ASSIGNED_TO: who holds the task. As in the product (G30), the team member
+   * who starts the work — the first answer, the saved plan — takes the task
+   * nobody holds, and keeps it once it is completed.
+   */
+  assigneeId: string | null
   /** The team-history segment of a task assigned to a team (assessment, plan). */
   segmentId: string
 }
@@ -409,7 +415,7 @@ export function simulateChange(rng: Rng, w: World, s: ChangeSkeleton, questions:
   for (const ci of cis) {
     sim.affects.set(ci.id, { ci_phase: 'assessment' })
     const mk = (label: TaskRow['label'], rel: TaskRow['rel'], suffix: string, teamId: string, extra: Record<string, unknown>): TaskRow => ({
-      label, rel, createdAtMs: t0, teamId, doneBy: null, segmentId: rng.uuid(),
+      label, rel, createdAtMs: t0, teamId, doneBy: null, assigneeId: null, segmentId: rng.uuid(),
       props: { id: rng.uuid(), code: taskCodes(), ci_id: ci.id, change_key: `${s.id}-${ci.id}${suffix}`, status: 'pending', created_at: new Date(t0).toISOString(), ...extra },
     })
     const owner = mk('AssessmentTask', 'HAS_ASSESSMENT', '-owner', ci.ownerTeamId!, { responder_role: 'owner' })
@@ -462,6 +468,7 @@ export function simulateChange(rng: Rng, w: World, s: ChangeSkeleton, questions:
         work.push({ at, run: () => {
           sim.responses.push({ taskId: task.props['id'] as string, id: rng.uuid(), answeredAtMs: at, questionId: q.id, optionId: opt.id, userId: person.id })
           task.props['status'] = 'in-progress'
+          task.assigneeId ??= person.id
           changeAudit(sim, at, 'assessment_response_submitted', `${ROLE_LABEL[role]} · ${ci.name}: "${q.text}" → ${opt.label}`, person.id,
             { key: 'responseSubmitted', params: { role, ci: ci.name, question: q.text, answer: opt.label } })
           registryAudit(sim, at, w.actor(person.id), 'submitAssessmentResponse', 'AssessmentTask!', { taskId: task.props['id'], questionId: q.id, optionId: opt.id }, task.props['id'] as string)
@@ -502,6 +509,7 @@ export function simulateChange(rng: Rng, w: World, s: ChangeSkeleton, questions:
       work.push({ at, run: () => {
         tk.plan.props['steps'] = JSON.stringify(steps)
         tk.plan.props['status'] = 'in-progress'
+        tk.plan.assigneeId ??= planner.id
         tk.plan.props['window_start'] = new Date(s.releaseStartMs - 24 * HOUR).toISOString()
         tk.plan.props['window_end'] = new Date(s.releaseEndMs).toISOString()
         const list = steps.map((x) => `"${x.title}"`).join(', ')
@@ -598,9 +606,9 @@ export function simulateChange(rng: Rng, w: World, s: ChangeSkeleton, questions:
   const validations = new Map<string, TaskRow>()
   const deployments = new Map<string, TaskRow>()
   for (const ci of byName) {
-    const vt: TaskRow = { label: 'ValidationTest', rel: 'HAS_VALIDATION', createdAtMs: depAt, teamId: null, doneBy: null, segmentId: rng.uuid(),
+    const vt: TaskRow = { label: 'ValidationTest', rel: 'HAS_VALIDATION', createdAtMs: depAt, teamId: null, doneBy: null, assigneeId: null, segmentId: rng.uuid(),
       props: { id: rng.uuid(), code: taskCodes(), ci_id: ci.id, change_key: `${s.id}-${ci.id}`, status: 'pending', created_at: new Date(depAt).toISOString() } }
-    const dt: TaskRow = { label: 'DeploymentTask', rel: 'HAS_DEPLOYMENT', createdAtMs: depAt, teamId: null, doneBy: null, segmentId: rng.uuid(),
+    const dt: TaskRow = { label: 'DeploymentTask', rel: 'HAS_DEPLOYMENT', createdAtMs: depAt, teamId: null, doneBy: null, assigneeId: null, segmentId: rng.uuid(),
       props: { id: rng.uuid(), code: taskCodes(), ci_id: ci.id, change_key: `${s.id}-${ci.id}-exec`, status: 'pending', created_at: new Date(depAt).toISOString() } }
     sim.tasks.push(vt, dt)
     validations.set(ci.id, vt)
@@ -649,7 +657,7 @@ export function simulateChange(rng: Rng, w: World, s: ChangeSkeleton, questions:
     trail.transition('review', at, actor, 'automatic', null, { triggeredBy: 'system', facts: { allDeploymentsComplete: true } })
     sim.props['service_window'] = false
     for (const ci of byName) {
-      sim.tasks.push({ label: 'ReviewTask', rel: 'HAS_REVIEW', createdAtMs: at, teamId: null, doneBy: null, segmentId: rng.uuid(),
+      sim.tasks.push({ label: 'ReviewTask', rel: 'HAS_REVIEW', createdAtMs: at, teamId: null, doneBy: null, assigneeId: null, segmentId: rng.uuid(),
         props: { id: rng.uuid(), code: taskCodes(), ci_id: ci.id, change_key: `${s.id}-${ci.id}-review`, status: 'pending', created_at: new Date(at).toISOString() } })
     }
   }

@@ -91,6 +91,14 @@ describe('answer language', () => {
     expect(p).toMatch(/^You are an ITSM analysis assistant/)
     expect(p).not.toMatch(/Rispondi|REGOLE/)
   })
+
+  // Tour of 24 Sep 2026 (G31): «there is no priority field» — on an incident it is `severity`.
+  it('says where the priority of each ticket is, so the analysis does not deny it', async () => {
+    const { buildSystemPrompt } = await import('../reportAgent.js')
+    const p = buildSystemPrompt('## Neo4j graph schema', 'English')
+    expect(p).toContain('The PRIORITY of an incident is its `severity` property')
+    expect(p).toContain('Title, Type, Status, Priority, CI, Team, Date')
+  })
 })
 
 describe('schema context', () => {

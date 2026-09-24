@@ -35,6 +35,12 @@ export function useIncidentTeam(cis: readonly CIWithSupportGroup[]) {
     fromCI,
     /** The team is the CI's support group, not a choice (nobody changed it). */
     prefilled: hand === undefined && fromCI !== null,
+    /**
+     * The AI triage suggested another team, and the CI's support group took
+     * its place: the page says so (tour of 24 Sep 2026, G19 — it happened in
+     * silence, and the person thought the AI's team would take it).
+     */
+    overriddenSuggestion: hand === undefined && fromCI?.supportGroup && suggested && suggested.id !== fromCI.supportGroup.id ? suggested : null,
     choose: (t: TeamRef | null) => setHand(t),
     suggest: (t: TeamRef) => setSuggested(t),
   }

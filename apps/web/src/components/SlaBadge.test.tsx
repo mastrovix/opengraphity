@@ -53,3 +53,22 @@ describe('SlaBadge — preavviso della policy', () => {
     expect(background(/min/)).not.toContain('warning')
   })
 })
+
+/** Tour of 24 Sep 2026, G14: a late response left no trace once the ticket was taken. */
+describe('SlaBadge — a late response stays said', () => {
+  it('after the response: the resolve countdown, and «response late by» when it came after its deadline', () => {
+    const late = { ...sla(30), respondedAt: new Date(Date.parse(sla(30).responseDeadline) + 37 * 60_000).toISOString() }
+    renderWithProviders(<SlaBadge sla={late} />)
+    expect(screen.getByText(/1 d 6 h left/)).toBeTruthy()
+    expect(screen.getByText(/response late by 37 min/)).toBeTruthy()
+  })
+
+  it('an answer in time, one of an older SLA with no instant, and the compact badge say nothing more', () => {
+    const inTime = { ...sla(30), respondedAt: new Date(Date.parse(sla(30).responseDeadline) - 5 * 60_000).toISOString() }
+    renderWithProviders(<SlaBadge sla={inTime} />)
+    renderWithProviders(<SlaBadge sla={{ ...sla(30), respondedAt: null }} />)
+    const late = { ...sla(30), respondedAt: new Date(Date.parse(sla(30).responseDeadline) + 37 * 60_000).toISOString() }
+    renderWithProviders(<SlaBadge sla={late} compact />)
+    expect(screen.queryByText(/response late/)).toBeNull()
+  })
+})

@@ -52,7 +52,7 @@ export const GET_MY_TICKET = gql`
 /** Le categorie del ticket: il vocabolario del cliente con le sue etichette (giro del 14 set 2026). */
 export const GET_TICKET_CATEGORIES = gql`
   query TicketCategories($language: String) {
-    ticketCategories(language: $language) { name label }
+    ticketCategories(language: $language) { name label icon }
   }
 `
 
@@ -88,8 +88,15 @@ export const GET_KB_ARTICLE_BY_SLUG = gql`
   query KBArticleBySlug($slug: String!) {
     kbArticleBySlug(slug: $slug) {
       id title slug body category tags views
-      helpfulCount notHelpfulCount authorName createdAt publishedAt
+      helpfulCount notHelpfulCount myVote authorName createdAt publishedAt
     }
+  }
+`
+
+/** Related = sharing tags, the closest first (tour of 24 Sep 2026, G7). */
+export const GET_KB_RELATED = gql`
+  query KBRelated($id: ID!) {
+    kbRelatedArticles(id: $id, limit: 3) { id title slug category views }
   }
 `
 

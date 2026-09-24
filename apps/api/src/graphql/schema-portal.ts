@@ -119,6 +119,8 @@ export function portalSDL(): string {
   type TicketCategory {
     name:  String!
     label: String!
+    """The icon chosen in the Dictionary (G40), a name of the product's list; null = none chosen."""
+    icon:  String
   }
 
   """Una severità offerta nel portale, già nella lingua chiesta."""

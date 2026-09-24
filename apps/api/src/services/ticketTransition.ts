@@ -44,6 +44,7 @@ import { logger } from '../lib/logger.js'
 import { preflightStepMetadata } from '../lib/stepMetadataPreflight.js'
 import { validateStepRequirements } from '../lib/validateRequiredFields.js'
 import { requestApprovalWouldBeSkipped } from '../lib/requestApproval.js'
+import { isOwnRequestApproval } from '../lib/ownApproval.js'
 import { APPROVAL_GATED_TICKETS, ticketApprovalRefusal } from '../lib/ticketApprovalGate.js'
 import { applyOnEnterFields } from '../lib/onEnterFields.js'
 import { TransitionRefusedError } from '../lib/transitionRefused.js'
@@ -100,6 +101,7 @@ export type TransitionGuard =
   | 'type_permission'   // the person may not write this type of ticket
   | 'change_window'     // the change would enter the release window, or leave the assessment, without what it needs
   | 'request_approval'  // the request would skip the approval it needs
+  | 'own_approval'      // the person would approve the request they asked for themselves
   | 'named_approval'    // the approver named by the step has not decided, or rejected
   | 'required_fields'   // the step's required fields are empty
   | 'step_metadata'     // the step's configuration is not valid JSON
@@ -276,6 +278,13 @@ async function guardRefusal(session: Session, req: TicketTransitionRequest, t: T
       return { guard: 'request_approval', final: true, code: 'CONFLICT',
         message: 'This request needs an approval: send it to approval first',
         i18n: { key: 'errors.request.approvalRequired' } }
+    }
+    // Nobody approves what they asked for, not even with approval.override
+    // (24 Sep 2026): another member of the approving group decides.
+    if (actor.kind !== 'system' && await isOwnRequestApproval(session, req.tenantId, req.instanceId, req.toStep, actor.userId)) {
+      return { guard: 'own_approval', final: true, code: 'FORBIDDEN',
+        message: 'You asked for this request: another member of the approving group approves it',
+        i18n: { key: 'errors.approval.ownRequest' } }
     }
   }
 
@@ -470,6 +479,8 @@ async function refusalReason(tenantId: string, refusal: TransitionRefusal): Prom
       return systemText(tenantId, 'workflow.refusedBy.workflow', { detail: refusal.message })
     case 'request_approval':
       return systemText(tenantId, 'workflow.refusedBy.request_approval')
+    case 'own_approval':
+      return systemText(tenantId, 'workflow.refusedBy.own_approval')
     case 'step_metadata':
       return systemText(tenantId, 'workflow.refusedBy.step_metadata')
     case 'type_permission':

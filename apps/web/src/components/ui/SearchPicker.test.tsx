@@ -6,7 +6,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { useState } from 'react'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { SearchPicker, matchOptions, type PickerOption } from './SearchPicker'
+import { SearchPicker, matchOptions, type PickerOption, listPlacement } from './SearchPicker'
 
 const TEAMS: PickerOption[] = [
   { id: 't1', label: 'SUP_Network EMEA' },
@@ -146,5 +146,18 @@ describe('SearchPicker', () => {
     render(<SearchPicker label="Team" options={TEAMS} value={null} onChange={vi.fn()} disabled />)
     await user.click(box())
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+})
+
+/** Tour of 24 Sep 2026 (G36): the list of teams ran under the bottom edge of a dialog. */
+describe('where the list opens', () => {
+  it('below when it fits, above when there is more room above, never taller than the room', () => {
+    // 600 px of room below: below, full height.
+    expect(listPlacement({ top: 100, bottom: 130 }, { top: 0, bottom: 730 })).toEqual({ up: false, maxHeight: 280 })
+    // Near the bottom of a dialog: 60 px below, 400 above → above, full height.
+    expect(listPlacement({ top: 470, bottom: 500 }, { top: 60, bottom: 568 })).toEqual({ up: true, maxHeight: 280 })
+    // Little room either way: the larger side, with its height, never below 120.
+    expect(listPlacement({ top: 200, bottom: 230 }, { top: 60, bottom: 400 })).toEqual({ up: false, maxHeight: 162 })
+    expect(listPlacement({ top: 90, bottom: 120 }, { top: 60, bottom: 180 })).toEqual({ up: false, maxHeight: 120 })
   })
 })

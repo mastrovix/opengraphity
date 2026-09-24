@@ -358,6 +358,9 @@ export function ChangeDetailPage() {
                           </button>
                         </>
                       )}
+                      {a.ownChange && (
+                        <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>{t('pages.changeDetail.ownChangeNote')}</span>
+                      )}
                     </span>
                   </div>
                 ))}

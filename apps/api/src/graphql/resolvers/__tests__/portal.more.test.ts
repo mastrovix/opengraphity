@@ -298,7 +298,7 @@ describe('createTicket', () => {
 })
 
 describe('addTicketComment', () => {
-  const owned = (over: Row = {}) => [['RETURN e.created_by AS createdBy, labels(e)', [{ createdBy: 'user-1', labels: ['Incident'], ...over }]]] as Array<[string, Row[]]>
+  const owned = (over: Row = {}) => [['RETURN e.created_by AS createdBy, e.origin AS origin', [{ createdBy: 'user-1', labels: ['Incident'], ...over }]]] as Array<[string, Row[]]>
 
   it('a ticket that is not in the tenant is FORBIDDEN', async () => {
     expect(await code(() => M.addTicketComment(null, { ticketId: 'x', body: 'hi' }, ctx))).toBe('FORBIDDEN')
@@ -494,5 +494,19 @@ describe('myTicket — canConfirmResolution tells the portal whether to offer th
     h.routes = detail('in_progress')
     expect(await Q.myTicket(null, { id: 'inc-1' }, ctx)).toMatchObject({ canConfirmResolution: false })
     expect(wf.getAvailableTransitions).not.toHaveBeenCalled()
+  })
+})
+
+/** Tour of 24 Sep 2026: whose a ticket is on the portal (G28, G39). */
+describe('isPortalTicketOf', () => {
+  it('a request is of whoever opened it and of the one it is for; an incident from an alarm is nobody\'s', async () => {
+    const { isPortalTicketOf } = await import('../portal.js')
+    expect(isPortalTicketOf({ kind: 'service_request', createdBy: 'desk-1', requesterId: 'colleague-2' }, 'colleague-2')).toBe(true)
+    expect(isPortalTicketOf({ kind: 'service_request', createdBy: 'desk-1', requesterId: 'colleague-2' }, 'desk-1')).toBe(true)
+    expect(isPortalTicketOf({ kind: 'service_request', createdBy: 'desk-1', requesterId: 'colleague-2' }, 'someone-3')).toBe(false)
+    expect(isPortalTicketOf({ kind: 'incident', createdBy: 'op-1', origin: 'event' }, 'op-1')).toBe(false)
+    expect(isPortalTicketOf({ kind: 'incident', createdBy: 'op-1', origin: null }, 'op-1')).toBe(true)
+    // The requester relation is a request's: on an incident it grants nothing.
+    expect(isPortalTicketOf({ kind: 'incident', createdBy: 'op-1', requesterId: 'x-9' }, 'x-9')).toBe(false)
   })
 })

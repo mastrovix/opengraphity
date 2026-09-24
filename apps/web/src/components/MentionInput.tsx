@@ -5,6 +5,38 @@ import { alpha, colors, palette } from '@/lib/tokens'
 
 interface UserSuggestion { id: string; name: string; email: string }
 
+/**
+ * WHAT THE FIELD SHOWS, WHAT IT KEEPS (tour of 24 Sep 2026, G15). The value
+ * carries a mention as `@[Name](id)` — the id is what notifies the person —
+ * and the field showed exactly that, the uuid included, until the comment was
+ * sent. Now the field shows `@Name` and the value keeps the token: a mention
+ * the writer edits into something else becomes plain text.
+ */
+const MENTION_TOKEN = /@\[([^\]]+)\]\(([^)\s]+)\)/g
+
+/** The mentions a value carries, by the name the field shows. */
+export function mentionsOf(value: string): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const m of value.matchAll(MENTION_TOKEN)) out.set(m[1]!, m[2]!)
+  return out
+}
+
+/** The text the field shows: `@Name` for each mention token. */
+export function mentionDisplay(value: string): string {
+  return value.replace(MENTION_TOKEN, '@$1')
+}
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/** Back from what the field shows to the value: each `@Name` of a known mention becomes its token again. */
+export function mentionMarkup(display: string, mentions: ReadonlyMap<string, string>): string {
+  if (mentions.size === 0) return display
+  // Longest names first: «@Anna Maria» before «@Anna».
+  const names = [...mentions.keys()].sort((a, b) => b.length - a.length).map(escapeRegExp)
+  const pattern = new RegExp(`@(${names.join('|')})(?![\\p{L}\\p{N}_])`, 'gu')
+  return display.replace(pattern, (_, name: string) => `@[${name}](${mentions.get(name)!})`)
+}
+
 interface Props {
   value: string
   onChange: (value: string) => void
@@ -34,6 +66,7 @@ export function MentionInput({ value, onChange, placeholder, label, onSubmit, ro
   })
 
   const users: UserSuggestion[] = data?.searchUsers ?? []
+  const display = mentionDisplay(value)
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -49,22 +82,24 @@ export function MentionInput({ value, onChange, placeholder, label, onSubmit, ro
     return { top: ta.offsetHeight + 2, left: 0 }
   }, [])
 
+  // Positions are in the text the field shows.
   const insertMention = useCallback((user: { id: string; name: string }) => {
-    const before = value.slice(0, mentionState.startPos)
-    const after = value.slice(textareaRef.current?.selectionStart ?? mentionState.startPos + mentionState.search.length + 1)
-    const mention = `@[${user.name}](${user.id}) `
-    onChange(before + mention + after)
+    const before = display.slice(0, mentionState.startPos)
+    const after = display.slice(textareaRef.current?.selectionStart ?? mentionState.startPos + mentionState.search.length + 1)
+    const mention = `@${user.name} `
+    const mentions = new Map(mentionsOf(value)).set(user.name, user.id)
+    onChange(mentionMarkup(before + mention + after, mentions))
     setMentionState(s => ({ ...s, active: false, search: '' }))
     setTimeout(() => {
       const pos = before.length + mention.length
       textareaRef.current?.setSelectionRange(pos, pos)
       textareaRef.current?.focus()
     }, 0)
-  }, [value, onChange, mentionState.startPos, mentionState.search])
+  }, [value, display, onChange, mentionState.startPos, mentionState.search])
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const v = e.target.value
-    onChange(v)
+    onChange(mentionMarkup(v, mentionsOf(value)))
     const pos = e.target.selectionStart
     const textBefore = v.slice(0, pos)
     const atIdx = textBefore.lastIndexOf('@')
@@ -92,7 +127,7 @@ export function MentionInput({ value, onChange, placeholder, label, onSubmit, ro
     <div style={{ position: 'relative', ...style }}>
       <textarea
         ref={textareaRef}
-        value={value}
+        value={display}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}

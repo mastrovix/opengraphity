@@ -9,7 +9,7 @@
  * l'unico contro cui la validazione dei nomi ha senso.
  */
 import { describe, it, expect } from 'vitest'
-import { generateSDL, metamodelSDL, generateITILEnumsSDL, METAMODEL_MUTATION_FIELDS } from '../generator.js'
+import { generateSDL, metamodelSDL, generateITILEnumsSDL, METAMODEL_MUTATION_FIELDS, parseStatusesExcluded } from '../generator.js'
 import { MetamodelNameError } from '../nameValidation.js'
 import type { CITypeWithDefinitions, CIFieldDefinition } from '../types.js'
 
@@ -174,5 +174,22 @@ describe('un fieldType sconosciuto si ferma qui', () => {
     expect(sdl).toContain('c: String')
     expect(sdl).toContain('d: String')
     expect(sdl).toContain('e: String')
+  })
+})
+
+/** The statuses a CI type leaves out (tour of 24 Sep 2026, G36): a certificate is not «in maintenance». */
+describe('parseStatusesExcluded', () => {
+  it('a list, or its JSON as Neo4j keeps it; nothing is no status left out', () => {
+    expect(parseStatusesExcluded(['maintenance'], 'certificate')).toEqual(['maintenance'])
+    expect(parseStatusesExcluded('["maintenance","retired"]', 'certificate')).toEqual(['maintenance', 'retired'])
+    expect(parseStatusesExcluded(null, 'server')).toEqual([])
+    expect(parseStatusesExcluded(undefined, 'server')).toEqual([])
+  })
+
+  it('anything else stops, naming the type: never a guess', () => {
+    expect(() => parseStatusesExcluded('{"a":1}', 'certificate')).toThrow('status_excluded for type "certificate" is not a list of names')
+    expect(() => parseStatusesExcluded([1, 'x'], 'certificate')).toThrow(/certificate/)
+    expect(() => parseStatusesExcluded(42, 'certificate')).toThrow(/certificate/)
+    expect(() => parseStatusesExcluded('not json', 'certificate')).toThrow()
   })
 })

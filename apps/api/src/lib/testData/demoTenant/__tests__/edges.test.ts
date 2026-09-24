@@ -200,9 +200,9 @@ describe('the catalog the owner asked for', () => {
     expect(shared.filter((f) => f.key === 'office_site').length).toBeGreaterThanOrEqual(10)
   })
 
-  it('the requests list shows four columns, all of them shared fields (D26: it had forty-six)', () => {
+  it('the requests list shows three columns, all of them shared fields (D26: it had forty-six; G27: «Full name» was empty on almost every row)', () => {
     const inList = new Set(DEMO_CATALOG.flatMap((i) => i.sections.flatMap((s) => s.fields.filter((f) => f.inList).map((f) => fieldName(i, f)))))
-    expect([...inList].sort()).toEqual(['device_model', 'full_name', 'office_site', 'software'])
+    expect([...inList].sort()).toEqual(['device_model', 'office_site', 'software'])
   })
 
   it('every value of every vocabulary reads in English and Italian (D54), and a model answers only with values of its vocabulary', () => {

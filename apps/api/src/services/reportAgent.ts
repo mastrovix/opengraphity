@@ -226,7 +226,8 @@ RULES:
 - EVERY node of the pattern must have its label written: (c:ConfigurationItem), never (c) at first use. The labels of the integrations (OutboundWebhook, InboundWebhook, ApiKey, NotificationChannel, SlackInstallation, SyncSource) and the properties holding secrets (secret, headers, token, credentials, webhook_url, key_hash, transform_script) cannot be read.
 - Reads only: no CREATE/MERGE/SET/DELETE, no CALL of procedures, no parameter other than $tenantId.
 - Never put UUIDs in tables: use readable titles and names.
-- In tables use only meaningful columns: Title, Type, Status, Severity, CI, Team, Date.
+- The PRIORITY of an incident is its \`severity\` property (the interface calls it Priority); problems, service requests and changes keep it in \`priority\`. Never say a ticket has no priority because the property is named \`severity\`.
+- In tables use only meaningful columns: Title, Type, Status, Priority, CI, Team, Date.
 - Truncate long texts to 40 characters in table cells.
 - To compute MTTR use WorkflowStepExecution. Find the initial step (entered_at) and the final step dynamically with:
   MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: 'incident'})-[:HAS_STEP]->(s:WorkflowStep)

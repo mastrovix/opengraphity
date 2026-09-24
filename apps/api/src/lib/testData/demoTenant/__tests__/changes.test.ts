@@ -313,7 +313,7 @@ describe('conflicts the CAB sees', () => {
     const byLabel = { ...w.cmdb.byLabel }
     for (const label of ['Server', 'Application', 'Database', 'DatabaseInstance', 'Certificate'] as const) byLabel[label] = [veteran(label)]
     const estate = worldWith({ cmdb: { ...w.cmdb, byLabel } })
-    const plans = planChangeSkeletons(new Rng('estate-plan'), estate, { count: 600, linked: [] })
+    const plans = planChangeSkeletons(new Rng('estate-plan-2'), estate, { count: 600, linked: [] })
     const groups = groupsOf(plans)
     expect(groups.length).toBeGreaterThanOrEqual(2)
     // Some groups are of changes already on the same first CI: nothing is added to them.
@@ -354,6 +354,31 @@ describe('a change stays in the step it was planned to stop at', () => {
       expect(finishers.some((t) => t.props['status'] !== 'completed')).toBe(true)
       expect(sim.trail.lastEventMs).toBeLessThanOrEqual(NOW)
     }
+  })
+
+  it('G30: a task someone started is held by who started it — the first to answer, who saved the plan — and one nobody touched is held by nobody', () => {
+    let started = 0
+    let untouched = 0
+    for (let k = 0; k < 30; k++) {
+      const sim = simulate({ ...base, ...ahead, target: 'assessment', conflictGroup: k % 2 ? 7 : null }, `holder/${String(k)}`)
+      for (const t of sim.tasks.filter((x) => x.label === 'AssessmentTask' || x.label === 'DeployPlanTask')) {
+        if (t.props['status'] === 'pending') {
+          untouched++
+          expect(t.assigneeId).toBeNull()
+          continue
+        }
+        started++
+        const id = t.props['id'] as string
+        const starter = t.label === 'AssessmentTask'
+          ? sim.responses.filter((r) => r.taskId === id).sort((a, b) => a.answeredAtMs - b.answeredAtMs)[0]!.userId
+          : sim.trail.audits.find((a) => a.action === 'mutation.saveDeployPlan' && a.entity_id === id)!.user_id
+        expect(t.assigneeId).toBe(starter)
+        // A completed task keeps its holder, who is also who completed it.
+        if (t.props['status'] === 'completed') expect(t.doneBy?.userId).toBe(starter)
+      }
+    }
+    expect(started).toBeGreaterThan(0)
+    expect(untouched).toBeGreaterThan(0)
   })
 
   it('a change in assessment has its deploy plan saved when it is in a conflict (the CAB sees its window), and only sometimes otherwise', () => {

@@ -47,6 +47,7 @@ vi.mock('../../../services/incidentService.js', () => ({
   createIncident: vi.fn(), updateIncident: vi.fn(), resolveIncident: vi.fn(), assignIncidentToTeam: vi.fn(), assignIncidentToUser: vi.fn(),
 }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('../../../lib/domainValue.js', () => ({ resolveDomainValue: vi.fn(async () => 'critical') }))
 vi.mock('../../../lib/ciLabelsForTenant.js', () => ({ ciLabelPredicateForTenant: vi.fn().mockResolvedValue('ci:ConfigurationItem') }))
 vi.mock('../../../lib/ticketCIExclusions.js', () => ({ assertCIsLinkable: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/slaAcknowledgement.js', () => ({ assertMayAcknowledgeNoSla: vi.fn() }))
@@ -413,13 +414,18 @@ describe('setIncidentMajor', () => {
 
   it('incident not in the tenant → NotFound, no event', async () => {
     vi.mocked(runQuery).mockResolvedValueOnce([] as never)
+    await expect(M.setIncidentMajor(null, { id: 'x', major: false }, ctx)).rejects.toMatchObject({ extensions: { code: 'NOT_FOUND' } })
+    expect(vi.mocked(runQuery).mock.calls[0]![2]).toMatchObject({ id: 'x', tenantId: 't1', major: false })
+    // Declaring one stops at the priority, before the flag.
+    vi.mocked(runQueryOne).mockResolvedValueOnce(null as never)
     await expect(M.setIncidentMajor(null, { id: 'x', major: true }, ctx)).rejects.toMatchObject({ extensions: { code: 'NOT_FOUND' } })
-    expect(vi.mocked(runQuery).mock.calls[0]![2]).toMatchObject({ id: 'x', tenantId: 't1', major: true })
+    expect(runQuery).toHaveBeenCalledTimes(1)
     expect(audit).not.toHaveBeenCalled()
   })
 
   it('an incident without a number publishes number:null', async () => {
     const { publishEvent } = await import('../../../lib/publishEvent.js')
+    vi.mocked(runQueryOne).mockResolvedValueOnce({ severity: 'high', major: false } as never)
     vi.mocked(runQuery).mockResolvedValueOnce([{ props: { id: 'i1', title: 'x', severity: 'high', status: 'new' }, was: false }] as never)
     await M.setIncidentMajor(null, { id: 'i1', major: true }, ctx)
     expect(publishEvent).toHaveBeenCalledWith('incident.major_declared', 't1', 'u1', expect.objectContaining({ number: null }), expect.any(String))

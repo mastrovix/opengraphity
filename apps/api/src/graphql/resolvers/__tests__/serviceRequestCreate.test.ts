@@ -159,6 +159,12 @@ describe('createServiceRequest — priorità dalla voce del catalogo', () => {
     expect(createRequest).not.toHaveBeenCalled()
   })
 
+  it('from the portal a request is for oneself: «for someone else» is the service desk\'s (G28)', async () => {
+    const err = await failure(createServiceRequest(undefined, { input: { title: 'Laptop', catalogItemId: 'cat-1', requestedForId: 'u-other' } }, endUser))
+    expect(err.extensions['i18n']).toMatchObject({ key: 'errors.serviceRequest.requestedForPortal' })
+    expect(createRequest).not.toHaveBeenCalled()
+  })
+
   // Review of 23 Sep 2026: without an item the portal user chose the priority and skipped the approval.
   it('from the portal a request without a catalog item is refused, before any lookup', async () => {
     const err = await failure(createServiceRequest(undefined, { input: { title: 'Laptop', priority: 'critical' } }, endUser))

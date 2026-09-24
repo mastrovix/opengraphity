@@ -337,7 +337,7 @@ export function CIDetailPage() {
   const [removeRelMutation] = useMutation(REMOVE_CI_RELATIONSHIP)
   const [updateCIFields] = useMutation(UPDATE_CI)
 
-  const [searchCIs, { data: ciSearchData }] = useLazyQuery<{
+  const [searchCIs, { data: ciSearchData, loading: ciSearching }] = useLazyQuery<{
     allCIs: { items: { id: string; name: string; type: string; status: string | null; environment: string | null }[] }
   }>(GET_ALL_CIS)
 
@@ -625,7 +625,8 @@ export function CIDetailPage() {
                   {/* Editable base fields */}
                   <EditField label={t('pages.cmdb.name')} value={editDraft['name'] ?? ''} onChange={v => setEditDraft(d => ({ ...d, name: v }))} />
                   <EditField label={t('pages.cmdb.status')} value={editDraft['status'] ?? ''}
-                    enumValues={ciType.fields.find(f => f.name === 'status')?.enumValues}
+                    // Only the statuses this type offers (G35); the current one stays, to be seen.
+                    enumValues={ciType.fields.find(f => f.name === 'status')?.enumValues?.filter(v => !(ciType.statusesExcluded ?? []).includes(v) || v === ci.status)}
                     enumTypeName={ciType.fields.find(f => f.name === 'status')?.enumTypeName}
                     onChange={v => setEditDraft(d => ({ ...d, status: v }))} />
                   <EditField label={t('pages.cmdb.environment')} value={editDraft['environment'] ?? ''}
@@ -912,7 +913,11 @@ export function CIDetailPage() {
                           <button type="button" aria-label={t('common.delete')} onClick={() => setAddRelForm(prev => ({ ...prev, targetCI: null, search: '' }))} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}><X size={14} color={colors.slateLight} /></button>
                         </div>
                       )}
-                      {ciSearchResults.length > 0 && !addRelForm.targetCI && (
+                      {/* The search says it is running (G33): the list was a blank box for seconds. */}
+                      {ciSearching && addRelForm.search.length >= 2 && !addRelForm.targetCI && (
+                        <div role="status" style={{ marginTop: 4, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{t('common.searching')}</div>
+                      )}
+                      {!ciSearching && ciSearchResults.length > 0 && !addRelForm.targetCI && (
                         <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: colors.white, border: `1px solid ${colors.border}`, borderRadius: 6, maxHeight: 180, overflowY: 'auto', zIndex: 10, boxShadow: `0 4px 12px ${alpha.black08}`, marginTop: 2 }}>
                           {ciSearchResults.map(c => (
                             <button

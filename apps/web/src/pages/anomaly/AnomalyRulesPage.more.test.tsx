@@ -52,6 +52,27 @@ async function openCard(user: ReturnType<typeof renderWithProviders>['user'], ti
 
 const saveButton = () => screen.getByRole('button', { name: 'Save' })
 
+describe('AnomalyRulesPage: the severity outside production (G32, 24 Sep 2026)', () => {
+  it('a rule that weighs the environment offers it, and saves the choice; «same severity» saves none', async () => {
+    serve(rule('spof', { relations: true, thresholdMin: 1, thresholdMax: 1000, environment: true }, { threshold: 5, relations: ['DEPENDS_ON'], severity: 'critical', nonProductionSeverity: 'medium' }))
+    apolloFinto.esiti['UpdateAnomalyRule'] = { data: { updateAnomalyRule: rule('spof', { environment: true }) } }
+    const { user } = renderWithProviders(<AnomalyRulesPage />)
+    await openCard(user, 'Single Point of Failure')
+    const outside = screen.getByLabelText('Outside production')
+    expect(outside).toHaveValue('medium')
+    await user.selectOptions(outside, '')
+    await user.click(saveButton())
+    await waitFor(() => expect(apolloFinto.chiamata('UpdateAnomalyRule')).toMatchObject({ ruleKey: 'spof', settings: { severity: 'critical', nonProductionSeverity: null } }))
+  })
+
+  it('a rule that does not weigh it shows nothing of the kind', async () => {
+    serve(rule('orphan_ci', {}))
+    const { user } = renderWithProviders(<AnomalyRulesPage />)
+    await openCard(user, 'Orphan CI')
+    expect(screen.queryByLabelText('Outside production')).toBeNull()
+  })
+})
+
 beforeEach(() => {
   apolloFinto.reset()
   toast.success.mockReset()

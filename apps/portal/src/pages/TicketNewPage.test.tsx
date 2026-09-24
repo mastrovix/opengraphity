@@ -47,7 +47,12 @@ function createTicketMock(vars: Record<string, unknown>, seen?: unknown[]): GqlM
 
 const categoriesMock: GqlMock = {
   request: { query: GET_TICKET_CATEGORIES, variables: () => true },
-  result: { data: { ticketCategories: ['hardware', 'software', 'access', 'network', 'security', 'other'].map((name) => ({ __typename: 'TicketCategory', name, label: name[0]!.toUpperCase() + name.slice(1) })) } },
+  result: { data: { ticketCategories: [
+    ...['hardware', 'software', 'access', 'network', 'security', 'other'].map((name) => ({ __typename: 'TicketCategory', name, label: name[0]!.toUpperCase() + name.slice(1), icon: null })),
+    // A customer's own category with the icon chosen in the Dictionary (G40), and one without.
+    { __typename: 'TicketCategory', name: 'people', label: 'People', icon: 'users' },
+    { __typename: 'TicketCategory', name: 'workplace', label: 'Workplace', icon: null },
+  ] } },
   maxUsageCount: Number.POSITIVE_INFINITY,
 }
 
@@ -75,6 +80,16 @@ async function fillForm(user: ReturnType<typeof renderWithProviders>['user'], op
 }
 
 beforeEach(() => { vi.mocked(uploadAttachment).mockClear() })
+
+describe('TicketNewPage — the icon of a category (G40)', () => {
+  it('the icon chosen in the Dictionary; the shipped one for a shipped value; the generic tag otherwise', async () => {
+    renderWithProviders(<TicketNewPage />, { ...ROUTE, mocks: [...rulesMocks({ visibility: [], requirement: [] }), kbMock, categoriesMock, severityMock] })
+    const svgOf = async (name: string) => (await screen.findByRole('button', { name })).querySelector('svg')!.getAttribute('class')
+    expect(await svgOf('People')).toMatch(/lucide-users/)
+    expect(await svgOf('Hardware')).toMatch(/lucide-monitor/)
+    expect(await svgOf('Workplace')).toMatch(/lucide-tag/)
+  })
+})
 
 describe('TicketNewPage', () => {
   it('chiede le regole campo per "incident" (le stesse della CreateIncidentPage web)', async () => {

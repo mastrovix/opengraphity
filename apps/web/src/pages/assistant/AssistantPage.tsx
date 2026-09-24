@@ -7,6 +7,8 @@
 import { useAIFeature } from '@/hooks/useAIFeature'
 import { AIDisabledNotice } from '@/components/ai/AIDisabledNotice'
 import { useState, useRef, useEffect } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { useTranslation } from 'react-i18next'
 import { Sparkles, Send, Search, Trash2 } from 'lucide-react'
 import { apiUrl, authHeader } from '@/lib/apiBase'
@@ -201,13 +203,16 @@ export function AssistantPage() {
                 borderRadius: 12,
                 fontSize: 'var(--font-size-body)',
                 lineHeight: 1.5,
-                whiteSpace: 'pre-wrap',
+                // The person's words as typed; the model's answer is markdown and is drawn as such (G11).
+                whiteSpace: m.role === 'user' || m.error ? 'pre-wrap' : 'normal',
                 background: m.error ? 'var(--color-danger-bg)' : m.role === 'user' ? 'var(--color-brand)' : colors.white,
                 color: m.error ? 'var(--color-trigger-sla-breach)' : m.role === 'user' ? colors.white : 'var(--color-slate-dark)',
                 border: m.role === 'assistant' ? `1px solid ${m.error ? palette.danger.border : 'var(--border)'}` : 'none',
               }}
             >
-              {m.content}
+              {m.role === 'assistant' && !m.error
+                ? <div className="og-markdown"><ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown></div>
+                : m.content}
             </div>
           ))}
 
@@ -222,8 +227,8 @@ export function AssistantPage() {
                   ))}
                 </div>
               )}
-              <div style={{ padding: '10px 14px', borderRadius: 12, background: colors.white, border: '1px solid var(--border)', fontSize: 'var(--font-size-body)', lineHeight: 1.5, whiteSpace: 'pre-wrap', color: 'var(--color-slate-dark)' }}>
-                {streamText || t('pages.assistant.thinking')}
+              <div className="og-markdown" style={{ padding: '10px 14px', borderRadius: 12, background: colors.white, border: '1px solid var(--border)', fontSize: 'var(--font-size-body)', lineHeight: 1.5, color: 'var(--color-slate-dark)' }}>
+                {streamText ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamText}</ReactMarkdown> : t('pages.assistant.thinking')}
               </div>
             </div>
           )}

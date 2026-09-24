@@ -23,6 +23,7 @@ function resolved(key: AnomalyRuleKey, over: Partial<ResolvedRuleSettings> = {})
     relations: f.relations.length === 0 && key === 'isolated_cluster' ? TENANT_RELATIONS : f.relations,
     ciLabels: over.ciLabels ?? f.ciTypes.map((t) => LABELS[t]!),
     forbiddenLabels: over.forbiddenLabels ?? f.forbidden.map((x) => ({ fromLabel: LABELS[x.fromType]!, relation: x.relation, toLabel: LABELS[x.toType]! })),
+    productionEnvironments: over.productionEnvironments ?? ['production'],
   }
 }
 const factory = (key: AnomalyRuleKey) => buildAnomalyRule(key, resolved(key))
@@ -31,13 +32,16 @@ describe('buildAnomalyRule', () => {
   it('nessuna soglia, severità o gravità scritta nella Cypher: viaggiano come parametri', () => {
     for (const key of ANOMALY_RULE_KEYS) {
       const rule = factory(key)
-      expect(rule.cypher, key).toMatch(/\$severity\s+AS severity/)
+      expect(rule.cypher, key).toMatch(key === 'spof' ? /THEN \$severity ELSE \$nonProductionSeverity END AS severity/ : /\$severity\s+AS severity/)
       expect(rule.cypher, key).not.toMatch(/'(low|medium|high|critical)'\s+AS severity/)
       expect(rule.cypher, key).not.toMatch(/>=\s*5\b|<=\s*5\b/)
       expect(rule.cypher, key).not.toMatch(/inc\.severity = 'critical'/)
       expect(rule.params['severity'], key).toBe(FACTORY_ANOMALY_RULES[key].severity)
     }
     expect(factory('spof').params['threshold']).toBe(5)
+    // G32: outside the tenant's production environments a SPOF is medium by default.
+    expect(factory('spof').params).toMatchObject({ nonProductionSeverity: 'medium', productionEnvironments: ['production'] })
+    expect(factory('orphan_ci').params['nonProductionSeverity']).toBe('medium')
     expect(factory('risk_concentration').params['incidentSeverities']).toEqual(['critical'])
   })
 

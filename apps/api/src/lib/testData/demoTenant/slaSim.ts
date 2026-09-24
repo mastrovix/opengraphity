@@ -95,6 +95,7 @@ export interface SlaStatusRow {
   response_deadline: string
   resolve_deadline: string
   response_met: boolean
+  response_met_at: string | null
   resolve_met: boolean
   breached: boolean
   breached_at: string | null
@@ -205,6 +206,8 @@ export function simulateSla(
     response_deadline: new Date(responseDeadline).toISOString(),
     resolve_deadline: new Date(resolveDeadline).toISOString(),
     response_met: respondedAtMs !== null,
+    // The instant of the response, as `markResponseMet` writes it (G14).
+    response_met_at: respondedAtMs === null ? null : new Date(respondedAtMs).toISOString(),
     resolve_met: resolvedAt !== null && met,
     breached,
     // When the breach happened: the deadline the job fired at; a late conclusion

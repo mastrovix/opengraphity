@@ -46,6 +46,10 @@ vi.mock('@opengraphity/notifications', () => ({ sseManager: { sendToUser: (...a:
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/systemText.js', () => ({ systemText: vi.fn(async (_t: string, k: string) => `testo:${k}`) }))
 vi.mock('../pendingTicketApprovals.js', () => ({ pendingTicketApprovals: vi.fn() }))
+// Who asked for it (lib/ownApproval.ts): here only the person who asked for the approval.
+vi.mock('../../../lib/ownApproval.js', () => ({
+  askersOf: vi.fn(async (_s: unknown, _t: string, _e: string, _i: string, by?: string | null) => new Set(by ? [by] : [])),
+}))
 
 const getWorkflowSteps = vi.fn()
 vi.mock('../../../lib/workflowHelpers.js', async (importOriginal) => ({
@@ -113,6 +117,20 @@ describe('approveRequest — le quattro porte', () => {
   it('chi non è fra i firmatari non firma', async () => {
     statoDiPartenza({ approvers: '["u2"]' })
     expect((await codice(() => approveRequest(null, { id: 'a1' }, ctx('u1')))).code).toBe('FORBIDDEN')
+  })
+
+  it('chi ha chiesto non firma, neanche se è fra i firmatari; per un articolo lo dice come autore (24 set 2026)', async () => {
+    const { askersOf } = await import('../../../lib/ownApproval.js')
+    statoDiPartenza({ requestedBy: 'u1' })
+    const r = await codice(() => approveRequest(null, { id: 'a1' }, ctx('u1')))
+    expect(r).toMatchObject({ code: 'FORBIDDEN', message: expect.stringContaining('You asked for this') })
+    expect(askersOf).toHaveBeenLastCalledWith(expect.anything(), 't1', 'change', 'c1', 'u1')
+    vi.mocked(askersOf).mockResolvedValueOnce(new Set(['u9', 'u1']))
+    statoDiPartenza({ entityType: 'kb_article', entityId: 'kb1' })
+    try { await approveRequest(null, { id: 'a1' }, ctx('u1')); expect.unreachable() } catch (e) {
+      expect((e as GraphQLError).extensions['i18n']).toEqual({ key: 'errors.approval.ownArticle' })
+    }
+    expect(write).not.toHaveBeenCalled()
   })
 
   it('e non si firma due volte', async () => {

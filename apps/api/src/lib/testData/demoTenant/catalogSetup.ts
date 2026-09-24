@@ -155,7 +155,7 @@ async function customizeCategories(ctx: GraphQLContext): Promise<string> {
   await updateEnumType(null, { id: copy.id, input: { values, valueLabels: [
     ...Object.entries(kept).flatMap(([value, per]) => LINGUE.flatMap((language) => (per[language] ? [{ value, language, label: per[language] }] : []))),
     ...CATALOG_CATEGORIES.flatMap(([value, en, it]) => [{ value, language: 'en', label: en }, { value, language: 'it', label: it }]),
-  ] } }, ctx)
+  ], valueIcons: CATALOG_CATEGORIES.map(([value, , , icon]) => ({ value, icon })) } }, ctx)
   return copy.id
 }
 

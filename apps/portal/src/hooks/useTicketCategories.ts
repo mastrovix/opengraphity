@@ -8,7 +8,7 @@ import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { GET_TICKET_CATEGORIES } from '@/graphql/queries'
 
-export interface TicketCategory { name: string; label: string }
+export interface TicketCategory { name: string; label: string; /** The icon chosen in the Dictionary (G40), or null. */ icon?: string | null }
 
 export function useTicketCategories() {
   const { i18n } = useTranslation()

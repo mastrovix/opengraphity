@@ -166,7 +166,7 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
 
   // ── Knowledge base ─────────────────────────────────────────────────────────
   { anyOf: ['kb.read'], query: ['kbArticleVersions'] },
-  { anyOf: ['kb.read', 'portal.read'], query: ['kbArticles', 'kbArticle', 'kbArticleBySlug', 'kbCategories'] },
+  { anyOf: ['kb.read', 'portal.read'], query: ['kbArticles', 'kbArticle', 'kbArticleBySlug', 'kbCategories', 'kbRelatedArticles'] },
   { anyOf: ['kb.write'], mutation: ['createKBArticle', 'updateKBArticle', 'deleteKBArticle', 'restoreKBArticleVersion'] },
   { anyOf: ['kb.rate'], mutation: ['rateKBArticle'] },
 

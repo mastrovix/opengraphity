@@ -5,7 +5,7 @@ import { workflowEngine } from '@opengraphity/workflow'
 import type { GraphQLContext } from '../../context.js'
 import { audit } from '../../lib/audit.js'
 import { hasPermission } from '../../lib/permissions.js'
-import { kbArticlePublishedCypher } from '../../lib/kbPublished.js'
+import { KB_DEFAULT_AUDIENCE, assertKbAudience, kbArticlePortalCypher, kbArticlePublishedCypher } from '../../lib/kbPublished.js'
 import { logger } from '../../lib/logger.js'
 import { enqueueEmbedding } from '../../jobs/embeddingWorker.js'
 import { normalizeKbTags } from '../../services/embeddings.js'
@@ -35,6 +35,7 @@ interface KBArticle {
   currentStep:        string | null
   version:            number
   lastEditedByName:   string | null
+  audience:           string
 }
 
 interface KBCategory {
@@ -76,6 +77,7 @@ export function mapArticle(r: { get: (k: string) => unknown }): KBArticle {
     currentStep:        (r.get('currentStep')        ?? null) as string | null,
     version:            toNumber(r.get('version')) || 1,
     lastEditedByName:   (r.get('lastEditedByName')   ?? null) as string | null,
+    audience:           r.get('audience')           as string,
   }
 }
 
@@ -100,7 +102,8 @@ const ARTICLE_RETURN = `
          wi.id               AS workflowInstanceId,
          wi.current_step     AS currentStep,
          coalesce(a.version, 1)   AS version,
-         coalesce(COLLECT { MATCH (ed:User {id: a.last_edited_by, tenant_id: a.tenant_id}) RETURN ed.name }[0], a.last_edited_by_name) AS lastEditedByName
+         coalesce(COLLECT { MATCH (ed:User {id: a.last_edited_by, tenant_id: a.tenant_id}) RETURN ed.name }[0], a.last_edited_by_name) AS lastEditedByName,
+         a.audience          AS audience
 `
 
 // Full RETURN including the OPTIONAL MATCH for WorkflowInstance
@@ -147,8 +150,9 @@ export async function kbArticles(
 
   const conditions: string[] = ['a.tenant_id = $tenantId']
   const params: Record<string, unknown> = { tenantId: ctx.tenantId, skip, limit: pageSize }
-  // Chi non lavora la KB (il portale) vede solo il pubblicato, qualunque filtro chieda (revisione totale · H-1).
-  if (!canReadDrafts(ctx)) conditions.push(kbArticlePublishedCypher('a'))
+  // Chi non lavora la KB (il portale) vede solo il pubblicato, qualunque filtro chieda (revisione totale · H-1),
+  // e solo quello per tutti: un errore noto è dello staff (24 set 2026).
+  if (!canReadDrafts(ctx)) conditions.push(kbArticlePortalCypher('a'))
 
   if (args.status)   { conditions.push('a.status = $status');       params['status']   = args.status }
   if (args.category) { conditions.push('a.category = $category');   params['category'] = args.category }
@@ -190,7 +194,7 @@ export async function kbArticle(
   try {
     const res = await session.executeWrite((tx) => tx.run(`
       MATCH (a:KBArticle {id: $id, tenant_id: $tenantId})
-      ${canReadDrafts(ctx) ? '' : `WHERE ${kbArticlePublishedCypher('a')}`}
+      ${canReadDrafts(ctx) ? '' : `WHERE ${kbArticlePortalCypher('a')}`}
       SET a.views = coalesce(a.views, 0) + 1
       WITH a
       ${ARTICLE_RETURN_WITH_WI}
@@ -214,7 +218,7 @@ export async function kbArticleBySlug(
   try {
     const res = await session.executeWrite((tx) => tx.run(`
       MATCH (a:KBArticle {slug: $slug, tenant_id: $tenantId})
-      ${canReadDrafts(ctx) ? '' : `WHERE ${kbArticlePublishedCypher('a')}`}
+      ${canReadDrafts(ctx) ? '' : `WHERE ${kbArticlePortalCypher('a')}`}
       SET a.views = coalesce(a.views, 0) + 1
       WITH a
       ${ARTICLE_RETURN_WITH_WI}
@@ -224,6 +228,48 @@ export async function kbArticleBySlug(
       throw new GraphQLError('Article not found', { extensions: { code: 'NOT_FOUND' } })
     }
     return mapArticle(res.records[0])
+  } finally {
+    await session.close()
+  }
+}
+
+/**
+ * THE RELATED ARTICLES (tour of 24 Sep 2026, G7): they were the latest of the
+ * same category, and «Get a replacement laptop» listed phishing, timesheets,
+ * macros and screen sharing — all FAQs, none about laptops. Related now means
+ * sharing a tag: the more tags in common the closer, then the same category,
+ * then the most read. An article that shares no tag is not related, and the
+ * list may be short or empty. The reader sees only what they could open.
+ */
+export async function kbRelatedArticles(
+  _: unknown,
+  args: { id: string; limit?: number | null },
+  ctx: GraphQLContext,
+): Promise<Array<{ id: string; title: string; slug: string; category: string; views: number; sharedTags: number }>> {
+  const limit = Math.min(Math.max(args.limit ?? 4, 1), 10)
+  const session = getSession(undefined, 'READ')
+  try {
+    const res = await session.executeRead((tx) => tx.run(`
+      MATCH (me:KBArticle {id: $id, tenant_id: $tenantId})
+      MATCH (a:KBArticle {tenant_id: $tenantId})
+      WHERE a.id <> me.id AND ${kbArticlePublishedCypher('a')} AND ($readsAll OR ${kbArticlePortalCypher('a')})
+      RETURN me.tags AS mine, me.category AS myCategory,
+             a.id AS id, a.title AS title, a.slug AS slug, a.category AS category, a.tags AS tags, coalesce(a.views, 0) AS views
+    `, { id: args.id, tenantId: ctx.tenantId, readsAll: canReadDrafts(ctx) }))
+    if (!res.records.length) return []
+    const mine = new Set(normalizeKbTags(res.records[0]!.get('mine')).map((t) => t.toLowerCase()))
+    const myCategory = res.records[0]!.get('myCategory') as string
+    return res.records
+      .map((r) => ({
+        id: r.get('id') as string, title: r.get('title') as string, slug: r.get('slug') as string,
+        category: r.get('category') as string, views: toNumber(r.get('views')),
+        sharedTags: normalizeKbTags(r.get('tags')).filter((t) => mine.has(t.toLowerCase())).length,
+      }))
+      .filter((a) => a.sharedTags > 0)
+      .sort((x, y) => y.sharedTags - x.sharedTags
+        || Number(y.category === myCategory) - Number(x.category === myCategory)
+        || y.views - x.views)
+      .slice(0, limit)
   } finally {
     await session.close()
   }
@@ -247,11 +293,12 @@ export async function kbCategories(
   const language: Lingua = (LINGUE as readonly string[]).includes(args.language ?? '') ? args.language as Lingua : fallback
   const session = getSession(undefined, 'READ')
   try {
+    // The portal counts only what it can read: the articles for everyone.
     const res = await session.executeRead((tx) => tx.run(`
       MATCH (a:KBArticle {tenant_id: $tenantId})-[:HAS_WORKFLOW]->(:WorkflowInstance)-[:CURRENT_STEP]->(s:WorkflowStep)
-      WHERE s.category = 'published'
+      WHERE s.category = 'published' AND ($staff OR a.audience = 'everyone')
       RETURN a.category AS name, count(a) AS count
-    `, { tenantId: ctx.tenantId }))
+    `, { tenantId: ctx.tenantId, staff: canReadDrafts(ctx) }))
     const counts = new Map(res.records.map((r) => [r.get('name') as string, toNumber(r.get('count'))]))
     return vocabulary.values.map((name) => ({
       name,
@@ -268,11 +315,12 @@ export async function kbCategories(
 
 export async function createKBArticle(
   _: unknown,
-  args: { title: string; body: string; category: string; tags?: string[]; status?: string },
+  args: { title: string; body: string; category: string; tags?: string[]; status?: string; audience?: string | null },
   ctx: GraphQLContext,
 ): Promise<KBArticle> {
   // F5: la categoria è un valore del vocabolario `kb_category` del cliente.
   await assertDomainValue(ctx.tenantId, 'kb_category', args.category)
+  const audience = args.audience == null ? KB_DEFAULT_AUDIENCE : assertKbAudience(args.audience)
   if (args.body.length > 50_000) {
     throw new GraphQLError('Article body exceeds 50000 characters', { extensions: { code: 'BAD_REQUEST' } })
   }
@@ -313,6 +361,7 @@ export async function createKBArticle(
         helpful_count:     0,
         not_helpful_count: 0,
         version:           1,
+        audience:          $audience,
         last_edited_by:      $authorId,
         last_edited_by_name: $authorName,
         last_edited_at:      $now,
@@ -338,7 +387,8 @@ export async function createKBArticle(
              null                AS workflowInstanceId,
              null                AS currentStep,
              a.version           AS version,
-             coalesce(COLLECT { MATCH (ed:User {id: a.last_edited_by, tenant_id: a.tenant_id}) RETURN ed.name }[0], a.last_edited_by_name) AS lastEditedByName
+             coalesce(COLLECT { MATCH (ed:User {id: a.last_edited_by, tenant_id: a.tenant_id}) RETURN ed.name }[0], a.last_edited_by_name) AS lastEditedByName,
+             a.audience          AS audience
     `, {
       id,
       tenantId:    ctx.tenantId,
@@ -348,6 +398,7 @@ export async function createKBArticle(
       category:    args.category,
       tags:        JSON.stringify(args.tags ?? []),
       status,
+      audience,
       authorId:    ctx.userId,
       authorName:  ctx.userEmail,
       now,
@@ -394,10 +445,11 @@ export async function createKBArticle(
  */
 export async function updateKBArticle(
   _: unknown,
-  args: { id: string; title?: string; body?: string; category?: string; tags?: string[]; expectedVersion?: number | null },
+  args: { id: string; title?: string; body?: string; category?: string; tags?: string[]; audience?: string | null; expectedVersion?: number | null },
   ctx: GraphQLContext,
 ): Promise<KBArticle> {
   if (args.category !== undefined) await assertDomainValue(ctx.tenantId, 'kb_category', args.category)
+  const audience = args.audience == null ? null : assertKbAudience(args.audience)
   if (args.body && args.body.length > 50_000) {
     throw new GraphQLError('Article body exceeds 50000 characters', { extensions: { code: 'BAD_REQUEST' } })
   }
@@ -449,6 +501,7 @@ export async function updateKBArticle(
     if (args.body)     { setters.push('a.body = $body');         params['body']     = args.body }
     if (args.category) { setters.push('a.category = $category'); params['category'] = args.category }
     if (args.tags)     { setters.push('a.tags = $tags');         params['tags']     = JSON.stringify(args.tags) }
+    if (audience)      { setters.push('a.audience = $audience'); params['audience'] = audience }
 
     // No content field provided → nothing to version. Return the article as-is
     // rather than minting an empty version and bumping the counter.
@@ -553,26 +606,58 @@ export async function deleteKBArticle(
   }
 }
 
+/**
+ * ONE VOTE PER PERSON (tour of 24 Sep 2026, G8): «helpful» could be pressed
+ * again and again by the same person (Yes 44 → 45 → 46). The vote is now a
+ * relationship of the person with the article: voting again the same way
+ * changes nothing, voting the other way moves the vote. The portal votes only
+ * on what it can read.
+ */
 export async function rateKBArticle(
   _: unknown,
   args: { id: string; helpful: boolean },
   ctx: GraphQLContext,
 ): Promise<KBArticle> {
-  const field = args.helpful ? 'a.helpful_count' : 'a.not_helpful_count'
-
   const session = getSession(undefined, 'WRITE')
   try {
     const res = await session.executeWrite((tx) => tx.run(`
       MATCH (a:KBArticle {id: $id, tenant_id: $tenantId})
-      SET ${field} = ${field} + 1
+      ${canReadDrafts(ctx) ? '' : `WHERE ${kbArticlePortalCypher('a')}`}
+      MATCH (u:User {id: $userId, tenant_id: $tenantId})
+      OPTIONAL MATCH (u)-[old:RATED_KB]->(a)
+      WITH a, u, old.helpful AS was
+      // A first vote adds one; the same vote again adds nothing; the other vote moves one.
+      SET a.helpful_count     = coalesce(a.helpful_count, 0)
+                              + CASE WHEN $helpful AND (was IS NULL OR was = false) THEN 1 ELSE 0 END
+                              - CASE WHEN NOT $helpful AND was = true THEN 1 ELSE 0 END,
+          a.not_helpful_count = coalesce(a.not_helpful_count, 0)
+                              + CASE WHEN NOT $helpful AND (was IS NULL OR was = true) THEN 1 ELSE 0 END
+                              - CASE WHEN $helpful AND was = false THEN 1 ELSE 0 END
+      MERGE (u)-[r:RATED_KB]->(a)
+      SET r.helpful = $helpful, r.rated_at = $now
       WITH a
       ${ARTICLE_RETURN_WITH_WI}
-    `, { id: args.id, tenantId: ctx.tenantId }))
+    `, { id: args.id, tenantId: ctx.tenantId, userId: ctx.userId, helpful: args.helpful, now: new Date().toISOString() }))
 
     if (!res.records.length) {
       throw new GraphQLError('Article not found', { extensions: { code: 'NOT_FOUND' } })
     }
     return mapArticle(res.records[0])
+  } finally {
+    await session.close()
+  }
+}
+
+/** KBArticle.myVote: the vote of the person reading, or null (G8). */
+export async function kbArticleMyVote(parent: { id: string }, _: unknown, ctx: GraphQLContext): Promise<boolean | null> {
+  const session = getSession(undefined, 'READ')
+  try {
+    const res = await session.executeRead((tx) => tx.run(`
+      MATCH (:User {id: $userId, tenant_id: $tenantId})-[r:RATED_KB]->(:KBArticle {id: $id, tenant_id: $tenantId})
+      RETURN r.helpful AS helpful
+    `, { id: parent.id, userId: ctx.userId, tenantId: ctx.tenantId }))
+    const v = res.records[0]?.get('helpful')
+    return typeof v === 'boolean' ? v : null
   } finally {
     await session.close()
   }
@@ -653,6 +738,7 @@ export const knowledgeBaseResolvers = {
     kbArticleBySlug,
     kbCategories,
     kbArticleVersions,
+    kbRelatedArticles,
   },
   Mutation: {
     createKBArticle,
@@ -660,6 +746,9 @@ export const knowledgeBaseResolvers = {
     restoreKBArticleVersion,
     deleteKBArticle,
     rateKBArticle,
+  },
+  KBArticle: {
+    myVote: kbArticleMyVote,
   },
 }
 

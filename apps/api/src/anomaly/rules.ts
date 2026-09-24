@@ -37,6 +37,8 @@ export interface AnomalyRule {
 export interface ResolvedRuleSettings extends AnomalyRuleSettings {
   ciLabels:        string[]
   forbiddenLabels: Array<{ fromLabel: string; relation: string; toLabel: string }>
+  /** The environments the tenant declares as production (event policy). */
+  productionEnvironments: string[]
 }
 
 const LABEL_RE = /^[A-Za-z][A-Za-z0-9_]*$/
@@ -115,7 +117,9 @@ const BUILDERS: Record<AnomalyRuleKey, Builder> = {
         coalesce(ci.name, ci.id)   AS entityName,
         'CI with ' + toString(depCount) + ' direct dependents: potential SPOF' AS description,
         { count: depCount }        AS params,
-        $severity                  AS severity
+        // Outside production the tenant's lower severity (G32); a CI without an environment counts as production.
+        CASE WHEN coalesce(ci.environment, '') = '' OR ci.environment IN $productionEnvironments
+             THEN $severity ELSE $nonProductionSeverity END AS severity
     `,
   }),
 
@@ -277,6 +281,9 @@ export function buildAnomalyRule(key: AnomalyRuleKey, settings: ResolvedRuleSett
     title:       built.title,
     description: built.description,
     cypher:      built.cypher,
-    params:      { severity: settings.severity, threshold: settings.threshold, incidentSeverities: settings.incidentSeverities },
+    params:      {
+      severity: settings.severity, threshold: settings.threshold, incidentSeverities: settings.incidentSeverities,
+      nonProductionSeverity: settings.nonProductionSeverity ?? settings.severity, productionEnvironments: settings.productionEnvironments,
+    },
   }
 }

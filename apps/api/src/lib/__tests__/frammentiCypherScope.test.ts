@@ -70,6 +70,9 @@ const COMPOSITORI: Compositore[] = [
   { nome: 'changeWindowSubqueryCypher', categoria: 'frammento',
     perche: 'è una sottoquery chiusa che parte da `c` e torna `dist`: non sta in mezzo a un cammino di variabili altrui',
     chiama: async () => (await import('../../services/events/suppression.js')).changeWindowSubqueryCypher(1, 'DEPENDS_ON') },
+  { nome: 'takeTaskOnStartCypher', categoria: 'frammento',
+    perche: 'closes the statement that moves a change task in progress (answer, saved plan): it comes after the SET and nothing is read after it',
+    chiama: async () => (await import('../taskTakeOnStart.js')).takeTaskOnStartCypher('t') },
 
   // ── Query intere: vanno dritte a runQuery ────────────────────────────────
   { nome: 'deployPlanUnitsCypher', categoria: 'query',
@@ -94,6 +97,8 @@ const COMPOSITORI: Compositore[] = [
     chiama: async () => (await import('../attachmentValidation.js')).entityExistsCypher(['Incident']) },
   { nome: 'kbArticlePublishedCypher', categoria: 'nonTaglia',
     chiama: async () => (await import('../kbPublished.js')).kbArticlePublishedCypher('a') },
+  { nome: 'kbArticlePortalCypher', categoria: 'nonTaglia',
+    chiama: async () => (await import('../kbPublished.js')).kbArticlePortalCypher('a') },
   { nome: 'olaConcludedTicketsCypher', categoria: 'nonTaglia',
     chiama: async () => (await import('../olaAttainment.js')).olaConcludedTicketsCypher('incident') },
   { nome: 'olaTicketFactsCypher', categoria: 'nonTaglia',

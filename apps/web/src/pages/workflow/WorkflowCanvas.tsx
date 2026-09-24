@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { createContext, memo, useCallback, useContext, useRef, useState } from 'react'
 import {
   ReactFlow,
@@ -451,6 +452,9 @@ export function WorkflowCanvas({
   children,
 }: WorkflowCanvasProps) {
   const { t } = useTranslation()
+  // At 800 px the legend and the minimap covered steps (G47): narrower than this, they step aside.
+  const narrow = useMediaQuery('(max-width: 1100px)')
+  const [legendOpen, setLegendOpen] = useState(false)
   const accentColor = ACCENT_COLOR
 
   /*
@@ -541,21 +545,28 @@ export function WorkflowCanvas({
         >
           <Background color={colors.border} gap={20} size={1} />
           <Controls position="bottom-left" style={{ marginBottom: 80 }} />
-          <MiniMap
+          {/* On a narrow screen the minimap covered the last steps (tour of 24 Sep 2026, G47): it is left out there. */}
+          {!narrow && <MiniMap
             position="bottom-right"
             nodeColor={(n) => {
               const step = (n.data as StepNodeData | undefined)?.step
               return lookupOrError(STEP_BG, step?.type ?? 'standard', 'STEP_BG', 'var(--color-danger)')
             }}
             style={{ border: '1px solid var(--color-border)', borderRadius: 8 }}
-          />
+          />}
         </ReactFlow>
       )}
 
       {children}
 
-      {/* Legend */}
-      {def && (
+      {/* Legend — on a narrow screen folded into a button: open, it covered the first steps (G47). */}
+      {def && narrow && !legendOpen && (
+        <button type="button" onClick={() => setLegendOpen(true)} aria-expanded={false}
+          style={{ position: 'absolute', bottom: 80, left: 16, zIndex: 10, background: colors.white, border: '1px solid var(--color-border)', borderRadius: 8, padding: '6px 10px', fontSize: 'var(--font-size-body)', color: colors.slate, cursor: 'pointer' }}>
+          {t('workflow.legend.show')}
+        </button>
+      )}
+      {def && (!narrow || legendOpen) && (
         <div style={{
           position:        'absolute',
           bottom:          80,
@@ -569,6 +580,12 @@ export function WorkflowCanvas({
           flexDirection:   'column',
           gap:             6,
         }}>
+          {narrow && (
+            <button type="button" onClick={() => setLegendOpen(false)} aria-expanded
+              style={{ alignSelf: 'flex-end', background: 'none', border: 'none', padding: 0, fontSize: 'var(--font-size-body)', color: colors.slate, cursor: 'pointer' }}>
+              {t('workflow.legend.hide')}
+            </button>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: colors.brand }} />
             <span style={{ fontSize: 'var(--font-size-body)', color: colors.slate }}>{t('workflow.legend.node')}</span>

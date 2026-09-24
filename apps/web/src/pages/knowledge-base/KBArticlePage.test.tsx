@@ -9,16 +9,14 @@ const GET_ARTICLE = gql`
   query KBArticleBySlug($slug: String!) {
     kbArticleBySlug(slug: $slug) {
       id title slug body category tags status
-      authorId authorName views helpfulCount notHelpfulCount
+      authorId authorName views helpfulCount notHelpfulCount myVote audience
       createdAt updatedAt publishedAt
     }
   }
 `
 const GET_RELATED = gql`
-  query KBRelated($category: String!) {
-    kbArticles(category: $category, status: "published", pageSize: 5) {
-      items { id title slug category views }
-    }
+  query KBRelated($id: ID!) {
+    kbRelatedArticles(id: $id, limit: 4) { id title slug category views }
   }
 `
 const GET_ATTACHMENTS = gql`
@@ -40,6 +38,7 @@ const ARTICLE = {
   __typename: 'KBArticle', id: 'kb-1', title: 'Reset della password VPN', slug: 'reset-vpn', body: 'Apri il **portale** e segui i passi.',
   category: 'how-to', tags: ['vpn', 'password'], status: 'published', authorId: 'u1', authorName: 'Mario Rossi',
   views: 42, helpfulCount: 3, notHelpfulCount: 1, createdAt: '2026-09-01T10:00:00Z', updatedAt: '2026-09-02T10:00:00Z', publishedAt: '2026-09-02T10:00:00Z',
+  myVote: null as boolean | null, audience: 'everyone' as 'staff' | 'everyone',
 }
 
 const articleMock = (data: typeof ARTICLE | null): GqlMock => ({
@@ -47,11 +46,10 @@ const articleMock = (data: typeof ARTICLE | null): GqlMock => ({
   result: { data: { kbArticleBySlug: data } },
 })
 const relatedMock: GqlMock = {
-  request: { query: GET_RELATED, variables: { category: 'how-to' } },
-  result: { data: { kbArticles: { __typename: 'KBArticlePage', items: [
-    { __typename: 'KBArticle', id: 'kb-2', title: 'Configurare la VPN', slug: 'config-vpn', category: 'how-to', views: 7 },
-    { __typename: 'KBArticle', id: 'kb-1', title: 'Reset della password VPN', slug: 'reset-vpn', category: 'how-to', views: 42 },
-  ] } } },
+  request: { query: GET_RELATED, variables: { id: 'kb-1' } },
+  result: { data: { kbRelatedArticles: [
+    { __typename: 'KBRelatedArticle', id: 'kb-2', title: 'Configurare la VPN', slug: 'config-vpn', category: 'how-to', views: 7 },
+  ] } },
 }
 const attachmentsMock: GqlMock = {
   request: { query: GET_ATTACHMENTS, variables: { entityType: 'kb_article', entityId: 'kb-1' } },
@@ -82,7 +80,7 @@ describe('KBArticlePage', () => {
     expect(screen.queryByText('Failed to load data')).not.toBeInTheDocument()
   })
 
-  it('articolo trovato → titolo, categoria, markdown, tag, correlati (senza sé stesso) e link indietro', async () => {
+  it('articolo trovato → titolo, categoria, markdown, tag, correlati per tag e link indietro', async () => {
     renderWithProviders(<KBArticlePage />, { ...ROUTE, mocks: [articleMock(ARTICLE), relatedMock, attachmentsMock] })
     expect(await screen.findByRole('heading', { level: 1, name: 'Reset della password VPN' })).toBeInTheDocument()
     expect(screen.getByText('how-to')).toBeInTheDocument()
@@ -94,7 +92,14 @@ describe('KBArticlePage', () => {
 
     const related = await screen.findByRole('link', { name: /Configurare la VPN/ })
     expect(related).toHaveAttribute('href', '/knowledge-base/config-vpn')
-    expect(screen.getAllByText('Reset della password VPN')).toHaveLength(1)   // il correlato uguale all'articolo è escluso
+    expect(screen.getAllByText('Reset della password VPN')).toHaveLength(1)
+    // An article for everyone carries no audience mark.
+    expect(screen.queryByText('Staff only')).toBeNull()
+  })
+
+  it('an article for the staff says so', async () => {
+    renderWithProviders(<KBArticlePage />, { ...ROUTE, mocks: [articleMock({ ...ARTICLE, audience: 'staff' }), relatedMock, attachmentsMock] })
+    expect(await screen.findByText('Staff only')).toBeInTheDocument()
   })
 
   // Tour of 23 Sep 2026: the editor saves an underline as <u>…</u>, and the

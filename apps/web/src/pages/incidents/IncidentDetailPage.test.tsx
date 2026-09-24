@@ -907,6 +907,12 @@ describe('IncidentDetailPage: declaring a Major Incident', () => {
     expect(apolloFinto.chiamate['SetIncidentMajor']).toBeUndefined()
   })
 
+  it('a closed incident offers neither Edit nor the declaration (tour of 24 Sep 2026, G17)', () => {
+    show({ status: 'closed', availableTransitions: [] })
+    expect(screen.queryByRole('button', { name: 'Declare Major Incident' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull()
+  })
+
   it('confirmed, it is sent and said', async () => {
     const { user } = mount()
     await user.click(screen.getByRole('button', { name: 'Declare Major Incident' }))

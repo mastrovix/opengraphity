@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
+import { CERTIFICATE_ONLY_STATUSES } from './migrations/20261011_1040_ci_type_status_excluded.js'
 import { getSession } from '@opengraphity/neo4j'
 import { CI_LIFECYCLE_STATUSES } from '../lib/eventVocabularies.js'
 import { runScript } from './lib/runScript.js'
@@ -319,6 +320,8 @@ async function seedCIType(session: Awaited<ReturnType<typeof getSession>>, ci: C
          t.active            = $active,
          t.validation_script = $validationScript,
          t.chain_families    = $chainFamilies,
+         // The statuses a certificate has and the other types do not (G35); a type set later keeps its own.
+         t.status_excluded   = $statusExcluded,
          t.created_at        = $now
        ON MATCH SET
          t.label             = $label,
@@ -331,6 +334,7 @@ async function seedCIType(session: Awaited<ReturnType<typeof getSession>>, ci: C
       { id: typeId, name: ci.name, label: ci.label, icon: ci.icon, color: ci.color,
         neo4jLabel: ci.neo4j_label, validationScript: ci.validation_script ?? null,
         chainFamilies: JSON.stringify(ci.chain_families ?? ['Application', 'Infrastructure']),
+        statusExcluded: ci.name === 'certificate' || ci.name === '__base__' ? null : JSON.stringify(CERTIFICATE_ONLY_STATUSES),
         active: isActive, tenantId: TENANT_ID, now },
     ),
   )

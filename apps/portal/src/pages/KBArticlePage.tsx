@@ -6,7 +6,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { remarkUnderline } from '@opengraphity/web-core'
 import { ThumbsUp, ThumbsDown } from 'lucide-react'
-import { GET_KB_ARTICLE_BY_SLUG, GET_KB_ARTICLES, GET_KB_CATEGORIES } from '@/graphql/queries'
+import { GET_KB_ARTICLE_BY_SLUG, GET_KB_RELATED, GET_KB_CATEGORIES } from '@/graphql/queries'
 import { RATE_KB_ARTICLE } from '@/graphql/mutations'
 import { fmtDateLong } from '@/lib/format'
 import { colors, palette } from '@/lib/tokens'
@@ -15,6 +15,8 @@ import { usePortalAccess } from '@/hooks/usePortalAccess'
 interface KBArticle {
   id: string; title: string; slug: string; body: string; category: string
   authorName: string; views: number; helpfulCount: number; notHelpfulCount: number
+  /** One vote per person (tour of 24 Sep 2026, G8): the reader's own, or null. */
+  myVote: boolean | null
   createdAt: string; publishedAt: string | null
 }
 
@@ -26,7 +28,7 @@ export function KBArticlePage() {
   const { data: catData } = useQuery<{ kbCategories: Array<{ name: string; label: string }> }>(GET_KB_CATEGORIES, {
     variables: { language: i18n.resolvedLanguage ?? i18n.language },
   })
-  const [voted, setVoted] = useState<boolean | null>(null)
+  const [votedNow, setVoted] = useState<boolean | null>(null)
 
   const { data, loading } = useQuery<{ kbArticleBySlug: KBArticle }>(
     GET_KB_ARTICLE_BY_SLUG,
@@ -35,11 +37,13 @@ export function KBArticlePage() {
 
   const article = data?.kbArticleBySlug
 
-  const { data: relatedData } = useQuery<{ kbArticles: { items: KBArticle[] } }>(
-    GET_KB_ARTICLES,
-    { variables: { category: article?.category, pageSize: 4 }, skip: !article },
+  const { data: relatedData } = useQuery<{ kbRelatedArticles: Array<Pick<KBArticle, 'id' | 'title' | 'slug' | 'category' | 'views'>> }>(
+    GET_KB_RELATED,
+    { variables: { id: article?.id }, skip: !article },
   )
-  const related = (relatedData?.kbArticles?.items ?? []).filter(a => a.id !== article?.id).slice(0, 3)
+  const related = relatedData?.kbRelatedArticles ?? []
+  // A vote given before (another visit) counts as given: the same person votes once.
+  const voted = votedNow ?? article?.myVote ?? null
 
   const [rateArticle, { data: ratedData }] = useMutation<{ rateKBArticle: { helpfulCount: number; notHelpfulCount: number } }>(RATE_KB_ARTICLE)
   const helpfulCount    = ratedData?.rateKBArticle?.helpfulCount    ?? article?.helpfulCount    ?? 0

@@ -7,6 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import { screen, within } from '@testing-library/react'
 import { gql } from '@apollo/client'
+import { formatDate } from '@/lib/datetime'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { DomainVocabularyContext } from '@/contexts/DomainVocabularyContext'
 import { palette } from '@/lib/tokens'
@@ -36,7 +37,7 @@ const articles: GqlMock = {
   request: { query: GET_ARTICLES, variables: { page: 1, pageSize: 15 } },
   result: { data: { kbArticles: { __typename: 'KBArticlesResult', total: 1, items: [{
     __typename: 'KBArticle', id: 'a1', title: 'Reset VPN', slug: 'reset-vpn', category: 'how-to', tags: [], status: 'published',
-    authorName: 'Bob', views: 1, helpfulCount: 0, createdAt: '2026-09-01T00:00:00Z', updatedAt: '2026-09-01T00:00:00Z', publishedAt: '2026-09-01T00:00:00Z',
+    authorName: 'Bob', views: 1, helpfulCount: 0, createdAt: '2026-09-01T00:00:00Z', updatedAt: '2026-09-20T00:00:00Z', publishedAt: '2026-09-01T00:00:00Z',
   }] } } },
   maxUsageCount: Number.POSITIVE_INFINITY,
 }
@@ -61,5 +62,12 @@ describe('KnowledgeBasePage — categorie dal Dizionario', () => {
     const link = await screen.findByRole('link', { name: /Reset VPN/ })
     const pill = within(link).getByText('Come fare')
     expect(pill).toHaveStyle({ background: palette.success.tint, color: palette.success.text })
+  })
+
+  // Tour of 24 Sep 2026 (G4): the list is the most recently updated first, and showed the publication dates.
+  it('the date of an article is the one the list is ordered by, and says so', async () => {
+    renderWithProviders(<DomainVocabularyContext.Provider value={vocab}><KnowledgeBasePage /></DomainVocabularyContext.Provider>, { mocks: [categories, articles] })
+    const link = await screen.findByRole('link', { name: /Reset VPN/ })
+    expect(within(link).getByText(`Updated ${formatDate('2026-09-20T00:00:00Z')}`)).toBeInTheDocument()
   })
 })

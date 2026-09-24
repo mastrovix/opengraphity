@@ -59,7 +59,10 @@ export const SYSTEM_ENUMS: readonly SystemEnum[] = [
   { name: 'status_incident',         label: 'Incident Status',        values: ['new', 'open', 'assigned', 'in_progress', 'pending', 'escalated', 'resolved', 'closed'], scope: 'itil' },
   { name: 'status_change',           label: 'Change Status',          values: ['draft', 'assessment', 'cab_approval', 'emergency_approval', 'scheduled', 'deployment', 'validation', 'post_review', 'completed', 'approved', 'failed', 'rejected', 'cancelled'], scope: 'itil' },
   { name: 'status_problem',          label: 'Problem Status',         values: ['new', 'under_investigation', 'change_requested', 'change_in_progress', 'resolved', 'closed', 'rejected', 'deferred'], scope: 'itil' },
-  { name: 'status_service_request',  label: 'Service Request Status', values: ['open', 'in_progress', 'completed', 'cancelled'],  scope: 'itil' },
+  // The steps of the factory request workflow (tour of 24 Sep 2026): it said
+  // open/completed/cancelled, names no request ever had, so a rule on «status»
+  // offered four values and none of them matched.
+  { name: 'status_service_request',  label: 'Service Request Status', values: ['submitted', 'approval', 'in_progress', 'fulfilled', 'closed', 'rejected'],  scope: 'itil' },
   { name: 'change_type',             label: 'Change Type',            values: ['standard', 'normal', 'emergency'],                scope: 'itil' },
   // Vocabolari dei campi enum del metamodello CMDB spedito
   // (`scripts/seed-metamodel.ts`: server.os, database.instanceType,

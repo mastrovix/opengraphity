@@ -24,6 +24,7 @@ import { listPage } from '../../lib/listLimit.js'
 import { serviceRelPatternForTenant } from '../../lib/ciMetamodelForTenant.js'
 import { orderByOrThrow } from '../../lib/sortField.js'
 import { logger } from '../../lib/logger.js'
+import { resolveDomainValue } from '../../lib/domainValue.js'
 export type { IncidentEventPayload } from '../../services/incidentService.js'
 
 // ── Mapper ───────────────────────────────────────────────────────────────────
@@ -484,6 +485,10 @@ const incidentSlaStatus = ticketSlaStatusResolver('Incident')
  */
 async function setIncidentMajor(_: unknown, args: { id: string; major: boolean }, ctx: GraphQLContext) {
   requirePermission(ctx, 'incident.write')
+  // Declaring raises the priority to the customer's «major» priority, before
+  // the flag: a priority the matrix cannot give stops the declaration whole
+  // (owner's decision of 24 Sep 2026). Revoking leaves the priority as it is.
+  if (args.major) await raiseToMajorPriority(args.id, ctx)
   const now = new Date().toISOString()
   const { props, changed } = await withSession(async (session) => {
     const rows = await runQuery<{ props: Props; was: unknown }>(session, `
@@ -504,6 +509,26 @@ async function setIncidentMajor(_: unknown, args: { id: string; major: boolean }
     }, now)
   }
   return mapIncident(props)
+}
+
+/**
+ * The priority of a major incident, from the customer's matrix
+ * `major_incident_priority`. Written through the ordinary update, so impact
+ * and urgency follow it and `ticket.updated` tells the SLA and the
+ * automations; nothing is written when the incident already has it.
+ */
+async function raiseToMajorPriority(id: string, ctx: GraphQLContext): Promise<void> {
+  const target = await resolveDomainValue(ctx.tenantId, 'major_incident_priority', 'declared')
+  const current = await withSession((session) => runQueryOne<{ severity: string | null; major: boolean; closed: boolean }>(session, `
+    MATCH (i:Incident {id: $id, tenant_id: $tenantId})
+    OPTIONAL MATCH (i)-[:HAS_WORKFLOW]->(:WorkflowInstance)-[:CURRENT_STEP]->(st:WorkflowStep)
+    RETURN i.severity AS severity, coalesce(i.major, false) AS major, coalesce(st.is_terminal, false) AS closed
+  `, { id, tenantId: ctx.tenantId }))
+  if (!current) throw new NotFoundError('Incident', id)
+  // A closed incident is not declared major (tour of 24 Sep 2026, G17): the page no longer offers it.
+  if (current.closed && !current.major) throw new ValidationError(`Incident ${id} is closed: it cannot be declared a Major Incident`, { key: 'errors.incident.majorOnClosed' })
+  if (current.major || current.severity === target) return
+  await incidentService.updateIncident(id, { severity: target }, ctx)
 }
 
 export const incidentResolvers = {

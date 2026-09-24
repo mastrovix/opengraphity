@@ -78,6 +78,8 @@ export function anomalySDL(): string {
     thresholdMax:       Int
     incidentSeverities: Boolean!
     forbidden:          Boolean!
+    """The rule weighs a CI by its environment: a severity outside production can be chosen (G32)."""
+    environment:        Boolean!
   }
 
   type AnomalyForbiddenRelation {
@@ -108,6 +110,8 @@ export function anomalySDL(): string {
     threshold:          Int
     incidentSeverities: [String!]!
     forbidden:          [AnomalyForbiddenRelation!]!
+    """The severity on a CI outside production (the event policy's production environments); null = the same as severity."""
+    nonProductionSeverity: String
     spec:               AnomalyRuleSpec!
     """Vero quando il cliente non l'ha mai salvata: valgono le scelte di fabbrica."""
     isDefault:          Boolean!
@@ -147,6 +151,7 @@ export function anomalySDL(): string {
     threshold:          Int
     incidentSeverities: [String!]!
     forbidden:          [AnomalyForbiddenRelationInput!]!
+    nonProductionSeverity: String
   }
 
   extend type Query {

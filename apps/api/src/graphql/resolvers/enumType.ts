@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
+import { assertValueIconsInput, parseValueIcons, pruneValueIcons, renameValueIcon, serializeValueIcons, valueIconEntries, type EnumValueIconEntry, type EnumValueIcons } from '../../lib/enumValueIcons.js'
 import { getSession, toNumber } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
@@ -51,6 +52,8 @@ interface EnumTypeDef {
   valueLabelsRaw: EnumValueLabels
   /** I colori per valore, nell'ordine dei valori (revisione del 14 set 2026 · F9). */
   valueColors: EnumValueColorEntry[]
+  /** The icon of each value that has one, in the order of the values (G40). */
+  valueIcons: EnumValueIconEntry[]
   /** Perche non porta etichette per valore (chiave i18n), `null` se le porta. */
   valueLabelsReasonKey: string | null
   isSystem:  boolean
@@ -186,6 +189,11 @@ function assertLingua(v: unknown): Lingua {
   )
 }
 
+/** A column some reads do not return: a read that did not ask for it answers without icons. */
+function readOptional(r: { get: (k: string) => unknown; has?: (k: string) => boolean }, key: string): unknown {
+  return typeof r.has === 'function' && !r.has(key) ? null : r.get(key)
+}
+
 function mapEnum(r: { get: (k: string) => unknown }): EnumTypeDef {
   const vals     = r.get('values')
   const tenantId = r.get('tenantId') as string
@@ -206,6 +214,10 @@ function mapEnum(r: { get: (k: string) => unknown }): EnumTypeDef {
       { module: 'enum-type', tenantId, name: r.get('name'), err: erroreColori },
       '[vocabolario] colori per valore non leggibili: a schermo il valore resta neutro',
     )
+  }
+  const { icons: icone, error: erroreIcone } = parseValueIcons(readOptional(r, 'valueIcons'))
+  if (erroreIcone) {
+    logger.warn({ module: 'enum-type', tenantId, name: r.get('name'), err: erroreIcone }, '[dictionary] icons per value not readable: the value shows the generic icon')
   }
   const nome = r.get('name') as string
   return {
@@ -229,6 +241,7 @@ function mapEnum(r: { get: (k: string) => unknown }): EnumTypeDef {
     */
     valueLabelsRaw: etichette,
     valueColors: valueColorEntries(valori, colori),
+    valueIcons: valueIconEntries(valori, icone),
     isSystem:  r.get('isSystem')  as boolean,
     // `is_system` è un flag di protezione scritto anche sulle copie per tenant
     // (A-3): il proprietario si legge dal tenant, non da quel flag.
@@ -274,7 +287,7 @@ export async function enumTypes(
                e.scope     AS scope,
                e.default_value AS defaultValue,
                e.created_at AS createdAt,
-               e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors
+               e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors, e.value_icons AS valueIcons
         ORDER BY e.scope, e.name
       `, params),
     )
@@ -304,7 +317,7 @@ export async function enumType(
                e.scope     AS scope,
                e.default_value AS defaultValue,
                e.created_at AS createdAt,
-               e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors
+               e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors, e.value_icons AS valueIcons
       `, { id: args.id, tenantId: ctx.tenantId }),
     )
     return result.records.length ? mapEnum(result.records[0]) : null
@@ -383,6 +396,7 @@ export async function createEnumType(
       // valore, e l'admin le scrive dal Dizionario quando vuole.
       valueLabelsRaw: {},
       valueColors: [],
+      valueIcons: [],
       defaultValue: null,
       createdAt: now, updatedAt: now,
     }
@@ -421,7 +435,7 @@ export async function customizeEnumType(
         WHERE e.tenant_id IN [$tenantId, $systemTenant]
         RETURN e.tenant_id AS tenantId, e.name AS name, e.label AS label,
                e.values AS values, e.scope AS scope, e.default_value AS defaultValue,
-               e.value_labels AS valueLabels, e.value_colors AS valueColors
+               e.value_labels AS valueLabels, e.value_colors AS valueColors, e.value_icons AS valueIcons
       `, { id: args.id, tenantId: ctx.tenantId, systemTenant: SYSTEM_TENANT }),
     )
     if (!src.records.length) throw new NotFoundError('EnumTypeDefinition', args.id)
@@ -491,7 +505,7 @@ export async function customizeEnumType(
                e.scope     AS scope,
                e.default_value AS defaultValue,
                e.created_at AS createdAt,
-               e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors
+               e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors, e.value_icons AS valueIcons
       `, {
         id, tenantId: ctx.tenantId, name,
         label: row.get('label') as string, values,
@@ -534,7 +548,7 @@ export async function customizeEnumType(
  */
 export async function updateEnumType(
   _: unknown,
-  args: { id: string; input: { label?: string; values?: string[]; scope?: string; defaultValue?: string; replacements?: { from: string; to: string }[]; valueLabels?: { value: string; language: string; label: string }[]; valueColors?: { value: string; color: string }[] } },
+  args: { id: string; input: { label?: string; values?: string[]; scope?: string; defaultValue?: string; replacements?: { from: string; to: string }[]; valueLabels?: { value: string; language: string; label: string }[]; valueColors?: { value: string; color: string }[]; valueIcons?: { value: string; icon: string }[] } },
   ctx: GraphQLContext,
 ): Promise<EnumTypeDef> {
   requirePermission(ctx, 'config.metamodel')
@@ -547,7 +561,7 @@ export async function updateEnumType(
         MATCH (e:EnumTypeDefinition {id: $id})
         WHERE e.tenant_id = $tenantId OR (e.is_system = true AND e.tenant_id = 'system')
         RETURN e.is_system AS isSystem, e.tenant_id AS tenantId, e.name AS name, e.values AS values,
-               e.default_value AS defaultValue, e.value_labels AS valueLabels, e.value_colors AS valueColors,
+               e.default_value AS defaultValue, e.value_labels AS valueLabels, e.value_colors AS valueColors, e.value_icons AS valueIcons,
                e.label AS label, e.scope AS scope
       `, { id, tenantId: ctx.tenantId }),
     )
@@ -658,6 +672,13 @@ export async function updateEnumType(
     for (const [from, to] of replaced) colori = renameValueColor(colori, from, to)
     const coloriFinali = serializeValueColors(pruneValueColors(colori, next))
 
+    // The icons (G40) follow the same three rules as the colours.
+    let icone: EnumValueIcons = input.valueIcons
+      ? assertValueIconsInput(input.valueIcons, next, name)
+      : parseValueIcons(check.records[0]!.get('valueIcons')).icons
+    for (const [from, to] of replaced) icone = renameValueIcon(icone, from, to)
+    const iconeFinali = serializeValueIcons(pruneValueIcons(icone, next))
+
     if (finalDefault != null && !next.includes(finalDefault)) {
       // Chi lo legge deve sapere quali sono le sue due uscite.
       throw new ValidationError(
@@ -701,6 +722,7 @@ export async function updateEnumType(
         && finalDefault === currentDefault
         && stessaMappa(etichetteFinali, check.records[0]!.get('valueLabels'))
         && stessaMappa(coloriFinali, check.records[0]!.get('valueColors'))
+        && stessaMappa(iconeFinali, check.records[0]!.get('valueIcons'))
       if (nulladiNuovo) {
         throw new ValidationError(
           `Nothing to save on "${name}": the document you sent is identical to the one already stored.`,
@@ -738,6 +760,7 @@ export async function updateEnumType(
             e.default_value = $finalDefault,
             e.value_labels = $valueLabels,
             e.value_colors = $valueColors,
+            e.value_icons = $valueIcons,
             e.updated_at = $now
         RETURN e.id        AS id,
                e.tenant_id AS tenantId,
@@ -748,7 +771,7 @@ export async function updateEnumType(
                e.scope     AS scope,
                e.default_value AS defaultValue,
                e.created_at AS createdAt,
-               e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors
+               e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors, e.value_icons AS valueIcons
       `, {
         id,
         tenantId: ctx.tenantId,
@@ -758,6 +781,7 @@ export async function updateEnumType(
         finalDefault,
         valueLabels: etichetteFinali,
         valueColors: coloriFinali,
+        valueIcons: iconeFinali,
         now,
       })
     })
@@ -931,7 +955,7 @@ export async function renameEnumValue(
         MATCH (e:EnumTypeDefinition {id: $id})
         WHERE e.tenant_id = $tenantId OR (e.is_system = true AND e.tenant_id = 'system')
         RETURN e.tenant_id AS tenantId, e.name AS name, e.values AS values, e.default_value AS defaultValue,
-               e.value_labels AS valueLabels, e.value_colors AS valueColors
+               e.value_labels AS valueLabels, e.value_colors AS valueColors, e.value_icons AS valueIcons
       `, { id, tenantId: ctx.tenantId }),
     )
     if (!check.records.length) throw new NotFoundError('EnumTypeDefinition', id)
@@ -1004,7 +1028,7 @@ export async function renameEnumValue(
                e.scope     AS scope,
                e.default_value AS defaultValue,
                e.created_at AS createdAt,
-               e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors
+               e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors, e.value_icons AS valueIcons
       `, { id, tenantId: ctx.tenantId, values: next, from, to, now, valueLabels: etichetteNuove, valueColors: coloriNuovi })
     })
     if (!result.records.length) throw new NotFoundError('EnumTypeDefinition', id)
@@ -1087,7 +1111,7 @@ export async function reorderEnumValues(
                e.scope     AS scope,
                e.default_value AS defaultValue,
                e.created_at AS createdAt,
-               e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors
+               e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors, e.value_icons AS valueIcons
       `, { id, tenantId: ctx.tenantId, values, now: new Date().toISOString() }),
     )
     if (!result.records.length) throw new NotFoundError('EnumTypeDefinition', id)
@@ -1104,7 +1128,7 @@ export async function reorderEnumValues(
 const ENUM_RETURN = `
   RETURN e.id AS id, e.tenant_id AS tenantId, e.name AS name, e.label AS label, e.values AS values,
          e.is_system AS isSystem, e.scope AS scope, e.default_value AS defaultValue,
-         e.created_at AS createdAt, e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors`
+         e.created_at AS createdAt, e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors, e.value_icons AS valueIcons`
 
 function stringList(value: unknown, what: string): string[] {
   if (!Array.isArray(value) || value.some((v) => typeof v !== 'string')) {

@@ -10,10 +10,12 @@ type Rec = { get: (k: string) => unknown }
 type Call = { cypher: string; params: Record<string, unknown>; mode: 'read' | 'write' }
 const calls: Call[] = []
 let script: Array<{ match: string; ids: string[] }> = []
+let askerRows: Array<Record<string, string | null>> = []
 const tx = (mode: 'read' | 'write') => ({
   run: vi.fn(async (cypher: string, params: Record<string, unknown> = {}) => {
     calls.push({ cypher, params, mode })
     const hit = script.find((s) => cypher.includes(s.match))
+    if (cypher.includes('REQUESTED_BY')) return { records: askerRows.map((a): Rec => ({ get: (k: string) => a[k] ?? null })) }
     return { records: (hit?.ids ?? []).map((id): Rec => ({ get: (k: string) => (k === 'id' ? id : null) })) }
   }),
 })
@@ -43,6 +45,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   calls.length = 0
   script = []
+  askerRows = []
 })
 
 describe('createStepApprovalRequest', () => {
@@ -89,5 +92,22 @@ describe('createStepApprovalRequest', () => {
     expect(e.message).toContain('users: 0, teams: 1')
     const e2 = await caught(create({ approverUserIds: ['ghost'] }))
     expect(e2.message).toContain('users: 1, teams: 0')
+  })
+
+  it('nobody approves what they asked for: the mover, the requester and the author are left out (24 Sep 2026)', async () => {
+    on('role: $role', 'u-1', 'adm-2', 'req-3', 'auth-4', 'adm-5')
+    askerRows = [{ requester: 'req-3', author: 'auth-4' }]
+    await createStepApprovalRequest(session as never, actor, { id: 'kb-1', type: 'kb_article' }, { title: 'T' } as never)
+    const asked = callOf('REQUESTED_BY')!
+    expect(asked.cypher).toContain('MATCH (e:KBArticle {id: $entityId, tenant_id: $tenantId})')
+    expect(asked.params).toEqual({ entityId: 'kb-1', tenantId: 't-1' })
+    expect(callOf('CREATE (ap:ApprovalRequest')!.params['approvers']).toBe(JSON.stringify(['adm-2', 'adm-5']))
+  })
+
+  it('when only the ones who asked could approve, it says so and creates nothing', async () => {
+    on('role: $role', 'u-1')
+    const e = await caught(create({}))
+    expect(e.extensions).toMatchObject({ code: 'NO_APPROVER', i18n: { key: 'errors.workflow.onlyAskerApproves' } })
+    expect(callOf('CREATE (ap:ApprovalRequest')).toBeUndefined()
   })
 })

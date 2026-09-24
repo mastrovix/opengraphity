@@ -3,6 +3,7 @@
  */
 import { assertAssignablePerson } from '../../../services/ticketAssignment.js'
 import { assignTeamCypher, TEAM_NOW_PARAM } from '../../../lib/ticketTeamHistory.js'
+import { takeTaskOnStartCypher } from '../../../lib/taskTakeOnStart.js'
 import { GraphQLError } from 'graphql'
 import { NotFoundError } from '../../../lib/errors.js'
 import { ForbiddenError } from '../../../lib/errors.js'
@@ -115,6 +116,7 @@ export async function submitAssessmentResponse(
         CREATE (resp)-[:ANSWERED_BY]->(u)
       )
       SET t.status = '${TASK_STATUS.IN_PROGRESS}'
+      ${takeTaskOnStartCypher('t')}
     `, { taskId: args.taskId, questionId: args.questionId, optionId: args.optionId,
          tenantId: ctx.tenantId, userId: ctx.userId, now }))
 

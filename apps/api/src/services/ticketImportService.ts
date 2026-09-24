@@ -16,6 +16,7 @@
  * Rows are fully validated before any write; in execute mode invalid rows are
  * skipped (reported in `errors`) while valid rows proceed.
  */
+import { KB_AUDIENCES, KB_DEFAULT_AUDIENCE, isKbAudience, type KbAudience } from '../lib/kbPublished.js'
 import { assignTeamCypher, TEAM_NOW_PARAM } from '../lib/ticketTeamHistory.js'
 import { v4 as uuidv4 } from 'uuid'
 import { workflowEngine } from '@opengraphity/workflow'
@@ -82,6 +83,7 @@ const IMPORT_MESSAGES = {
   kbCategoryUnknown:      (p: Record<string, string>) => `category "${p['category']}" is not one of the KB categories in the Dictionary (${p['allowed']})`,
   kbNoPublishedStep:      (p: Record<string, string>) => `the kb_article workflow has no "published" step — the article stays in the initial step "${p['step']}"`,
   kbNoWorkflow:           () => 'no active workflow definition for "kb_article" — article imported without a workflow instance',
+  kbAudienceUnknown:      (p: Record<string, string>) => `audience "${p['audience']}" is not one of ${p['allowed']}`,
   customFieldInvalid:     (p: Record<string, string>) => `custom field column "${p['field']}": ${p['error']}`,
   writeFailed:            (p: Record<string, string>) => `write failed: ${p['error']}`,
 } as const satisfies Record<string, (p: Record<string, string>) => string>
@@ -918,6 +920,8 @@ interface KBPlan {
   category:     string | null
   tags:         string          // JSON string, same storage as the KB resolver
   statusRaw:    'draft' | 'published'
+  /** Who it is for; null = not in the file (a new article is for the staff, an existing one keeps its own). */
+  audience:     KbAudience | null
   stepName:     string | null   // null when the tenant has no kb_article workflow
   authorName:   string | null
   createdAt:    string | null
@@ -1026,6 +1030,13 @@ export async function importKBArticles(
         return
       }
 
+      const rawAudience = (row['audience'] ?? '').trim().toLowerCase()
+      if (rawAudience && !isKbAudience(rawAudience)) {
+        fail('kbAudienceUnknown', { audience: row['audience'] ?? '', allowed: KB_AUDIENCES.join(', ') })
+        return
+      }
+      const audience = rawAudience ? rawAudience as KbAudience : null
+
       const existing = existingByExternalId.get(externalId) ?? null
 
       // slug: generated from title, deduped with -2, -3, ... suffixes.
@@ -1076,6 +1087,7 @@ export async function importKBArticles(
         category,
         tags:       JSON.stringify(tags),
         statusRaw,
+        audience,
         stepName,
         authorName: (row['author_name'] ?? '').trim() || null,
         createdAt:  createdAt ?? (existing ? null : now),
@@ -1124,8 +1136,10 @@ async function writeKBRow(session: Session, p: KBPlan, ctx: ServiceCtx): Promise
                     a.views             = 0,
                     a.helpful_count     = 0,
                     a.not_helpful_count = 0,
-                    a.created_at        = $createdAt
+                    a.created_at        = $createdAt,
+                    a.audience          = coalesce($audience, $defaultAudience)
       SET a.title        = $title,
+          a.audience     = coalesce($audience, a.audience),
           a.body         = $body,
           a.category     = $category,
           a.tags         = $tags,
@@ -1144,6 +1158,8 @@ async function writeKBRow(session: Session, p: KBPlan, ctx: ServiceCtx): Promise
       category:    p.category,
       tags:        p.tags,
       status,
+      audience:    p.audience,
+      defaultAudience: KB_DEFAULT_AUDIENCE,
       authorName:  p.authorName,
       createdAt:   p.createdAt,
       updatedAt:   p.updatedAt,

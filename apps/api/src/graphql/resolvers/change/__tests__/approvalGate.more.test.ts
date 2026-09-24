@@ -61,11 +61,12 @@ const { approveChangeApproval, rejectChangeApproval, changeApprovals } = await i
 const admin = { tenantId: 't1', userId: 'u-admin', userEmail: 'a@x', role: 'admin', permissions: perms('admin') } as never
 const operator = { tenantId: 't1', userId: 'u-op', userEmail: 'o@x', role: 'operator', permissions: perms('operator') } as never
 
-interface Gate { step?: Record<string, unknown> | null; member?: boolean; requirement?: Record<string, unknown> | null }
+interface Gate { step?: Record<string, unknown> | null; member?: boolean; requirement?: Record<string, unknown> | null; own?: boolean }
 function gate(g: Gate = {}) {
   const step = g.step === undefined ? { step: 'cab', purpose: 'approval', changeType: 'normal', teamName: 'CAB' } : g.step
   vi.mocked(runQueryOne).mockImplementation((async (_s: unknown, cypher: string) => {
     if (cypher.includes('CURRENT_STEP')) return step
+    if (cypher.includes(':REQUESTED_BY]')) return { own: g.own ?? false }
     if (cypher.includes(':MEMBER_OF]')) return { ok: g.member ?? false }
     if (cypher.includes("status: 'pending'")) return g.requirement === undefined ? { id: 'appr-1' } : g.requirement
     return { id: 'x' }
@@ -110,6 +111,20 @@ describe('approveChangeApproval — eligibility and state', () => {
     expect(vi.mocked(runQueryOne).mock.calls.some(([, c]) => String(c).includes(':MEMBER_OF]'))).toBe(false)
     // Without a note the audit line is just the team name.
     expect(writeAudit).toHaveBeenCalledWith(session, 'chg-1', 't1', 'change_approved', 'u-admin', 'CAB')
+  })
+
+  it('the requester never decides the approval of their own change, not even as admin (24 Sep 2026)', async () => {
+    gate({ member: true, own: true })
+    for (const decide of [
+      () => approveChangeApproval(null, { changeId: 'chg-1', teamId: 'team-cab' }, admin),
+      () => rejectChangeApproval(null, { changeId: 'chg-1', teamId: 'team-cab', note: 'no', reopenAll: true }, admin),
+    ]) {
+      const err = await caught(decide())
+      expect(err.extensions).toMatchObject({ code: 'FORBIDDEN', i18n: { key: 'errors.approval.ownChange' } })
+    }
+    const own = vi.mocked(runQueryOne).mock.calls.find(([, c]) => String(c).includes(':REQUESTED_BY]'))!
+    expect(own[2]).toEqual({ changeId: 'chg-1', userId: 'u-admin', tenantId: 't1' })
+    expect(vi.mocked(runQueryOne).mock.calls.some(([, c]) => String(c).includes("a.status = 'approved'"))).toBe(false)
   })
 
   it('an unknown or deleted change is NOT_FOUND', async () => {
@@ -233,9 +248,9 @@ describe('rejectChangeApproval', () => {
 
 describe('changeApprovals (field resolver)', () => {
   const rows = [
-    { kind: 'change_manager', teamId: 'cm', teamName: 'CM', status: 'pending', approvedByName: null, approvedAt: null, isMember: false },
-    { kind: 'owner_group', teamId: 'dba', teamName: 'DBA', status: 'pending', approvedByName: null, approvedAt: null, isMember: true },
-    { kind: 'owner_group', teamId: 'net', teamName: 'NET', status: 'approved', approvedByName: 'Anna', approvedAt: '2026-09-01', isMember: true },
+    { kind: 'change_manager', teamId: 'cm', teamName: 'CM', status: 'pending', approvedByName: null, approvedAt: null, isMember: false, ownChange: false },
+    { kind: 'owner_group', teamId: 'dba', teamName: 'DBA', status: 'pending', approvedByName: null, approvedAt: null, isMember: true, ownChange: false },
+    { kind: 'owner_group', teamId: 'net', teamName: 'NET', status: 'approved', approvedByName: 'Anna', approvedAt: '2026-09-01', isMember: true, ownChange: false },
   ]
 
   it('an operator can approve only where they are a member, and never on behalf', async () => {
@@ -250,5 +265,11 @@ describe('changeApprovals (field resolver)', () => {
     const r = await changeApprovals({ id: 'chg-1' }, null, admin)
     expect(r.map((x) => [x.teamId, x.canApprove, x.onBehalf])).toEqual([['cm', true, true], ['dba', true, false], ['net', false, false]])
     expect(r[2]).toMatchObject({ approvedByName: 'Anna', approvedAt: '2026-09-01' })
+  })
+
+  it('on their own change the requester can decide nothing, and is told why', async () => {
+    vi.mocked(runQuery).mockResolvedValue(rows.map((x) => ({ ...x, ownChange: true })) as never)
+    const r = await changeApprovals({ id: 'chg-1' }, null, admin)
+    expect(r.map((x) => [x.teamId, x.canApprove, x.onBehalf, x.ownChange])).toEqual([['cm', false, false, true], ['dba', false, false, true], ['net', false, false, false]])
   })
 })

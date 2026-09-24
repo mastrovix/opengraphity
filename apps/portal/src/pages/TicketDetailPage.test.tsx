@@ -153,6 +153,15 @@ describe('TicketDetailPage — le risposte al modulo', () => {
     expect(screen.queryByText('true')).toBeNull()
   })
 
+  // Tour of 24 Sep 2026 (G41): «Needed until 2026-12-31», the raw date, next to dates written for people.
+  it('a date answer is written as the other dates of the page, not raw', async () => {
+    renderWithProviders(<TicketDetailPage />, { ...ROUTE, mocks: [meMock, categoriesMock, ticketMock(conRisposte([
+      risposta({ name: 'until', label: 'Needed until', fieldType: 'date', displayValue: '2026-12-31' }),
+    ]) as never)] })
+    expect(await screen.findByText('31 Dec 2026')).toBeInTheDocument()
+    expect(screen.queryByText('2026-12-31')).toBeNull()
+  })
+
   it('un booleano falso si legge «no», non «false»', async () => {
     renderWithProviders(<TicketDetailPage />, { ...ROUTE, mocks: [meMock, categoriesMock, ticketMock(conRisposte([
       risposta({ name: 'urgente', label: 'Urgente', fieldType: 'boolean', displayValue: 'false' }),

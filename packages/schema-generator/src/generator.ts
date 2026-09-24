@@ -26,6 +26,14 @@ import type { ReservedSchemaNames } from './nameValidation.js'
  * obbligatorio proprio perché nessun chiamante possa tornare a leggere la
  * lista spedita per sbaglio.
  */
+/** `status_excluded` of a type: a list, or its JSON; missing = none; anything else is an error, never a guess. */
+export function parseStatusesExcluded(raw: unknown, typeName: string): string[] {
+  if (raw == null) return []
+  const list: unknown = typeof raw === 'string' ? JSON.parse(raw) : raw
+  if (!Array.isArray(list) || list.some((v) => typeof v !== 'string')) throw new Error(`status_excluded for type "${typeName}" is not a list of names`)
+  return list as string[]
+}
+
 export async function loadMetamodel(tenantId: string, enumScope: EnumScope): Promise<CITypeWithDefinitions[]> {
   const session = getSession(undefined, 'READ')
   try {
@@ -111,6 +119,7 @@ export async function loadMetamodel(tenantId: string, enumScope: EnumScope): Pro
         neo4jLabel:       t['neo4j_label'] as string,
         validationScript: (t['validation_script'] as string | null) ?? null,
         serviceRole:      (t['service_role']      as string | null) ?? null,
+        statusesExcluded: parseStatusesExcluded(t['status_excluded'], String(t['name'])),
         // Missing chain_families → none; corrupt JSON → throw (an invented
         // default would silently alter chain calculation for the whole type).
         chainFamilies:    (() => {
@@ -395,6 +404,8 @@ input UpdateCITypeInput {
   chainFamilies: [String!]
   """Ruolo nella mappa di un servizio: component | infrastructure | certificate."""
   serviceRole: String
+  """The status values this type does not offer (replaced as a whole); empty = every value."""
+  statusesExcluded: [String!]
 }
 
 """Un'etichetta di un tipo CI per UNA lingua. Un tipo con due lingue manda due voci."""

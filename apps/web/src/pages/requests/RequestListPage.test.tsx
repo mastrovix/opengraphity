@@ -44,6 +44,7 @@ const formValue = (name: string, displayValue: string | null, displayValues: str
 const request = (n: number, over: Record<string, unknown> = {}) => ({
   id: `sr-${n}`, number: `SR0000000${n}`, title: `Request ${n}`, priority: 'high', status: 'submitted',
   createdAt: '2026-09-21T09:00:00Z', customFields: [{ name: 'cost_centre', value: `CC-${n}` }],
+  requestedBy: { id: `u-${n}`, name: `Person ${n}` },
   formFieldValues: [formValue('laptop_model', `Model ${n}`)], ...over,
 })
 const page = (items: unknown[], total = items.length) => ({ serviceRequests: { items, total } })
@@ -56,7 +57,7 @@ beforeEach(() => {
   apolloFinto.risposte['GetServiceRequests'] = page([
     request(1),
     request(2, { priority: 'low', formFieldValues: [formValue('laptop_model', null, ['Mouse', 'Dock'])] }),
-    request(3, { formFieldValues: [], customFields: [] }),
+    request(3, { formFieldValues: [], customFields: [], requestedBy: null }),
   ])
   apolloFinto.risposte['GetWorkflowDefinition'] = { workflowDefinition: { transitions: [], steps: [
     { id: 's1', name: 'submitted', label: 'Sent', labels: [], type: 'state', isInitial: true, isTerminal: false, isOpen: true, category: 'active', purpose: null, order: 0 },
@@ -79,7 +80,7 @@ describe('RequestListPage: what the list shows', () => {
   it('the count and every column: base, custom fields, and the form fields shown in lists', () => {
     mount()
     expect(screen.getByText('3 requests')).toBeInTheDocument()
-    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Number', 'Title', 'Priority', 'Status', 'Created', 'Cost centre', 'Laptop model'])
+    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Number', 'Title', 'Requester', 'Priority', 'Status', 'Created', 'Cost centre', 'Laptop model'])
     const first = rowOf('Request 1')
     expect(within(first).getByText('SR00000001')).toBeInTheDocument()
     expect(within(first).getByText('Sent')).toBeInTheDocument()
@@ -87,9 +88,12 @@ describe('RequestListPage: what the list shows', () => {
     expect(within(first).getByText(formatDate('2026-09-21T09:00:00Z'))).toBeInTheDocument()
     expect(within(first).getByText('CC-1')).toBeInTheDocument()
     expect(within(first).getByText('Model 1')).toBeInTheDocument()
+    // Who asked for it (G27).
+    expect(within(first).getByText('Person 1')).toBeInTheDocument()
     // Several answers are joined; a missing answer is a dash.
     expect(within(rowOf('Request 2')).getByText('Mouse, Dock')).toBeInTheDocument()
-    expect(within(rowOf('Request 3')).getAllByText('—')).toHaveLength(2)
+    // No requester, no custom field, no answer: a dash each.
+    expect(within(rowOf('Request 3')).getAllByText('—')).toHaveLength(3)
     expect(lastQuery()).toEqual({ limit: 50, offset: 0, filters: undefined, sortField: null, sortDirection: 'desc' })
   })
 
@@ -180,7 +184,7 @@ describe('RequestListPage: CSV export', () => {
     })
     const [name, columns, rows] = csv.exportToCsv.mock.calls[0] as [string, Array<{ key: string }>, Array<Record<string, unknown>>]
     expect(name).toBe('service-requests')
-    expect(columns.map((c) => c.key)).toEqual(['number', 'title', 'priority', 'status', 'createdAt', 'cf:cost_centre', 'ff:laptop_model'])
+    expect(columns.map((c) => c.key)).toEqual(['number', 'title', 'requestedBy', 'priority', 'status', 'createdAt', 'cf:cost_centre', 'ff:laptop_model'])
     expect(rows.map((r) => [r['number'], r['cf:cost_centre'], r['ff:laptop_model']])).toEqual([['SR00000007', 'CC-7', 'Model 7'], ['SR00000008', 'CC-8', 'A, B']])
   })
 

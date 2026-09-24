@@ -41,6 +41,10 @@ const audit = vi.fn()
 vi.mock('../../../lib/audit.js', () => ({ audit: (...a: unknown[]) => audit(...a) }))
 vi.mock('../../../lib/systemText.js', () => ({ systemText: vi.fn(async (_t: string, k: string) => `text:${k}`) }))
 vi.mock('../pendingTicketApprovals.js', () => ({ pendingTicketApprovals: vi.fn() }))
+// Who asked for it (lib/ownApproval.ts): here only the person who asked for the approval.
+vi.mock('../../../lib/ownApproval.js', () => ({
+  askersOf: vi.fn(async (_s: unknown, _t: string, _e: string, _i: string, by?: string | null) => new Set(by ? [by] : [])),
+}))
 const getInitialStepName = vi.fn()
 vi.mock('../../../lib/workflowHelpers.js', () => ({ getInitialStepName: (...a: unknown[]) => getInitialStepName(...a) }))
 
@@ -83,6 +87,11 @@ describe('myPendingApprovals', () => {
     expect(out.map((a) => a.id)).toEqual(['mine'])
     expect(read.mock.calls[0]![1]).toEqual({ tenantId: 't1', userId: 'u1' })
     expect(close).toHaveBeenCalledOnce()
+  })
+
+  it('what I asked for myself is not waiting for my approval, even if an older request names me (24 Sep 2026)', async () => {
+    read.mockResolvedValueOnce({ records: [row({ id: 'theirs' }), row({ id: 'own', requestedBy: 'u1', approvers: '["u1","u2"]' })] })
+    expect((await myPendingApprovals(null, null, ctx('u1'))).map((a) => a.id)).toEqual(['theirs'])
   })
 
   it('maps a missing approvedBy list to an empty list, not a crash', async () => {

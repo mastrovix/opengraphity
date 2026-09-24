@@ -52,6 +52,8 @@ export interface SLAStatus {
    * identico alla ripresa.
    */
   response_breach_notified_at?: string
+  /** When the response was given (G14): later than `response_deadline` is a late response. */
+  response_met_at?: string
   tier: SLATier
 }
 
@@ -89,6 +91,7 @@ export const SLA_STATUS_PROJECTION = `
       s.tier_warning_minutes as tier_warning_minutes,
       s.policy_id as policy_id, s.policy_name as policy_name,
       s.response_breach_notified_at as response_breach_notified_at,
+      s.response_met_at as response_met_at,
       s.paused_total_ms as paused_total_ms,
       s.breached_at as breached_at
 `
@@ -132,6 +135,7 @@ export function mapToSLAStatus(props: Record<string, unknown>): SLAStatus {
     // converte gli Integer di Neo4j.
     paused_total_ms:   props['paused_total_ms'] == null ? undefined : Number(props['paused_total_ms']),
     response_breach_notified_at: (props['response_breach_notified_at'] ?? undefined) as string | undefined,
+    response_met_at:   (props['response_met_at'] ?? undefined) as string | undefined,
     tier: {
       severity:         props['tier_severity']         as string,
       response_minutes: props['tier_response_minutes'] as number,
@@ -392,14 +396,20 @@ export async function markWarningSent(tenantId: string, entityId: string, resolv
   }
 }
 
-export async function markResponseMet(tenantId: string, entityId: string): Promise<void> {
+/**
+ * The response is given, and WHEN (tour of 24 Sep 2026, G14): the badge said
+ * «Overdue by 37 min» and, once someone took the ticket, «1 d 7 h left» — the
+ * late response left no trace. The instant stays the first one: a second
+ * response (a reassignment) does not move it.
+ */
+export async function markResponseMet(tenantId: string, entityId: string, at: Date = new Date()): Promise<void> {
   const cypher = `
     MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
-    SET s.response_met = true
+    SET s.response_met = true, s.response_met_at = coalesce(s.response_met_at, $at)
   `
   const session = writeSession()
   try {
-    await runQuery(session, cypher, { tenantId, entityId })
+    await runQuery(session, cypher, { tenantId, entityId, at: at.toISOString() })
   } finally {
     await session.close()
   }
@@ -663,7 +673,8 @@ export async function reopenSLA(tenantId: string, entityId: string, reopenedAt: 
  */
 export async function repolicySLA(tenantId: string, entityId: string, policy: SLAPolicy, severity: string): Promise<SLAStatus | null> {
   const current = await getSLAStatus(tenantId, entityId)
-  if (!current || current.resolved_at || !current.policy_id || current.policy_id === policy.id) return null
+  // The same policy with another tier is a change too: the priority moved (24 Sep 2026).
+  if (!current || current.resolved_at || !current.policy_id || (current.policy_id === policy.id && current.tier.severity === severity)) return null
   const tier = policy.tiers.find((t) => t.severity === severity)
   if (!tier) throw new Error(`[sla:status] repolicySLA(${entityId}): policy "${policy.name}" has no tier for severity "${severity}"`)
   const started = parseInstant(current.started_at, `started_at of SLAStatus ${current.id}`)
@@ -699,6 +710,7 @@ export async function repolicySLA(tenantId: string, entityId: string, policy: SL
         s.tier_resolve_minutes  = $resolve,
         s.tier_business_hours   = $bh,
         s.tier_warning_minutes  = $warning,
+        s.tier_severity         = $tierSeverity,
         s.policy_id             = $policyId,
         s.policy_name           = $policyName
     RETURN ${SLA_STATUS_PROJECTION}
@@ -707,7 +719,7 @@ export async function repolicySLA(tenantId: string, entityId: string, policy: SL
   try {
     const row = await runQueryOne<Record<string, unknown>>(session, cypher, {
       tenantId, entityId, newResponse, newResolve, response: tier.response_minutes, resolve: tier.resolve_minutes,
-      bh: tier.business_hours, warning: tier.warning_minutes, policyId: policy.id, policyName: policy.name,
+      bh: tier.business_hours, warning: tier.warning_minutes, tierSeverity: tier.severity, policyId: policy.id, policyName: policy.name,
     })
     if (!row) throw new Error(`[sla:status] repolicySLA(${entityId}): SLAStatus vanished during update`)
     return mapToSLAStatus(row)

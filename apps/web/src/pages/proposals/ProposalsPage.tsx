@@ -29,10 +29,11 @@
  * lingua guarda chi legge.
  */
 import { useState } from 'react'
+import { formatHourMinute } from '@/lib/datetime'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
-import { Lightbulb, Check, X, Clock, RotateCcw, Play, AlertTriangle } from 'lucide-react'
+import { Lightbulb, Check, X, Clock, RotateCcw, Play, AlertTriangle, Loader2 } from 'lucide-react'
 import {
   GET_PROPOSALS, ACCEPT_PROPOSAL, REJECT_PROPOSAL, POSTPONE_PROPOSAL,
   UNDO_PROPOSAL, RUN_PROPOSAL_ANALYSIS,
@@ -203,7 +204,14 @@ export function ProposalsPage() {
     reloadQueries(refetch)
   }
 
+  /*
+   * The outcome of the last run stays on the page (tour of 24 Sep 2026, G44):
+   * a notice that goes away — or does not show — left «Analyse now» without a
+   * sign that anything had happened when the run found nothing new.
+   */
+  const [ultimoEsito, setUltimoEsito] = useState<string | null>(null)
   const lancia = async () => {
+    setUltimoEsito(null)
     try {
       const esito = await analizza()
       reloadQueries(refetch)
@@ -211,7 +219,9 @@ export function ProposalsPage() {
       const scartate = esito.data?.runProposalAnalysis?.skipped ?? []
       // Un esito riuscito è un successo, non un errore: `showError` lo
       // mostrava in rosso con la crocetta, e a schermo sembrava un guasto.
-      toast.success(esitoDelGiro(create, scartate, t))
+      const frase = esitoDelGiro(create, scartate, t)
+      toast.success(frase)
+      setUltimoEsito(t('pages.proposals.lastRunNow', { time: formatHourMinute(new Date().toISOString()), outcome: frase }))
     } catch (e) { showError(e, t('pages.proposals.runFailed')) }
   }
 
@@ -227,9 +237,14 @@ export function ProposalsPage() {
           </p>
         </div>
         {puoLanciare && (
-          <Button onClick={() => lancia()} disabled={inAnalisi} icon={<Play size={15} aria-hidden="true" />}>
-            {inAnalisi ? t('pages.proposals.running') : t('pages.proposals.runNow')}
-          </Button>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+            <Button onClick={() => lancia()} disabled={inAnalisi} icon={inAnalisi ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Play size={15} aria-hidden="true" />}>
+              {inAnalisi ? t('pages.proposals.running') : t('pages.proposals.runNow')}
+            </Button>
+            <span role="status" style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)', maxWidth: 360, textAlign: 'right' }}>
+              {inAnalisi ? t('pages.proposals.runningHint') : ultimoEsito}
+            </span>
+          </div>
         )}
       </div>
 

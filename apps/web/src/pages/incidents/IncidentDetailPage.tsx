@@ -415,8 +415,9 @@ export function IncidentDetailPage() {
       />
 
       {/* Watchers bar + PDF export */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        {canWrite && <Button
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+        {/* A closed incident is not edited nor declared major (tour of 24 Sep 2026, G17). */}
+        {canWrite && !incidentStepIsTerminal(incident.status) && <Button
           variant="secondary"
           icon={<Pencil size={13} />}
           onClick={() => {
@@ -431,7 +432,7 @@ export function IncidentDetailPage() {
         >
           {t('common.edit')}
         </Button>}
-        {canWrite && <Button
+        {canWrite && !incidentStepIsTerminal(incident.status) && <Button
           variant="secondary"
           disabled={settingMajor}
           onClick={() => (async () => {

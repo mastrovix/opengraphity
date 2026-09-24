@@ -256,6 +256,7 @@ export function resolveRule(config: AnomalyRuleConfig, options: AnomalyRuleOptio
     relations:       allRelations ? [...options.relations] : config.relations,
     ciLabels:        config.ciTypes.map((t) => labelOf.get(t)!),
     forbiddenLabels: config.forbidden.map((f) => ({ fromLabel: labelOf.get(f.fromType)!, relation: f.relation, toLabel: labelOf.get(f.toType)! })),
+    productionEnvironments: options.productionEnvironments,
   }
   return buildAnomalyRule(config.ruleKey, settings)
 }

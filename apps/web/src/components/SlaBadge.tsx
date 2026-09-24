@@ -10,6 +10,8 @@ export interface SlaStatusInfo {
   responseDeadline: string
   resolveDeadline:  string
   responseMet:      boolean
+  /** When the response was given: after the response deadline it was late (G14). */
+  respondedAt?:     string | null
   resolveMet:       boolean
   breached:         boolean
   pausedAt?:        string | null
@@ -90,6 +92,11 @@ export function SlaBadge({ sla, compact = false }: { sla: SlaStatusInfo | null |
     }
   }
 
+  // A late response stays said once the ticket is taken (tour of 24 Sep 2026, G14):
+  // the badge moved from «Overdue by 37 min» to the resolve countdown as if nothing had happened.
+  const lateBy = sla.responseMet && sla.respondedAt ? Date.parse(sla.respondedAt) - Date.parse(sla.responseDeadline) : 0
+  const responseLate = !compact && lateBy > 60_000
+
   const { bg, fg } = STATE_STYLE[state]
   const Icon = state === 'met' ? CheckCircle2
     : state === 'paused' ? PauseCircle
@@ -103,6 +110,11 @@ export function SlaBadge({ sla, compact = false }: { sla: SlaStatusInfo | null |
     >
       <Icon size={compact ? 11 : 13} />
       {label}
+      {responseLate && (
+        <span style={{ fontWeight: 500, color: palette.danger.text }}>
+          {' · '}{t('sla.responseLateBy', { time: formatDuration(lateBy) })}
+        </span>
+      )}
     </span>
   )
 }

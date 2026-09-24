@@ -127,6 +127,26 @@ beforeEach(() => {
   runScript.mockResolvedValue({ success: true, logs: [], duration_ms: 1 })
 })
 
+describe('validateCIInput: the statuses a type does not offer (G35, 24 Sep 2026)', () => {
+  const withStatus = (over: Partial<CITypeWithDefinitions> = {}) => ciType({
+    fields: [
+      { id: 'f-status', name: 'status', label: 'Status', fieldType: 'enum', required: false, defaultValue: null, enumValues: ['active', 'expired'], order: 2, isSystem: true, scope: 'base' } as never,
+    ],
+    ...over,
+  })
+
+  it('«Expired» on a server is refused, when it is written', async () => {
+    await expect(validateCIInput(withStatus({ statusesExcluded: ['expired', 'revoked'] }), { name: 'srv', status: 'expired' }, 't1'))
+      .rejects.toThrow(/"expired" is not a status of Server/)
+    // An update that does not touch the status does not stumble on an old one.
+    await expect(validateCIInput(withStatus({ statusesExcluded: ['expired'] }), { name: 'srv', status: 'expired' }, 't1', new Set(['name']))).resolves.toBeUndefined()
+  })
+
+  it('a type that excludes nothing offers every value', async () => {
+    await expect(validateCIInput(withStatus(), { name: 'cert', status: 'expired' }, 't1')).resolves.toBeUndefined()
+  })
+})
+
 describe('validateCIInput (F-13)', () => {
   it('required field missing → ValidationError, no script executed', async () => {
     await expect(validateCIInput(ciType(), { name: 'srv', ipAddress: '' }, 't1'))

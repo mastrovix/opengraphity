@@ -47,7 +47,7 @@ const globalSearch = globalSearchResolvers.Query.globalSearch
 
 const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'user@test.io', role: 'operator', permissions: perms('operator') }
 
-const EMPTY_RESULTS = { cis: [], changes: [], incidents: [], problems: [], serviceRequests: [], tasks: [], kbArticles: [] }
+const EMPTY_RESULTS = { cis: [], changes: [], incidents: [], problems: [], serviceRequests: [], tasks: [], kbArticles: [], teams: [] }
 
 type Row = Record<string, unknown>
 
@@ -199,8 +199,10 @@ describe('globalSearch', () => {
     const calls = vi.mocked(runQuery).mock.calls
     // fulltext + ci-by-id + task di change + task generici + kb (20 set 2026:
     // i compiti generici condividono la numerazione TASK…, quindi un codice
-    // ricevuto per telefono deve trovarli).
-    expect(calls.length).toBe(5)
+    // ricevuto per telefono deve trovarli) + teams (24 Sep 2026, G37).
+    expect(calls.length).toBe(6)
+    const teams = calls.find(([, c]) => String(c).includes('MATCH (t:Team {tenant_id: $tenantId})'))!
+    expect(teams[2]).toMatchObject({ q: 'serv', tenantId: 'tenant-1' })
     for (const call of calls) {
       expect((call[2] as Record<string, unknown>)['tenantId']).toBe('tenant-1')
     }

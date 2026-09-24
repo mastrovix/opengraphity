@@ -60,6 +60,8 @@ export interface CITypeDef {
   tenantId: string
   validationScript: string | null
   chainFamilies: string[]
+  /** The status values this type does not offer (G35): «Expired», «Revoked» are a certificate's. */
+  statusesExcluded?: string[]
   /**
    * Ruolo del tipo nella mappa di un servizio (`component | infrastructure |
    * certificate`, ondata 6 · A-10). `null` = non dichiarato: lo propone il

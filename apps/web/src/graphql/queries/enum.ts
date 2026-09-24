@@ -8,6 +8,7 @@ export const GET_ENUM_TYPES = gql`
       id name label values defaultValue isSystem isShipped scope createdAt updatedAt valueLabelsReasonKey
       valueLabels(language: $language) { value label labels { language label } }
       valueColors { value color }
+      valueIcons { value icon }
     }
   }
 `
@@ -18,6 +19,7 @@ export const GET_ENUM_TYPE = gql`
       id name label values defaultValue isSystem isShipped scope createdAt updatedAt valueLabelsReasonKey
       valueLabels(language: $language) { value label labels { language label } }
       valueColors { value color }
+      valueIcons { value icon }
     }
   }
 `

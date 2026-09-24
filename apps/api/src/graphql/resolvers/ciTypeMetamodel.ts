@@ -3,7 +3,7 @@ import { assertNoServiceMapFollows, serviceMapsBlockingRemoval } from '../../lib
 import type { GraphQLContext } from '../../context.js'
 import { GraphQLError } from 'graphql'
 import { invalidateSchema } from '../../lib/schemaInvalidator.js'
-import { toPascalCase, CI_FIELD_TYPES, isCIFieldType } from '@opengraphity/schema-generator'
+import { toPascalCase, CI_FIELD_TYPES, isCIFieldType, parseStatusesExcluded } from '@opengraphity/schema-generator'
 import { assertNewCITypeName, assertNewCIFieldName, type ExistingCIType } from '../metamodelNames.js'
 import { CHAIN_FAMILIES, chainFamiliesToJSON, calculateAllChains } from '../../lib/chainCalculator.js'
 import { assertRelationshipTypeName, defaultServiceRoleOf, splitRelationshipTypes } from '../../lib/ciMetamodelForTenant.js'
@@ -18,6 +18,7 @@ import { invalidateRulesCache } from '../../lib/rulesEngine.js'
 import { notifyCIGraphChanged } from '../../services/serviceImpact/sync.js'
 import { SETTABLE_SERVICE_NODE_ROLES } from '../../lib/serviceVocabularies.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
+import { domainVocabulary } from '../../lib/domainMatrix.js'
 import {
   SYSTEM_TENANT, enumScopeClause, loadTenantEnumOverrides, applyEnumOverrides, assertEnumLinkable,
 } from '../../lib/enumScope.js'
@@ -423,6 +424,7 @@ export function mapCITypeNode(t: Props, fields: CIFieldRow[], relations: Props[]
     // dichiarato: il ruolo lo propone il prodotto (seme dei tipi spediti, poi
     // le famiglie di catena), e il disegnatore lo mostra come tale.
     serviceRole:      t['service_role'] ?? null,
+    statusesExcluded: parseStatusesExcluded(t['status_excluded'], String(t['name'])),
     fields: fields
       .filter(fd => fd?.f?.properties)
       .map(fd => {
@@ -732,6 +734,7 @@ export function buildCITypesResolver() {
           validationScript: t['validation_script'] ?? null,
           chainFamilies: parseChainFamilies(t['chain_families']),
           serviceRole:   t['service_role'] ?? null,
+          statusesExcluded: parseStatusesExcluded(t['status_excluded'], String(t['name'])),
           fields,
           relations: (rec.get('relations') as Array<{ properties: Props }>)
             .filter(r => r?.properties)
@@ -786,6 +789,23 @@ export function buildBaseCITypeResolver() {
 }
 
 // ── assertServiceRoleInput / assertCITypeNotInUse ─────────────────────────────
+
+
+/**
+ * The statuses a type does not offer (G35): values of the tenant's status
+ * vocabulary, without repetitions, and never all of them — a type must be
+ * able to have a status.
+ */
+async function assertStatusesExcluded(tenantId: string, raw: readonly string[]): Promise<string[]> {
+  const vocabulary = await domainVocabulary(tenantId, 'ci_status')
+  const unknown = raw.filter((v) => !vocabulary.includes(v))
+  if (unknown.length) {
+    throw new ValidationError(`statusesExcluded: ${unknown.join(', ')} not in the CI status dictionary (${vocabulary.join(', ')})`, { key: 'errors.ciType.statusUnknown', params: { values: unknown.join(', '), allowed: vocabulary.join(', ') } })
+  }
+  const list = [...new Set(raw)]
+  if (list.length >= vocabulary.length) throw new ValidationError('statusesExcluded: a type must keep at least one status', { key: 'errors.ciType.noStatusLeft' })
+  return list
+}
 
 /**
  * Il ruolo nella mappa di un servizio in arrivo dall'interfaccia (A-10).
@@ -935,7 +955,7 @@ export function buildMetamodelMutations() {
 
     updateCIType: async (
       _: unknown,
-      args: { id: string; input: { label?: string; labels?: { language: string; label: string }[]; icon?: string; color?: string; active?: boolean; validationScript?: string; chainFamilies?: string[]; serviceRole?: string | null } },
+      args: { id: string; input: { label?: string; labels?: { language: string; label: string }[]; icon?: string; color?: string; active?: boolean; validationScript?: string; chainFamilies?: string[]; serviceRole?: string | null; statusesExcluded?: string[] | null } },
       ctx: GraphQLContext,
     ) => {
       requireMetamodelPermission(ctx)
@@ -957,6 +977,8 @@ export function buildMetamodelMutations() {
       // A-10: `null` è un valore, non «campo assente»: rimette il ruolo in mano
       // al prodotto (seme dei tipi spediti, poi le famiglie di catena).
       if (serviceRole       !== undefined) updates['service_role']      = serviceRole
+      // The statuses the type does not offer (G35): values of the tenant's status vocabulary, all of them never.
+      if (args.input.statusesExcluded != null) updates['status_excluded'] = JSON.stringify(await assertStatusesExcluded(ctx.tenantId, args.input.statusesExcluded))
 
       // A-6: `SET t += {}` scrive 0 proprietà anche su un tipo che c'è — senza
       // questo controllo il no-op del chiamante diventerebbe un errore che

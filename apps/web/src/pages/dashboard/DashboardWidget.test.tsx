@@ -30,6 +30,12 @@ describe('DashboardWidget', () => {
     expect(screen.getByText('open now')).toBeInTheDocument()
   })
 
+  // Tour of 24 Sep 2026 (G2): «Open incidents» over «Open Incidents».
+  it('a report named as its section is not repeated under it', () => {
+    render(<DashboardWidget widget={widget({ reportTemplate: { id: 'rt1', name: 'Open Incidents' } })} />)
+    expect(screen.getAllByText(/^Open incidents$/i)).toHaveLength(1)
+  })
+
   it('a widget whose section and report are gone is still a card, named "Widget", without a report line', () => {
     render(<DashboardWidget widget={widget({ reportSection: null, reportTemplate: null, data: null })} />)
     expect(screen.getByText('Widget')).toBeInTheDocument()

@@ -58,24 +58,27 @@ function fakeSession(responses: Array<{ records: unknown[] }>) {
 describe('rateKBArticle', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('helpful=true → SET a.helpful_count = a.helpful_count + 1, scoped per tenant, articolo aggiornato in risposta', async () => {
+  it('a vote is the person\'s: MERGE of RATED_KB for the user, scoped per tenant, the updated article in answer (G8, 24 Sep 2026)', async () => {
     const s = fakeSession([{ records: [rec({ ...ARTICLE, helpfulCount: 3 })] }])
 
     const out = await knowledgeBaseResolvers.Mutation.rateKBArticle(null, { id: 'a1', helpful: true }, ctx)
 
     const [cypher, params] = s.txRun.mock.calls[0]!
     expect(cypher).toContain('MATCH (a:KBArticle {id: $id, tenant_id: $tenantId})')
-    expect(cypher).toContain('SET a.helpful_count = a.helpful_count + 1')
-    expect(cypher).not.toContain('not_helpful_count = a.not_helpful_count + 1')
-    expect(params).toEqual({ id: 'a1', tenantId: 'tenant-1' })
+    expect(cypher).toContain('MATCH (u:User {id: $userId, tenant_id: $tenantId})')
+    expect(cypher).toContain('MERGE (u)-[r:RATED_KB]->(a)')
+    // A first vote adds one; the same vote again adds nothing; the other vote moves one.
+    expect(cypher).toContain('CASE WHEN $helpful AND (was IS NULL OR was = false) THEN 1 ELSE 0 END')
+    expect(cypher).toContain('CASE WHEN NOT $helpful AND was = true THEN 1 ELSE 0 END')
+    expect(params).toMatchObject({ id: 'a1', tenantId: 'tenant-1', userId: 'user-1', helpful: true })
     expect(out).toMatchObject({ id: 'a1', helpfulCount: 3, notHelpfulCount: 1, tags: ['auth'], version: 3 })
     expect(s.close).toHaveBeenCalledOnce()
   })
 
-  it('helpful=false → incrementa not_helpful_count', async () => {
+  it('helpful=false passes the vote as it is', async () => {
     const s = fakeSession([{ records: [rec({ ...ARTICLE, notHelpfulCount: 2 })] }])
     const out = await knowledgeBaseResolvers.Mutation.rateKBArticle(null, { id: 'a1', helpful: false }, ctx)
-    expect(s.txRun.mock.calls[0]![0]).toContain('SET a.not_helpful_count = a.not_helpful_count + 1')
+    expect(s.txRun.mock.calls[0]![1]).toMatchObject({ helpful: false })
     expect(out.notHelpfulCount).toBe(2)
   })
 
@@ -86,22 +89,7 @@ describe('rateKBArticle', () => {
     expect((err as GraphQLError).extensions['code']).toBe('NOT_FOUND')
   })
 
-  it('secondo voto dello stesso utente → comportamento REALE: incrementa di nuovo (nessun MERGE per utente, userId non è nemmeno un parametro)', async () => {
-    const s = fakeSession([
-      { records: [rec({ ...ARTICLE, helpfulCount: 3 })] },
-      { records: [rec({ ...ARTICLE, helpfulCount: 4 })] },
-    ])
-    const first  = await knowledgeBaseResolvers.Mutation.rateKBArticle(null, { id: 'a1', helpful: true }, ctx)
-    const second = await knowledgeBaseResolvers.Mutation.rateKBArticle(null, { id: 'a1', helpful: true }, ctx)
-    expect(first.helpfulCount).toBe(3)
-    expect(second.helpfulCount).toBe(4)
-    for (const call of s.txRun.mock.calls) {
-      expect(call[0]).not.toContain('MERGE')
-      expect(call[1]).not.toHaveProperty('userId')
-    }
-  })
-
-  it.todo('secondo voto dello stesso utente sostituisce il precedente (non duplica) — GAP: nessuna deduplica per utente, ogni chiamata incrementa il contatore (knowledgeBase.ts:452-457)')
+  // The arithmetic of a second vote (same: nothing; other: moves one) is checked on a real Neo4j: integration/kbVote.int.test.ts.
 })
 
 describe('updateKBArticle — versioning', () => {
@@ -217,5 +205,69 @@ describe('restoreKBArticleVersion', () => {
     expect(audit).toHaveBeenCalledWith(ctx, 'kb_article.version_restored', 'KBArticle', 'a1')
     // due sessioni (restore + update) entrambe chiuse
     expect(s.close).toHaveBeenCalledTimes(2)
+  })
+})
+
+// ── Tour of 24 Sep 2026: related articles (G9) and the reader's own vote (G8) ──
+
+describe('kbRelatedArticles', () => {
+  beforeEach(() => vi.clearAllMocks())
+  const row = (id: string, tags: string[], category: string, views: number, mine: string[] = ['auth', 'vpn'], myCategory = 'howto') =>
+    rec({ mine: JSON.stringify(mine), myCategory, id, title: `T ${id}`, slug: `s-${id}`, category, tags: JSON.stringify(tags), views })
+
+  it('related = sharing a tag: more tags in common first, then the same category, then the most read; no shared tag, not related', async () => {
+    const s = fakeSession([{ records: [
+      row('one-tag-other-cat', ['auth'], 'faq', 90),
+      row('two-tags', ['AUTH', 'vpn'], 'faq', 1),
+      row('one-tag-same-cat', ['vpn'], 'howto', 5),
+      row('unrelated', ['printer'], 'howto', 500),
+      row('one-tag-other-cat-less-read', ['auth'], 'faq', 10),
+    ] }])
+    const out = await knowledgeBaseResolvers.Query.kbRelatedArticles(null, { id: 'a1', limit: 10 }, ctx)
+    expect(out.map((a) => [a.id, a.sharedTags])).toEqual([
+      ['two-tags', 2], ['one-tag-same-cat', 1], ['one-tag-other-cat', 1], ['one-tag-other-cat-less-read', 1],
+    ])
+    const [cypher, params] = s.txRun.mock.calls[0]!
+    expect(cypher).toContain('MATCH (me:KBArticle {id: $id, tenant_id: $tenantId})')
+    expect(cypher).toContain('a.id <> me.id')
+    // The staff reads every published article; the portal only those for everyone.
+    expect(cypher).toContain('($readsAll OR ')
+    expect(cypher).toContain("a.audience = 'everyone'")
+    expect(params).toEqual({ id: 'a1', tenantId: 'tenant-1', readsAll: true })
+    expect(s.close).toHaveBeenCalledOnce()
+  })
+
+  it('a portal reader is filtered to the articles for everyone, and the list is capped (4 by default, 10 at most)', async () => {
+    const endUser: GraphQLContext = { ...ctx, role: 'end_user', permissions: perms('end_user') }
+    const many = Array.from({ length: 12 }, (_, i) => row(`r${String(i)}`, ['auth'], 'faq', i))
+    const s = fakeSession([{ records: many }])
+    expect(await knowledgeBaseResolvers.Query.kbRelatedArticles(null, { id: 'a1' }, endUser)).toHaveLength(4)
+    expect(s.txRun.mock.calls[0]![1]).toMatchObject({ readsAll: false })
+    fakeSession([{ records: many }])
+    expect(await knowledgeBaseResolvers.Query.kbRelatedArticles(null, { id: 'a1', limit: 50 }, endUser)).toHaveLength(10)
+    fakeSession([{ records: many }])
+    expect(await knowledgeBaseResolvers.Query.kbRelatedArticles(null, { id: 'a1', limit: 0 }, endUser)).toHaveLength(1)
+  })
+
+  it('an article that is not there (or has no neighbour) has no related articles', async () => {
+    fakeSession([{ records: [] }])
+    expect(await knowledgeBaseResolvers.Query.kbRelatedArticles(null, { id: 'nope' }, ctx)).toEqual([])
+  })
+})
+
+describe('KBArticle.myVote', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it("the reader's own vote, read on their RATED_KB in the tenant; no vote is null", async () => {
+    const s = fakeSession([{ records: [rec({ helpful: false })] }])
+    expect(await knowledgeBaseResolvers.KBArticle.myVote({ id: 'a1' }, null, ctx)).toBe(false)
+    const [cypher, params] = s.txRun.mock.calls[0]!
+    expect(cypher).toContain('MATCH (:User {id: $userId, tenant_id: $tenantId})-[r:RATED_KB]->(:KBArticle {id: $id, tenant_id: $tenantId})')
+    expect(params).toEqual({ id: 'a1', userId: 'user-1', tenantId: 'tenant-1' })
+    expect(s.close).toHaveBeenCalledOnce()
+    fakeSession([{ records: [rec({ helpful: true })] }])
+    expect(await knowledgeBaseResolvers.KBArticle.myVote({ id: 'a1' }, null, ctx)).toBe(true)
+    fakeSession([{ records: [] }])
+    expect(await knowledgeBaseResolvers.KBArticle.myVote({ id: 'a1' }, null, ctx)).toBeNull()
   })
 })

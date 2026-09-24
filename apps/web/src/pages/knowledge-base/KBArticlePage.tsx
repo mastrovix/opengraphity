@@ -24,23 +24,22 @@ const GET_ARTICLE = gql`
   query KBArticleBySlug($slug: String!) {
     kbArticleBySlug(slug: $slug) {
       id title slug body category tags status
-      authorId authorName views helpfulCount notHelpfulCount
+      authorId authorName views helpfulCount notHelpfulCount myVote audience
       createdAt updatedAt publishedAt
     }
   }
 `
 
+/** Related = sharing tags, the closest first (tour G7): the latest of the same category were not related at all. */
 const GET_RELATED = gql`
-  query KBRelated($category: String!) {
-    kbArticles(category: $category, status: "published", pageSize: 5) {
-      items { id title slug category views }
-    }
+  query KBRelated($id: ID!) {
+    kbRelatedArticles(id: $id, limit: 4) { id title slug category views }
   }
 `
 
 const RATE_ARTICLE = gql`
   mutation RateKBArticle($id: ID!, $helpful: Boolean!) {
-    rateKBArticle(id: $id, helpful: $helpful) { id helpfulCount notHelpfulCount }
+    rateKBArticle(id: $id, helpful: $helpful) { id helpfulCount notHelpfulCount myVote }
   }
 `
 
@@ -55,6 +54,8 @@ export function KBArticlePage() {
     id: string; title: string; slug: string; body: string; category: string
     tags: string[]; status: string; authorId: string; authorName: string
     views: number; helpfulCount: number; notHelpfulCount: number
+    /** One vote per person (G8): the reader's own, or null. */
+    myVote: boolean | null; audience: 'staff' | 'everyone'
     createdAt: string; updatedAt: string; publishedAt: string | null
   } }>(GET_ARTICLE, {
     variables: { slug },
@@ -64,9 +65,9 @@ export function KBArticlePage() {
 
   const article = data?.kbArticleBySlug
 
-  const { data: relData } = useQuery<{ kbArticles: { items: Array<{ id: string; title: string; slug: string; category: string; views: number }> } }>(
+  const { data: relData } = useQuery<{ kbRelatedArticles: Array<{ id: string; title: string; slug: string; category: string; views: number }> }>(
     GET_RELATED,
-    { variables: { category: article?.category ?? '' }, skip: !article?.category },
+    { variables: { id: article?.id ?? '' }, skip: !article?.id },
   )
 
   /**
@@ -81,7 +82,7 @@ export function KBArticlePage() {
     onCompleted: () => toast.success(t('pages.kb.thanks')),
   })
 
-  const related = (relData?.kbArticles?.items ?? []).filter((a) => a.id !== article?.id).slice(0, 4)
+  const related = relData?.kbRelatedArticles ?? []
 
   if (loading && !data) return <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', padding: 32 }}>{t('common.loading')}</div>
   // A failed request (network, 500, auth) is NOT "article not found" (F-09).
@@ -107,6 +108,11 @@ export function KBArticlePage() {
             <Pill bg={styleOf('kb_category', article.category).bg} color={styleOf('kb_category', article.category).color} radius={12} style={{ fontSize: 'var(--font-size-body)', padding: '3px 10px' }}>
               {labelOf('kb_category', article.category) ?? article.category}
             </Pill>
+            {article.audience === 'staff' && (
+              <Pill bg="var(--color-slate-bg)" color="var(--color-slate)" radius={12} style={{ fontSize: 'var(--font-size-body)', padding: '3px 10px', marginLeft: 8 }}>
+                {t('pages.kbAdmin.audienceValue.staff')}
+              </Pill>
+            )}
           </div>
 
           <h1 style={{ fontSize: 26, fontWeight: 700, color: colors.slateDark, margin: '0 0 16px', lineHeight: 1.3 }}>
@@ -158,20 +164,23 @@ export function KBArticlePage() {
               {t('pages.kb.wasHelpful')}
             </p>
             <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
-              <button
-                type="button"
-                onClick={() => void rateArticle({ variables: { id: article.id, helpful: true } })}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)' }}
-              >
-                <ThumbsUp size={14} color={colors.success} /> {t('pages.kb.yes')} ({article.helpfulCount})
-              </button>
-              <button
-                type="button"
-                onClick={() => void rateArticle({ variables: { id: article.id, helpful: false } })}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)' }}
-              >
-                <ThumbsDown size={14} color={colors.danger} /> {t('pages.kb.no')} ({article.notHelpfulCount})
-              </button>
+              {([true, false] as const).map((helpful) => {
+                // The reader's own vote shows as chosen: pressing it again changes nothing, the other one moves it (G8).
+                const mine = article.myVote === helpful
+                return (
+                  <button
+                    key={String(helpful)}
+                    type="button"
+                    aria-pressed={mine}
+                    onClick={() => { if (!mine) void rateArticle({ variables: { id: article.id, helpful } }) }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: `1px solid ${mine ? 'var(--color-brand)' : colors.border}`, background: mine ? 'var(--color-brand-light)' : colors.white, cursor: mine ? 'default' : 'pointer', fontSize: 'var(--font-size-body)', fontWeight: mine ? 600 : 400 }}
+                  >
+                    {helpful
+                      ? <><ThumbsUp size={14} color={colors.success} /> {t('pages.kb.yes')} ({article.helpfulCount})</>
+                      : <><ThumbsDown size={14} color={colors.danger} /> {t('pages.kb.no')} ({article.notHelpfulCount})</>}
+                  </button>
+                )
+              })}
             </div>
           </div>
         </div>

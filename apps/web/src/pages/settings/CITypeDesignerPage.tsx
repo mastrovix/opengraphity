@@ -1,4 +1,6 @@
 import { useId, useState } from 'react'
+import { useCIBaseEnums } from '@/lib/ciEnums'
+import { useCILabels } from '@/hooks/useCILabels'
 import { Trans, useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useApolloClient } from '@apollo/client/react'
 import { Layers, Layout, Plus, Trash2 } from 'lucide-react'
@@ -88,7 +90,10 @@ export function CITypeDesignerPage() {
   const [showRelModal, setShowRelModal] = useState(false)
   const ids = { serviceRole: useId() }
 
-  const [settingsForm, setSettingsForm] = useState<{ label: string; labels: Record<string, string>; icon: string; color: string; validationScript: string; chainFamilies: string[]; serviceRole: string } | null>(null)
+  const [settingsForm, setSettingsForm] = useState<{ label: string; labels: Record<string, string>; icon: string; color: string; validationScript: string; chainFamilies: string[]; serviceRole: string; statusesExcluded: string[] } | null>(null)
+  // The status vocabulary: the type says which of its values it does not offer (G35).
+  const ciBaseEnums = useCIBaseEnums()
+  const { statusLabel } = useCILabels()
   const [settingsSaving, setSettingsSaving] = useState(false)
 
   const selected = ciTypes.find((t) => t.id === selectedId) ?? null
@@ -111,7 +116,7 @@ export function CITypeDesignerPage() {
     setActiveTab('settings')
     setEditingFieldId(null)
     setAddingField(false)
-    setSettingsForm({ label: t.label, labels: Object.fromEntries((t.labels ?? []).map((l) => [l.language, l.label])), icon: t.icon ?? 'box', color: t.color ?? 'var(--color-brand)', validationScript: t.validationScript ?? '', chainFamilies: t.chainFamilies ?? [], serviceRole: t.serviceRole ?? '' })
+    setSettingsForm({ label: t.label, labels: Object.fromEntries((t.labels ?? []).map((l) => [l.language, l.label])), icon: t.icon ?? 'box', color: t.color ?? 'var(--color-brand)', validationScript: t.validationScript ?? '', chainFamilies: t.chainFamilies ?? [], serviceRole: t.serviceRole ?? '', statusesExcluded: t.statusesExcluded ?? [] })
   }
 
   const [createType]    = useMutation(CREATE_CI_TYPE,    { onCompleted: () => { void refetch(); toast.success(t('toast.citype.typeCreated')) }, onError: (e) => showError(e) })
@@ -386,6 +391,23 @@ export function CITypeDesignerPage() {
                       <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 4 }}>{t('ciTypeDesigner.chainFamiliesTooltip')}</p>
                     </div>
 
+                    {/* The statuses this type does not offer (tour of 24 Sep 2026, G35). */}
+                    <div style={{ marginBottom: 16 }}>
+                      <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)', marginBottom: 6 }}>{t('ciTypeDesigner.statusesOffered')}</div>
+                      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                        {ciBaseEnums.statuses.map((st) => (
+                          <label key={st} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', cursor: shipped ? 'not-allowed' : 'pointer' }}>
+                            <input type="checkbox" disabled={shipped}
+                              checked={!settingsForm.statusesExcluded.includes(st)}
+                              onChange={(e) => setSettingsForm((p) => p && ({ ...p, statusesExcluded: e.target.checked ? p.statusesExcluded.filter((x) => x !== st) : [...p.statusesExcluded, st] }))}
+                            />
+                            {statusLabel(st)}
+                          </label>
+                        ))}
+                      </div>
+                      <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 4 }}>{t('ciTypeDesigner.statusesOfferedHint')}</p>
+                    </div>
+
                     {/* A-10 — Ruolo nella mappa di un servizio. Prima era una
                         tabella per etichetta nel codice dell'API: un tipo
                         creato dal cliente non aveva ruolo, e quindi non poteva
@@ -432,6 +454,7 @@ export function CITypeDesignerPage() {
                               // `null`: il ruolo torna a essere proposto dal
                               // prodotto invece di restare quello di prima.
                               serviceRole: settingsForm.serviceRole || null,
+                              statusesExcluded: settingsForm.statusesExcluded,
                             } } })
                           } catch { /* said by the mutation's onError */ } finally { setSettingsSaving(false) }
                         }}>

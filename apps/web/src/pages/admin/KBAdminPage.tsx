@@ -33,7 +33,7 @@ const GET_ARTICLES = gql`
   query AdminKBArticles($page: Int, $pageSize: Int, $status: String, $category: String, $search: String) {
     kbArticles(page: $page, pageSize: $pageSize, status: $status, category: $category, search: $search) {
       items {
-        id title slug body category tags status authorName views helpfulCount
+        id title slug body category tags status authorName views helpfulCount audience
         createdAt updatedAt publishedAt workflowInstanceId currentStep version
       }
       total
@@ -42,8 +42,8 @@ const GET_ARTICLES = gql`
 `
 
 const CREATE_ARTICLE = gql`
-  mutation CreateKBArticle($title: String!, $body: String!, $category: String!, $tags: [String!]) {
-    createKBArticle(title: $title, body: $body, category: $category, tags: $tags) {
+  mutation CreateKBArticle($title: String!, $body: String!, $category: String!, $tags: [String!], $audience: String) {
+    createKBArticle(title: $title, body: $body, category: $category, tags: $tags, audience: $audience) {
       id title slug status workflowInstanceId currentStep
     }
   }
@@ -56,8 +56,8 @@ const CREATE_ARTICLE = gql`
  * scopriva solo rileggendo la pagina pubblicata (22 set 2026).
  */
 const UPDATE_ARTICLE = gql`
-  mutation UpdateKBArticle($id: ID!, $title: String, $body: String, $category: String, $tags: [String!], $expectedVersion: Int) {
-    updateKBArticle(id: $id, title: $title, body: $body, category: $category, tags: $tags, expectedVersion: $expectedVersion) {
+  mutation UpdateKBArticle($id: ID!, $title: String, $body: String, $category: String, $tags: [String!], $audience: String, $expectedVersion: Int) {
+    updateKBArticle(id: $id, title: $title, body: $body, category: $category, tags: $tags, audience: $audience, expectedVersion: $expectedVersion) {
       id title slug status workflowInstanceId currentStep version
     }
   }
@@ -158,10 +158,15 @@ interface KBArticle {
   workflowInstanceId: string | null; currentStep: string | null
   /** La versione LETTA: si rimanda al salvataggio come `expectedVersion`. */
   version: number
+  /** Who it is for: `staff` (not on the portal) or `everyone` (24 Sep 2026). */
+  audience: KbAudience
 }
 
+type KbAudience = 'staff' | 'everyone'
+const KB_AUDIENCES: readonly KbAudience[] = ['staff', 'everyone']
+
 interface ArticleForm {
-  title: string; body: string; category: string; tags: string
+  title: string; body: string; category: string; tags: string; audience: KbAudience
 }
 
 /** The subset of the FilterBuilder that `kbArticles` can actually honour. */
@@ -205,7 +210,8 @@ function kbFilterFromGroup(group: FilterGroup | null, t: TFunction, fields: Fiel
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 // Nessuna categoria preselezionata: la sceglie chi scrive, dal vocabolario.
-const EMPTY_FORM: ArticleForm = { title: '', body: '', category: '', tags: '' }
+// A new article is for the staff until its author says otherwise: what is not declared public stays off the portal.
+const EMPTY_FORM: ArticleForm = { title: '', body: '', category: '', tags: '', audience: 'staff' }
 const PAGE_SIZE = 20
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -250,7 +256,7 @@ export function KBAdminPage() {
   const [page,    setPage]    = useState(0)
 
   // Form state — `?new=1` (dal pulsante della Knowledge Base) apre subito il modulo.
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [showForm,     setShowForm]     = useState(() => searchParams.get('new') === '1')
   const [editId,       setEditId]       = useState<string | null>(null)
   const [editArticle,  setEditArticle]  = useState<KBArticle | null>(null)
@@ -355,12 +361,14 @@ export function KBAdminPage() {
 
   function closeForm() {
     setShowForm(false); setEditId(null); setEditArticle(null); setForm(EMPTY_FORM)
+    // `?new=1` opened the form once: a reload after the save must not open an empty one again (tour G10).
+    if (searchParams.has('new')) setSearchParams((p) => { const next = new URLSearchParams(p); next.delete('new'); return next }, { replace: true })
   }
 
   function startEdit(a: KBArticle) {
     setEditId(a.id)
     setEditArticle(a)
-    setForm({ title: a.title, body: a.body ?? '', category: a.category, tags: a.tags.join(', ') })
+    setForm({ title: a.title, body: a.body ?? '', category: a.category, tags: a.tags.join(', '), audience: a.audience })
     setShowForm(true)
   }
 
@@ -370,9 +378,9 @@ export function KBAdminPage() {
     if (!form.category) { toast.error(t('toast.kb.categoryRequired')); return }
     publishingRef.current = false
     if (editId) {
-      void updateArticle({ variables: { id: editId, title: form.title, body: form.body, category: form.category, tags, expectedVersion: editArticle?.version ?? null } })
+      void updateArticle({ variables: { id: editId, title: form.title, body: form.body, category: form.category, tags, audience: form.audience, expectedVersion: editArticle?.version ?? null } })
     } else {
-      void createArticle({ variables: { title: form.title, body: form.body, category: form.category, tags } })
+      void createArticle({ variables: { title: form.title, body: form.body, category: form.category, tags, audience: form.audience } })
     }
   }
 
@@ -382,7 +390,7 @@ export function KBAdminPage() {
     if (!form.title.trim() || !form.body.trim()) { toast.error(t('toast.kb.titleBodyRequiredPublish')); return }
     if (!form.category) { toast.error(t('toast.kb.categoryRequired')); return }
     publishingRef.current = true
-    void updateArticle({ variables: { id: editId, title: form.title, body: form.body, category: form.category, tags, expectedVersion: editArticle?.version ?? null } })
+    void updateArticle({ variables: { id: editId, title: form.title, body: form.body, category: form.category, tags, audience: form.audience, expectedVersion: editArticle?.version ?? null } })
   }
 
   const articles   = data?.kbArticles?.items ?? []
@@ -393,10 +401,15 @@ export function KBAdminPage() {
   // No `sortable`: the API orders by updated_at DESC and paginates server-side,
   // a client-side sort would only reorder the current page.
   const articleColumns: ColumnDef<KBArticle>[] = [
-    { key: 'title', label: t('common.title'), render: (v) => (
-      <div style={{ fontWeight: 500, color: colors.slateDark, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(v)}</div>
+    // The title opens the article in the form, as the pencil does (tour G10).
+    { key: 'title', label: t('common.title'), render: (v, row) => (
+      <button type="button" onClick={() => startEdit(row)}
+        style={{ fontWeight: 500, color: 'var(--color-brand)', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', font: 'inherit' }}>
+        {String(v)}
+      </button>
     ) },
     { key: 'category', label: t('pages.kb.category'), render: (v) => <span style={{ color: 'var(--color-slate)' }}>{labelOf('kb_category', String(v)) ?? String(v)}</span> },
+    { key: 'audience', label: t('pages.kbAdmin.audience'), render: (v) => <span style={{ color: 'var(--color-slate)' }}>{t(`pages.kbAdmin.audienceValue.${String(v)}`)}</span> },
     // Intestazioni TRADOTTE (revisione totale · i 29 warning): «Status» e
     // «Views» erano stringhe inglesi in mezzo a colonne che passano da i18n.
     { key: 'status', label: t('pages.kbAdmin.colStatus'), render: (v) => {
@@ -424,7 +437,7 @@ export function KBAdminPage() {
 
   const inputStyle: React.CSSProperties = inputS
   const uid = useId()
-  const ids = { title: `${uid}-title`, category: `${uid}-category`, tags: `${uid}-tags` }
+  const ids = { title: `${uid}-title`, category: `${uid}-category`, tags: `${uid}-tags`, audience: `${uid}-audience` }
 
   return (
     <PageContainer>
@@ -480,6 +493,13 @@ export function KBAdminPage() {
             <div>
               <label htmlFor={ids.tags} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>{t('pages.kbAdmin.tags')}</label>
               <input id={ids.tags} value={form.tags} onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))} style={inputStyle} placeholder={t('pages.kbAdmin.tagsPlaceholder')} />
+            </div>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label htmlFor={ids.audience} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>{t('pages.kbAdmin.audience')}</label>
+              <select id={ids.audience} value={form.audience} onChange={(e) => setForm((f) => ({ ...f, audience: e.target.value as KbAudience }))} style={inputStyle} aria-describedby={`${ids.audience}-hint`}>
+                {KB_AUDIENCES.map((a) => <option key={a} value={a}>{t(`pages.kbAdmin.audienceValue.${a}`)}</option>)}
+              </select>
+              <div id={`${ids.audience}-hint`} style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 4 }}>{t('pages.kbAdmin.audienceHint')}</div>
             </div>
           </div>
 
@@ -552,7 +572,8 @@ export function KBAdminPage() {
               <VersionHistory
                 articleId={editId}
                 onRestored={(a) => {
-                  setForm({ title: a.title, body: a.body, category: a.category, tags: a.tags.join(', ') })
+                  // A version keeps the content; who the article is for is not versioned and stays as it is.
+                  setForm((f) => ({ title: a.title, body: a.body, category: a.category, tags: a.tags.join(', '), audience: f.audience }))
                   // A restore is a new version too: the next save must send it.
                   setEditArticle((cur) => (cur ? { ...cur, version: a.version } : cur))
                 }}

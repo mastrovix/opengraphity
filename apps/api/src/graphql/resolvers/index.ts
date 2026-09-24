@@ -507,6 +507,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
     TicketOLA:          olaResolvers.TicketOLA,             // il riquadro OLA/UC del ticket (secondo giro UI del 15 set 2026)
     // Il nome di chi ha risolto l'anomalia, letto solo se il client lo chiede
     // (revisione totale · ANO-8): il campo c'era ma la mappa non era unita qui.
+    KBArticle:          knowledgeBaseResolvers.KBArticle,   // myVote: one vote per person (24 Sep 2026)
     Anomaly:            anomalyResolvers.Anomaly,
     Proposal:           proposalResolvers.Proposal,
     Event:              eventResolvers.Event,

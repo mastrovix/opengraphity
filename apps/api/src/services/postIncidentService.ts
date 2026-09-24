@@ -41,9 +41,11 @@ async function readQuery<T>(cypher: string, params: Record<string, unknown>): Pr
 
 interface IncidentContext {
   props: Record<string, unknown>
-  comments: Array<{ text: string; created_at: string | null }>
-  steps: Array<{ step: string; at: string | null; trigger: string | null }>
+  /** `by`: the person's name, or the id of the system actor (`monitoring`, `automation`…). */
+  comments: Array<{ text: string; created_at: string | null; by: string | null }>
+  steps: Array<{ step: string; at: string | null; trigger: string | null; by: string | null }>
   cis: string[]
+  openedBy: string | null
 }
 
 async function loadIncidentContext(tenantId: string, incidentId: string): Promise<IncidentContext> {
@@ -55,27 +57,35 @@ async function loadIncidentContext(tenantId: string, incidentId: string): Promis
    */
   const rows = await readQuery<{
     props: Record<string, unknown>
-    comments: Array<{ text: string | null; created_at: string | null }>
-    steps: Array<{ step: string | null; at: string | null; trigger: string | null }>
+    comments: Array<{ text: string | null; created_at: string | null; by: string | null }>
+    steps: Array<{ step: string | null; at: string | null; trigger: string | null; by: string | null }>
     cis: string[]
+    openedBy: string | null
   }>(`
     MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
     OPTIONAL MATCH (i)-[:HAS_COMMENT]->(c:Comment)
     WITH i, c ORDER BY c.created_at
-    WITH i, collect(DISTINCT {text: c.text, created_at: c.created_at}) AS comments
+    // WHO wrote and who moved it (tour of 24 Sep 2026, G18): without the people
+    // the draft named the assignee as the one who took charge, and called an
+    // incident opened by a person «opened automatically».
+    WITH i, collect(DISTINCT {text: c.text, created_at: c.created_at,
+      by: coalesce(COLLECT { MATCH (u:User {id: c.author_id, tenant_id: $tenantId}) RETURN u.name }[0], c.author_id)}) AS comments
     OPTIONAL MATCH (i)-[:HAS_WORKFLOW]->(:WorkflowInstance)-[:STEP_HISTORY]->(se:WorkflowStepExecution)
     WITH i, comments, se ORDER BY se.entered_at
-    WITH i, comments, collect({step: se.step_name, at: se.entered_at, trigger: se.trigger_type}) AS steps
+    WITH i, comments, collect({step: se.step_name, at: se.entered_at, trigger: se.trigger_type,
+      by: coalesce(COLLECT { MATCH (u:User {id: se.triggered_by, tenant_id: $tenantId}) RETURN u.name }[0], se.triggered_by)}) AS steps
     OPTIONAL MATCH (i)-[:AFFECTED_BY]->(ci)
-    RETURN properties(i) AS props, comments, steps, collect(DISTINCT ci.name) AS cis
+    RETURN properties(i) AS props, comments, steps, collect(DISTINCT ci.name) AS cis,
+           coalesce(COLLECT { MATCH (u:User {id: i.created_by, tenant_id: $tenantId}) RETURN u.name }[0], i.created_by) AS openedBy
   `, { tenantId, incidentId })
   if (!rows.length) throw new NotFoundError('Incident')
   const r = rows[0]
   return {
     props: r.props,
-    comments: r.comments.filter((c): c is { text: string; created_at: string | null } => Boolean(c.text)),
-    steps: r.steps.filter((s): s is { step: string; at: string | null; trigger: string | null } => Boolean(s.step)),
+    comments: r.comments.filter((c): c is { text: string; created_at: string | null; by: string | null } => Boolean(c.text)),
+    steps: r.steps.filter((s): s is { step: string; at: string | null; trigger: string | null; by: string | null } => Boolean(s.step)),
     cis: r.cis,
+    openedBy: r.openedBy ?? null,
   }
 }
 
@@ -102,11 +112,20 @@ function incidentEvidence(ctx: IncidentContext, timeZone: string): Record<string
     title: ctx.props['title'], description: ctx.props['description'],
     severity: ctx.props['severity'], category: ctx.props['category'],
     opened_at: at(ctx.props['created_at']), resolved_at: at(ctx.props['resolved_at']),
+    // Who opened it and through which channel (`agent` a person in the app, `portal`, `monitoring`…): G18.
+    opened_by: ctx.openedBy, opened_through: ctx.props['channel'] ?? null,
     affected_cis: ctx.cis,
-    comments: ctx.comments.map((c) => ({ at: at(c.created_at), text: c.text })),
-    workflow_steps: ctx.steps.map((s) => ({ step: s.step, at: at(s.at), trigger: s.trigger })),
+    comments: ctx.comments.map((c) => ({ at: at(c.created_at), by: c.by, text: c.text })),
+    workflow_steps: ctx.steps.map((s) => ({ step: s.step, at: at(s.at), by: s.by, trigger: s.trigger })),
   }
 }
+
+/**
+ * The sentence that tells the model who did what (tour of 24 Sep 2026, G18):
+ * the draft credited the assignee with a move the administrator made, and
+ * called «opened automatically» an incident a person opened.
+ */
+const ACTORS_SENTENCE = 'Who did what is in the data: opened_by and opened_through say who opened the incident and through which channel (agent = a person in the app, portal = an end user, monitoring = an alarm), and every comment and workflow step carries by, the person or the system that wrote or made it. Name people only as the data names them, and never say the incident was opened automatically unless opened_through says monitoring or an automation.'
 
 /** The sentence that tells the model how to read the times (D14). */
 function timesSentence(timeZone: string): string {
@@ -130,7 +149,7 @@ export async function draftResolutionNotes(tenantId: string, incidentId: string)
     output_config: { effort: 'low' },
     system: [{
       type: 'text',
-      text: `You write the resolution notes of an ITSM incident. Write the text in ${language}. You receive the real data of the incident: title, description, the operators' comments, the workflow steps and the CIs involved. ${timesSentence(timeZone)} Produce ONLY the text of the notes: 3-6 concrete sentences describing the cause, the intervention carried out and the verification, based exclusively on the evidence provided. If the evidence does not make the cause or the intervention clear, say so explicitly (for example "cause not documented in the comments", in ${language}) instead of inventing it. No preamble, no markdown.`,
+      text: `You write the resolution notes of an ITSM incident. Write the text in ${language}. You receive the real data of the incident: title, description, the operators' comments, the workflow steps and the CIs involved. ${timesSentence(timeZone)} ${ACTORS_SENTENCE} Produce ONLY the text of the notes: 3-6 concrete sentences describing the cause, the intervention carried out and the verification, based exclusively on the evidence provided. If the evidence does not make the cause or the intervention clear, say so explicitly (for example "cause not documented in the comments", in ${language}) instead of inventing it. No preamble, no markdown.`,
       cache_control: { type: 'ephemeral' },
     }],
     messages: [{ role: 'user', content: JSON.stringify(incidentEvidence(ctx, timeZone), null, 1) }],
@@ -217,19 +236,53 @@ async function requestMissingEmbeddings(tenantId: string, missing: OpenIncident[
   }))
 }
 
-/** Union-find over the vector neighbours of every analysed incident, above the organization's similarity. */
+/**
+ * GROUPS THAT DO NOT CHAIN (tour of 24 Sep 2026, G20).
+ *
+ * The groups were the connected components of «neighbour above the
+ * similarity»: single linkage. A is like B, B like C, C like D — and A, B, C
+ * and D were one group even when A and D had nothing in common. With the
+ * local embeddings almost everything is near something, and the page showed
+ * ONE candidate of dozens of different incidents (the portal's 502 among
+ * them), which the model itself called heterogeneous.
+ *
+ * Now a group is tight: its leader (the incident with the most neighbours
+ * still free) takes its neighbours, the most similar first, and a neighbour
+ * joins only if it is above the similarity with EVERY member already in —
+ * complete linkage on the pairs the index returned (a pair it did not return
+ * counts as not similar). Every incident is in one group at most.
+ */
+export function clusterBySimilarity(
+  ids: readonly string[], neighbours: ReadonlyMap<string, ReadonlyMap<string, number>>, minSimilarity: number,
+): string[][] {
+  const sim = (a: string, b: string): number => Math.max(neighbours.get(a)?.get(b) ?? 0, neighbours.get(b)?.get(a) ?? 0)
+  const known = new Set(ids)
+  const free = new Set(ids)
+  const degree = (id: string): number => [...(neighbours.get(id)?.keys() ?? [])].filter((n) => free.has(n) && n !== id).length
+  const groups: string[][] = []
+  while (free.size > 0) {
+    const leader = [...free].sort((a, b) => degree(b) - degree(a) || a.localeCompare(b))[0]!
+    free.delete(leader)
+    const group = [leader]
+    const candidates = [...(neighbours.get(leader)?.keys() ?? [])]
+      .filter((n) => free.has(n) && known.has(n) && sim(leader, n) >= minSimilarity)
+      .sort((a, b) => sim(leader, b) - sim(leader, a) || a.localeCompare(b))
+    for (const c of candidates) {
+      if (group.every((m) => sim(m, c) >= minSimilarity)) {
+        group.push(c)
+        free.delete(c)
+      }
+    }
+    groups.push(group)
+  }
+  return groups
+}
+
+/** The vector neighbours of every analysed incident above the organization's similarity, in groups that do not chain. */
 async function clusterIncidents(
   tenantId: string, incidents: AnalysedIncident[], closedSteps: string[], minSimilarity: number,
 ): Promise<AnalysedIncident[][]> {
-  const parent = new Map<string, string>()
-  const find = (x: string): string => {
-    let r = x
-    while (parent.get(r) !== r) r = parent.get(r)!
-    return r
-  }
-  const union = (a: string, b: string) => { parent.set(find(a), find(b)) }
-  for (const i of incidents) parent.set(i.id, i.id)
-
+  const neighbours = new Map<string, Map<string, number>>()
   const index = vectorIndexName('Incident')
   for (const i of incidents) {
     // K cresce finché i vicini DEL TENANT bastano: l'indice è cross-tenant e
@@ -249,16 +302,10 @@ async function clusterIncidents(
         what: 'postIncident.problemCandidates',
       })
     } finally { await session.close() }
-    for (const p of peers) if (parent.has(p.id)) union(i.id, p.id)
+    neighbours.set(i.id, new Map(peers.map((p) => [p.id, Number(p.score)])))
   }
-
-  const groups = new Map<string, AnalysedIncident[]>()
-  for (const i of incidents) {
-    const root = find(i.id)
-    if (!groups.has(root)) groups.set(root, [])
-    groups.get(root)!.push(i)
-  }
-  return [...groups.values()]
+  const byId = new Map(incidents.map((i) => [i.id, i]))
+  return clusterBySimilarity(incidents.map((i) => i.id), neighbours, minSimilarity).map((g) => g.map((id) => byId.get(id)!))
 }
 
 /** Claude names each cluster and motivates the Problem candidate. */

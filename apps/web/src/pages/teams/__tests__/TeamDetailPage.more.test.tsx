@@ -139,24 +139,37 @@ describe('information', () => {
 })
 
 describe('Change Manager team', () => {
-  it('ticking the box makes this team the one that approves changes', async () => {
+  // Tour of 24 Sep 2026 (G43): one click moved the Change Manager away from its team, on any team's page.
+  it('ticking the box asks first, naming the team; declining changes nothing', async () => {
     const { user } = show()
     await user.click(screen.getByRole('checkbox', { name: 'Make it the Change Manager team' }))
-    expect(apolloFinto.chiamata('SetChangeManagerTeam')).toEqual({ teamId: 'team-1', value: true })
+    const dialog = await screen.findByRole('dialog', { name: 'Make it the Change Manager team?' })
+    expect(dialog).toHaveTextContent('in place of the team that is it now')
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(apolloFinto.chiamata('SetChangeManagerTeam')).toBeUndefined()
+  })
+
+  it('confirmed, this team becomes the one that approves changes', async () => {
+    const { user } = show()
+    await user.click(screen.getByRole('checkbox', { name: 'Make it the Change Manager team' }))
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Make it the Change Manager team' }))
+    await waitFor(() => expect(apolloFinto.chiamata('SetChangeManagerTeam')).toEqual({ teamId: 'team-1', value: true }))
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Change Manager team updated'))
   })
 
-  it('unticking it removes the role', async () => {
+  it('unticking it asks too, then removes the role', async () => {
     withTeam({ isChangeManager: true })
     const { user } = show()
     await user.click(screen.getByRole('checkbox', { name: /This team approves changes/ }))
-    expect(apolloFinto.chiamata('SetChangeManagerTeam')).toEqual({ teamId: 'team-1', value: false })
+    await user.click(within(await screen.findByRole('dialog', { name: 'Stop being the Change Manager team?' })).getByRole('button', { name: 'Confirm' }))
+    await waitFor(() => expect(apolloFinto.chiamata('SetChangeManagerTeam')).toEqual({ teamId: 'team-1', value: false }))
   })
 
   it('a refusal is reported', async () => {
     apolloFinto.esiti['SetChangeManagerTeam'] = { error: new Error('not allowed') }
     const { user } = show()
     await user.click(screen.getByRole('checkbox'))
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Make it the Change Manager team' }))
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('not allowed'))
   })
 })
@@ -265,7 +278,7 @@ describe('members', () => {
     await user.click(screen.getByRole('button', { name: '+ Add member' }))
     // Users not arrived yet: a loading line, not "no user to add".
     expect(within(screen.getByRole('dialog')).getByText('Loading...')).toBeInTheDocument()
-    apolloFinto.risposte['GetUsers'] = { users: [member('u-1', 'Anna Rossi'), member('u-3', 'Carla Neri'), member('u-4', 'Dario Blu')] }
+    apolloFinto.risposte['SearchUsers'] = { searchUsers: [member('u-1', 'Anna Rossi'), member('u-3', 'Carla Neri'), member('u-4', 'Dario Blu')] }
     rerender(<TeamDetailPage />)
     const dialog = screen.getByRole('dialog')
     expect(within(dialog).getByText('Add a member to Network')).toBeInTheDocument()
@@ -276,8 +289,16 @@ describe('members', () => {
     expect(apolloFinto.chiamata('SetTeamMember')).toEqual({ teamId: 'team-1', userId: 'u-3', member: true })
   })
 
+  // Tour of 24 Sep 2026 (G38): the end users of the portal were offered as members of a support team.
+  it('only the people who take tickets are searched, on the server', async () => {
+    apolloFinto.risposte['SearchUsers'] = { searchUsers: [] }
+    const { user } = show()
+    await user.click(screen.getByRole('button', { name: '+ Add member' }))
+    expect(apolloFinto.chiamata('SearchUsers')).toMatchObject({ permission: 'ticket.assignable', search: '' })
+  })
+
   it('when everyone is already a member the dialog says there is nobody to add, and closes', async () => {
-    apolloFinto.risposte['GetUsers'] = { users: [member('u-1', 'Anna Rossi')] }
+    apolloFinto.risposte['SearchUsers'] = { searchUsers: [member('u-1', 'Anna Rossi')] }
     const { user } = show()
     await user.click(screen.getByRole('button', { name: '+ Add member' }))
     expect(screen.getByText('No user to add')).toBeInTheDocument()

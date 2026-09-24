@@ -33,6 +33,7 @@ vi.mock('@opengraphity/workflow', () => ({ workflowEngine: { transition: vi.fn()
 vi.mock('../../lib/stepMetadataPreflight.js', () => ({ preflightStepMetadata: vi.fn(async () => undefined) }))
 vi.mock('../../lib/validateRequiredFields.js', () => ({ validateStepRequirements: vi.fn(async () => undefined) }))
 vi.mock('../../lib/requestApproval.js', () => ({ requestApprovalWouldBeSkipped: vi.fn(async () => false) }))
+vi.mock('../../lib/ownApproval.js', () => ({ isOwnRequestApproval: vi.fn(async () => false) }))
 vi.mock('../../lib/ticketApprovalGate.js', () => ({
   APPROVAL_GATED_TICKETS: ['incident', 'problem', 'service_request'],
   ticketApprovalRefusal: vi.fn(async () => null),
@@ -56,6 +57,7 @@ const { workflowEngine } = await import('@opengraphity/workflow')
 const { preflightStepMetadata } = await import('../../lib/stepMetadataPreflight.js')
 const { validateStepRequirements } = await import('../../lib/validateRequiredFields.js')
 const { requestApprovalWouldBeSkipped } = await import('../../lib/requestApproval.js')
+const { isOwnRequestApproval } = await import('../../lib/ownApproval.js')
 const { ticketApprovalRefusal } = await import('../../lib/ticketApprovalGate.js')
 const { applyOnEnterFields } = await import('../../lib/onEnterFields.js')
 const gate = await import('../change/windowGate.js')
@@ -178,6 +180,21 @@ describe('transitionTicket — the guards, in their order', () => {
     vi.mocked(requestApprovalWouldBeSkipped).mockResolvedValueOnce(true)
     const out = await transitionTicket(session, { ...base, actor: rule })
     expect(out).toMatchObject({ moved: false, refusal: { guard: 'request_approval', i18n: { key: 'errors.request.approvalRequired' } } })
+  })
+
+  it('nobody approves the request they asked for, not even with approval.override; the approval decision itself is not asked', async () => {
+    h.ticket = ticket({ entityType: 'service_request', entityId: 'sr-1' })
+    vi.mocked(isOwnRequestApproval).mockResolvedValue(true)
+    for (const actor of [staff('request.write', 'approval.override'), { kind: 'requester' as const, userId: 'u-1' }]) {
+      const out = await transitionTicket(session, { ...base, toStep: 'in_progress', actor })
+      expect(out).toMatchObject({ moved: false, refusal: { guard: 'own_approval', code: 'FORBIDDEN', i18n: { key: 'errors.approval.ownRequest' } } })
+    }
+    expect(isOwnRequestApproval).toHaveBeenCalledWith(session, 't1', 'wi-1', 'in_progress', 'u-1')
+    vi.mocked(isOwnRequestApproval).mockClear()
+    engine.mockResolvedValue(moved as never)
+    await transitionTicket(session, { ...base, toStep: 'in_progress', actor: { kind: 'system', path: 'approval', userId: 'u-3' } })
+    expect(isOwnRequestApproval).not.toHaveBeenCalled()
+    vi.mocked(isOwnRequestApproval).mockResolvedValue(false)
   })
 
   it('the required fields of the step hold every path, and see the notes and what the caller just wrote', async () => {
@@ -304,6 +321,7 @@ describe('the sentences', () => {
     expect(await refusalNote('t1', 'timer', null, 'deploy', r({ guard: 'change_window', i18n: { key: 'errors.change.assessmentsIncomplete' } })))
       .toBe('The timer of the step did not move the ticket to "deploy": the assessment tasks or the deploy plan are not complete')
     expect(await refusalNote('t1', 'rule', null, 'x', r({ guard: 'request_approval' }))).toBe('An automation rule did not move the ticket to "x": the request needs its approval first')
+    expect(await refusalNote('t1', 'rule', null, 'x', r({ guard: 'own_approval' }))).toBe('An automation rule did not move the ticket to "x": the requester cannot approve their own request')
     expect(await refusalNote('t1', 'approval', null, 'x', r({ guard: 'step_metadata' }))).toBe('The approval decision did not move the ticket to "x": the configuration of the step is not valid')
     expect(await refusalNote('t1', 'script', null, 'x', r({ guard: 'type_permission' }))).toBe('An operator\'s script did not move the ticket to "x": there is no permission to move this ticket')
     expect(await refusalNote('t1', 'change_follow', null, 'x', r({ guard: 'workflow', message: 'All tasks must be complete' })))

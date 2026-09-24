@@ -205,7 +205,9 @@ export function KnowledgeBasePage() {
                       <h3 style={{ margin: '0 0 4px', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slateDark }}>{a.title}</h3>
                       <div style={{ display: 'flex', gap: 12, fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
                         <span>{a.authorName}</span>
-                        <span>{formatDate(a.publishedAt)}</span>
+                        {/* The list is the most recently updated first: the date is that one, and says so
+                            (tour of 24 Sep 2026, G4 — the publication dates looked out of order). */}
+                        <span>{t('pages.kb.updatedOn', { date: formatDate(a.updatedAt) })}</span>
                         <span><Eye size={10} style={{ verticalAlign: 'middle' }} /> {a.views}</span>
                         <span><ThumbsUp size={10} style={{ verticalAlign: 'middle' }} /> {a.helpfulCount}</span>
                       </div>

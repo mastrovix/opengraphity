@@ -34,11 +34,11 @@ const MY_PENDING = gql`
 /** Approvazioni che si decidono nella pagina del ticket (requisiti delle change, richieste in approvazione). */
 const PENDING_TICKET_APPROVALS = gql`
   query PendingTicketApprovals {
-    pendingTicketApprovals { kind entityId number title detail approvalKind requestedAt }
+    pendingTicketApprovals { kind entityId number title detail approvalKind requestedAt onBehalf }
   }
 `
 
-interface PendingTicketApproval { kind: string; entityId: string; number: string | null; title: string; detail: string | null; approvalKind: string | null; requestedAt: string | null }
+interface PendingTicketApproval { kind: string; entityId: string; number: string | null; title: string; detail: string | null; approvalKind: string | null; requestedAt: string | null; onBehalf: boolean }
 
 const ALL_APPROVALS = gql`
   query AllApprovals($page: Int, $pageSize: Int, $filters: String, $sortField: String, $sortDirection: String) {
@@ -499,7 +499,10 @@ export function ApprovalsPage() {
   const handleCancel  = (id: string) => void cancel({ variables: { id } })
 
   const myItems  = myData?.myPendingApprovals ?? []
-  const ticketItems = ticketData?.pendingTicketApprovals ?? []
+  // «Mine» are the approvals of my teams; what I could decide only for
+  // another team is shown apart, outside the counter (24 Sep 2026).
+  const ticketItems = (ticketData?.pendingTicketApprovals ?? []).filter((i) => !i.onBehalf)
+  const onBehalfItems = (ticketData?.pendingTicketApprovals ?? []).filter((i) => i.onBehalf)
   const mineCount = myItems.length + ticketItems.length
   const allItems = allData?.approvalRequests?.items ?? []
   const allTotal = allData?.approvalRequests?.total ?? 0
@@ -548,19 +551,36 @@ export function ApprovalsPage() {
           <QueryError message={(myError ?? ticketError)!.message} onRetry={() => { void refetchMine(); void refetchTickets() }} />
         ) : myLoading && !myData ? (
           <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</div>
-        ) : mineCount === 0 ? (
-          <EmptyState
-            icon={<CheckSquare size={32} color="var(--color-slate-light)" />}
-            title={t('pages.approvals.noPending')}
-          />
         ) : (
           <>
-            {myItems.map((req) => (
-              <ApprovalCard key={req.id} req={req} onApprove={handleApprove} onReject={handleReject} showActions />
-            ))}
-            {ticketItems.map((item) => (
-              <TicketApprovalCard key={`${item.kind}-${item.entityId}-${item.detail ?? ''}-${item.approvalKind ?? ''}`} item={item} />
-            ))}
+            {mineCount === 0 ? (
+              <EmptyState
+                icon={<CheckSquare size={32} color="var(--color-slate-light)" />}
+                title={t('pages.approvals.noPending')}
+              />
+            ) : (
+              <>
+                {myItems.map((req) => (
+                  <ApprovalCard key={req.id} req={req} onApprove={handleApprove} onReject={handleReject} showActions />
+                ))}
+                {ticketItems.map((item) => (
+                  <TicketApprovalCard key={`${item.kind}-${item.entityId}-${item.detail ?? ''}-${item.approvalKind ?? ''}`} item={item} />
+                ))}
+              </>
+            )}
+            {onBehalfItems.length > 0 && (
+              <section aria-labelledby="approvals-on-behalf" style={{ marginTop: 28 }}>
+                <h2 id="approvals-on-behalf" style={{ fontSize: 'var(--font-size-section-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 4px' }}>
+                  {t('pages.approvals.onBehalfTitle', { count: onBehalfItems.length })}
+                </h2>
+                <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: '0 0 12px' }}>
+                  {t('pages.approvals.onBehalfHint')}
+                </p>
+                {onBehalfItems.map((item) => (
+                  <TicketApprovalCard key={`${item.kind}-${item.entityId}-${item.detail ?? ''}-${item.approvalKind ?? ''}`} item={item} />
+                ))}
+              </section>
+            )}
           </>
         )
       ) : allError && !allData ? (

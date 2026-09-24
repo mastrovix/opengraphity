@@ -99,7 +99,7 @@ export const GET_CI_TYPES = gql`
     ciTypes {
       id name label labels { language label } icon color active
       scope tenantId
-      validationScript chainFamilies serviceRole
+      validationScript chainFamilies serviceRole statusesExcluded
       fields {
         id name label fieldType
         required defaultValue enumTypeId enumValues order enumTypeName

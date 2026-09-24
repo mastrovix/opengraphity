@@ -287,7 +287,8 @@ describe('a certificate that turns critical during a release on it', () => {
 describe('the incident a critical alarm opens (D63, auto_resolve)', () => {
   const keepAll = { ...FACTORY, retentionDays: 0 }
   // A seed where one of the alarms fired a few hours ago and has not cleared yet.
-  const seed = 'monitoring-more/d63-0'
+  // A run where one critical alarm is still firing today (the world changed with G34: the seed moved from d63-0).
+  const seed = 'monitoring-more/d63-6'
   const p = plan(base, { openedTarget: 300, policy: keepAll }, seed)
   // The certificates follow their renewal, not the on-call engineer: they are looked at above.
   const fromAlarms = p.born.filter((b) => base.cmdb.byId.get(b.ciId)!.label !== 'Certificate')

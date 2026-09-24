@@ -104,7 +104,7 @@ describe('result hygiene', () => {
 
   it('only punctuation → empty groups and no query at all', async () => {
     const res = await globalSearch(null, { query: '--//' }, ctx)
-    expect(res).toEqual({ cis: [], changes: [], incidents: [], problems: [], serviceRequests: [], tasks: [], kbArticles: [] })
+    expect(res).toEqual({ cis: [], changes: [], incidents: [], problems: [], serviceRequests: [], tasks: [], kbArticles: [], teams: [] })
     expect(withSession).not.toHaveBeenCalled()
   })
 })

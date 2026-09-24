@@ -1,5 +1,5 @@
 import { withSession, ciTypeFromLabels, runQuery, mapCI } from './ci-utils.js'
-import { mapIncident } from '../../lib/mappers.js'
+import { mapIncident, mapTeam } from '../../lib/mappers.js'
 import { mapChange } from './change/mappers.js'
 import { mapProblem } from './problem.js'
 import { mapArticle, ARTICLE_RETURN_WITH_WI } from './knowledgeBase.js'
@@ -35,6 +35,8 @@ const PERMESSO_DEL_GRUPPO: Readonly<Record<keyof GlobalSearchResults, Permission
   cis:             'cmdb.read',
   // Le attività di una change si leggono con la change: sono sue.
   tasks:           'change.read',
+  // The teams are reference data of the workspace, as the `teams` query (tour of 24 Sep 2026, G37).
+  teams:           'workspace.use',
 }
 
 // ── result shape ──────────────────────────────────────────────────────────────
@@ -57,10 +59,11 @@ export interface GlobalSearchResults {
   serviceRequests: ReturnType<typeof mapRequest>[]
   tasks:      SearchTaskResult[]
   kbArticles: ReturnType<typeof mapArticle>[]
+  teams:      ReturnType<typeof mapTeam>[]
 }
 
 function emptyResults(): GlobalSearchResults {
-  return { cis: [], changes: [], incidents: [], problems: [], serviceRequests: [], tasks: [], kbArticles: [] }
+  return { cis: [], changes: [], incidents: [], problems: [], serviceRequests: [], tasks: [], kbArticles: [], teams: [] }
 }
 
 // ── constants ─────────────────────────────────────────────────────────────────
@@ -277,6 +280,18 @@ async function globalSearch(
         .map((id) => byId.get(id))
         .filter((row): row is Record<string, unknown> => row != null)
         .map((row) => mapArticle({ get: (k) => row[k] }))
+    }
+
+    // 5. Teams by name (G37): a few hundred per tenant, not in the fulltext index.
+    if (puo('teams')) {
+      const teamRows = await runQuery<{ props: Props }>(session, `
+        MATCH (t:Team {tenant_id: $tenantId})
+        WHERE toLower(t.name) CONTAINS toLower($q)
+        RETURN properties(t) AS props
+        ORDER BY t.name
+        LIMIT toInteger($limit)
+      `, { q, tenantId: ctx.tenantId, limit })
+      res.teams = teamRows.map((r) => mapTeam(r.props))
     }
 
     return res

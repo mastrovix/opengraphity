@@ -79,13 +79,13 @@ const NOTE = new Map([
    * più righe, e una storia che non si legge più dall'alto in basso.
    * Restano intere, e possono solo rimpicciolire.
    */
-  ['apps/api/src/lib/testData/demoTenant/changes.ts#simulateChange', 236],
+  ['apps/api/src/lib/testData/demoTenant/changes.ts#simulateChange', 238], // 24 Sep 2026: who starts a task holds it, as the product does (G30)
   // La pipeline del motore in cinque passi (certificati, incident che nascono,
   // agganci, silenziati, warning) che condividono lo stato di cosa è aperto su
   // quale CI in quale istante: spezzarla vorrebbe dire passare quello stato
   // fra cinque funzioni. Le due chiuse interne (decide, bearIncident) sono la
   // pipeline stessa, e si leggono accanto a chi le usa.
-  ['apps/api/src/lib/testData/demoTenant/cmdb.ts#planCMDB', 222],
+  ['apps/api/src/lib/testData/demoTenant/cmdb.ts#planCMDB', 230], // 24 Sep 2026: an application's primary business application, word-bounded database names (G34)
   ['apps/api/src/lib/testData/demoTenant/incidents.ts#simulateIncident', 88],
   ['apps/api/src/lib/testData/demoTenant/problems.ts#simulateProblem', 71],
   ['apps/web/src/pages/settings/catalogForm/FormBuilderPanel.tsx#FormBuilderPanel', 188],
@@ -94,21 +94,21 @@ const NOTE = new Map([
   ['apps/web/src/pages/reports/ReportsPage.tsx#ReportsPage', 184],
   // 23 Sep 2026, review wave 6: +3, every action offered only with the permission the API asks.
   ['apps/web/src/pages/incidents/IncidentDetailPage.tsx#IncidentDetailPage', 146],
-  ['apps/web/src/pages/settings/EnumDesignerPage.tsx#EnumEditor', 179],
+  ['apps/web/src/pages/settings/EnumDesignerPage.tsx#EnumEditor', 186], // 24 Sep 2026: unsaved values guarded, the icon of a value (G40, G45); the icon control is its own component
   ['apps/web/src/components/topology/TopologyGraph.tsx#TopologyGraph', 164],
   // 23 Sep 2026, review wave 6: +3, report.write / report.schedule decide the controls; channels from reportDeliveryChannels.
   ['apps/web/src/pages/reports/useCustomReports.ts#useCustomReports', 131],
   // 23 Sep 2026, review wave 6: +13, the tenant's field rules on creation, and the SLA check with the catalog item's category and team.
-  ['apps/web/src/pages/requests/CreateServiceRequestPage.tsx#CreateServiceRequestPage', 184],
+  ['apps/web/src/pages/requests/CreateServiceRequestPage.tsx#CreateServiceRequestPage', 186], // 24 Sep 2026: the person the request is for (G27)
   ['apps/api/src/lib/catalogForm.ts#resolveFormWrites', 166],
   // 23 Sep 2026, review wave 6: +4, regenerating a token or an API key asks first, naming the row.
   ['apps/web/src/pages/admin/IntegrationsPage.tsx#IntegrationsPage', 158],
   // 23 Sep 2026, review wave 6: +2, every action offered only with the permission the API asks.
-  ['apps/web/src/pages/problems/ProblemDetailPage.tsx#ProblemDetailPage', 130],
+  ['apps/web/src/pages/problems/ProblemDetailPage.tsx#ProblemDetailPage', 134], // 24 Sep 2026: the known-error move opens its own dialog (G22), which lives in KnownErrorDialog.tsx
   ['apps/web/src/pages/ci/CIDetailPage.tsx#CIDetailPage', 149],
-  ['apps/web/src/pages/settings/CITypeDesignerPage.tsx#CITypeDesignerPage', 150],
+  ['apps/web/src/pages/settings/CITypeDesignerPage.tsx#CITypeDesignerPage', 152], // 24 Sep 2026: the statuses a CI type leaves out (G36)
   // 23 Sep 2026, review wave 6: +2, the CI chains are recalculated for the whole tenant when a type's families change.
-  ['apps/api/src/graphql/resolvers/ciTypeMetamodel.ts#buildMetamodelMutations', 148],
+  ['apps/api/src/graphql/resolvers/ciTypeMetamodel.ts#buildMetamodelMutations', 150], // 24 Sep 2026: the statuses a CI type leaves out are checked on every write (G36)
   // 23 Sep 2026, review wave 6: +1, transitions, CIs and links offered only with the permission the API asks.
   ['apps/web/src/pages/changes/ChangeDetailPage.tsx#ChangeDetailPage', 148],
   ['apps/api/src/lib/formDesignProposal.ts#validaProposta', 144],
@@ -127,12 +127,12 @@ const NOTE = new Map([
   ['apps/web/src/pages/monitoring/ServiceMapCanvas.tsx#ServiceMapCanvas', 115],
   ['apps/web/src/pages/settings/catalogForm/FormBuilderPanel.tsx#useTrascinamento', 115],
   ['apps/api/src/scripts/seed-demo-incidents.ts#main', 113],
-  ['apps/web/src/pages/admin/KBAdminPage.tsx#KBAdminPage', 105],
+  ['apps/web/src/pages/admin/KBAdminPage.tsx#KBAdminPage', 110], // 24 Sep 2026: who an article is for, Staff or Everyone (owner's decision of 24 Sep 2026)
   ['packages/workflow/src/engine.ts#transition', 95],
   ['apps/web/src/pages/dashboard/useDashboard.ts#useDashboard', 103],
   ['apps/portal/src/pages/ServiceCatalogPage.tsx#ServiceCatalogPage', 111],
   ['apps/api/src/lib/filterBuilder.ts#buildAdvancedWhere', 108],
-  ['apps/api/src/services/ticketImportService.ts#importKBArticles', 108],
+  ['apps/api/src/services/ticketImportService.ts#importKBArticles', 113], // 24 Sep 2026: the audience column of an imported article (owner's decision of 24 Sep 2026)
   ['apps/web/src/pages/changes/CreateChangePage.tsx#CreateChangePage', 105],
   // 23 Sep 2026: +6, every field now goes through the property aliases (Incident.priority is `severity`): one lookup per clause.
   ['apps/api/src/lib/reportQueryBuilder.ts#buildReportQuery', 110],
@@ -163,22 +163,22 @@ const NOTE = new Map([
   ['apps/web/src/pages/assistant/AssistantPage.tsx#AssistantPage', 77],
   // 23 Sep 2026, review wave 6: +1, edit, transitions and assignment only with request.write.
   ['apps/web/src/pages/requests/ServiceRequestDetailPage.tsx#ServiceRequestDetailPage', 68],
-  ['apps/api/src/graphql/resolvers/enumType.ts#updateEnumType', 76],
+  ['apps/api/src/graphql/resolvers/enumType.ts#updateEnumType', 80], // 24 Sep 2026: the icons of the values (G40)
   ['apps/web/src/pages/monitoring/EditSourcePage.tsx#EditSourcePage', 76],
   ['apps/api/src/scripts/seed-ci-relations.ts#seed', 75],
   ['apps/web/src/hooks/useNotifications.ts#useNotifications', 73],
   ['apps/web/src/pages/settings/useITILTypeDesigner.ts#useITILTypeDesigner', 74],
   ['apps/web/src/pages/settings/EventPolicyPage.tsx#EventPolicyPage', 62],
-  ['apps/web/src/pages/teams/TeamDetailPage.tsx#TeamDetailPage', 72],
+  ['apps/web/src/pages/teams/TeamDetailPage.tsx#TeamDetailPage', 79], // 24 Sep 2026: members searched among who can take tickets, the Change Manager confirmed (G37)
   ['apps/api/src/graphql/resolvers/dynamic-ci.ts#buildDynamicCIResolvers', 69],
   ['apps/api/src/graphql/resolvers/whatif.ts#whatIfAnalysis', 69],
-  ['apps/web/src/components/MentionInput.tsx#MentionInput', 69],
+  ['apps/web/src/components/MentionInput.tsx#MentionInput', 71], // 24 Sep 2026: the name shown apart from the mention's markup (G16)
   ['apps/web/src/pages/admin/SLAPoliciesPage.tsx#SLAPoliciesPage', 69],
   ['apps/web/src/pages/monitoring/ServicesPage.tsx#ServicesPage', 69],
   ['apps/api/src/services/serviceImpact/engine.ts#evaluateServiceMap', 68],
   ['apps/web/src/pages/admin/BusinessRulesPage.tsx#BusinessRulesPage', 67],
   ['apps/web/src/pages/dashboard/useWidgetConfig.ts#useWidgetConfig', 61],
-  ['apps/api/src/anomaly/ruleConfig.ts#assertAnomalyRuleSettings', 66],
+  ['apps/api/src/anomaly/ruleConfig.ts#assertAnomalyRuleSettings', 72], // 24 Sep 2026: the severity outside production is validated (G33)
   ['apps/api/src/lib/reportDesignProposal.ts#filtriValidi', 66],
   ['apps/api/src/scripts/seed-relations.ts#seed', 65],
   // 23 Sep 2026: +3, the initial step must survive a save and a timed wait keeps a valid delay.
@@ -186,7 +186,7 @@ const NOTE = new Map([
   ['apps/api/src/lib/reportQueryBuilder.ts#validateReportSection', 63],
   ['packages/web-core/src/tokenRefresh.ts#createTokenRefresh', 63],
   ['apps/api/src/lib/reportValueLabels.ts#loadReportValueLabeler', 62],
-  ['apps/web/src/pages/proposals/ProposalsPage.tsx#ProposalsPage', 61],
+  ['apps/web/src/pages/proposals/ProposalsPage.tsx#ProposalsPage', 65], // 24 Sep 2026: the proposals decided are told apart (G44)
   ['apps/web/src/pages/settings/useSyncPage.ts#useSyncPage', 62],
   ['apps/api/src/telemetry.ts#initTelemetry', 61],
 ])

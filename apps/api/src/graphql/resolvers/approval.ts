@@ -10,6 +10,7 @@ import { logger } from '../../lib/logger.js'
 import { pendingTicketApprovals } from './pendingTicketApprovals.js'
 import { systemText } from '../../lib/systemText.js'
 import { hasPermission } from '../../lib/permissions.js'
+import { askersOf } from '../../lib/ownApproval.js'
 import type { Session } from 'neo4j-driver'
 import { transitionTicket, type TicketTransitionOutcome } from '../../services/ticketTransition.js'
 
@@ -193,7 +194,8 @@ export async function myPendingApprovals(
      * contenesse il suo (id non-UUID da import o script). L'appartenenza si
      * decide sull'elenco vero, elemento per elemento.
      */
-    return res.records.map(mapApproval).filter((a) => a.approvers.includes(ctx.userId))
+    // What I asked for myself is not waiting for MY approval (24 Sep 2026).
+    return res.records.map(mapApproval).filter((a) => a.approvers.includes(ctx.userId) && a.requestedBy !== ctx.userId)
   } finally {
     await session.close()
   }
@@ -394,6 +396,13 @@ export async function approveRequest(
     const entityType   = rec.get('entityType')   as string
     const entityId     = rec.get('entityId')     as string
 
+    // Nobody approves what they asked for (24 Sep 2026): checked before the
+    // list of approvers, which older requests may still name them in.
+    if ((await askersOf(session, ctx.tenantId, entityType, entityId, requestedBy)).has(ctx.userId)) {
+      throw new GraphQLError('You asked for this: another member of the approving group decides', {
+        extensions: { code: 'FORBIDDEN', i18n: { key: entityType === 'kb_article' ? 'errors.approval.ownArticle' : 'errors.approval.ownRequest' } },
+      })
+    }
     if (!approvers.includes(ctx.userId)) {
       throw new GraphQLError('You are not an approver for this request', { extensions: { code: 'FORBIDDEN' } })
     }

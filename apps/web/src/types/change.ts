@@ -97,6 +97,8 @@ export interface ChangeApproval {
   canApprove: boolean
   /** Vero quando l'admin approva a nome di un team di cui non fa parte (#34). */
   onBehalf: boolean
+  /** The viewer asked for this change: another member of the team decides (24 Sep 2026). */
+  ownChange: boolean
 }
 
 export interface LinkedTicketRef {

@@ -46,10 +46,14 @@ export interface AnomalyRuleSettings {
   threshold:          number | null
   incidentSeverities: string[]
   forbidden:          Forbidden[]
+  /** The severity on a CI outside production; null = the same (G32). Only rules that weigh the environment have one. */
+  nonProductionSeverity?: string | null
 }
 
 export interface AnomalyRuleSpec {
   ciTypes: boolean; relations: boolean; incidentSeverities: boolean; forbidden: boolean
+  /** The rule weighs a CI by its environment. */
+  environment?: boolean
   thresholdMin: number | null; thresholdMax: number | null
   /**
    * No relation chosen = every relation between CIs of the tenant (D49, tour
@@ -95,6 +99,8 @@ export function ruleDraftProblem(draft: AnomalyRuleSettings, spec: AnomalyRuleSp
 const settingsOf = (r: AnomalyRule): AnomalyRuleSettings => ({
   enabled: r.enabled, severity: r.severity, ciTypes: r.ciTypes, relations: r.relations, threshold: r.threshold,
   incidentSeverities: r.incidentSeverities, forbidden: r.forbidden.map(({ fromType, relation, toType }) => ({ fromType, relation, toType })),
+  // Only a rule that weighs the environment has one to send.
+  ...(r.spec.environment ? { nonProductionSeverity: r.nonProductionSeverity ?? null } : {}),
 })
 
 // ── Pezzi ─────────────────────────────────────────────────────────────────────
@@ -184,6 +190,7 @@ function RuleCard({ rule, options }: { rule: AnomalyRule; options: Options }) {
   const title = t(RULE_LABEL_KEYS[rule.ruleKey] ?? rule.ruleKey)
   const thresholdId = `anomaly-threshold-${rule.ruleKey}`
   const severityId = `anomaly-severity-${rule.ruleKey}`
+  const outsideId = `anomaly-outside-${rule.ruleKey}`
   const enabledId = `anomaly-enabled-${rule.ruleKey}`
 
   return (
@@ -228,6 +235,17 @@ function RuleCard({ rule, options }: { rule: AnomalyRule; options: Options }) {
               {options.severities.map((s) => <option key={s} value={s}>{t(`pages.anomalies.severities.${s}`)}</option>)}
             </Select>
           </div>
+          {rule.spec.environment && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label htmlFor={outsideId} style={{ fontSize: 'var(--font-size-label)', color: colors.slateLight }} title={t('pages.anomalyRules.outsideProductionHint')}>
+                {t('pages.anomalyRules.outsideProduction')}
+              </label>
+              <Select id={outsideId} value={current.nonProductionSeverity ?? ''} onChange={(e) => set({ nonProductionSeverity: e.target.value || null })} style={{ width: 170 }}>
+                <option value="">{t('pages.anomalyRules.outsideProductionSame')}</option>
+                {options.severities.map((s) => <option key={s} value={s}>{t(`pages.anomalies.severities.${s}`)}</option>)}
+              </Select>
+            </div>
+          )}
           {rule.spec.thresholdMin !== null && rule.spec.thresholdMax !== null && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <label htmlFor={thresholdId} style={{ fontSize: 'var(--font-size-label)', color: colors.slateLight }}>

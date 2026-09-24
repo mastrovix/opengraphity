@@ -53,9 +53,9 @@ export const GET_ANOMALY_SCAN_STATUS = gql`
 
 const ANOMALY_RULE_FIELDS = gql`
   fragment AnomalyRuleFields on AnomalyRuleConfig {
-    ruleKey enabled severity ciTypes relations threshold incidentSeverities
+    ruleKey enabled severity ciTypes relations threshold incidentSeverities nonProductionSeverity
     forbidden { fromType relation toType }
-    spec { ciTypes relations allRelationsWhenEmpty thresholdMin thresholdMax incidentSeverities forbidden }
+    spec { ciTypes relations allRelationsWhenEmpty thresholdMin thresholdMax incidentSeverities forbidden environment }
     isDefault updatedAt openCount
     problem { key message params { key value } }
   }

@@ -32,7 +32,7 @@ describe('loadVocabularyEntries', () => {
       { owner: 't1', values: ['basso', 'alto'], labels: JSON.stringify({ alto: { it: 'Alto' } }), colors: JSON.stringify({ alto: 'danger' }) },
     )
     const v = await loadVocabularyEntries('t1', 'risk_band')
-    expect(v).toEqual({ values: ['basso', 'alto'], labels: { alto: { it: 'Alto' } }, colors: { alto: 'danger' } })
+    expect(v).toEqual({ values: ['basso', 'alto'], labels: { alto: { it: 'Alto' } }, colors: { alto: 'danger' }, icons: {} })
     // Only the tenant and the system scope are queried.
     expect(txRun.mock.calls[0]![1]).toEqual({ name: 'risk_band', tenantId: 't1', systemTenant: 'system' })
     expect(getSession).toHaveBeenCalledWith(undefined, 'READ')
@@ -41,7 +41,7 @@ describe('loadVocabularyEntries', () => {
 
   it('without a tenant copy the shipped vocabulary is used, with empty labels/colors when none are set', async () => {
     rows({ owner: 'system', values: ['low', 'high'], labels: null, colors: '' })
-    await expect(loadVocabularyEntries('t1', 'risk_band')).resolves.toEqual({ values: ['low', 'high'], labels: {}, colors: {} })
+    await expect(loadVocabularyEntries('t1', 'risk_band')).resolves.toEqual({ values: ['low', 'high'], labels: {}, colors: {}, icons: {} })
   })
 
   it('a row owned by some other tenant is never picked', async () => {

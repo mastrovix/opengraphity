@@ -187,7 +187,7 @@ const APP = affectedCI('ci-app', 'orders-app', { type: 'application', environmen
 
 const approval = (over: Partial<ChangeApproval>): ChangeApproval => ({
   kind: 'owner_group', teamId: 't-dba', teamName: 'DBA', status: 'pending', approvedByName: null, approvedAt: null,
-  canApprove: true, onBehalf: false, ...over,
+  canApprove: true, onBehalf: false, ownChange: false, ...over,
 })
 
 let permissions: string[]
@@ -578,6 +578,14 @@ describe('ChangeDetailPage — approvals', () => {
     dialog = await screen.findByRole('dialog', { name: 'Approve on behalf of another team?' })
     await user.click(within(dialog).getByRole('button', { name: 'Approve' }))
     await waitFor(() => expect(apolloFinto.chiamata('ApproveChangeApproval')).toEqual({ changeId: 'chg-1', teamId: 't-dba', note: null }))
+  })
+
+  it('on their own change the requester gets no buttons, and is told who decides (24 Sep 2026)', () => {
+    onStep('approval', { approvals: [approval({ canApprove: false, ownChange: true })] })
+    mount()
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Reject' })).toBeNull()
+    expect(screen.getByText('You asked for it: another member decides')).toBeInTheDocument()
   })
 
   it('a team without a name, approved on behalf, is named with a dash', async () => {

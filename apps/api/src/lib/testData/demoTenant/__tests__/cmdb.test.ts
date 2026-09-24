@@ -398,3 +398,40 @@ describe('monitoredServiceCandidates', () => {
     expect(weights).toEqual([...weights].sort((a, b) => b - a))
   })
 })
+
+/** Tour of 24 Sep 2026 (G34): «Buckthorn Search» on «meadowsweet_notification_servi_config». */
+describe('the databases of the applications', () => {
+  const p = plan('cmdb-g34', { businessApplications: 25, applications: 80, servers: 60, databaseInstances: 20, databases: 120 })
+
+  it('a database is used only by applications of the same business application as its own', () => {
+    let shared = 0
+    for (const db of p.byLabel.Database) {
+      const users = sources(p, db.id, 'DEPENDS_ON').filter((ci) => ci.label === 'Application')
+      expect(users.length, raw(db)).toBeGreaterThan(0)
+      if (users.length > 1) shared++
+      const basOf = (app: PlannedCI) => new Set(sources(p, app.id, 'REALIZES').map((b) => b.id))
+      const common = [...basOf(users[0]!)].filter((ba) => users.every((u) => basOf(u).has(ba)))
+      expect(common.length, raw(db)).toBeGreaterThan(0)
+    }
+    expect(shared).toBeGreaterThan(0)
+  })
+
+  it('its name is cut at a whole word of the application, never in the middle of one', () => {
+    for (const db of p.byLabel.Database) {
+      const name = raw(db)
+      const fits = sources(p, db.id, 'DEPENDS_ON').filter((ci) => ci.label === 'Application').some((app) => {
+        const words = slug(raw(app), '_').split('_')
+        for (let k = words.length; k >= 1; k--) {
+          const base = words.slice(0, k).join('_')
+          if (base.length > 30 || !name.startsWith(`${base}_`)) continue
+          const rest = name.slice(base.length + 1)
+          // The longest base of whole words within 30 characters, then the purpose.
+          return (k === words.length || words.slice(0, k + 1).join('_').length > 30)
+            && ((DATABASE_PURPOSES as readonly string[]).includes(rest) || /^db\d+$/.test(rest))
+        }
+        return false
+      })
+      expect(fits, name).toBe(true)
+    }
+  })
+})

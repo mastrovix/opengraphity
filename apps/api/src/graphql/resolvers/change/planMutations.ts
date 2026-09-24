@@ -6,6 +6,7 @@ import { NotFoundError } from '../../../lib/errors.js'
 import { ValidationError } from '../../../lib/errors.js'
 import { assertWindowDate } from '../../../lib/deployWindows.js'
 import { TASK_STATUS } from '../../../lib/taskStatus.js'
+import { takeTaskOnStartCypher } from '../../../lib/taskTakeOnStart.js'
 import { planEnvelope } from '../../../lib/deployWindows.js'
 import { withSession, runQueryOne, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
@@ -88,8 +89,9 @@ export async function saveDeployPlan(
       MATCH (dp:DeployPlanTask {id: $taskId, tenant_id: $tenantId})
       SET dp.steps = $steps, dp.status = '${TASK_STATUS.IN_PROGRESS}',
           dp.window_start = $windowStart, dp.window_end = $windowEnd
+      ${takeTaskOnStartCypher('dp')}
     `, {
-      taskId: args.taskId, tenantId: ctx.tenantId, steps: JSON.stringify(normalized),
+      taskId: args.taskId, tenantId: ctx.tenantId, userId: ctx.userId, steps: JSON.stringify(normalized),
       windowStart: inviluppo?.start ?? null, windowEnd: inviluppo?.end ?? null,
     }))
 

@@ -28,6 +28,7 @@ import { Button } from '@/components/Button'
 import { Input, Select } from '@/components/ui/FormControls'
 import { SET_REQUEST_FORM_ANSWER } from '@/graphql/mutations'
 import { showError } from '@/lib/showError'
+import { formatDate, formatDateTime } from '@/lib/datetime'
 import { colors } from '@/lib/tokens'
 
 export interface FormAnswer {
@@ -174,7 +175,11 @@ export function FormAnswersCard({ answers, revision, requestId }: {
                     : a.displayValues.length > 0
                       ? a.displayValues.join(', ')
                       : a.displayValue != null && a.displayValue !== ''
-                        ? (a.fieldType === 'boolean' ? (a.displayValue === 'true' ? t('common.yes') : t('common.no')) : a.displayValue)
+                        ? (a.fieldType === 'boolean' ? (a.displayValue === 'true' ? t('common.yes') : t('common.no'))
+                          // A date written as every date of the app, not raw (tour of 24 Sep 2026, G41).
+                          : a.fieldType === 'date' ? formatDate(a.displayValue)
+                          : a.fieldType === 'datetime' ? formatDateTime(a.displayValue)
+                          : a.displayValue)
                         : <span style={{ color: colors.slateLight }}>{t('detail.formAnswerEmpty')}</span>}
               {/* Si corregge solo quello che è un VALORE, e solo se il riquadro
                   sa a quale richiesta appartiene. Un calcolato lo fa la formula. */}

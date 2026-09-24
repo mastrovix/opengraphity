@@ -31,7 +31,7 @@ vi.mock('@opengraphity/neo4j', () => ({
   }),
 }))
 
-const { markResolveMet, getEntityCreatedAt, resumeSLA, repolicySLA } = await import('../status.js')
+const { markResolveMet, markResponseMet, getEntityCreatedAt, resumeSLA, repolicySLA } = await import('../status.js')
 
 function status(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -157,5 +157,29 @@ describe('lo spostamento delle pause è registrato, non ricalcolato (E-2)', () =
     // 09:00 + 240 min = 13:00, più i 30 minuti di pausa già scontati.
     expect(w!.params['newResolve']).toBe('2026-05-01T13:30:00.000Z')
     expect(w!.params['newResponse']).toBe('2026-05-01T10:00:00.000Z')
+  })
+
+  it('same policy, another tier (the priority moved, 24 Sep 2026): the deadlines and the tier are rewritten; the same tier is nothing', async () => {
+    const policy = {
+      id: 'pol-1', name: 'Incidents', timezone: 'Europe/Rome', calendar: null,
+      tiers: [
+        { severity: 'medium', response_minutes: 240, resolve_minutes: 1440, business_hours: false, warning_minutes: 60 },
+        { severity: 'critical', response_minutes: 15, resolve_minutes: 240, business_hours: false, warning_minutes: 15 },
+      ],
+    }
+    currentStatus = status({ policy_id: 'pol-1', tier_severity: 'medium' })
+    expect(await repolicySLA('t1', 'inc-1', policy as never, 'medium')).toBeNull()
+    expect(await repolicySLA('t1', 'inc-1', policy as never, 'critical')).not.toBeNull()
+    const w = writes.find((c) => c.cypher.includes('s.tier_severity'))!
+    expect(w.params).toMatchObject({ tierSeverity: 'critical', newResponse: '2026-05-01T09:15:00.000Z', newResolve: '2026-05-01T13:00:00.000Z' })
+  })
+})
+
+describe('the instant of the response (G14, 24 Sep 2026)', () => {
+  it('is written with the response, and only the first time: a late response stays late', async () => {
+    await markResponseMet('t1', 'inc-1', new Date('2026-05-01T10:37:00.000Z'))
+    const w = writes.find((c) => c.cypher.includes('s.response_met_at'))!
+    expect(w.cypher).toContain('s.response_met_at = coalesce(s.response_met_at, $at)')
+    expect(w.params['at']).toBe('2026-05-01T10:37:00.000Z')
   })
 })

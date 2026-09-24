@@ -133,6 +133,36 @@ describe('D16: the young articles, caught in the middle of their life', () => {
   })
 })
 
+describe('24 Sep 2026: who an article is for, who approves it, one article per known error', () => {
+  const facts = Array.from({ length: 60 }, (_, i) => known(i, { title: `Recurring trouble ${String(i % 20)}` }))
+  const articles = planKnowledgeBase(new Rng('kb-audience'), w, facts, [])
+
+  it('a known error is for the staff, a how-to or a FAQ for everyone', () => {
+    for (const a of articles) {
+      const knownError = (a.props['title'] as string).startsWith('Workaround: ')
+      expect(a.props['audience'], a.props['title'] as string).toBe(knownError ? 'staff' : 'everyone')
+    }
+  })
+
+  it('two problems with the same title share one article: no two «Workaround:» with the same title (G5)', () => {
+    const titles = knownErrors(articles).map((a) => a.props['title'] as string)
+    expect(titles.length).toBeGreaterThan(5)
+    expect(new Set(titles).size).toBe(titles.length)
+  })
+
+  it('the author is never among the approvers of their own article, even when an administrator', () => {
+    const adminAuthor = admins[0]!
+    const byAdmin = planKnowledgeBase(new Rng('kb-admin-author'), w, facts.map((k) => ({ ...k, authorId: adminAuthor.id })), [])
+    const requests = byAdmin.flatMap((a) => a.approvals.map((r) => ({ r, author: a.props['author_id'] as string })))
+    expect(requests.some(({ author }) => author === adminAuthor.id)).toBe(true)
+    for (const { r, author } of requests) {
+      expect(JSON.parse(r['approvers'] as string)).not.toContain(author)
+      expect(JSON.parse(r['approved_by'] as string)).not.toContain(author)
+      expect(r['rejected_by']).not.toBe(author)
+    }
+  })
+})
+
 describe('D16: the how-tos of a tenant without a Service Desk', () => {
   it('are written by the support teams there are', () => {
     // The same world, with no team of the Service Desk area among the support teams.

@@ -74,9 +74,10 @@ function mapRuleConfig(config: AnomalyRuleConfig, options: AnomalyRuleOptions, o
   return {
     ruleKey: config.ruleKey, enabled: config.enabled, severity: config.severity,
     ciTypes: config.ciTypes, relations: config.relations, threshold: config.threshold,
-    incidentSeverities: config.incidentSeverities, forbidden: config.forbidden,
+    incidentSeverities: config.incidentSeverities, forbidden: config.forbidden, nonProductionSeverity: config.nonProductionSeverity,
     spec: {
       ciTypes: spec.ciTypes, relations: spec.relations, incidentSeverities: spec.incidentSeverities, forbidden: spec.forbidden,
+      environment: spec.environment === true,
       allRelationsWhenEmpty: spec.allRelationsWhenEmpty === true,
       thresholdMin: spec.threshold?.min ?? null, thresholdMax: spec.threshold?.max ?? null,
     },
