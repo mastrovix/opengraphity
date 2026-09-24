@@ -287,11 +287,13 @@ export async function elencaProposte(
 ): Promise<{ items: ProposalRow[]; total: number }> {
   const session = getSession(undefined, 'READ')
   try {
-    const dove = [
-      'p.tenant_id = $tenantId',
+    // The tenant in the pattern, not in the assembled WHERE: the tenant lints
+    // and check-cypher see it there (wave 7 · A3).
+    const filtri = [
       ...(filtro.status?.length ? ['p.status IN $status'] : []),
       ...(filtro.area?.length   ? ['p.area IN $area']     : []),
-    ].join(' AND ')
+    ]
+    const dove = filtri.length > 0 ? `WHERE ${filtri.join(' AND ')}` : ''
 
     const params = {
       tenantId,
@@ -301,7 +303,7 @@ export async function elencaProposte(
     }
 
     const totale = await runQueryOne<{ n: number }>(session, `
-      MATCH (p:Proposal) WHERE ${dove} RETURN count(p) AS n
+      MATCH (p:Proposal {tenant_id: $tenantId}) ${dove} RETURN count(p) AS n
     `, params)
 
     /*
@@ -310,7 +312,7 @@ export async function elencaProposte(
      * l'intera diagnostica della console.
      */
     const righe = await runQuery<Record<string, unknown>>(session, `
-      MATCH (p:Proposal) WHERE ${dove}
+      MATCH (p:Proposal {tenant_id: $tenantId}) ${dove}
       RETURN ${CAMPI}
       ORDER BY p.occurrences DESC, p.created_at DESC
       SKIP toInteger($offset) LIMIT toInteger($limit)

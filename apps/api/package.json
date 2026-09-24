@@ -7,6 +7,7 @@
     "build": "tsc",
     "start": "node --no-node-snapshot dist/index.js",
     "backup:neo4j": "tsx src/scripts/backup-neo4j.ts",
+    "check:cross-tenant-edges": "tsx src/scripts/check-cross-tenant-edges.ts",
     "restore:neo4j": "tsx src/scripts/restore-neo4j.ts",
     "seed:teams": "tsx src/scripts/seed-teams.ts",
     "seed:users-bulk": "tsx src/scripts/seed-users-bulk.ts",

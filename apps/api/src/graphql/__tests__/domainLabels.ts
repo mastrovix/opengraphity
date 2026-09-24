@@ -55,4 +55,13 @@ export const DOMAIN_LABELS = [
    * il rilievo che rendeva tutti gli altri meno sicuri di quanto sembrassero.
    */
   'FormField', 'CatalogFormRevision', 'FormTableRow', 'FormTemplate',
+  /**
+   * Five labels written with a `tenant_id` and missing from here (review of
+   * 23 Sep 2026, architecture#7): the generic ticket tasks, the proposals of
+   * continuous improvement and their rejections, the AI cost ledger, the
+   * record of a demo generation. Since wave 7 · A3 the list is checked
+   * against the code that writes (domainLabelsDerived.test.ts): a label
+   * written with a tenant and not listed here fails that test.
+   */
+  'Task', 'Proposal', 'ProposalRejection', 'AIUsage', 'DemoDataRun',
 ] as const

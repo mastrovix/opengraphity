@@ -167,6 +167,14 @@ export interface PlatformJob {
   maxAttempts: number
 }
 
+/** Edges joining two different tenants, grouped (wave 7 · A3): a clean graph has none. */
+export interface CrossTenantEdges {
+  total: number
+  groups: Array<{ fromTenant: string; toTenant: string; type: string; fromLabels: string[]; toLabels: string[]; count: number }>
+  checkedAt: string
+  durationMs: number
+}
+
 export const api = {
   create:    (t: NuovoTenant)             => chiama<EsitoCreazione>('/platform/tenants', { method: 'POST', body: JSON.stringify(t) }),
   tenants:   ()                          => chiama<{ tenants: Tenant[] }>('/platform/tenants'),
@@ -184,4 +192,5 @@ export const api = {
   queues:    ()                           => chiama<{ platform: PlatformQueue[]; tenants: TenantQueues[] }>('/platform/queues'),
   failedJobs: (queue: string)             => chiama<{ queue: string; status: string; jobs: PlatformJob[] }>(`/platform/queues/${encodeURIComponent(queue)}/jobs`),
   retryJob:  (queue: string, id: string)  => chiama<{ queue: string; id: string; retried: boolean }>(`/platform/queues/${encodeURIComponent(queue)}/jobs/${encodeURIComponent(id)}/retry`, { method: 'POST' }),
+  crossTenantEdges: ()                    => chiama<CrossTenantEdges>('/platform/integrity/cross-tenant-edges'),
 }

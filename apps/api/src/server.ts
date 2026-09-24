@@ -42,6 +42,7 @@ import { clientLogRouter } from './rest/client-logs.js'
 import { platformTenantsRouter } from './rest/platform-tenants.js'
 import { platformServerLogsRouter } from './rest/platform-server-logs.js'
 import { platformQueuesRouter } from './rest/platform-queues.js'
+import { platformIntegrityRouter } from './rest/platform-integrity.js'
 import { handleSlackCommands, handleSlackActions, handleSlackOAuthCallback } from './rest/slack.js'
 import { runRoute } from './rest/routeSafety.js'
 import { attachmentRouter } from './rest/attachments.js'
@@ -254,6 +255,8 @@ app.use(platformTenantsRouter)
 app.use(platformServerLogsRouter)
 // Le code della piattaforma e i totali delle code di ogni tenant (23 set 2026).
 app.use(platformQueuesRouter)
+// No edge between two tenants: the check of wave 7 · A3, run on demand (24 set 2026).
+app.use(platformIntegrityRouter)
 app.use('/api', attachmentRouter)
 app.use('/api', brandRouter)
 app.use('/api', incidentPdfRouter)

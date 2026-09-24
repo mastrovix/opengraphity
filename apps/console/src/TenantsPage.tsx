@@ -21,6 +21,7 @@ import { LogOut, Plus } from 'lucide-react'
 import { getKeycloak } from './keycloak'
 import { collegaAvvisi } from './tokenRefresh'
 import { QueuesPanel } from './QueuesPanel'
+import { IntegrityPanel } from './IntegrityPanel'
 
 function Conteggio({ n }: { n: number | null }) {
   // `null` non è zero: dirlo «0» manderebbe a cancellare un tenant pieno.
@@ -576,6 +577,8 @@ export function TenantsPage() {
       )}
 
       <QueuesPanel />
+
+      <IntegrityPanel />
 
       </div>
       </main>

@@ -110,11 +110,14 @@ const PRE_AUTH = ['apiKeyAuth.ts', 'webhooks-inbound.ts', 'slackInstallation.ts'
  * OLA, transizioni da riprendere, report pianificati, anomalie, proposte,
  * finestre degli eventi, mappe dei servizi sono uscite da qui. Ci è entrato
  * chi decide QUALI tenant hanno le code.
+ *
+ * Dal 24 set 2026 (ondata 7 · A3) c'è anche il controllo che nessun legame
+ * unisca due tenant diversi: confronta i tenant fra loro, per definizione.
  */
 const PIATTAFORMA = [
   'gauges.ts', 'serverLogRetention.ts', 'aiBudget.ts', 'formDraftPurge.ts', 'engine.ts',
   'problemDossier.ts', 'tenantLifecycle.ts', 'eventRetention.ts', 'storm.ts',
-  'tenantQueueLifecycle.ts',
+  'tenantQueueLifecycle.ts', 'crossTenantEdges.ts',
 ]
 
 const GENERI: Record<string, Genere> = {

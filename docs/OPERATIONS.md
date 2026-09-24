@@ -367,7 +367,23 @@ scrive solo con `--yes-reset` (`--dry-run` per vedere il diff senza scrivere).
 
 Catalogo, regole comuni (tenant sempre esplicito, `--yes-delete` per le
 cancellazioni, seed demo rifiutati in produzione, exit 1 su errore) e
-invocazioni: `apps/api/src/scripts/README.md`.
+invocazioni: `apps/api/src/scripts/README.md`. Ogni script gira con il
+limite di manutenzione (2 ore per transazione, non i 120 s del database:
+§9 «Query fermate dai limiti del database»).
+
+**Nessun legame fra tenant diversi** (ondata 7 · A3, 24 set 2026). I controlli
+sul tenant del codice lasciano passare un attraversamento che parte da un nodo
+già del tenant, e questo è giusto solo finché nessun legame unisce due tenant
+diversi (il metamodello condiviso `system` a parte). Il controllo lo verifica
+sul grafo vero, leggendo ogni relazione: il 24 set 2026, su 4,98 milioni di
+relazioni, zero legami in circa 3 s.
+
+- dalla console di piattaforma: *Graph integrity → Check*. Se trova legami, li
+  elenca per tenant, etichette e tipo di relazione, e l'API scrive la riga
+  `Edges between different tenants found`;
+- da riga di comando, e nella CI contro un Neo4j vero (C2):
+  `pnpm --filter @opengraphity/api check:cross-tenant-edges`. Esce con 1 se
+  trova legami.
 
 **Utenti demo e notifiche**: `User.notifications_enabled` è un flag di
 *opt-out*: il dispatcher delle notifiche e il digest email trattano il flag

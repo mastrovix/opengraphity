@@ -178,7 +178,8 @@ describe('elencaProposte', () => {
     expect(out.total).toBe(7)
     expect(out.items.map((i) => i.id)).toEqual(['p1', 'p2'])
     const [count, list] = fake.queries
-    expect(count?.q).toContain('WHERE p.tenant_id = $tenantId RETURN')
+    // The tenant in the pattern, where the tenant lints see it (wave 7 · A3); no WHERE without filters.
+    expect(count?.q).toContain('MATCH (p:Proposal {tenant_id: $tenantId})  RETURN count(p)')
     expect(count?.q).not.toContain('$status')
     expect(list?.q).toContain('SKIP toInteger($offset) LIMIT toInteger($limit)')
     expect(list?.p).toMatchObject({ tenantId: 't1', status: [], area: [], limit: 20, offset: 0 })
@@ -188,8 +189,7 @@ describe('elencaProposte', () => {
   it('status and area filters are added only when non-empty', async () => {
     await elencaProposte('t1', { status: ['open', 'not_now'], area: ['configuration'], limit: 5, offset: 10 })
     const list = fake.queries[1]!
-    expect(list.q).toContain('p.status IN $status')
-    expect(list.q).toContain('p.area IN $area')
+    expect(list.q).toContain('MATCH (p:Proposal {tenant_id: $tenantId}) WHERE p.status IN $status AND p.area IN $area')
     expect(list.p).toMatchObject({ status: ['open', 'not_now'], area: ['configuration'] })
 
     fake.queries = []

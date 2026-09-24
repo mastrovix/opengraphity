@@ -185,9 +185,10 @@ export async function totaleDellaPiattaforma(mese: string = meseDi()): Promise<n
 
 /** La query del totale di piattaforma: un numero solo, tutti i clienti, mese corrente. */
 export const TOTALE_PIATTAFORMA_CYPHER = `
-  // tenant-ok(piattaforma): il tetto di piattaforma è la somma di TUTTI i clienti, ed è
-  // il suo scopo. Lo legge solo il gestore della piattaforma, e restituisce
-  // un numero, non righe di nessuno.
+  // Il tetto di piattaforma è la somma di TUTTI i clienti, ed è il suo scopo.
+  // Lo legge solo il gestore della piattaforma, e restituisce un numero, non
+  // righe di nessuno.
+  // tenant-ok(piattaforma): la somma di tutti i clienti, vedi sopra
   MATCH (u:AIUsage {month: $mese})
   WHERE u.feature IN $funzioni
   RETURN sum(u.input + u.output + u.cache_read + u.cache_write) AS gettoni
