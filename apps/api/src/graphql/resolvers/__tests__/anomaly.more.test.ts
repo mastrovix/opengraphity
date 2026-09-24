@@ -152,7 +152,7 @@ describe('Query.anomalies', () => {
     description_params: '{"count":5,"relation":"DEPENDS_ON"}', detected_at: { toString: () => '2026-09-01T00:00:00Z' }, tenant_id: 'tenant-1',
   }
 
-  it('defaults: tenant-scoped, newest first, 50 per page, and maps the row', async () => {
+  it('defaults: tenant-scoped, gravest then newest first, 50 per page, and maps the row', async () => {
     vi.mocked(runQuery)
       .mockResolvedValueOnce([{ props: PROPS }] as never)
       .mockResolvedValueOnce([{ total: 7 }] as never)
@@ -161,8 +161,11 @@ describe('Query.anomalies', () => {
 
     const [, pageCypher, params] = vi.mocked(runQuery).mock.calls[0]!
     expect(pageCypher).toContain('WHERE a.tenant_id = $tenantId')
-    expect(pageCypher).toContain('ORDER BY a.detected_at DESC')
-    expect(params).toEqual({ tenantId: 'tenant-1', offset: 0, limit: 50 })
+    // The gravest first (owner, 24 Sep 2026: 30 critical ones sat behind the medium),
+    // then the newest; `a.id` breaks the ties: one scan writes its anomalies at one
+    // instant, and SKIP/LIMIT over tied rows may repeat or skip them between pages.
+    expect(pageCypher).toContain('ORDER BY coalesce([i IN range(0, size($severityOrder) - 1) WHERE $severityOrder[i] = a.severity][0], -1) DESC, a.detected_at DESC, a.id ASC')
+    expect(params).toEqual({ tenantId: 'tenant-1', offset: 0, limit: 50, severityOrder: ['low', 'medium', 'high', 'critical'] })
     // The count must use the same WHERE, or the pager lies.
     expect(vi.mocked(runQuery).mock.calls[1]![1]).toContain('WHERE a.tenant_id = $tenantId')
     expect(out.total).toBe(7)
@@ -181,7 +184,7 @@ describe('Query.anomalies', () => {
   it('whitelisted sort field maps to the stored column; direction only ASC or DESC', async () => {
     vi.mocked(runQuery).mockResolvedValue([] as never)
     await anomalyResolvers.Query.anomalies(null, { sortField: 'entityName', sortDirection: 'asc', limit: 10, offset: 20 }, ctx)
-    expect(vi.mocked(runQuery).mock.calls[0]![1]).toContain('ORDER BY a.entity_name ASC')
+    expect(vi.mocked(runQuery).mock.calls[0]![1]).toContain('ORDER BY a.entity_name ASC, a.id ASC')
     expect(vi.mocked(runQuery).mock.calls[0]![2]).toMatchObject({ offset: 20, limit: 10 })
 
     vi.mocked(runQuery).mockClear()
@@ -190,11 +193,23 @@ describe('Query.anomalies', () => {
     expect(vi.mocked(runQuery).mock.calls[0]![1]).toContain('ORDER BY a.title DESC')
   })
 
+  it('severity sorts by gravity, not by name, in both directions', async () => {
+    vi.mocked(runQuery).mockResolvedValue([] as never)
+    await anomalyResolvers.Query.anomalies(null, { sortField: 'severity', sortDirection: 'asc' }, ctx)
+    const [, asc, params] = vi.mocked(runQuery).mock.calls[0]!
+    expect(asc).toContain('WHERE $severityOrder[i] = a.severity][0], -1) ASC, a.detected_at DESC, a.id ASC')
+    expect(asc).not.toContain('a.severity ASC')
+    expect(params).toMatchObject({ severityOrder: ['low', 'medium', 'high', 'critical'] })
+    vi.mocked(runQuery).mockClear()
+    await anomalyResolvers.Query.anomalies(null, { sortField: 'severity', sortDirection: 'desc' }, ctx)
+    expect(vi.mocked(runQuery).mock.calls[0]![1]).toContain('a.severity][0], -1) DESC, a.detected_at DESC')
+  })
+
   it('an unknown sort field is ignored, never interpolated', async () => {
     vi.mocked(runQuery).mockResolvedValue([] as never)
     const out = await anomalyResolvers.Query.anomalies(null, { sortField: 'x) DETACH DELETE a //' }, ctx)
     const cypher = vi.mocked(runQuery).mock.calls[0]![1]
-    expect(cypher).toContain('ORDER BY a.detected_at DESC')
+    expect(cypher).toContain('-1) DESC, a.detected_at DESC, a.id ASC')
     expect(cypher).not.toContain('DETACH')
     // No count row at all → total 0, not NaN.
     expect(out).toEqual({ items: [], total: 0 })

@@ -109,6 +109,9 @@ const ANOMALY_ALLOWED_FIELDS = new Set(['title', 'severity', 'status', 'ruleKey'
 /** Quanto vive la cache dei riquadri delle anomalie (G-ANO-7). */
 const ANOMALY_STATS_TTL_SECONDS = 10
 
+/** The gravity of an anomaly: its place in `$severityOrder` (ANOMALY_SEVERITIES, lowest first); an unknown one ranks below all. */
+const SEVERITY_RANK = 'coalesce([i IN range(0, size($severityOrder) - 1) WHERE $severityOrder[i] = a.severity][0], -1)'
+
 export const anomalyResolvers = {
   /**
    * G-ANO-8: il NOME di chi ha risolto, letto solo se il client lo chiede. Un
@@ -157,14 +160,23 @@ export const anomalyResolvers = {
         detectedAt: 'detected_at',
       }
       const sortCol = sortField && ANOMALY_SORT_WHITELIST[sortField]
-      const orderByClause = sortCol
-        ? `a.${sortCol} ${sortDirection?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC'}`
-        : 'a.detected_at DESC'
+      // `a.id` breaks the ties: one scan writes all its anomalies at the same
+      // instant, and SKIP/LIMIT over an order with ties may repeat or skip rows
+      // from one page to the next (owner, 24 Sep 2026: 77 anomalies at 13:31).
+      // Severity sorts by GRAVITY, its place in ANOMALY_SEVERITIES (lowest
+      // first), not by its name: alphabetically «medium» came before
+      // «critical». With no sort asked the gravest come first, then the newest.
+      const direction = sortDirection?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC'
+      const orderByClause = !sortCol
+        ? `${SEVERITY_RANK} DESC, a.detected_at DESC, a.id ASC`
+        : sortCol === 'severity'
+          ? `${SEVERITY_RANK} ${direction}, a.detected_at DESC, a.id ASC`
+          : `a.${sortCol} ${direction}, a.id ASC`
       const session = getSession()
       try {
         const conditions: string[] = ['a.tenant_id = $tenantId']
 
-        const params: Record<string, unknown> = { tenantId: ctx.tenantId, offset, limit }
+        const params: Record<string, unknown> = { tenantId: ctx.tenantId, offset, limit, severityOrder: [...ANOMALY_SEVERITIES] }
         const advWhere = filters ? buildAdvancedWhere(filters, params, ANOMALY_ALLOWED_FIELDS, 'a') : ''
         if (advWhere) conditions.push(`(${advWhere})`)
         const where = 'WHERE ' + conditions.join(' AND ')

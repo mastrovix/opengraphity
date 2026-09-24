@@ -18,10 +18,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor, within, act } from '@testing-library/react'
 import { renderWithProviders } from '@/test/utils'
 import { apolloFinto } from '@/test/apolloFinto'
+import { inFlight, resetInFlight } from '@/test/apolloInFlight'
 import type { Anomaly } from '@/types/anomaly'
 import { AnomalyPage, AnomalyStatusBadge } from './AnomalyPage'
 
-vi.mock('@apollo/client/react', async () => (await import('@/test/apolloFinto')).moduloApollo())
+vi.mock('@apollo/client/react', async () => (await import('@/test/apolloInFlight')).apolloModuleWithInFlight())
 
 const toastSuccess = vi.fn()
 const toastError = vi.fn()
@@ -71,6 +72,7 @@ function setup(opts: Opts = {}) {
 
 beforeEach(() => {
   apolloFinto.reset()
+  resetInFlight()
   apolloFinto.refetch.mockImplementation(async () => ({ data: {} }))
   toastSuccess.mockClear()
   toastError.mockClear()
@@ -187,6 +189,25 @@ describe('AnomalyPage — server-side sort, filter and paging', () => {
     await waitFor(() => expect(apolloFinto.chiamata('GetAnomalies')).toMatchObject({ offset: 10, limit: 10 }))
     await user.click(screen.getByRole('button', { name: '← Prev' }))
     await waitFor(() => expect(apolloFinto.chiamata('GetAnomalies')).toMatchObject({ offset: 0 }))
+  })
+
+  /*
+   * Owner, 24 Sep 2026: «la paginazione non sembra funzionare». While page 2
+   * loaded there was no data for it, the total read 0, and the clamp below
+   * took «page 2 of 1» for a list that had shrunk: back to page 1 at once.
+   * The fake answers at once, so the earlier test never saw the wait.
+   */
+  it('Next moves even while the next page is still loading: the pager keeps the last total', async () => {
+    const { user } = setup({ total: 77 })
+    apolloFinto.precedenti['GetAnomalies'] = { anomalies: { items: [anomaly()], total: 77 } }
+    inFlight.add('GetAnomalies')
+    await user.click(screen.getByRole('button', { name: 'Next →' }))
+    expect(screen.getByText('2 / 8')).toBeInTheDocument()
+    expect(apolloFinto.chiamata('GetAnomalies')).toMatchObject({ offset: 10 })
+    inFlight.delete('GetAnomalies')
+    await user.click(screen.getByRole('button', { name: 'Next →' }))
+    await waitFor(() => expect(apolloFinto.chiamata('GetAnomalies')).toMatchObject({ offset: 20 }))
+    expect(screen.getByText('3 / 8')).toBeInTheDocument()
   })
 
   it('when the list shrinks under the current page, it moves back to the last page that exists', async () => {

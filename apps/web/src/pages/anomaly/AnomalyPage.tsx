@@ -268,7 +268,7 @@ export function AnomalyPage() {
   const { data: scanData, refetch: refetchScan } = useQuery<{ anomalyScanStatus: AnomalyScanStatus }>(
     GET_ANOMALY_SCAN_STATUS,
   )
-  const { data, loading, error, refetch } = useQuery<{ anomalies: { items: Anomaly[]; total: number } }>(
+  const { data, previousData, loading, error, refetch } = useQuery<{ anomalies: { items: Anomaly[]; total: number } }>(
     GET_ANOMALIES,
     {
       variables: {
@@ -321,12 +321,18 @@ export function AnomalyPage() {
   const stats      = statsData?.anomalyStats
   const scanStatus = scanData?.anomalyScanStatus
   const anomalies  = data?.anomalies?.items ?? []
-  const total      = data?.anomalies?.total ?? 0
+  // While the next page loads there is no data for it yet: the pager keeps the last total known.
+  const total      = (data ?? previousData)?.anomalies?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   // Revisione totale · G-ANO-4: risolvendo l'ultima anomalia di una pagina la
   // pagina corrente restava fuori intervallo («3 / 2», tabella vuota e il
   // messaggio «CMDB sana» sotto «Aperte: 12»).
-  useEffect(() => { if (page > 0 && page >= totalPages) setPage(totalPages - 1) }, [page, totalPages])
+  // Only on the answer for THIS page (owner, 24 Sep 2026): while page 2 was
+  // loading the total read 0, the clamp saw «2 of 1» and went back to page 1 —
+  // Next never moved.
+  useEffect(() => {
+    if (data && !loading && page > 0 && page >= totalPages) setPage(totalPages - 1)
+  }, [data, loading, page, totalPages])
 
 
   async function handleResolve(id: string, resolutionStatus: string, note: string) {
