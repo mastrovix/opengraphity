@@ -38,7 +38,7 @@ const SEV_EMOJI: Record<string, string> = {
   critical: '🔴', high: '🟠', medium: '🟡', low: '🟢',
 }
 
-import { appUrl } from './appUrl.js'
+import { tenantAppUrl } from './appUrl.js'
 import { formatNotificationDate, notificationText, type NotificationLocale, type NotificationTextKey } from './texts.js'
 
 /**
@@ -80,7 +80,7 @@ export function formatSlackIncident(event: NotificationEvent, incident: Incident
       accessory: {
         type: 'button',
         text: { type: 'plain_text', text: notificationText(locale, 'open') },
-        url: `${appUrl()}/incidents/${incident.id}`,
+        url: `${tenantAppUrl(incident.tenantId)}/incidents/${incident.id}`,
         action_id: 'open_incident',
       },
     },
@@ -141,7 +141,7 @@ export function formatSlackChange(change: ChangeData, locale: NotificationLocale
       accessory: {
         type: 'button',
         text: { type: 'plain_text', text: notificationText(locale, 'open') },
-        url: `${appUrl()}/changes/${change.id}`,
+        url: `${tenantAppUrl(change.tenantId)}/changes/${change.id}`,
         action_id: 'open_change',
       },
     },
@@ -154,7 +154,7 @@ export function formatSlackChange(change: ChangeData, locale: NotificationLocale
   ]
 }
 
-export function formatSlackChangeTask(payload: ChangeTaskPayload, locale: NotificationLocale, occurredAt?: Date): SlackBlock[] {
+export function formatSlackChangeTask(tenantId: string, payload: ChangeTaskPayload, locale: NotificationLocale, occurredAt?: Date): SlackBlock[] {
   return [
     {
       type: 'header',
@@ -173,7 +173,7 @@ export function formatSlackChangeTask(payload: ChangeTaskPayload, locale: Notifi
       accessory: {
         type: 'button',
         text: { type: 'plain_text', text: notificationText(locale, 'open') },
-        url: `${appUrl()}/changes/${payload.changeId}`,
+        url: `${tenantAppUrl(tenantId)}/changes/${payload.changeId}`,
         action_id: 'open_change',
       },
     },
@@ -209,12 +209,12 @@ export function formatTeamsIncident(event: NotificationEvent, incident: Incident
       {
         type: 'Action.OpenUrl',
         title: notificationText(locale, 'assignToMe'),
-        url: `${appUrl()}/incidents/${incident.id}`,
+        url: `${tenantAppUrl(incident.tenantId)}/incidents/${incident.id}`,
       },
       {
         type: 'Action.OpenUrl',
         title: notificationText(locale, 'resolve'),
-        url: `${appUrl()}/incidents/${incident.id}`,
+        url: `${tenantAppUrl(incident.tenantId)}/incidents/${incident.id}`,
       },
     ]
   }
@@ -243,13 +243,13 @@ export function formatTeamsChange(change: ChangeData, locale: NotificationLocale
       { type: 'TextBlock', text: `${notificationText(locale, 'change_approved')}  ·  ${formatNotificationDate(locale, occurredAt)}`, wrap: true, isSubtle: true },
     ],
     actions: [
-      { type: 'Action.OpenUrl', title: notificationText(locale, 'open'), url: `${appUrl()}/changes/${change.id}` },
+      { type: 'Action.OpenUrl', title: notificationText(locale, 'open'), url: `${tenantAppUrl(change.tenantId)}/changes/${change.id}` },
     ],
   }
 }
 
 /** Attività di change assegnata, per un canale Teams (E-18). */
-export function formatTeamsChangeTask(payload: ChangeTaskPayload, locale: NotificationLocale, occurredAt?: Date): TeamsAdaptiveCard {
+export function formatTeamsChangeTask(tenantId: string, payload: ChangeTaskPayload, locale: NotificationLocale, occurredAt?: Date): TeamsAdaptiveCard {
   return {
     type: 'AdaptiveCard',
     version: '1.4',
@@ -263,7 +263,7 @@ export function formatTeamsChangeTask(payload: ChangeTaskPayload, locale: Notifi
       { type: 'TextBlock', text: `${notificationText(locale, 'change_task_assigned')}  ·  ${formatNotificationDate(locale, occurredAt)}`, wrap: true, isSubtle: true },
     ],
     actions: [
-      { type: 'Action.OpenUrl', title: notificationText(locale, 'open'), url: `${appUrl()}/changes/${payload.changeId}` },
+      { type: 'Action.OpenUrl', title: notificationText(locale, 'open'), url: `${tenantAppUrl(tenantId)}/changes/${payload.changeId}` },
     ],
   }
 }

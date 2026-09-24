@@ -299,3 +299,22 @@ describe('CIGraph — the layout', () => {
     expect(nodeOf('Payments appl…')).toHaveAttribute('transform', 'translate(400,300)')
   })
 })
+
+// Review of 23 Sep 2026: the graph printed the raw type and relation, next to a CMDB list with the customer's names.
+describe('CIGraph — the customer\'s names', () => {
+  it('a type reads with its label in the reader\'s language, a relation with its metamodel label', () => {
+    const types = TYPES.map((t) => t.name === 'server'
+      ? { ...t, labels: [{ language: 'en', label: 'Physical server' }] }
+      : t.name === 'application'
+        ? { ...t, relations: [{ id: 'r1', name: 'hostedOn', label: 'runs on', relationshipType: 'HOSTED_ON', targetType: 'server', cardinality: 'many', direction: 'outgoing', order: 1 }] }
+        : t) as CITypeDef[]
+    renderWithProviders(
+      <MetamodelContext.Provider value={{ ciTypes: types, loading: false, error: null, getCIType: (n) => types.find((t) => t.name === n) }}>
+        <CIGraph centerCI={CENTER} dependencies={DEPENDENCIES} dependents={DEPENDENTS} blastRadius={BLAST} />
+      </MetamodelContext.Provider>,
+      { route: '/ci/application/app-1' },
+    )
+    // The node reached through HOSTED_ON is the server (names are cut at 14 characters).
+    expect(nodes().find((n) => n.relation === 'runs on')).toMatchObject({ type: 'Physical server' })
+  })
+})

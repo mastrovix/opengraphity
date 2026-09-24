@@ -25,6 +25,7 @@ import type { ReportSectionInput } from '@/components/ReportSectionBuilder'
 import { colors, palette } from '@/lib/tokens'
 import { showError } from '@/lib/showError'
 import { reloadQueries } from '@/lib/reloadQueries'
+import { useMe } from '@/hooks/useMe'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -32,7 +33,7 @@ export interface ReportNode { id: string; entityType: string; neo4jLabel: string
 export interface ReportEdge { id: string; sourceNodeId: string; targetNodeId: string; relationshipType: string; direction: string; label: string }
 export interface ReportSection { id: string; order: number; title: string; chartType: string; groupByNodeId: string | null; groupByField: string | null; groupByGranularity: string | null; metric: string; metricField: string | null; limit: number | null; sortDir: string | null; nodes: ReportNode[]; edges: ReportEdge[] }
 export interface ReportTemplate { id: string; name: string; description: string | null; icon: string | null; visibility: string; scheduleEnabled: boolean; scheduleCron: string | null; scheduleChannelId?: string | null; scheduleRecipients: string[]; scheduleFormat: string | null; lastScheduledRun: string | null; createdAt: string; updatedAt?: string; createdBy: { id: string; name: string } | null; sharedWith: { id: string; name: string }[]; sections: ReportSection[] }
-export interface Channel { id: string; name: string; platform: string }
+export interface Channel { id: string; name: string }
 // `errorKey` c'era nella query e NON nel tipo: la pagina non poteva
 // passarla al renderer nemmeno volendo, e ogni errore di sezione si leggeva
 // in inglese (20 set 2026).
@@ -63,7 +64,9 @@ export const VIS_COLORS: Record<string, { bg: string; fg: string }> = {
   private: { bg: 'var(--color-border-light)', fg: 'var(--color-slate)' },
 }
 
-const GET_CHANNELS_SLIM = gql`query GetChannelsSlim { notificationChannels { id name platform } }`
+// The channels the scheduler delivers to (active Slack ones), readable with
+// report.schedule: `notificationChannels` needs config.notifications.
+const GET_REPORT_DELIVERY_CHANNELS = gql`query GetReportDeliveryChannels { reportDeliveryChannels { id name } }`
 const GET_TEAMS_SLIM    = gql`query GetTeamsSlim { teams { id name } }`
 
 // ── Styles (shared) ────────────────────────────────────────────────────────────
@@ -132,14 +135,32 @@ function useReportRun() {
   return { sectionResults, execLoading, clearResults, runReport }
 }
 
+/** Whether the schedule in the form differs from the one saved (no report saved: it does). */
+export function scheduleChanged(
+  saved: ReportTemplate | null,
+  next: { enabled: boolean; cron: string | null; channelId: string | null; recipients: string[]; format: string },
+): boolean {
+  if (!saved) return true
+  const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i])
+  return saved.scheduleEnabled !== next.enabled
+    || (saved.scheduleCron ?? null) !== next.cron
+    || (saved.scheduleChannelId ?? null) !== next.channelId
+    || !sameList(saved.scheduleRecipients ?? [], next.recipients)
+    || (saved.scheduleFormat ?? 'pdf') !== next.format
+}
+
 /**
  * The settings of a report: its name, who sees it, and the schedule that sends
  * it. The form is filled in from the report as it is saved, and saved in its
  * two parts, in order.
  */
-function useReportSettings({ selectedId, refetch, onSaved }: {
+function useReportSettings({ selectedId, saved, canSchedule, refetch, onSaved }: {
   /** The report the settings are saved into. */
   selectedId: string | null
+  /** The report as it is saved: the schedule is sent only when it changed. */
+  saved: ReportTemplate | null
+  /** report.schedule: without it the schedule is neither sent nor saved. */
+  canSchedule: boolean
   /** Reloads the list of reports. */
   refetch: () => Promise<unknown>
   /** Called once both parts are saved. */
@@ -206,6 +227,18 @@ function useReportSettings({ selectedId, refetch, onSaved }: {
       toast.error(t('toast.report.cronRequired'))
       return
     }
+    const schedule = {
+      enabled:    settingsSched,
+      cron:       settingsSched ? effectiveCron : null,
+      channelId:  settingsSched && settingsChanId ? settingsChanId : null,
+      recipients: settingsSched ? settingsRecipients : [],
+      format:     settingsFormat,
+    }
+    // Review of 23 Sep 2026: the schedule was always sent, so whoever may edit
+    // a report but not schedule it (the factory operator) saw every save fail
+    // after the name was already saved. It is sent only by who holds
+    // report.schedule, and only when it changed.
+    const sendSchedule = canSchedule && scheduleChanged(saved, schedule)
     let templateSaved = false
     try {
       await updateTemplate({
@@ -216,22 +249,22 @@ function useReportSettings({ selectedId, refetch, onSaved }: {
             description: settingsDesc || null,
             visibility:  settingsVis,
             sharedWithTeamIds: settingsVis === 'groups' ? settingsTeamIds : [],
-            scheduleEnabled:   settingsSched,
-            scheduleCron:      settingsSched ? effectiveCron : null,
-            scheduleChannelId: settingsSched && settingsChanId ? settingsChanId : null,
+            ...(sendSchedule ? { scheduleEnabled: schedule.enabled, scheduleCron: schedule.cron, scheduleChannelId: schedule.channelId } : {}),
           },
         },
       })
       templateSaved = true
-      await updateReportSchedule({
-        variables: {
-          templateId: selectedId,
-          enabled:    settingsSched,
-          cron:       settingsSched ? effectiveCron : null,
-          recipients: settingsSched ? settingsRecipients : [],
-          format:     settingsFormat,
-        },
-      })
+      if (sendSchedule) {
+        await updateReportSchedule({
+          variables: {
+            templateId: selectedId,
+            enabled:    schedule.enabled,
+            cron:       schedule.cron,
+            recipients: schedule.recipients,
+            format:     schedule.format,
+          },
+        })
+      }
       // G-23: solo qui, quando ENTRAMBE sono passate.
       onSaved()
     } catch (err: unknown) {
@@ -291,20 +324,26 @@ export function useCustomReports() {
   }, [])
 
   // ── Queries ────────────────────────────────────────────────────────────────
-  const { data, refetch } = useQuery<{ reportTemplates: ReportTemplate[] }>(GET_REPORT_TEMPLATES, { fetchPolicy: 'network-only' })
-  const { data: channelsData } = useQuery<{ notificationChannels: Channel[] }>(GET_CHANNELS_SLIM)
-  const { data: teamsData }    = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS_SLIM)
+  // The errors and the loading are read (review of 23 Sep 2026): an empty list
+  // said «no reports» while loading, and for good when the read failed; teams
+  // and channels that could not be read just vanished from the settings.
+  const { data, loading: templatesLoading, error: templatesError, refetch } = useQuery<{ reportTemplates: ReportTemplate[] }>(GET_REPORT_TEMPLATES, { fetchPolicy: 'network-only' })
+  const { can } = useMe()
+  const canWrite    = can('report.write')
+  const canSchedule = can('report.schedule')
+  const { data: channelsData, error: channelsError } = useQuery<{ reportDeliveryChannels: Channel[] }>(GET_REPORT_DELIVERY_CHANNELS, { skip: !canSchedule })
+  const { data: teamsData, error: teamsError }       = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS_SLIM)
   const { sectionResults, execLoading, clearResults, runReport } = useReportRun()
 
   // ── Settings form state ────────────────────────────────────────────────────
-  const { fillSettings, updating, handleSaveSettings, ...settingsForm } = useReportSettings({
-    selectedId, refetch, onSaved: () => setView('detail'),
-  })
-
   const templates: ReportTemplate[]           = data?.reportTemplates ?? []
-  const channels: Channel[]                   = channelsData?.notificationChannels?.filter((c: Channel) => c.platform === 'slack') ?? []
+  const channels: Channel[]                   = channelsData?.reportDeliveryChannels ?? []
   const teams: { id: string; name: string }[] = teamsData?.teams ?? []
   const selected: ReportTemplate | null       = templates.find((tpl: ReportTemplate) => tpl.id === selectedId) ?? null
+
+  const { fillSettings, updating, handleSaveSettings, ...settingsForm } = useReportSettings({
+    selectedId, saved: selected, canSchedule, refetch, onSaved: () => setView('detail'),
+  })
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   const [createTemplate, { loading: creating }] = useMutation(CREATE_REPORT_TEMPLATE, {
@@ -480,6 +519,9 @@ export function useCustomReports() {
     menuRef,
     // Templates & data
     templates, channels, teams,
+    // What the reader may do: controls they cannot use are not offered.
+    canWrite, canSchedule,
+    templatesLoading, templatesError, refetchTemplates: refetch, teamsError, channelsError,
     // Loading states
     execLoading, creating, updating, exportingPDF, exportingExcel,
     // New dialog state

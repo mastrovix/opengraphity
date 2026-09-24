@@ -721,6 +721,19 @@ describe('initialStepSelection — by definition id', () => {
   })
 })
 
+// Owner's decision, review of 23 Sep 2026: a catalog item's own itinerary is never the fallback of a generic ticket.
+describe('initialStepSelection — without a definition id', () => {
+  it('a catalog-only definition is left out of the choice; one by id is still reached', async () => {
+    const t = { run: vi.fn().mockResolvedValue({ records: [mockRecord({ defId: 'def-1', stepId: 's', stepName: 'new', defCategory: null })] }) }
+    await initialStepSelection(t as never, { tenantId: 'c-one', entityType: 'service_request', category: null })
+    const [cypher] = t.run.mock.calls[0]! as [string]
+    expect(cypher).toContain('WHERE coalesce(wd.catalog_only, false) = false')
+    t.run.mockClear()
+    await initialStepSelection(t as never, { tenantId: 'c-one', entityType: 'service_request', definitionId: 'def-cat' })
+    expect((t.run.mock.calls[0]! as [string])[0]).not.toContain('catalog_only')
+  })
+})
+
 /**
  * WHAT GOES WRONG AFTER THE TRANSITION IS WRITTEN.
  *

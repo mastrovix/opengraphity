@@ -149,7 +149,7 @@ export function TicketTasksSection({ entityId, titleKey = 'tasks.title' }: { ent
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                   {/* «Fatto» non si offre su un compito in attesa: il suo
                       turno non è arrivato, e il server lo rifiuta. */}
-                  {!inAttesa && <Button size="sm" onClick={() => void chiudi(task)}>{t('tasks.complete')}</Button>}
+                  {!inAttesa && <Button size="sm" onClick={() => chiudi(task)}>{t('tasks.complete')}</Button>}
                   <Button size="sm" variant="secondary" onClick={() => { setDaAnnullare(task); setMotivo('') }}>
                     {t('tasks.cancel')}
                   </Button>
@@ -171,7 +171,7 @@ export function TicketTasksSection({ entityId, titleKey = 'tasks.title' }: { ent
             />
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <Button variant="secondary" onClick={() => setDaAnnullare(null)}>{t('common.cancel')}</Button>
-              <Button disabled={!motivo.trim()} onClick={() => void confermaAnnullamento()}>{t('tasks.cancelConfirm')}</Button>
+              <Button disabled={!motivo.trim()} onClick={() => confermaAnnullamento()}>{t('tasks.cancelConfirm')}</Button>
             </div>
           </div>
         </Modal>

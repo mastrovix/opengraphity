@@ -106,6 +106,8 @@ async function reevaluatePass(name: string, match: string, params: Props, now: s
   const result = await runPagedPass<EventRef>({
     fetchPage: (cursor, limit) => fetchEventPage(match, params, cursor, limit),
     keyOf: (r) => r.id,
+    // Each run goes on from where the previous stopped (lib/pagedPass.ts, review of 23 Sep 2026).
+    resume: { key: `events:${name}:${String(params['tenantId'])}` },
     handle: async (r) => {
       const out = await runEventPipeline({ tenantId: r.tenantId, eventId: r.id, now, mode: 'reevaluate' })
       if (logEach) log.info({ tenantId: r.tenantId, eventId: r.id, outcome: out.outcome }, logEach)
@@ -158,6 +160,7 @@ export async function reevaluateFlappingEvents(tenantId: string, now: string = n
   const result = await runPagedPass<EventRef>({
     fetchPage: (cursor, limit) => fetchEventPage(`MATCH (e:Event {tenant_id: $tenantId, status: 'flapping'})\n      WHERE e.id > $cursor`, { tenantId }, cursor, limit),
     keyOf: (r) => r.id,
+    resume: { key: `events:reevaluateFlappingEvents:${tenantId}` },
     handle: async (r) => {
       let policy = policies.get(r.tenantId)
       if (!policy) { policy = await getEventPolicy(r.tenantId); policies.set(r.tenantId, policy) }

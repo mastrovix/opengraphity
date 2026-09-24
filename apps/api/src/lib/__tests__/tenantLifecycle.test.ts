@@ -19,6 +19,20 @@ let adminRows: Array<Record<string, unknown>> = [{ tenantId: 'acme', email: 'adm
 let adminSingolo: Record<string, unknown> | null = { email: 'admin@acme.io' }
 const eseguite: string[] = []
 
+// The disk is never touched by these tests: the attachment directory is a fake.
+const disk = vi.hoisted(() => ({ dirs: new Set<string>(), removed: [] as string[] }))
+vi.mock('node:fs/promises', () => ({
+  default: {
+    stat: vi.fn(async (p: string) => { if (!disk.dirs.has(p)) throw new Error('ENOENT'); return {} }),
+    rm: vi.fn(async (p: string) => { disk.removed.push(p) }),
+  },
+}))
+// The label-by-label reads and deletion have their own tests (tenantNodes.test.ts).
+const tenantNodes = vi.hoisted(() => ({ deleted: 1234, perLabel: {} as Record<string, number> }))
+vi.mock('../tenantNodes.js', () => ({
+  deleteTenantNodes: vi.fn(async () => tenantNodes.deleted),
+  countTenantNodesByLabel: vi.fn(async () => tenantNodes.perLabel),
+}))
 vi.mock('@opengraphity/neo4j', () => ({
   runQuery: vi.fn(async (_s: unknown, q: string) => {
     eseguite.push(q)
@@ -119,6 +133,25 @@ describe('lo slug è l\'identità: le sue regole', () => {
       vi.unstubAllEnvs()
       resetConfigCache()
     }
+  })
+})
+
+// Review of 23 Sep 2026: purging `system` would have deleted the metamodel and vocabularies every customer shares.
+describe('the reserved tenants', () => {
+  it('are not listed: `system` and `master` are not customers', async () => {
+    const { runQuery } = await import('@opengraphity/neo4j')
+    await listTenants(session)
+    const call = vi.mocked(runQuery).mock.calls.find((c) => String(c[1]).includes('MATCH (t:Tenant)'))!
+    expect(String(call[1])).toContain('NOT t.id IN $reserved')
+    expect((call[2] as { reserved: string[] }).reserved).toEqual(expect.arrayContaining(['system', 'master']))
+  })
+
+  it('cannot be suspended, resumed or deleted, before anything is read or written', async () => {
+    eseguite.length = 0
+    for (const act of [() => suspendTenant(session, 'system'), () => resumeTenant(session, 'system'), () => purgeTenant(session, 'system', 'system')]) {
+      await expect(act()).rejects.toMatchObject({ extensions: { i18n: { key: 'errors.tenant.reservedNotManaged' } } })
+    }
+    expect(eseguite).toEqual([])
   })
 })
 
@@ -250,10 +283,25 @@ describe('la cancellazione definitiva, e le sue tre sbarre', () => {
   it('con le tre sbarre passate cancella i nodi a scaglioni e poi il tenant', async () => {
     tenantRows = [tenant({ suspendedAt: '2026-09-01T00:00:00.000Z' })]
     const esito = await purgeTenant(session, 'acme', 'acme')
-    // A scaglioni: un tenant con centomila nodi non entra in una transazione.
-    expect(eseguite.some((q) => q.includes('IN TRANSACTIONS OF'))).toBe(true)
+    // Label by label, in transactions of a thousand (lib/tenantNodes.ts, review of 23 Sep 2026).
+    const { deleteTenantNodes } = await import('../tenantNodes.js')
+    expect(deleteTenantNodes).toHaveBeenCalledWith(session, 'acme')
+    // The unlabelled scan of every customer's nodes is gone.
+    expect(eseguite.some((q) => q.includes('MATCH (n {tenant_id: $id})'))).toBe(false)
     expect(eseguite.some((q) => q.includes('MATCH (t:Tenant {id: $id}) DETACH DELETE t'))).toBe(true)
     expect(esito.nodiCancellati).toBe(1234)
+  })
+
+  // Review of 23 Sep 2026: a deleted tenant left its attachment files on the disk.
+  it('the attachment directory of the tenant goes with its nodes', async () => {
+    tenantRows = [tenant({ suspendedAt: '2026-09-01T00:00:00.000Z' })]
+    const path = await import('node:path')
+    const { config } = await import('../config.js')
+    const dir = path.resolve(path.resolve(config.attachmentDir), 'acme')
+    disk.dirs.add(dir); disk.removed.length = 0
+    const esito = await purgeTenant(session, 'acme', 'acme')
+    expect(disk.removed).toEqual([dir])
+    expect(esito.allegatiCancellati).toBe(true)
   })
 
   it('il realm si cancella PRIMA dei dati: a rovescio resterebbe una porta aperta su un tenant svuotato', async () => {

@@ -15,7 +15,7 @@ import { withSession, runQuery, runQueryOne, getSession, type Props } from '../c
 import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
 import { requirePermission } from '../../../lib/permissions.js'
-import { validateRequiredFields, propsToFieldValues } from '../../../lib/validateRequiredFields.js'
+import { validateStepRequirements } from '../../../lib/validateRequiredFields.js'
 import { stepNamesByPurposeOrdered } from '../../../lib/workflowTargets.js'
 import { createChangeRFC } from '../../../services/changeCreationService.js'
 import { change as getChange } from './queries.js'
@@ -310,8 +310,8 @@ export async function addCIToChange(_: unknown, args: { changeId: string; ciId: 
     const chiaveSupport = `${args.changeId}-${args.ciId}-support`
     const chiavePiano   = `${args.changeId}-${args.ciId}-deployplan`
     const daCreare = new Set([
-      ...await chiaviDaCreare(session, 'AssessmentTask', [chiaveOwner, chiaveSupport]),
-      ...await chiaviDaCreare(session, 'DeployPlanTask', [chiavePiano]),
+      ...await chiaviDaCreare(session, 'AssessmentTask', [chiaveOwner, chiaveSupport], ctx.tenantId),
+      ...await chiaviDaCreare(session, 'DeployPlanTask', [chiavePiano], ctx.tenantId),
     ])
     const codici = await getNextTaskCodes(session, ctx.tenantId, daCreare.size)
     let prossimo = 0
@@ -329,19 +329,19 @@ export async function addCIToChange(_: unknown, args: { changeId: string; ciId: 
       MATCH (ci)-[:SUPPORTED_BY]->(supportTeam:Team)
       MERGE (c)-[r_aci:AFFECTS_CI]->(ci)
       ON CREATE SET r_aci.ci_phase = 'assessment'
-      MERGE (ownerT:AssessmentTask {change_key: $chiaveOwner})
+      MERGE (ownerT:AssessmentTask {tenant_id: $tenantId, change_key: $chiaveOwner})
         ON CREATE SET ownerT.id = randomUUID(), ownerT.code = $ownerCode, ownerT.tenant_id = $tenantId,
           ownerT.ci_id = $ciId, ownerT.responder_role = '${ASSESSMENT_ROLE.OWNER}',
           ownerT.status = '${TASK_STATUS.PENDING}', ownerT.score = null, ownerT.created_at = $now
       MERGE (c)-[:HAS_ASSESSMENT]->(ownerT)
       ${firstTeamCypher('ownerT', 'ownerTeam', '$now')}
-      MERGE (supportT:AssessmentTask {change_key: $chiaveSupport})
+      MERGE (supportT:AssessmentTask {tenant_id: $tenantId, change_key: $chiaveSupport})
         ON CREATE SET supportT.id = randomUUID(), supportT.code = $supportCode, supportT.tenant_id = $tenantId,
           supportT.ci_id = $ciId, supportT.responder_role = '${ASSESSMENT_ROLE.SUPPORT}',
           supportT.status = '${TASK_STATUS.PENDING}', supportT.score = null, supportT.created_at = $now
       MERGE (c)-[:HAS_ASSESSMENT]->(supportT)
       ${firstTeamCypher('supportT', 'supportTeam', '$now')}
-      MERGE (dp:DeployPlanTask {change_key: $chiavePiano})
+      MERGE (dp:DeployPlanTask {tenant_id: $tenantId, change_key: $chiavePiano})
         ON CREATE SET dp.id = randomUUID(), dp.code = $planCode, dp.tenant_id = $tenantId,
           dp.ci_id = $ciId, dp.status = '${TASK_STATUS.PENDING}',
           dp.steps = '[]',
@@ -436,16 +436,8 @@ export async function executeChangeTransition(
     // programmata» valeva per un bottone e non per quello delle change, e chi
     // l'aveva configurata non poteva accorgersene. Le note della transizione
     // contano come valore, come nella mutation generica.
-    const requirementValues: Record<string, unknown> = { ...propsToFieldValues(entityProps) }
-    if (args.notes) {
-      requirementValues['resolution_notes'] = args.notes
-      requirementValues['root_cause']       = args.notes
-    }
-    await validateRequiredFields(session, {
-      entityType:  'change',
-      fieldValues: requirementValues,
-      tenantId:    ctx.tenantId,
-      toStep:      args.toStep,
+    await validateStepRequirements(session, {
+      entityType: 'change', entityProps, notes: args.notes, tenantId: ctx.tenantId, toStep: args.toStep,
     })
 
     // Il rollback non è più un campo del change: è valutato (con punteggio)

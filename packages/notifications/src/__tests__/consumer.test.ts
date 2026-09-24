@@ -204,12 +204,27 @@ describe('dispatchIncidentNotification — Slack blocks / Teams adaptive card pe
     await expect(dispatchIncidentNotification('t1', 'assigned', incident)).rejects.toThrow(/webhook_url/)
   })
 
-  it('the first channel failing (non-2xx) stops the loop: the error propagates and later channels are NOT contacted (pinned)', async () => {
+  // Review of 23 Sep 2026: a broken channel stopped the ones after it, and on the
+  // job's retry the healthy ones before it got the message again.
+  it('a channel failing does not stop the others; the failure is thrown at the end, naming it', async () => {
     channelRows = [slackChannel('s1', ['assigned']), slackChannel('s2', ['assigned'])]
     fetchMock.mockImplementationOnce(async () => ({ ok: false, status: 500, json: async () => ({}) }))
     await expect(dispatchIncidentNotification('t1', 'assigned', incident))
-      .rejects.toThrow('Slack webhook rejected the message: HTTP 500')
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+      .rejects.toThrow(/1 of 2 channel\(s\) failed: s1: Slack webhook rejected the message: HTTP 500/)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('on the retry of the same event, a channel already reached is not posted again', async () => {
+    channelRows = [slackChannel('s1', ['assigned']), slackChannel('s2', ['assigned'])]
+    // s1 answers, s2 fails once.
+    fetchMock
+      .mockImplementationOnce(async () => ({ ok: true, status: 200, json: async () => ({}) }))
+      .mockImplementationOnce(async () => ({ ok: false, status: 500, json: async () => ({}) }))
+    await expect(dispatchIncidentNotification('t1', 'assigned', incident, undefined, 'assigned', undefined, 'ev-retry-1')).rejects.toThrow(/s2/)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    await dispatchIncidentNotification('t1', 'assigned', incident, undefined, 'assigned', undefined, 'ev-retry-1')
+    // Only s2 again: 3 posts in all, not 4.
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
   it('slack channel by channel_id needs the organization\'s Slack workspace: not connected → throws before any fetch', async () => {

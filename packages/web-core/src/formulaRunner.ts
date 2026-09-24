@@ -9,31 +9,19 @@
  * l'utente può cambiare.
  *
  * QuickJS (WebAssembly), lo stesso sandbox con cui il web calcola i default dei
- * campi CI: nessun accesso alla pagina, alla rete o al DOM, e un `while(true)`
- * non blocca il browser perché il contesto ha un limite di istruzioni. Il
- * modulo si carica la prima volta che serve davvero (`import()` dinamico),
- * quindi un modulo senza formule non paga il megabyte del WASM.
+ * campi CI: nessun accesso alla pagina, alla rete o al DOM. A `while(true)`
+ * does not block the browser because every evaluation has a deadline and the
+ * runtime a memory cap (`boundedScript.ts`, review of 23 Sep 2026 — this
+ * comment promised an instruction limit that did not exist). Il modulo si
+ * carica la prima volta che serve davvero (`import()` dinamico), quindi un
+ * modulo senza formule non paga il megabyte del WASM.
  *
  * L'involucro è IDENTICO a quello del server (`runFormulaScript`): il codice
  * gira dentro una funzione, con `input` in scope, e restituisce con `return`.
  * Una formula scritta una volta vale in due posti.
  */
 import { formulaInput } from '@opengraphity/types'
-
-/** Il pezzo di libreria che serve, caricato una volta sola. */
-let quickjs: Promise<{ newContext: () => QuickJSContext }> | null = null
-
-interface QuickJSContext {
-  evalCode: (code: string) => { error?: QuickJSHandle; value?: QuickJSHandle }
-  dump: (h: QuickJSHandle) => unknown
-  dispose: () => void
-}
-interface QuickJSHandle { dispose: () => void }
-
-async function contesto(): Promise<QuickJSContext> {
-  if (!quickjs) quickjs = import('quickjs-emscripten').then((m) => m.getQuickJS()) as Promise<{ newContext: () => QuickJSContext }>
-  return (await quickjs).newContext()
-}
+import { newBoundedScriptVM, scriptErrorMessage, type BoundedScriptVM } from './boundedScript.js'
 
 export interface FormulaEsito {
   /** Il valore calcolato: `null` vuol dire «nessun valore», non «zero». */
@@ -55,9 +43,9 @@ export async function runFormula(code: string, input: Record<string, unknown>): 
    * È il difetto che ha lasciato il campo calcolato vuoto nel portale: si
    * vedeva «—», cioè «nessun valore», che è una risposta, non un guasto.
    */
-  let vm: QuickJSContext
+  let vm: BoundedScriptVM
   try {
-    vm = await contesto()
+    vm = await newBoundedScriptVM()
   } catch (e) {
     return { value: null, error: e instanceof Error ? e.message : String(e) }
   }
@@ -66,7 +54,7 @@ export async function runFormula(code: string, input: Record<string, unknown>): 
     if (risultato.error) {
       const err = vm.dump(risultato.error)
       risultato.error.dispose()
-      return { value: null, error: typeof err === 'string' ? err : JSON.stringify(err) }
+      return { value: null, error: scriptErrorMessage(err) }
     }
     const valore = risultato.value ? vm.dump(risultato.value) : null
     risultato.value?.dispose()

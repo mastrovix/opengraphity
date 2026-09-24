@@ -20,6 +20,9 @@ const TENANT_ROLES: ReadonlyMap<string, 'component' | 'infrastructure' | 'certif
   new Map([...Object.entries(ROLE_BY_CI_LABEL), ['ErpSystem', 'component']] as [string, 'component' | 'infrastructure' | 'certificate'][])
 
 // Le note si compongono nella lingua del cliente: qui italiano, come le attese.
+// The cursors of the periodic passes (lib/pagedPass.ts), in memory.
+const { resetPassCursors } = await import('../../lib/__tests__/passCursorRedisFake.js')
+vi.mock('../../lib/bullmq.js', () => import('../../lib/__tests__/passCursorRedisFake.js'))
 vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it'), languageForUser: vi.fn(async () => 'it') }))
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(), toNumber: (v: unknown) => (v == null ? 0 : Number(v)) }))
 vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn().mockResolvedValue(undefined) }))
@@ -131,6 +134,7 @@ function stateRow(over: { props?: Record<string, unknown>; nodes?: Record<string
 const writeRow = (over: Record<string, unknown> = {}) => ({ id: 'map-1', previous: null, changed: true, wasStale: false, serviceId: 'ba-1', name: 'Enterprise Billing', criticality: 'mission_critical', incidentProblem: null, ...over })
 
 beforeEach(() => {
+  resetPassCursors()
   vi.clearAllMocks()
   vi.mocked(getSession).mockReturnValue(session as never)
 })

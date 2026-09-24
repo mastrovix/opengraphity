@@ -487,6 +487,7 @@ export function KBAdminPage() {
             <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>{t('pages.kbAdmin.contentRequired')}</div>
             <RichTextEditor
               key={editId ?? 'new'}
+              label={t('pages.kbAdmin.contentRequired')}
               value={form.body}
               onChange={(md) => setForm((f) => ({ ...f, body: md }))}
               placeholder={t('pages.kbAdmin.bodyPlaceholder')}

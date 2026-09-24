@@ -300,9 +300,14 @@ export function TaskViewPage() {
               setDirty={setPlanDirty}
               canEdit={canEdit}
               busyLabel={busyLabel}
-              onSave={() => {
-                void m.savePlan({ variables: { taskId: planTask.id, steps: planSteps } })
-                setPlanDirty(false)
+              // The plan is «saved» only when the server says so (review of 23 Sep
+              // 2026): a refused save cleared the flag anyway, hid «Save» and
+              // enabled «Complete» over steps that were not the saved ones.
+              onSave={async () => {
+                // A refusal is said by the mutation's `onError`; Apollo 4 also
+                // rejects the promise, and the plan simply stays unsaved.
+                const res = await m.savePlan({ variables: { taskId: planTask.id, steps: planSteps } }).catch(() => null)
+                if (res?.data && !res.error) setPlanDirty(false)
               }}
               onComplete={() => void m.completePlan({ variables: { taskId: planTask.id } })}
             />

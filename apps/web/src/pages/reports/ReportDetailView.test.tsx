@@ -84,7 +84,7 @@ const result = (over: Partial<SectionResult> = {}): SectionResult => ({
 
 const props = (over: Partial<Props> = {}): Props => ({
   view: 'detail', selected: template(), editSection: null, sectionResults: {},
-  execLoading: false, exportingPDF: false, exportingExcel: false,
+  execLoading: false, exportingPDF: false, exportingExcel: false, canWrite: true,
   setView: vi.fn(), openSettings: vi.fn(),
   handleAddSection: vi.fn(), handleUpdateSection: vi.fn(), handleRemoveSection: vi.fn(),
   startEditSection: vi.fn(), cancelEditSection: vi.fn(),

@@ -11,6 +11,7 @@ import { WorkflowCanvas } from './WorkflowCanvas'
 import { WorkflowToolbar } from './WorkflowToolbar'
 import { WorkflowStepPanel } from './WorkflowStepPanel'
 import { WorkflowTransitionPanel } from './WorkflowTransitionPanel'
+import { AddTransitionControl } from './AddTransitionControl'
 import { useWorkflowDesigner } from './useWorkflowDesigner'
 import { palette } from '@/lib/tokens'
 import { showError } from '@/lib/showError'
@@ -194,6 +195,13 @@ export function WorkflowDesignerPage() {
                 onSaved={(u) => onStepSaved(u)}
                 onSaveLocally={handleSaveStepLocally}
                 onDelete={handleDeleteStep}
+              />
+            )}
+            {selectedStep && def && (
+              <AddTransitionControl
+                fromStepId={selectedStep.id}
+                steps={def.steps}
+                onAdd={(toStepId) => handleConnect({ source: selectedStep.id, target: toStepId })}
               />
             )}
             {selectedTr && def && (

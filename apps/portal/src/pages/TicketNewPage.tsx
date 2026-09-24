@@ -6,7 +6,7 @@ import { Monitor, Code, Key, Wifi, HelpCircle, ShieldAlert, Tag, Paperclip } fro
 import type { LucideIcon } from 'lucide-react'
 import { CREATE_TICKET } from '@/graphql/mutations'
 import { GET_KB_ARTICLES } from '@/graphql/queries'
-import { useFormFieldRules, validateFormFields } from '@/hooks/useFormFieldRules'
+import { useFormFieldRules, validateFormFields, type FieldRules } from '@/hooks/useFormFieldRules'
 import { notifyError } from '@/lib/notify'
 import { uploadAttachment } from '@/lib/attachments'
 import { colors, palette } from '@/lib/tokens'
@@ -25,6 +25,23 @@ const CATEGORY_ICONS: Readonly<Record<string, LucideIcon>> = {
 }
 
 interface KBArticle { id: string; title: string; slug: string; category: string }
+
+/**
+ * The required fields left empty, among the fields the portal SHOWS: a rule on
+ * a field an end user cannot fill (urgency, affected CI…) belongs to the agent
+ * form, and it made the portal impossible to submit (review of 23 Sep 2026).
+ */
+function portalMissingFields(
+  rules: Record<string, FieldRules>, formValues: Record<string, string>,
+  customFields: Parameters<typeof portalMissingCustomFields>[0], customValues: Record<string, string>,
+): string[] {
+  const shown = new Set([...Object.keys(formValues), ...customFields.map((f) => f.name)])
+  const portalRules = Object.fromEntries(Object.entries(rules).filter(([field]) => shown.has(field)))
+  return [...new Set([
+    ...validateFormFields(portalRules, { ...formValues, ...customValues }),
+    ...portalMissingCustomFields(customFields, customValues),
+  ])]
+}
 
 export function TicketNewPage() {
   const { t }      = useTranslation()
@@ -115,7 +132,7 @@ export function TicketNewPage() {
       notifyError(t('ticket.rulesError', { message: rulesError.message }))
       return
     }
-    const missing = [...validateFormFields(ticketFieldRules, ticketFormValues), ...portalMissingCustomFields(customFields, customValues)]
+    const missing = portalMissingFields(ticketFieldRules, ticketFormValues, customFields, customValues)
     if (missing.length > 0) {
       const errs: Record<string, string> = {}
       missing.forEach((f) => { errs[f] = t('common.required') })

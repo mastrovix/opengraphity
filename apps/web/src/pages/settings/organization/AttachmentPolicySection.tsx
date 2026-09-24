@@ -73,7 +73,7 @@ export function AttachmentPolicySection() {
           <Hint>{t('pages.organization.attachmentsTypesHint', { count: exts.length })}</Hint>
           {(!sizeOk || !extsOk) && <Hint tone="danger">{t(!sizeOk ? 'pages.organization.attachmentsSizeInvalid' : 'pages.organization.attachmentsTypesRequired', { max: saved.platformMaxSizeMb })}</Hint>}
           <div>
-            <Button disabled={!dirty || !sizeOk || !extsOk || saving} onClick={() => void save({ variables: { input: { maxSizeMb: n, extensions: exts } } })}>
+            <Button disabled={!dirty || !sizeOk || !extsOk || saving} onClick={() => save({ variables: { input: { maxSizeMb: n, extensions: exts } } })}>
               {t('common.save')}
             </Button>
           </div>

@@ -7,6 +7,8 @@ import { v4 as uuidv4 } from 'uuid'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { mapCI, ciTypeFromLabels, withSession } from './ci-utils.js'
 import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
+import type { GraphQLResolveInfo } from 'graphql'
+import { selectedFields } from '../../lib/selectedFields.js'
 import type { GraphQLContext } from '../../context.js'
 import { mapTeam, mapUser } from '../../lib/mappers.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
@@ -34,33 +36,43 @@ export const TEAM_SORT_WHITELIST: Record<string, string> = {
   createdAt: 't.created_at',
 }
 
-async function teams(_: unknown, args: { filters?: string; sortField?: string; sortDirection?: string }, ctx: GraphQLContext) {
+async function teams(_: unknown, args: { filters?: string; sortField?: string; sortDirection?: string }, ctx: GraphQLContext, info?: GraphQLResolveInfo) {
+  // Only what the query selects is prefetched (lib/selectedFields.ts): the
+  // pickers ask for scalars, and used to get every CI of every team.
+  const wants = selectedFields(info)
   return withSession(async (session) => {
-    const params: Record<string, unknown> = { tenantId: ctx.tenantId }
+    const params: Record<string, unknown> = {
+      tenantId: ctx.tenantId,
+      withMembers: wants.has('members'), withOwned: wants.has('ownedCIs'),
+      withSupported: wants.has('supportedCIs'), withManager: wants.has('manager'),
+    }
     const advWhere = args.filters ? buildAdvancedWhere(args.filters, params, TEAM_ALLOWED_FIELDS, 't') : ''
     // A-22: nessun ordine diverso in silenzio.
     const orderBy = orderByOrThrow(TEAM_SORT_WHITELIST, args.sortField, args.sortDirection, 't.name ASC', 'teams(sortField)')
     // Prefetch members / owned+supported CIs / manager with pattern
     // comprehensions: one query, no per-team N+1 and no cartesian blow-up
-    // (each comprehension returns an independent list).
+    // (each comprehension returns an independent list) — each only when
+    // selected: CASE evaluates the branch it takes, and null leaves the field
+    // to its own resolver, which then does not run.
     const cypher = `
       MATCH (t:Team {tenant_id: $tenantId})
       ${advWhere ? `WHERE ${advWhere}` : ''}
       RETURN properties(t) as props,
-        [ (t)<-[:MEMBER_OF]-(m:User) | properties(m) ] as members,
-        [ (t)<-[:OWNED_BY]-(oci) WHERE oci.tenant_id = $tenantId | { props: properties(oci), label: head([l IN labels(oci) WHERE l <> 'ConfigurationItem']) } ] as ownedCIs,
-        [ (t)<-[:SUPPORTED_BY]-(sci) WHERE sci.tenant_id = $tenantId | { props: properties(sci), label: head([l IN labels(sci) WHERE l <> 'ConfigurationItem']) } ] as supportedCIs,
-        [ (t)-[:MANAGED_BY]->(mgr:User) | properties(mgr) ] as managers
+        CASE WHEN $withMembers THEN [ (t)<-[:MEMBER_OF]-(m:User) | properties(m) ] END as members,
+        CASE WHEN $withOwned THEN [ (t)<-[:OWNED_BY]-(oci) WHERE oci.tenant_id = $tenantId | { props: properties(oci), label: head([l IN labels(oci) WHERE l <> 'ConfigurationItem']) } ] END as ownedCIs,
+        CASE WHEN $withSupported THEN [ (t)<-[:SUPPORTED_BY]-(sci) WHERE sci.tenant_id = $tenantId | { props: properties(sci), label: head([l IN labels(sci) WHERE l <> 'ConfigurationItem']) } ] END as supportedCIs,
+        CASE WHEN $withManager THEN [ (t)-[:MANAGED_BY]->(mgr:User) | properties(mgr) ] END as managers
       ORDER BY ${orderBy}
     `
-    const rows = await runQuery<{ props: Props; members: Props[]; ownedCIs: { props: Props; label: string }[]; supportedCIs: { props: Props; label: string }[]; managers: Props[] }>(session, cypher, params)
-    const mapCIRow = (c: { props: Props; label: string }) => { c.props['type'] = ciTypeFromLabels(ctx.tenantId, [c.label]); return mapCI(c.props) }
+    type CIRow = { props: Props; label: string }
+    const rows = await runQuery<{ props: Props; members: Props[] | null; ownedCIs: CIRow[] | null; supportedCIs: CIRow[] | null; managers: Props[] | null }>(session, cypher, params)
+    const mapCIRow = (c: CIRow) => { c.props['type'] = ciTypeFromLabels(ctx.tenantId, [c.label]); return mapCI(c.props) }
     return rows.map((r) => ({
       ...mapTeam(r.props),
-      _members:       r.members,
-      _ownedCIs:      r.ownedCIs.map(mapCIRow),
-      _supportedCIs:  r.supportedCIs.map(mapCIRow),
-      _manager:       r.managers[0] ?? null,
+      ...(r.members ? { _members: r.members } : {}),
+      ...(r.ownedCIs ? { _ownedCIs: r.ownedCIs.map(mapCIRow) } : {}),
+      ...(r.supportedCIs ? { _supportedCIs: r.supportedCIs.map(mapCIRow) } : {}),
+      ...(r.managers ? { _manager: r.managers[0] ?? null } : {}),
     }))
   })
 }

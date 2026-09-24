@@ -184,13 +184,15 @@ function buildBlastRadiusResolver(types: CITypeWithDefinitions[]) {
       const relPattern = await impactRelPatternForTenant(ctx.tenantId)
       const r = await session.executeRead(tx =>
         tx.run(
+          // The candidates first, then one shortest path each (review of 23 Sep
+          // 2026): every path up to 5 hops was COLLECTED to keep the shortest.
           `MATCH (root:ConfigurationItem {id: $id, tenant_id: $tenantId})
-           MATCH path = (root)<-[:${relPattern}*1..5]-(impacted)
-           WHERE impacted.tenant_id = $tenantId
-           WITH impacted, min(length(path)) AS distance, collect(path) AS paths
-           WITH impacted, distance, [p IN paths WHERE length(p) = distance | p][0] AS shortestPath
-           RETURN DISTINCT properties(impacted) AS props, head([l IN labels(impacted) WHERE l <> 'ConfigurationItem']) AS label,
-             distance, properties(nodes(shortestPath)[-2]) AS parentProps`,
+           MATCH (root)<-[:${relPattern}*1..5]-(impacted)
+           WHERE impacted.tenant_id = $tenantId AND impacted <> root
+           WITH DISTINCT root, impacted
+           MATCH sp = shortestPath((root)<-[:${relPattern}*1..5]-(impacted))
+           RETURN properties(impacted) AS props, head([l IN labels(impacted) WHERE l <> 'ConfigurationItem']) AS label,
+             length(sp) AS distance, properties(nodes(sp)[-2]) AS parentProps`,
           { id: args.id, tenantId: ctx.tenantId },
         ),
       )

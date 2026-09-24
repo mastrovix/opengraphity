@@ -1,7 +1,7 @@
 import type { Job, Queue } from 'bullmq'
 import type { TenantWorkerPool } from '@opengraphity/events'
 import { getSession, runQuery } from '@opengraphity/neo4j'
-import { workflowEngine } from '@opengraphity/workflow'
+import { WAIT_EXIT_TRIGGERS, workflowEngine } from '@opengraphity/workflow'
 import { logger } from '../lib/logger.js'
 import { createTenantWorkers, getTenantQueue } from '../lib/bullmq.js'
 import { evaluateConditions, parseConditions } from '../lib/conditionEvaluator.js'
@@ -295,11 +295,11 @@ async function processNotificationJob(job: Job): Promise<void> {
           // della finestra di rilascio (terza revisione * C1).
           OPTIONAL MATCH (c:Change {tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi)
           OPTIONAL MATCH (cur)-[tr:TRANSITIONS_TO]->(next:WorkflowStep)
-            WHERE tr.trigger IN ['automatic', 'timer']
+            WHERE tr.trigger IN $exitTriggers
           WITH cur, c, next ORDER BY coalesce(next.step_order, 999), next.name
           RETURN cur.name AS currentStep, collect(next.name)[0] AS toStep,
                  c.id AS changeId, c.change_type AS changeType
-        `, { instanceId, tenantId }))
+        `, { instanceId, tenantId, exitTriggers: [...WAIT_EXIT_TRIGGERS] }))
         if (fresh.records.length === 0) {
           throw new Error(`timer_wait: instance ${instanceId} of tenant ${tenantId} no longer exists or has no current step — the timer cannot complete`)
         }

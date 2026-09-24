@@ -222,7 +222,7 @@ beforeEach(() => {
   apolloFinto.esiti['ExecuteWorkflowTransition'] = moved('in_progress')
   apolloFinto.risposte['GetIncident'] = { incident: incident() }
   apolloFinto.risposte['GetUsers'] = { users: USERS }
-  apolloFinto.risposte['GetMe'] = { me: me(['ticket.work']) }
+  apolloFinto.risposte['GetMe'] = { me: me(['ticket.work', 'incident.write', 'change.write']) }
   apolloFinto.risposte['GetPriorityMatrix'] = { priorityMatrix: MATRIX }
   apolloFinto.risposte['GetWorkflowDefinition'] = { workflowDefinition: { steps: STEPS, transitions: [] } }
   apolloFinto.risposte['GetWorkflowStepLabels'] = { workflowStepLabels: [] }
@@ -997,7 +997,7 @@ describe('IncidentDetailPage: knowledge base draft', () => {
 
   it('turned off: disabled, and an administrator reads where to turn it on', () => {
     apolloFinto.risposte['GetAISettings'] = { aiSettings: { features: { postIncident: true, kbArticles: false } } }
-    apolloFinto.risposte['GetMe'] = { me: me(['ticket.work', 'config.organization']) }
+    apolloFinto.risposte['GetMe'] = { me: me(['ticket.work', 'incident.write', 'config.organization']) }
     show({ status: 'resolved', availableTransitions: [] })
     const draft = screen.getByRole('button', { name: 'Knowledge Base draft' })
     expect(draft).toBeDisabled()
@@ -1212,5 +1212,18 @@ describe('IncidentDetailPage: impacted applications', () => {
     // An application hit directly says so.
     await user.click(screen.getAllByRole('button', { name: /Path/ })[1]!)
     expect(dialog('Impact path → Webmail')).toHaveTextContent('along the CMDB dependencies (hit directly)')
+  })
+})
+
+// Review of 23 Sep 2026: every action was offered to read-only roles, and every one ended in a 403.
+describe('IncidentDetailPage — who only reads incidents', () => {
+  it('sees the incident, and nothing that would change it', () => {
+    apolloFinto.risposte['GetMe'] = { me: me([]) }
+    show({ status: 'in_progress', availableTransitions: [HOLD, START] })
+    expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument()
+    for (const name of [/^Edit$/, /Declare Major Incident/, 'Put on hold', 'Start work', 'Request a change', 'Reassign']) {
+      expect(screen.queryByRole('button', { name })).toBeNull()
+    }
+    expect(screen.queryByRole('button', { name: /Add CI/ })).toBeNull()
   })
 })

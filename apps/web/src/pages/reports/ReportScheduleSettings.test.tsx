@@ -25,7 +25,7 @@ const template = (over: Partial<ReportTemplate> = {}): ReportTemplate => ({
 })
 
 const props = (over: Partial<Props> = {}): Props => ({
-  selected: template(), teams: [], channels: [], updating: false,
+  selected: template(), teams: [], channels: [], updating: false, canSchedule: true,
   settingsName: 'Weekly incidents', setSettingsName: vi.fn(),
   settingsDesc: '', setSettingsDesc: vi.fn(),
   settingsVis: 'private', setSettingsVis: vi.fn(),

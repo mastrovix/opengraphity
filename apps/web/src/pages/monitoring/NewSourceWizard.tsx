@@ -264,7 +264,7 @@ export function NewSourceWizard({ sampleCheckDelayMs = SAMPLE_CHECK_DELAY_MS }: 
             {/* role="status": il motivo del blocco è annunciato anche da tastiera (D·3.4) */}
             <span role="status" style={{ ...hintStyle, color: palette.warning.text }}>{blocker ?? ''}</span>
             {step === 'test'
-              ? <Button onClick={() => void leave()}>{t('monitoring.wizard.finish')}</Button>
+              ? <Button onClick={() => leave()}>{t('monitoring.wizard.finish')}</Button>
               : (
                 <Button onClick={next} disabled={blocker !== null || creating} icon={creating ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : undefined}>
                   {step === 'rules' ? (creating ? t('monitoring.wizard.creating') : t('monitoring.wizard.create')) : t('common.next')}

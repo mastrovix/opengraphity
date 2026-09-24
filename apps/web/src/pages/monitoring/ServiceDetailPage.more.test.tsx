@@ -22,7 +22,7 @@ import { toast } from 'sonner'
 import { renderWithProviders } from '@/test/utils'
 import { apolloFinto } from '@/test/apolloFinto'
 import { meFixture } from '@/test/mocks/gql'
-import { mapDetail, node, ciRef } from '@/test/mocks/services'
+import { mapDetail, node, ciRef, mapProbe } from '@/test/mocks/services'
 import type { ServiceMapDetail } from '@/types/services'
 import { ServiceDetailPage } from './ServiceDetailPage'
 
@@ -171,6 +171,23 @@ describe('ServiceDetailPage — navigation and plain words', () => {
     const { user } = renderPage()
     await user.click(screen.getByRole('button', { name: 'Back to services' }))
     expect(location()).toBe('/monitoring/services')
+  })
+
+  /*
+   * Review of 23 Sep 2026: the reload ran once, when the probe first got
+   * ahead; if it failed, `behind` stayed true and nothing ran again — the page
+   * stayed on the old evaluation without a word.
+   */
+  it('a reload that failed is tried again at the next poll, and the page says it is not current', () => {
+    apolloFinto.risposte['GetServiceMapStatus'] = () => ({ serviceMap: mapProbe({ version: 4 }) })
+    apolloFinto.erroriDiPolling['GetServiceMap'] = new Error('502 Bad Gateway')
+    const { rerender } = renderPage()
+    const first = reloads()
+    expect(first).toBeGreaterThan(0)
+    // The next poll: a new probe object, still ahead.
+    rerender(<ServiceDetailPage />)
+    expect(reloads()).toBeGreaterThan(first)
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not refresh: 502 Bad Gateway')
   })
 
   it('a load error offers a retry that reloads', async () => {

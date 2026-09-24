@@ -227,7 +227,7 @@ export function ProposalsPage() {
           </p>
         </div>
         {puoLanciare && (
-          <Button onClick={() => void lancia()} disabled={inAnalisi} icon={<Play size={15} aria-hidden="true" />}>
+          <Button onClick={() => lancia()} disabled={inAnalisi} icon={<Play size={15} aria-hidden="true" />}>
             {inAnalisi ? t('pages.proposals.running') : t('pages.proposals.runNow')}
           </Button>
         )}
@@ -389,7 +389,7 @@ export function ProposalsPage() {
               {vista === 'open' && puoDecidere && (
                 <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
                   {p.actionType && (
-                    <Button onClick={() => void conAttesa(p.id, () => accetta({ variables: { id: p.id } }))}
+                    <Button onClick={() => conAttesa(p.id, () => accetta({ variables: { id: p.id } }))}
                       disabled={occupato} icon={<Check size={15} aria-hidden="true" />}>
                       {t('pages.proposals.accept')}
                     </Button>
@@ -408,7 +408,7 @@ export function ProposalsPage() {
                     posto solo, e la pagina non la indovina dal genere.
                   */}
                   {p.acknowledgeable && (
-                    <Button onClick={() => void conAttesa(p.id, () => prendiAtto({ variables: { id: p.id } }))}
+                    <Button onClick={() => conAttesa(p.id, () => prendiAtto({ variables: { id: p.id } }))}
                       disabled={occupato} icon={<Check size={15} aria-hidden="true" />}>
                       {t('pages.proposals.acknowledge')}
                     </Button>
@@ -427,7 +427,7 @@ export function ProposalsPage() {
                   </Button>
                   {p.status === 'open' && (
                     <Button variant="secondary" disabled={occupato}
-                      onClick={() => void conAttesa(p.id, () => rimanda({ variables: { id: p.id, until: notNowUntil() } }))}
+                      onClick={() => conAttesa(p.id, () => rimanda({ variables: { id: p.id, until: notNowUntil() } }))}
                       icon={<Clock size={15} aria-hidden="true" />}>
                       {t('pages.proposals.notNow')}
                     </Button>
@@ -438,7 +438,7 @@ export function ProposalsPage() {
               {vista === 'decided' && p.undoable && puoDecidere && (
                 <div style={{ marginTop: 14 }}>
                   <Button variant="secondary" disabled={occupato}
-                    onClick={() => void conAttesa(p.id, () => disfa({ variables: { id: p.id } }))}
+                    onClick={() => conAttesa(p.id, () => disfa({ variables: { id: p.id } }))}
                     icon={<RotateCcw size={15} aria-hidden="true" />}>
                     {t('pages.proposals.undo')}
                   </Button>

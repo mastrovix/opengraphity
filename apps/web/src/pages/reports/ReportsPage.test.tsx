@@ -579,6 +579,11 @@ describe('AI Analysis — when something goes wrong', () => {
     ['the AI turned off by the organisation, said in the reader\'s language',
       async () => ({ error: { code: 'AI_DISABLED', feature: 'reportAnalysis', message: 'The AI feature "reportAnalysis" is turned off for this organization.' } }),
       'The AI feature «Report analysis» is turned off for this organization. An administrator can turn it on in Organization → AI.'],
+    // Review of 23 Sep 2026: the per-person cap and the length cap of the stream.
+    ['too many analyses in a minute, said with the limit and the wait', async () => ({ error: { code: 'RATE_LIMITED', limit: 10, retry_after: 42, message: 'Analysis limit reached (10 per minute): try again in a moment' } }),
+      'Too many analyses in a minute: at most 10. Try again in 42 seconds.'],
+    ['a question too long', async () => ({ error: { code: 'QUESTION_TOO_LONG', max: 4000, message: 'The question is too long: at most 4000 characters' } }),
+      'The question is too long: at most 4000 characters.'],
     ['a refusal of the REST error handler', async () => ({ error: { code: 'VALIDATION_ERROR', message: 'question is required' } }), 'question is required'],
     ['a body without a reason', async () => ({ error: { code: 'FORBIDDEN' } }), 'HTTP 403'],
     ['a body that is not JSON (a proxy\'s page)', async () => { throw new SyntaxError('Unexpected token <') }, 'HTTP 403'],

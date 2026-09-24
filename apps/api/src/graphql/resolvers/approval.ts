@@ -338,6 +338,22 @@ async function moveTicketAfterDecision(
   }
 }
 
+/**
+ * The decision is given back when the article could not follow it (review of
+ * 23 Sep 2026). The status is committed in its own transaction before the
+ * workflow move; when the move was refused (no published step, a guard of the
+ * customer) the request stayed «approved» or «rejected» with the article
+ * still in review — and could never be decided again. It goes back to what it
+ * was: pending, with the approvals given before.
+ */
+async function giveBackDecision(session: Session, tenantId: string, id: string, approvedBy: readonly string[]): Promise<void> {
+  await session.executeWrite((tx) => tx.run(`
+    MATCH (a:ApprovalRequest {id: $id, tenant_id: $tenantId})
+    SET a.status = 'pending', a.approved_by = $approvedBy, a.rejected_by = null,
+        a.resolved_at = null, a.resolution_note = null
+  `, { id, tenantId, approvedBy: JSON.stringify(approvedBy) }))
+}
+
 export async function approveRequest(
   _: unknown,
   args: { id: string; note?: string },
@@ -423,7 +439,6 @@ export async function approveRequest(
     }))
 
     const updated = mapApproval(updateRes.records[0])
-    void audit(ctx, 'approval.approved', 'ApprovalRequest', args.id)
 
     if (satisfied) {
       const nowSse = new Date().toISOString()
@@ -458,6 +473,7 @@ export async function approveRequest(
           const transitions = await workflowEngine.getAvailableTransitions(session, instanceId)
           const forward = transitions.find((t) => publishedSteps.has(t.toStep))
           if (!forward) {
+            await giveBackDecision(session, ctx.tenantId, args.id, approvedBy)
             throw new GraphQLError(
               'The knowledge base workflow has no transition to a published step from here: the approval cannot publish the article',
               { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.approval.noPublishedStep' } } },
@@ -472,7 +488,12 @@ export async function approveRequest(
           // si manda la notifica «pubblicato» né si lascia l'approvazione
           // concessa: la mutation fallisce e la transazione dell'approvazione
           // resta indietro, che è la cosa vera.
-          assertTransitionApplied(applied, 'The article was approved but could not be published')
+          try {
+            assertTransitionApplied(applied, 'The article was approved but could not be published')
+          } catch (err) {
+            await giveBackDecision(session, ctx.tenantId, args.id, approvedBy)
+            throw err
+          }
         }
         sseManager.sendToUser(ctx.tenantId, requestedBy, {
           id:          uuidv4(),
@@ -504,6 +525,7 @@ export async function approveRequest(
       }
     }
 
+    void audit(ctx, 'approval.approved', 'ApprovalRequest', args.id)
     return updated
   } finally {
     await session.close()
@@ -520,7 +542,7 @@ export async function rejectRequest(
     const loadRes = await session.executeRead((tx) => tx.run(`
       MATCH (a:ApprovalRequest {id: $id, tenant_id: $tenantId})
       RETURN a.status AS status, a.approvers AS approvers, a.requested_by AS requestedBy,
-             a.entity_type AS entityType, a.entity_id AS entityId
+             a.entity_type AS entityType, a.entity_id AS entityId, a.approved_by AS approvedBy
     `, { id: args.id, tenantId: ctx.tenantId }))
 
     if (!loadRes.records.length) {
@@ -532,6 +554,7 @@ export async function rejectRequest(
     const requestedBy = loadRes.records[0].get('requestedBy') as string
     const entityType  = loadRes.records[0].get('entityType')  as string
     const entityId    = loadRes.records[0].get('entityId')    as string
+    const approvedBefore = JSON.parse((loadRes.records[0].get('approvedBy') as string | null) ?? '[]') as string[]
 
     if (status !== 'pending') {
       throw new GraphQLError(`Cannot reject a request with status '${status}'`, { extensions: { code: 'BAD_REQUEST' } })
@@ -566,7 +589,6 @@ export async function rejectRequest(
     `, { id: args.id, tenantId: ctx.tenantId, rejectedBy: ctx.userId, resolvedAt: now, note: args.note }))
 
     const updated = mapApproval(updateRes.records[0])
-    void audit(ctx, 'approval.rejected', 'ApprovalRequest', args.id)
 
     if (entityType === 'kb_article') {
       // ── KB Article: transition workflow back to 'draft' ───────────────────
@@ -588,8 +610,14 @@ export async function rejectRequest(
           { instanceId, toStepName: initialStep, triggeredBy: ctx.userId, triggerType: 'manual', notes: args.note, tenantId: ctx.tenantId },
           actionCtx,
         )
-        // M-15: lo stesso sul rifiuto — «rimandato in bozza» deve essere vero.
-        assertTransitionApplied(applied, 'The publication was rejected but the article could not go back to draft')
+        // M-15: lo stesso sul rifiuto — «rimandato in bozza» deve essere vero;
+        // and the rejection is given back when it is not (review of 23 Sep 2026).
+        try {
+          assertTransitionApplied(applied, 'The publication was rejected but the article could not go back to draft')
+        } catch (err) {
+          await giveBackDecision(session, ctx.tenantId, args.id, approvedBefore)
+          throw err
+        }
       }
       void audit(ctx, 'kb_article.publication_rejected', 'KBArticle', entityId)
     } else {
@@ -609,6 +637,7 @@ export async function rejectRequest(
       read:        false,
     })
 
+    void audit(ctx, 'approval.rejected', 'ApprovalRequest', args.id)
     return updated
   } finally {
     await session.close()

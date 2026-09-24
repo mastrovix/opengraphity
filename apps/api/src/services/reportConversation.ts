@@ -21,7 +21,7 @@
  */
 import { v4 as uuidv4 } from 'uuid'
 import type { Session } from 'neo4j-driver'
-import { NotFoundError } from '../lib/errors.js'
+import { NotFoundError, ValidationError } from '../lib/errors.js'
 
 export const HISTORY_LIMIT = 10
 
@@ -118,8 +118,19 @@ export async function loadRecentHistory(
 }
 
 /** Full turn: ensure conversation → save question → history → ask → save answer. */
+/**
+ * The longest question the analysis takes (review of 23 Sep 2026). It was
+ * bounded only by the 512 kB body limit, and a question is saved and sent
+ * again in the history of the next ten turns: every one of them paid for it.
+ */
+export const REPORT_QUESTION_MAX_CHARS = 4000
+
 export async function runReportConversation(opts: RunConversationOptions): Promise<RunConversationResult> {
   const { session, tenantId, userId, question } = opts
+  if (question.length > REPORT_QUESTION_MAX_CHARS) {
+    throw new ValidationError(`The question is too long: ${question.length} characters, at most ${REPORT_QUESTION_MAX_CHARS}`,
+      { key: 'errors.report.questionTooLong', params: { max: String(REPORT_QUESTION_MAX_CHARS) } })
+  }
 
   const { conversationId, created } = await ensureConversation(session, tenantId, userId, opts.conversationId, question)
   if (created) opts.onConversationCreated?.(conversationId)

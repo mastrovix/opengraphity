@@ -100,6 +100,12 @@ const NIGHT = dashboard('d9', 'Night shift')
 // One object per dashboard, always the same: the page syncs its state from them.
 const BY_ID: Record<string, ReturnType<typeof dashboard>> = { d1: OPS, d2: DESK, d3: ALL, d9: NIGHT }
 
+/** The signed-in user. */
+const meAs = (id: string, permissions: string[]) => ({ me: {
+  id, name: 'Test User', email: 'test@example.com', role: 'operator', roleName: null, permissions,
+  slackId: null, emailNotifications: null, language: null, teams: [],
+} })
+
 const TEMPLATES = [
   { id: 'rt1', name: 'Weekly report', sections: [{ id: 's-w1', title: 'Open incidents', chartType: 'kpi', order: 0 }] },
   { id: 'rt2', name: 'SLA report', sections: [{ id: 's9', title: 'Breaches', chartType: 'kpi', order: 0 }] },
@@ -115,6 +121,8 @@ beforeEach(() => {
   toast.success.mockReset()
   toast.error.mockReset()
   apolloFinto.risposte['GetMyDashboards'] = { myDashboards: [DESK, OPS, ALL] }
+  // The owner of the dashboards above, without dashboard.manageAll.
+  apolloFinto.risposte['GetMe'] = meAs('u-1', [])
   apolloFinto.risposte['GetDashboard'] = (v?: Record<string, unknown>) => ({ dashboard: BY_ID[String(v?.['id'])] ?? null })
   apolloFinto.risposte['GetReportTemplates'] = { reportTemplates: TEMPLATES }
   apolloFinto.risposte['GetTeams'] = { teams: [{ id: 't1', name: 'Network' }, { id: 't2', name: 'Security' }] }
@@ -603,15 +611,16 @@ describe('DashboardPage — customizing the layout', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /Customize/ })).toBeInTheDocument())
   })
 
-  it('with no dashboard at all, Save sends nothing and Cancel goes back to the empty page', async () => {
+  // Review of 23 Sep 2026: with no dashboard there is nothing to customize; it says how to make one.
+  it('with no dashboard at all, nothing can be customized and the page offers to create the first one', async () => {
     apolloFinto.risposte['GetMyDashboards'] = { myDashboards: [] }
     const { user } = renderWithProviders(<DashboardPage />)
     expect(selector()).toHaveTextContent('…')
-    await user.click(await customize(user))
+    expect(await screen.findByText('You have no dashboard yet.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Customize/ })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Create your first dashboard' }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(apolloFinto.chiamate['SaveDashboardLayout']).toBeUndefined()
-    expect(screen.getByText('Empty dashboard')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /Cancel/ }))
-    expect(screen.getByText(/This dashboard is empty/)).toBeInTheDocument()
   })
 
   it('before the reports have arrived, the side panel says there is no report to add', async () => {
@@ -793,5 +802,39 @@ describe('DashboardPage — defects found while writing these tests', () => {
     rispondi()
     await waitFor(() => expect(toast.success).toHaveBeenCalled())
     expect(apolloFinto.chiamate['CreateDashboard']).toHaveLength(1)
+  })
+})
+
+// Review of 23 Sep 2026: a colleague's shared dashboard offered Customize and
+// Settings, and every save came back refused by the API.
+describe('DashboardPage — a dashboard someone else owns', () => {
+  const SHARED = dashboard('d1', 'Operations', { isDefault: true, visibility: 'all', createdBy: { id: 'u-7', name: 'Grace' } })
+
+  it('is read only: no Customize, no Settings, and it says whose it is', async () => {
+    BY_ID['d1'] = SHARED
+    apolloFinto.risposte['GetMyDashboards'] = { myDashboards: [SHARED] }
+    try {
+      renderWithProviders(<DashboardPage />)
+      expect(await screen.findByText('Shared by Grace')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Customize/ })).toBeNull()
+      expect(screen.queryByRole('button', { name: /Settings/ })).toBeNull()
+      expect(screen.getByText('This dashboard is empty. Only its owner adds reports to it.')).toBeInTheDocument()
+    } finally {
+      BY_ID['d1'] = OPS
+    }
+  })
+
+  it('dashboard.manageAll customizes it, but its settings stay the owner\'s', async () => {
+    BY_ID['d1'] = SHARED
+    apolloFinto.risposte['GetMyDashboards'] = { myDashboards: [SHARED] }
+    apolloFinto.risposte['GetMe'] = meAs('u-1', ['dashboard.manageAll'])
+    try {
+      renderWithProviders(<DashboardPage />)
+      expect(await screen.findByRole('button', { name: /Customize/ })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Settings/ })).toBeNull()
+      expect(screen.queryByText('Shared by Grace')).toBeNull()
+    } finally {
+      BY_ID['d1'] = OPS
+    }
   })
 })

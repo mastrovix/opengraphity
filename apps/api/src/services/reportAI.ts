@@ -41,6 +41,7 @@ export async function streamReportAI(
   question: string,
   onChunk: (text: string) => void,
   onToolUse: (description: string) => void,
+  signal?: AbortSignal,
 ): Promise<string> {
   await assertAIFeature(tenantId, 'reportAnalysis')
   return runReportAgent({
@@ -48,6 +49,7 @@ export async function streamReportAI(
     permissions,
     language: await answerLanguage(tenantId, userId),
     messages: toAgentMessages(history, question),
+    signal,
     stream: (event) => {
       if (event.type === 'text') onChunk(event.text)
       else onToolUse(event.description)

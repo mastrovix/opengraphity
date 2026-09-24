@@ -246,7 +246,7 @@ export function OLAContractsPage() {
         footer={
           <>
             {modal?.mode === 'edit' && (
-              <Button type="button" variant="danger" disabled={saving} onClick={() => void removeContract(modal.item)} style={{ marginRight: 'auto' }}>{t('pages.olaContracts.delete')}</Button>
+              <Button type="button" variant="danger" disabled={saving} onClick={() => removeContract(modal.item)} style={{ marginRight: 'auto' }}>{t('pages.olaContracts.delete')}</Button>
             )}
             <Button type="button" variant="secondary" onClick={() => setModal(null)}>{t('common.cancel')}</Button>
             <Button type="submit" disabled={saving || form.name.trim().length === 0}>{saving ? t('common.saving') : t('common.save')}</Button>

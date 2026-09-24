@@ -68,7 +68,7 @@ beforeEach(() => {
 
 describe('renderNotificationEmail — user content is escaped (D-11)', () => {
   it('escapes title and message; the link is built from safe parts', () => {
-    const html = renderNotificationEmail({
+    const html = renderNotificationEmail('t1', {
       id: 'n1', type: 'incident.created',
       title: 'notification.incident.created.title',
       message: `<img src=x onerror="alert(1)"> DB down & <a href="http://evil">click</a>`,
@@ -82,7 +82,7 @@ describe('renderNotificationEmail — user content is escaped (D-11)', () => {
   })
 
   it('omits the link when there is no entity id', () => {
-    const html = renderNotificationEmail({
+    const html = renderNotificationEmail('t1', {
       id: 'n1', type: 'x', title: 't', message: 'm', severity: 'info',
       timestamp: '2026-05-01T10:00:00.000Z', read: false,
     }, EN_UTC)

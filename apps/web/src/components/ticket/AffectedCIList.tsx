@@ -63,10 +63,12 @@ interface Props {
   onSearchChange: (value: string) => void
   onAddCI:        (ciId: string) => void
   onRemoveCI:     (ciId: string) => void
+  /** Whether the reader may add and remove CIs here: the caller knows which permission the API asks (review of 23 Sep 2026). */
+  canEdit:        boolean
   defaultOpen?:   boolean
 }
 
-export function AffectedCIList({ affectedCIs, excludedTypes, ciResults, onSearchChange, onAddCI, onRemoveCI, defaultOpen = false }: Props) {
+export function AffectedCIList({ affectedCIs, excludedTypes, ciResults, onSearchChange, onAddCI, onRemoveCI, canEdit, defaultOpen = false }: Props) {
   const ciLabels = useCILabels()
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -98,7 +100,7 @@ export function AffectedCIList({ affectedCIs, excludedTypes, ciResults, onSearch
       count={affectedCIs.length}
       open={open}
       onToggle={() => setOpen((p) => !p)}
-      headerRight={
+      headerRight={canEdit &&
         /* `headerRight` sta FUORI dal pulsante della testata: il clic qui non
            apre né chiude il riquadro, quindi non serve fermare la propagazione
            come nella vecchia testata fatta a mano. Bordo e testo prendono
@@ -110,7 +112,7 @@ export function AffectedCIList({ affectedCIs, excludedTypes, ciResults, onSearch
       }
     >
       <>
-        {showSearch && (
+        {canEdit && showSearch && (
           <div style={{ position: 'relative' }}>
             <Input type="text" value={search} onChange={(e) => { setSearch(e.target.value); onSearchChange(e.target.value) }}
               placeholder={excludedTypes.length > 0 ? t('attachments.searchCIExcluding', { types: excludedTypes.map(ciLabels.typeLabel).join(', ') }) : t('attachments.searchCIByName')}
@@ -150,7 +152,7 @@ export function AffectedCIList({ affectedCIs, excludedTypes, ciResults, onSearch
                       <button type="button" onClick={() => navigate(ciPath(ci))} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{ci.name}</button>
                       <MicroBadge {...statusBadgeStyle(ci.status, ciStatuses, colorOf('ci_status', ci.status))}>{ciLabels.statusLabel(ci.status)}</MicroBadge>
                       {ci.environment && <MicroBadge>{ciLabels.environmentLabel(ci.environment)}</MicroBadge>}
-                      <button type="button" onClick={() => onRemoveCI(ci.id)} title={t('components.affectedCI.remove')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-body)', lineHeight: 1, padding: '0 2px', marginLeft: 'auto' }}><X size={14} /></button>
+                      {canEdit && <button type="button" onClick={() => onRemoveCI(ci.id)} title={t('components.affectedCI.remove')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-body)', lineHeight: 1, padding: '0 2px', marginLeft: 'auto' }}><X size={14} /></button>}
                     </div>
                   ))}
                 </div>

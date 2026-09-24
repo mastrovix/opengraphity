@@ -189,6 +189,22 @@ describe('WorkflowStepPanel — destinatari della notifica all\'ingresso', () =>
   })
 })
 
+// Review of 23 Sep 2026: switched on without a title, the notification was dropped from the step without a word.
+describe('WorkflowStepPanel — a notification without its title', () => {
+  it('cannot be saved, and the panel says why; with a title it can', async () => {
+    const onSaveLocally = vi.fn()
+    const { user } = renderPanel(step(), { onSaveLocally })
+    await user.click(screen.getByRole('tab', { name: 'Notifications' }))
+    await user.click(screen.getByRole('switch', { name: 'Notify when the step is entered' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('without a title it is not sent')
+    const save = saveButton()
+    expect(save).toBeDisabled()
+    await user.type(screen.getByPlaceholderText('e.g. notification.custom.step.title'), 'notify.step.entered')
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(save).toBeEnabled()
+  })
+})
+
 /**
  * Ondata 2 — B2-2 (B-1): «Elimina step» non si offre quando romperebbe dei
  * ticket. Prima il bottone c'era sempre (tranne sullo step iniziale) e il
@@ -416,5 +432,33 @@ describe('WorkflowStepPanel — la categoria è un vocabolario chiuso (B·N-3)',
     await r.user.click(saveButton())
 
     expect(onSaveLocally).toHaveBeenCalledWith(expect.objectContaining({ stepName: 'risolto', category: 'resolved' }))
+  })
+})
+
+// Review of 23 Sep 2026: the delay of a timed wait could not be set after creation.
+describe('the delay of a timed wait', () => {
+  it('is editable on a timer_wait step, and travels with the save', async () => {
+    const onSaved = vi.fn(); const onSaveLocally = vi.fn()
+    const { user } = renderPanel(step({ name: 'wait', type: 'timer_wait', timerDelayMinutes: 60 }), { onSaved, onSaveLocally })
+    const field = screen.getByRole('spinbutton', { name: 'Delay (minutes)' })
+    expect(field).toHaveValue(60)
+    await user.clear(field)
+    await user.type(field, '120')
+    await user.click(screen.getByRole('button', { name: /Save/ }))
+    expect(onSaveLocally).toHaveBeenCalledWith(expect.objectContaining({ stepName: 'wait', timerDelayMinutes: 120 }))
+  })
+
+  it('a delay that is not a whole number above zero blocks the save, and says why', async () => {
+    const { user } = renderPanel(step({ name: 'wait', type: 'timer_wait', timerDelayMinutes: 60 }))
+    const field = screen.getByRole('spinbutton', { name: 'Delay (minutes)' })
+    await user.clear(field)
+    await user.type(field, '0')
+    expect(screen.getByRole('button', { name: /Save/ })).toBeDisabled()
+    expect(screen.getByRole('alert')).toHaveTextContent('A timed wait needs a whole number of minutes greater than zero.')
+  })
+
+  it('is not offered on other steps', () => {
+    renderPanel(step())
+    expect(screen.queryByRole('spinbutton', { name: 'Delay (minutes)' })).not.toBeInTheDocument()
   })
 })

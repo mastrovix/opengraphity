@@ -214,11 +214,13 @@ export function QuestionAdminPage() {
   // Errors → toast with the server message (useMutationWithToast).
   const [createQuestion] = useMutationWithToast<{ createAssessmentQuestion: { id: string } }>(CREATE_QUESTION, {
     successMessage: t('admin.questions.created'),
+    // The question exists as soon as the server says so: `isNew` went false only
+    // after the list was read again, and a click in between created a second
+    // one (review of 23 Sep 2026).
     onSuccess: (data) => {
-      void refetchQuestions().then(() => {
-        if (data?.createAssessmentQuestion?.id) setSelectedId(data.createAssessmentQuestion.id)
-        setIsNew(false)
-      })
+      if (data?.createAssessmentQuestion?.id) setSelectedId(data.createAssessmentQuestion.id)
+      setIsNew(false)
+      void refetchQuestions()
     },
   })
   const [updateQuestion] = useMutationWithToast(UPDATE_QUESTION, {
@@ -252,16 +254,26 @@ export function QuestionAdminPage() {
     setIsNew(true)
   }
 
-  const handleSave = () => {
+  // One save at a time: a double click created the question twice.
+  const [saving, setSaving] = useState(false)
+  const handleSave = async () => {
+    if (saving) return
     if (!text.trim()) { toast.error(t('toast.question.textRequired')); return }
     if (options.length === 0) { toast.error(t('toast.question.optionRequired')); return }
     // L'id delle opzioni che esistono già viaggia con la modifica: le risposte date restano (revisione totale · B-2).
     // The position is the one on screen: after a removal and an addition two answers could share one.
     const optInput = options.map((o, i) => ({ ...(o.id ? { id: o.id } : {}), label: o.label, score: o.score, sortOrder: i }))
-    if (isNew) {
-      void createQuestion({ variables: { input: { text: text.trim(), category, isCore, options: optInput } } })
-    } else if (selectedId) {
-      void updateQuestion({ variables: { id: selectedId, input: { text: text.trim(), category, isCore, isActive, options: optInput } } })
+    setSaving(true)
+    try {
+      if (isNew) {
+        await createQuestion({ variables: { input: { text: text.trim(), category, isCore, options: optInput } } })
+      } else if (selectedId) {
+        await updateQuestion({ variables: { id: selectedId, input: { text: text.trim(), category, isCore, isActive, options: optInput } } })
+      }
+    } catch {
+      // Already said: useMutationWithToast shows the server's reason.
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -552,8 +564,10 @@ export function QuestionAdminPage() {
                 <div style={{ marginLeft: 'auto' }}>
                   <button
                     type="button"
-                    onClick={handleSave}
-                    style={{ padding: '8px 24px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: colors.white, fontWeight: 600, cursor: 'pointer' }}
+                    onClick={() => void handleSave()}
+                    disabled={saving}
+                    aria-busy={saving || undefined}
+                    style={{ padding: '8px 24px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: colors.white, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}
                   >
                     {t('common.save')}
                   </button>

@@ -116,6 +116,22 @@ describe('edges the BFS does not walk', () => {
     expect(built.query).toContain('WHERE EXISTS { (n1)<-[:OWNED_BY]-(n0) }')
   })
 
+  // Review of 23 Sep 2026: `WHERE …` / `WHERE EXISTS …` is a Cypher syntax error.
+  it('after a filtered node, and with two such edges, there is ONE WHERE that ANDs them', () => {
+    const built = buildReportQuery(section({
+      nodes: [node({ id: 'root', isRoot: true }), team({ filters: JSON.stringify([{ field: 'name', operator: 'eq', value: 'Desk' }]) })],
+      edges: [
+        edge({ id: 'e1', sourceNodeId: 'root', targetNodeId: 'team' }),
+        edge({ id: 'e2', sourceNodeId: 'root', targetNodeId: 'team', relationshipType: 'OWNED_BY' }),
+        edge({ id: 'e3', sourceNodeId: 'root', targetNodeId: 'team', relationshipType: 'MEMBER_OF' }),
+      ],
+    }), 't1', whitelist)
+    const lines = built.query.split('\n').map((l) => l.trim())
+    const wheres = lines.filter((l) => l.startsWith('WHERE '))
+    expect(wheres).toHaveLength(1)
+    expect(wheres[0]).toMatch(/^WHERE n1\.name = \$\w+ AND EXISTS \{ \(n0\)-\[:OWNED_BY\]->\(n1\) \} AND EXISTS \{ \(n0\)-\[:MEMBER_OF\]->\(n1\) \}$/)
+  })
+
   it('an edge between two nodes not connected to the root is not applied (nothing to bind it to)', () => {
     const built = buildReportQuery(section({
       nodes: [node({ id: 'root', isRoot: true }), team(), node({ id: 'user', entityType: 'User', neo4jLabel: 'User', label: 'User' })],
@@ -123,5 +139,27 @@ describe('edges the BFS does not walk', () => {
     }), 't1', whitelist)
     expect(built.query).not.toContain('MEMBER_OF')
     expect(built.query).not.toContain('n1')
+  })
+})
+
+// Review of 23 Sep 2026: an incident's priority is stored in `severity` — the builder read `priority`, which does not exist.
+describe('the fields the graph stores under another name', () => {
+  it('an incident\'s priority is read from severity: in the filter, the grouping and the table', () => {
+    const built = buildReportQuery(section({
+      chartType: 'table',
+      nodes: [node({ id: 'root', isRoot: true, isResult: true, selectedFields: ['priority', 'title'], filters: JSON.stringify([{ field: 'priority', operator: 'eq', value: 'critical' }]) })],
+    }), 't1', whitelist)
+    expect(built.query).toMatch(/WHERE n0\.severity = \$/)
+    expect(built.query).toContain('n0.severity AS c0')
+    expect(built.query).toContain('n0.title AS c1')
+    const grouped = buildReportQuery(section({ chartType: 'bar', groupByField: 'priority' }), 't1', whitelist)
+    expect(grouped.query).toContain('n0.severity')
+    expect(grouped.query).not.toContain('n0.priority')
+  })
+
+  it('a field of another entity keeps its own name', () => {
+    const built = buildReportQuery(section({ chartType: 'bar', groupByNodeId: 'team', groupByField: 'priority',
+      nodes: [node({ id: 'root', isRoot: true }), team()], edges: [edge({ id: 'e1', sourceNodeId: 'root', targetNodeId: 'team' })] }), 't1', whitelist)
+    expect(built.query).toContain('n1.priority')
   })
 })

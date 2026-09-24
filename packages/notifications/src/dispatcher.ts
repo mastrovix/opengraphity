@@ -6,11 +6,11 @@ import { getSession } from '@opengraphity/neo4j'
 import { sseManager, InAppNotification } from './sse.js'
 import { sendTeamsAdaptiveMessage, sendSlackMessage, type TeamsAdaptiveCard, type SlackBlock } from './index.js'
 import {
-  loadChannels, dispatchIncidentNotification, dispatchChangeNotification, dispatchChangeTaskNotification,
+  loadChannels, dispatchIncidentNotification, dispatchChangeNotification, dispatchChangeTaskNotification, forEachChannel,
   type ChannelPlatform,
 } from './consumer.js'
 import type { IncidentData, ChangeTaskPayload } from './formatters.js'
-import { appUrl } from './appUrl.js'
+import { tenantAppUrl } from './appUrl.js'
 import { brandedEmailHtml, loadTenantBrand } from './brand.js'
 import { escapeHtml } from './escapeHtml.js'
 import { assertRoutableChannels, notificationEntityPath, unroutableChannels } from './routing.js'
@@ -311,10 +311,10 @@ function extractMessage(eventType: string, payload: unknown): string {
  * in-app panel uses): no link at all beats a link to a route that does not
  * exist (D3.2). Exported for tests.
  */
-export function renderNotificationEmail(notification: InAppNotification, locale: NotificationLocale): string {
+export function renderNotificationEmail(tenantId: string, notification: InAppNotification, locale: NotificationLocale): string {
   const path = notificationEntityPath(notification.entity_type, notification.entity_id)
   const link = path
-    ? `<a href="${escapeHtml(`${appUrl()}${path}`)}" style="color:#0EA5E9;">${escapeHtml(notificationText(locale, 'viewDetails'))}</a>`
+    ? `<a href="${escapeHtml(`${tenantAppUrl(tenantId)}${path}`)}" style="color:#0EA5E9;">${escapeHtml(notificationText(locale, 'viewDetails'))}</a>`
     : ''
   return `<div lang="${locale.language}" style="font-family:Arial,sans-serif;padding:16px;">
           <h2 style="color:#0F172A;margin:0 0 8px;">${escapeHtml(emailTitle(notification, locale))}</h2>
@@ -489,8 +489,9 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
       await deliverOnce(event.id, 'in_app', () => this.sendInApp(event.tenant_id, notification, recipients))
     }
 
+    // Slack and Teams: once per CHANNEL, inside (`forEachChannel`), not once for all of them.
     if (channels.some((c) => c === 'slack' || c === 'teams')) {
-      await deliverOnce(event.id, 'channels', () => this.dispatchToChannels(event, channels))
+      await this.dispatchToChannels(event, channels)
     }
 
     if (channels.includes('email')) {
@@ -660,9 +661,9 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
     const headline   = notificationText(locale, 'slaBreachedCard')
     const subject    = notificationText(locale, 'slaBreachedFor', { type: entityType, id: `${number} — ${title}` })
     const path       = notificationEntityPath(entityType, entityId)
-    const link       = path ? `${appUrl()}${path}` : null
+    const link       = path ? `${tenantAppUrl(event.tenant_id)}${path}` : null
 
-    for (const ch of channels) {
+    await forEachChannel(event.id, channels, async (ch) => {
       if (ch.platform === 'teams') {
         if (!ch.webhookUrl) throw new Error(`Teams NotificationChannel ${ch.id} has no webhook_url`)
         const card: TeamsAdaptiveCard = {
@@ -697,7 +698,7 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
         ]
         await sendSlackMessage(event.tenant_id, ch.webhookUrl, ch.channelId, blocks)
       }
-    }
+    })
   }
 
   // ── Slack / Teams channel dispatch (driven by rule.channels) ────────────────
@@ -721,13 +722,13 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
         type:     (p['type']  as string) ?? '—',
         status:   (p['status'] as string) ?? 'scheduled',
         tenantId: event.tenant_id,
-      }, eventInstant(event))
+      }, eventInstant(event), event.id)
       return
     }
 
     // Attività di change assegnata → Slack e Teams
     if (event.type === 'change.task_assigned') {
-      await dispatchChangeTaskNotification(event.tenant_id, event.payload as ChangeTaskPayload, eventInstant(event))
+      await dispatchChangeTaskNotification(event.tenant_id, event.payload as ChangeTaskPayload, eventInstant(event), event.id)
       return
     }
 
@@ -754,7 +755,7 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
           status:   typeof p['status']   === 'string' && p['status']   ? p['status']   : 'unknown',
           tenantId: event.tenant_id,
         }
-        await dispatchIncidentNotification(event.tenant_id, 'sla_breach', incident, platforms, 'sla_breach', eventInstant(event))
+        await dispatchIncidentNotification(event.tenant_id, 'sla_breach', incident, platforms, 'sla_breach', eventInstant(event), event.id)
       } else {
         // Un problem o una richiesta con SLA violato: prima il ramo esisteva
         // SOLO per Teams, quindi una regola «SLA violato → Slack» su un
@@ -794,7 +795,7 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
       assigneeName: typeof p['assignedTo'] === 'string' && p['assignedTo'] !== '—' ? p['assignedTo'] as string : null,
       tenantId:     event.tenant_id,
     }
-    await dispatchIncidentNotification(event.tenant_id, notifType, incident, platforms, event.type === 'incident.created' ? 'created' : notifType, eventInstant(event))
+    await dispatchIncidentNotification(event.tenant_id, notifType, incident, platforms, event.type === 'incident.created' ? 'created' : notifType, eventInstant(event), event.id)
   }
 
   private async dispatchEmail(
@@ -820,7 +821,7 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
     const subject = notification.message ? `${title}: ${notification.message.slice(0, 80)}` : title
     // Il marchio del cliente (ondata 6 di «Nulla cablato»): logo e nome in testa, mittente e risposte suoi.
     const brand = await loadTenantBrand(event.tenant_id)
-    const html = brandedEmailHtml(event.tenant_id, brand, renderNotificationEmail(notification, locale), locale.language)
+    const html = brandedEmailHtml(event.tenant_id, brand, renderNotificationEmail(event.tenant_id, notification, locale), locale.language)
 
     // Batch emails (Resend limit: 50 per call)
     for (let i = 0; i < emails.length; i += 50) {

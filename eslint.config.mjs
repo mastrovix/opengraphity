@@ -23,6 +23,36 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import globals from 'globals'
 import jsxA11y from 'eslint-plugin-jsx-a11y'
 
+/**
+ * A native `<button>` states its type: inside a form it submits by default.
+ * `<Button>` (components/Button) already defaults to `type="button"`.
+ */
+const WEB_BUTTON_TYPE_RULE = {
+  selector:
+    "JSXOpeningElement[name.name='button']:not(:has(JSXAttribute[name.name='type'])):not(:has(JSXSpreadAttribute))",
+  message:
+    'Ogni <button> nativo deve avere un `type` esplicito ("button" | "submit" | "reset"); preferisci <Button> di components/Button.',
+}
+
+/**
+ * Colours written by hand (hex, rgb/rgba) outside the token sources: every
+ * colour goes through index.css → lib/tokens.ts, so a new palette or a theme
+ * applies by itself. Canvases (ECharts) use cssVar().
+ */
+const WEB_HEX = '#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?([0-9a-fA-F]{2})?\\b'
+const WEB_NO_HARDCODED_COLOR_RULES = [
+  { selector: `Literal[value=/${WEB_HEX}/]`, message: 'Colore esadecimale scritto a mano: usa i token di lib/tokens.ts (colors/palette/alpha/vendorColors) o var(--color-…) di index.css.' },
+  { selector: `TemplateElement[value.raw=/${WEB_HEX}/]`, message: 'Colore esadecimale scritto a mano in un template: usa var(--color-…) di index.css.' },
+  { selector: 'Literal[value=/rgba?\\(/]', message: 'rgba() scritto a mano: usa alpha.* di lib/tokens.ts.' },
+  { selector: 'TemplateElement[value.raw=/rgba?\\(/]', message: 'rgba() scritto a mano in un template: usa var(--color-*-a…) di index.css.' },
+]
+
+/** The font by hand, like colours: `monospace` is the browser's, not the product's `--font-mono`. */
+const WEB_NO_HARDCODED_FONT_RULES = [
+  { selector: "Literal[value='monospace']", message: 'Font scritto a mano: usa var(--font-mono) (index.css), non il monospace del browser.' },
+  { selector: 'TemplateElement[value.raw=/monospace/]', message: 'Font scritto a mano in un template: usa var(--font-mono) di index.css.' },
+]
+
 export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -109,6 +139,28 @@ export default tseslint.config(
           message: 'rgba() scritto a mano in un template: usa var(--color-*-a…) di index.css.' },
       ],
     },
+  },
+  // ── The web's own rules (review of 23 Sep 2026) ─────────────────────────────
+  // They lived in apps/web/.eslintrc.cjs, which ESLint 10 no longer reads: the
+  // colour, font and button-type rules the docs described as active were off.
+  {
+    files: ['apps/web/src/**/*.ts', 'apps/web/src/**/*.tsx'],
+    ignores: [
+      '**/*.test.ts', '**/*.test.tsx',
+      'apps/web/src/test/**', 'apps/web/src/lib/tokens.ts', 'apps/web/src/lib/eventPalette.ts',
+    ],
+    rules: {
+      'no-restricted-syntax': ['error', WEB_BUTTON_TYPE_RULE, ...WEB_NO_HARDCODED_COLOR_RULES, ...WEB_NO_HARDCODED_FONT_RULES],
+    },
+  },
+  {
+    // Tests and the colour sources may write colours (sample values, the tokens
+    // themselves); a native <button> still states its type.
+    files: [
+      'apps/web/src/**/*.test.ts', 'apps/web/src/**/*.test.tsx',
+      'apps/web/src/test/**/*.ts', 'apps/web/src/test/**/*.tsx', 'apps/web/src/lib/tokens.ts', 'apps/web/src/lib/eventPalette.ts',
+    ],
+    rules: { 'no-restricted-syntax': ['error', WEB_BUTTON_TYPE_RULE] },
   },
   {
     /*

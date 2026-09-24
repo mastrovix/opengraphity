@@ -19,6 +19,13 @@ import { withSession } from './ci-utils.js'
  */
 const ALLOWED_NEO4J_LABELS: ReadonlySet<string> = new Set(STATIC_REPORT_LABELS)
 
+/** A Neo4j integer or a plain number, as a number. */
+const countOf = (v: unknown): number =>
+  (typeof v === 'object' && v !== null && 'toNumber' in v ? (v as { toNumber(): number }).toNumber() : Number(v))
+
+/** How many nodes of the label show which kinds of link it has (reachableEntities). */
+export const REACHABLE_DISCOVERY_SAMPLE = 1_000
+
 type Props = Record<string, unknown>
 
 // ── Mappers ──────────────────────────────────────────────────────────────────
@@ -272,6 +279,24 @@ export async function createSectionWithNodesEdges(
 // ── Query resolvers ────────────────────────────────────────────────────────────
 
 const Query = {
+  /*
+   * Review of 23 Sep 2026: the schedule form read `notificationChannels`,
+   * which needs config.notifications — a toast on every visit for whoever
+   * lacks it — and offered Teams, email and inactive channels, which the
+   * scheduler skips (it delivers to active Slack webhooks only). This is
+   * what the scheduler delivers to, without the webhook.
+   */
+  async reportDeliveryChannels(_: unknown, __: unknown, ctx: GraphQLContext) {
+    return withSession(async (session) => {
+      const res = await session.executeRead(tx => tx.run(`
+        MATCH (c:NotificationChannel {tenant_id: $tenantId})
+        WHERE c.platform = 'slack' AND c.active = true
+        RETURN c.id AS id, c.name AS name ORDER BY c.name
+      `, { tenantId: ctx.tenantId }))
+      return res.records.map(r => ({ id: r.get('id') as string, name: r.get('name') as string }))
+    })
+  },
+
   async reportTemplates(_: unknown, __: unknown, ctx: GraphQLContext) {
     const session = getSession(undefined, 'READ')
     try {
@@ -333,11 +358,20 @@ const Query = {
       })
     }
 
+    /*
+     * Review of 23 Sep 2026: this expanded EVERY relationship of EVERY node of
+     * the label — millions for Incident on the demo tenant — at each «Connect
+     * to…». Now the kinds of link are discovered on the first nodes of the
+     * label, and only those the builder offers are counted, exactly, each
+     * with its own typed pattern.
+     */
     const session = getSession(undefined, 'READ')
     try {
-      const result = await session.executeRead(tx =>
+      const allEntities = navigableEntities
+      const discovered = await session.executeRead(tx =>
         tx.run(`
           MATCH (n:${fromNeo4jLabel} {tenant_id: $tenantId})
+          WITH n LIMIT toInteger($sample)
           CALL {
             WITH n
             MATCH (n)-[r]->(d)
@@ -347,34 +381,37 @@ const Query = {
             MATCH (n)<-[r]-(d)
             RETURN type(r) AS relType, head([l IN labels(d) WHERE l <> 'ConfigurationItem']) AS targetLabel, 'incoming' AS direction
           }
-          RETURN DISTINCT relType, targetLabel, direction, count(*) AS cnt
-          ORDER BY cnt DESC
-        `, { tenantId: ctx.tenantId }),
+          RETURN DISTINCT relType, targetLabel, direction
+        `, { tenantId: ctx.tenantId, sample: REACHABLE_DISCOVERY_SAMPLE }),
       )
-
-      const allEntities = navigableEntities
-
-      return result.records
-        .map(r => ({
-          neo4jLabel:       r.get('targetLabel') as string,
-          relType:          r.get('relType')     as string,
-          direction:        r.get('direction')   as string,
-          cnt:              (r.get('cnt') as { toNumber?: () => number } | number),
-        }))
-        .filter(r => r.neo4jLabel)
-        // Giro nel browser del 14 set 2026 (#12): «Connect to…» offriva ogni
-        // etichetta collegata nel grafo — `ChangeAuditEntry`, `WorkflowInstance`,
-        // i compiti dell'assessment — senza campi e col nome tecnico. Si offre
-        // solo ciò che il costruttore sa descrivere: ticket, organizzazione e
-        // tipi di CI del metamodello (getNavigableEntities).
+      // Giro nel browser del 14 set 2026 (#12): «Connect to…» offriva ogni
+      // etichetta collegata nel grafo — `ChangeAuditEntry`, `WorkflowInstance`,
+      // i compiti dell'assessment — senza campi e col nome tecnico. Si offre
+      // solo ciò che il costruttore sa descrivere: ticket, organizzazione e
+      // tipi di CI del metamodello (getNavigableEntities).
+      const offered = discovered.records
+        .map(r => ({ neo4jLabel: r.get('targetLabel') as string | null, relType: r.get('relType') as string, direction: r.get('direction') as string }))
         .flatMap(r => {
+          if (!r.neo4jLabel || !/^[A-Za-z][A-Za-z0-9_]*$/.test(r.relType) || !/^[A-Za-z][A-Za-z0-9_]*$/.test(r.neo4jLabel)) return []
           const found = allEntities.find(e => e.neo4jLabel === r.neo4jLabel || e.entityType === r.neo4jLabel)
-          return found ? [{ ...r, found }] : []
+          return found ? [{ ...r, neo4jLabel: r.neo4jLabel, found }] : []
         })
+      const counted: Array<(typeof offered)[number] & { cnt: unknown }> = []
+      for (const r of offered) {
+        // Two literals, one per direction: labels and type in their positions, so the Cypher check can verify them.
+        const relType = r.relType
+        const target = r.neo4jLabel
+        const res = await session.executeRead(tx => tx.run(r.direction === 'outgoing'
+          ? `MATCH (n:${fromNeo4jLabel} {tenant_id: $tenantId})-[:${relType}]->(d:${target}) RETURN count(*) AS cnt`
+          : `MATCH (n:${fromNeo4jLabel} {tenant_id: $tenantId})<-[:${relType}]-(d:${target}) RETURN count(*) AS cnt`,
+        { tenantId: ctx.tenantId }))
+        counted.push({ ...r, cnt: res.records[0]?.get('cnt') ?? 0 })
+      }
+
+      return counted
+        .sort((x, y) => countOf(y.cnt) - countOf(x.cnt))
         .map(r => {
-          const count = typeof r.cnt === 'object' && r.cnt && 'toNumber' in r.cnt
-            ? r.cnt.toNumber!()
-            : Number(r.cnt)
+          const count = countOf(r.cnt)
           const base  = r.found
           return {
             entityType:       base.entityType,

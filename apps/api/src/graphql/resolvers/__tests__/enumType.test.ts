@@ -66,7 +66,8 @@ const ENUM_ROW = { id: 'e-1', tenantId: 'tenant-1', name: 'ticket_source', label
 // Revisione totale · C-5: fra le sedi ci sono anche le AZIONI delle regole e
 // dei passi, e i campi impostati da una scadenza — altre letture con l'alias
 // `n`, da servire vuote senza consumare la coda.
-const CONFIG_LABELS = /\(n:(?:BusinessRule|AutoTrigger|SLAPolicyNode|DynamicCIGroup|StandardChangeCatalogEntry|FieldVisibilityRule|WorkflowStep)\b|risk_band_thresholds/
+// Review of 23 Sep 2026: the catalog forms too (lib/enumValueFormSites.ts) — the field library is read first.
+const CONFIG_LABELS = /\(n:(?:BusinessRule|AutoTrigger|SLAPolicyNode|DynamicCIGroup|StandardChangeCatalogEntry|FieldVisibilityRule|WorkflowStep)\b|risk_band_thresholds|\(f:FormField \{/
 
 function fakeSession(responses: Array<{ records: unknown[] }>) {
   const queue = [...responses]

@@ -7,7 +7,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 /** Il contatore dei numeri (lib/sequence.ts): ogni MERGE (c:Counter) restituisce il valore successivo. */
 let counter = 0
+/** The step of the CSV is a step of the ticket's workflow (review of 23 Sep 2026), not a terminal one. */
+let stepProbe = { known: true, terminal: false }
 const txRun = async (query: string) => {
+  if (query.includes('AS known, coalesce(target.is_terminal')) {
+    return { records: [{ get: (k: string) => (stepProbe as Record<string, unknown>)[k] }] }
+  }
   if (query.includes('MERGE (c:Counter') && query.includes('RETURN c.value')) {
     counter += 1
     return { records: [{ get: () => counter }] }
@@ -505,5 +510,35 @@ describe('importKBArticles', () => {
     expect(result.created).toBe(1)
     expect(result.errors).toEqual([expect.objectContaining({ externalId: 'K-1', message: expect.stringContaining('boh') })])
     expect(mergedKBParams(0)['category']).toBe('database')
+  })
+})
+
+// Review of 23 Sep 2026: a status of another workflow matched nothing, and the ticket kept a workflow elsewhere.
+describe('importIncidents — the status is a step of the ticket\'s own workflow', () => {
+  it('a status that is not a step of the instance\'s workflow fails its row, with its reason', async () => {
+    stepProbe = { known: false, terminal: false }
+    try {
+      const result = await importIncidents([{ external_id: 'A-1', title: 'T1', severity: 'P1' }], ctx)
+      expect(result.created).toBe(0)
+      expect(result.errors).toHaveLength(1)
+      expect(result.errors[0]!.message).toContain("is not a step of this ticket's workflow")
+    } finally {
+      stepProbe = { known: true, terminal: false }
+    }
+  })
+
+  it('a terminal step concludes the workflow instance; another one keeps it active', async () => {
+    stepProbe = { known: true, terminal: true }
+    try {
+      mockTx.run.mockClear()
+      await importIncidents([{ external_id: 'A-1', title: 'T1', severity: 'P1' }], ctx)
+      const statusWrite = mockTx.run.mock.calls.find((c) => String(c[0]).includes('SET wi.status = $wiStatus'))!
+      expect(statusWrite[1]).toMatchObject({ wiStatus: 'completed' })
+    } finally {
+      stepProbe = { known: true, terminal: false }
+    }
+    mockTx.run.mockClear()
+    await importIncidents([{ external_id: 'A-2', title: 'T2', severity: 'P1' }], ctx)
+    expect(mockTx.run.mock.calls.find((c) => String(c[0]).includes('SET wi.status = $wiStatus'))![1]).toMatchObject({ wiStatus: 'active' })
   })
 })

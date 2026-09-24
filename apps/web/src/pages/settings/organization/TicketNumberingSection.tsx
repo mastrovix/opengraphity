@@ -110,7 +110,7 @@ export function TicketNumberingSection() {
           {problem && <Hint tone="danger">{t(problem)}</Hint>}
           <div>
             <Button disabled={!dirty || !!problem || saving}
-              onClick={() => void save({ variables: { input: Object.fromEntries(KINDS.map(({ key }) => [key, { prefix: draft[key].prefix, digits: Number(draft[key].digits) }])) } })}>
+              onClick={() => save({ variables: { input: Object.fromEntries(KINDS.map(({ key }) => [key, { prefix: draft[key].prefix, digits: Number(draft[key].digits) }])) } })}>
               {t('common.save')}
             </Button>
           </div>

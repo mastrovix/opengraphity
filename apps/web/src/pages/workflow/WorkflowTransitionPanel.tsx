@@ -1,3 +1,4 @@
+import { TRANSITION_INPUT_FIELDS } from '@/lib/workflowStepStyle'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useConfirm } from '@/hooks/useConfirm'
@@ -89,8 +90,11 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
         <PanelField label={t('workflow.panel.inputField')}>
           <Select value={inputField} onChange={(e) => setInputField(e.target.value)} style={inputStyle}>
             <option value="">{t('pages.workflowStep.noneMasculine')}</option>
-            <option value="rootCause">rootCause</option>
-            <option value="notes">notes</option>
+            {TRANSITION_INPUT_FIELDS.map((f) => <option key={f} value={f}>{t(`workflow.panel.inputFieldOption.${f}`)}</option>)}
+            {/* A saved value outside the list stays selected and named, instead of reading as «None». */}
+            {inputField !== '' && !(TRANSITION_INPUT_FIELDS as readonly string[]).includes(inputField) && (
+              <option value={inputField}>{t('workflow.panel.inputFieldSaved', { value: inputField })}</option>
+            )}
           </Select>
         </PanelField>
       )}

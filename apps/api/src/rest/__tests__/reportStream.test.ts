@@ -16,7 +16,11 @@ vi.mock('../../lib/aiSettings.js', () => import('../../lib/__tests__/aiSettingsF
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
 vi.mock('../../lib/logger.js', () => ({ logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } }))
 vi.mock('../../services/reportAI.js', () => ({ streamReportAI: vi.fn() }))
-vi.mock('../../services/reportConversation.js', () => ({ runReportConversation: vi.fn() }))
+vi.mock('../../services/reportConversation.js', () => ({ runReportConversation: vi.fn(), REPORT_QUESTION_MAX_CHARS: 4000 }))
+const rate = vi.hoisted(() => ({ allowed: true }))
+vi.mock('../../lib/webhookRateLimit.js', () => ({
+  consumeMinuteRate: vi.fn(async () => ({ allowed: rate.allowed, count: 1, limit: 10, retryAfterSeconds: 42 })),
+}))
 vi.mock('../../middleware/auth.js', () => ({
   authMiddleware: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
     const role = typeof req.headers['x-test-role'] === 'string' ? req.headers['x-test-role'] : 'operator'
@@ -29,7 +33,8 @@ const { getSession } = await import('@opengraphity/neo4j')
 const { streamReportAI } = await import('../../services/reportAI.js')
 const { runReportConversation } = await import('../../services/reportConversation.js')
 const { logger } = await import('../../lib/logger.js')
-const { reportStreamRouter } = await import('../report-stream.js')
+const { reportStreamRouter, reportStreamRateKey, REPORT_STREAM_PER_MINUTE } = await import('../report-stream.js')
+const { consumeMinuteRate } = await import('../../lib/webhookRateLimit.js')
 
 type ConvArgs = Parameters<typeof runReportConversation>[0]
 
@@ -48,6 +53,7 @@ beforeAll(async () => {
 afterAll(async () => { await new Promise<void>((resolve) => server.close(() => resolve())) })
 beforeEach(() => {
   vi.clearAllMocks()
+  rate.allowed = true
   vi.mocked(getSession).mockReturnValue(session as never)
 })
 
@@ -67,6 +73,25 @@ function parseSse(text: string): Array<{ event: string; data: unknown }> {
 }
 
 describe('POST /api/report/stream — gates before the stream opens', () => {
+  // Review of 23 Sep 2026: the route the Reports page uses had no cap, and the model is paid from one key for all.
+  it('over the per-person minute cap → 429 with Retry-After, before any stream or model call', async () => {
+    rate.allowed = false
+    const res = await post({ question: 'How many incidents?' })
+    expect(res.status).toBe(429)
+    expect(res.headers.get('retry-after')).toBe('42')
+    expect(await res.json()).toMatchObject({ error: { code: 'RATE_LIMITED', limit: REPORT_STREAM_PER_MINUTE, retry_after: 42 } })
+    expect(consumeMinuteRate).toHaveBeenCalledWith(reportStreamRateKey('tenant-1', 'user-1'), REPORT_STREAM_PER_MINUTE)
+    expect(runReportConversation).not.toHaveBeenCalled()
+  })
+
+  it('a question over the cap → 400, nothing saved and nothing asked', async () => {
+    const res = await post({ question: 'x'.repeat(4001) })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ error: { code: 'QUESTION_TOO_LONG', max: 4000 } })
+    expect(runReportConversation).not.toHaveBeenCalled()
+    expect(consumeMinuteRate).not.toHaveBeenCalled()
+  })
+
   it.each(['viewer', 'approver', 'end_user'])('role %s → 403 JSON, not text/event-stream, nothing run', async (role) => {
     const res = await post({ question: 'How many incidents?' }, role)
     expect(res.status).toBe(403)
@@ -122,9 +147,34 @@ describe('POST /api/report/stream — SSE for admin/operator', () => {
       session, tenantId: 'tenant-1', userId: 'user-1', question: 'How many incidents?', conversationId: null,
     }))
     // With the asker's permissions: the model reads only what their role reads (review of 23 Sep 2026).
-    expect(streamReportAI).toHaveBeenCalledWith('tenant-1', expect.any(String), expect.any(Set), [], 'How many incidents?', expect.any(Function), expect.any(Function))
+    expect(streamReportAI).toHaveBeenCalledWith('tenant-1', expect.any(String), expect.any(Set), [], 'How many incidents?', expect.any(Function), expect.any(Function), expect.any(AbortSignal))
     expect(getSession).toHaveBeenCalledWith(undefined, 'WRITE')
     expect(session.close).toHaveBeenCalled()
+  })
+
+  it('the person goes away mid-answer: the analysis is told to stop, and no error is sent or logged', async () => {
+    let seen: AbortSignal | undefined
+    let release!: () => void
+    const held = new Promise<void>((r) => { release = r })
+    vi.mocked(runReportConversation).mockImplementation(async (a: ConvArgs) => {
+      await a.ask([], a.question)
+      return { conversationId: 'c', message: { id: 'm', role: 'assistant', content: '', createdAt: '' } } as never
+    })
+    vi.mocked(streamReportAI).mockImplementation(async (...args: unknown[]) => {
+      seen = args[7] as AbortSignal
+      ;(args[5] as (t: string) => void)('first words')
+      await held
+      throw new Error('aborted')
+    })
+    const ctrl = new AbortController()
+    const res = await fetch(base, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ question: 'long one' }), signal: ctrl.signal })
+    const reader = res.body!.getReader()
+    await reader.read()           // the first chunk arrived: the analysis is running
+    ctrl.abort()
+    await vi.waitFor(() => expect(seen?.aborted).toBe(true))
+    release()
+    await vi.waitFor(() => expect(session.close).toHaveBeenCalled())
+    expect(logger.error).not.toHaveBeenCalled()
   })
 
   it('existing conversationId is forwarded unchanged', async () => {

@@ -97,6 +97,7 @@ const withDictionary = (ui: React.ReactElement) => <DomainVocabularyContext.Prov
 
 beforeEach(() => {
   apolloFinto.reset()
+  apolloFinto.risposte['GetMe'] = { me: { id: 'u-me', name: 'Me', email: 'me@x', role: 'custom', roleName: null, permissions: ['change.write'], teams: [] } }
   hoisted.exportQuery.mockReset()
   hoisted.exportToCsv.mockReset()
   hoisted.nextFilter = null

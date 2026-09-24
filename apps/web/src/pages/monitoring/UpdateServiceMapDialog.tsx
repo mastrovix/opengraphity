@@ -326,7 +326,7 @@ export function UpdateServiceMapDialog({ map, open, onClose }: Props) {
                   {proposal.excluded.map((ci) => (
                     <div key={ci.id} style={row} data-testid="proposal-excluded" data-ci-id={ci.id}>
                       <span style={{ fontWeight: 600, marginRight: 'auto' }}>{ci.name}</span>
-                      <Button variant="secondary" size="xs" disabled={busy} aria-label={t('monitoring.services.update.readmitLabel', { name: ci.name })} onClick={() => void onReadmit(ci.id, ci.name)}>
+                      <Button variant="secondary" size="xs" disabled={busy} aria-label={t('monitoring.services.update.readmitLabel', { name: ci.name })} onClick={() => onReadmit(ci.id, ci.name)}>
                         {t('monitoring.services.update.readmit')}
                       </Button>
                     </div>

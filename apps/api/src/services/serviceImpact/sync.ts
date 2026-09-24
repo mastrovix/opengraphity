@@ -555,6 +555,8 @@ export async function syncStaleOrOldMaps(tenantId: string, now: string = new Dat
       } finally { await session.close() }
     },
     keyOf:   (r) => r.id,
+    // Each run goes on from where the previous stopped (review of 23 Sep 2026).
+    resume:  { key: `services:syncStaleOrOldMaps:${tenantId}` },
     handle:  async (r) => { await syncServiceMap(r.tenantId, r.id, 'periodic', MONITORING_ACTOR, now) },
     onError: (r, err) => log.error({ err, tenantId: r.tenantId, mapId: r.id }, 'Periodic service map synchronization failed'),
   })

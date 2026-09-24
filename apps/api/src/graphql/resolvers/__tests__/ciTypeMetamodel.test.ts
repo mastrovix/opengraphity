@@ -68,6 +68,11 @@ vi.mock('../../../lib/ciTypeDeletion.js', async (importOriginal) => {
 })
 vi.mock('../../../services/serviceImpact/sync.js', () => ({ notifyCIGraphChanged: vi.fn(async () => 0) }))
 vi.mock('../../../lib/triggerEngine.js', () => ({ invalidateTriggerCache: vi.fn() }))
+// The chains are recomputed after a change of families (review of 23 Sep 2026); the calculator has its own tests.
+vi.mock('../../../lib/chainCalculator.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../lib/chainCalculator.js')>()),
+  calculateAllChains: vi.fn(async () => ({ total: 0, app: 0, infra: 0 })),
+}))
 vi.mock('../../../lib/rulesEngine.js', () => ({ invalidateRulesCache: vi.fn() }))
 const SERVICE_MAP_FOLLOWS = vi.hoisted(() => ({ error: null as Error | null }))
 vi.mock('../../../lib/serviceMapRelationUsage.js', () => ({
@@ -392,6 +397,16 @@ describe('mutation sui tipi — scrivono SOLO tipi del tenant', () => {
   it('updateCIType: chainFamilies validate e scritte in chain_families come JSON canonico', async () => {
     await mutations.updateCIType(null, { id: 'ct-1', input: { chainFamilies: ['Infrastructure', 'Application'] } }, admin)
     expect(call(1).params).toEqual({ id: 'ct-1', tenantId: 'tenant-1', updates: { chain_families: '["Application","Infrastructure"]' } })
+    // The CIs of the tenant take the new families: their chain is recomputed (review of 23 Sep 2026).
+    const { calculateAllChains } = await import('../../../lib/chainCalculator.js')
+    expect(calculateAllChains).toHaveBeenCalledWith('tenant-1')
+  })
+
+  it('updateCIType without chainFamilies recomputes no chain', async () => {
+    const { calculateAllChains } = await import('../../../lib/chainCalculator.js')
+    vi.mocked(calculateAllChains).mockClear()
+    await mutations.updateCIType(null, { id: 'ct-1', input: { color: '#123456' } }, admin).catch(() => undefined)
+    expect(calculateAllChains).not.toHaveBeenCalled()
   })
 
   it('updateCIType: una sola famiglia resta una sola famiglia (catena non ambigua)', async () => {

@@ -243,8 +243,8 @@ export function BusinessRulesPage() {
       return (
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <GripVertical size={14} aria-hidden="true" style={{ color: 'var(--border-strong)', cursor: 'grab' }} />
-          <Button variant="ghost" title={t('admin.rules.moveUp')} aria-label={t('admin.rules.moveUp')} onClick={() => void moveRule(idx, -1)} disabled={idx === 0} style={{ padding: 2 }}><ChevronUp size={14} aria-hidden="true" color={idx === 0 ? 'var(--border)' : 'var(--color-slate)'} /></Button>
-          <Button variant="ghost" title={t('admin.rules.moveDown')} aria-label={t('admin.rules.moveDown')} onClick={() => void moveRule(idx, 1)} disabled={idx === rules.length - 1} style={{ padding: 2 }}><ChevronDown size={14} aria-hidden="true" color={idx === rules.length - 1 ? 'var(--border)' : 'var(--color-slate)'} /></Button>
+          <Button variant="ghost" title={t('admin.rules.moveUp')} aria-label={t('admin.rules.moveUp')} onClick={() => moveRule(idx, -1)} disabled={idx === 0} style={{ padding: 2 }}><ChevronUp size={14} aria-hidden="true" color={idx === 0 ? 'var(--border)' : 'var(--color-slate)'} /></Button>
+          <Button variant="ghost" title={t('admin.rules.moveDown')} aria-label={t('admin.rules.moveDown')} onClick={() => moveRule(idx, 1)} disabled={idx === rules.length - 1} style={{ padding: 2 }}><ChevronDown size={14} aria-hidden="true" color={idx === rules.length - 1 ? 'var(--border)' : 'var(--color-slate)'} /></Button>
         </div>
       )
     } },
@@ -262,7 +262,7 @@ export function BusinessRulesPage() {
     { key: 'id', label: t('common.actions'), sortable: true, render: (_v, row) => (
       <div style={{ display: 'flex', gap: 6 }}>
         <Button variant="icon" size="xs" title={t('common.edit')} onClick={() => openEdit(row)}><Pencil size={13} aria-hidden="true" /></Button>
-        <Button variant="icon" size="xs" title={t('common.delete')} onClick={() => void handleDelete(row)} style={{ color: 'var(--color-danger)', borderColor: palette.danger.border }}><Trash2 size={13} aria-hidden="true" /></Button>
+        <Button variant="icon" size="xs" title={t('common.delete')} onClick={() => handleDelete(row)} style={{ color: 'var(--color-danger)', borderColor: palette.danger.border }}><Trash2 size={13} aria-hidden="true" /></Button>
       </div>
     ) },
   ]
@@ -336,7 +336,7 @@ export function BusinessRulesPage() {
         footer={
           <>
             <Button variant="secondary" size="xs" onClick={modal.close}>{t('common.cancel')}</Button>
-            <Button onClick={() => void handleSave()}>{modal.editing ? t('common.saveChanges') : t('admin.rules.create')}</Button>
+            <Button onClick={() => handleSave()}>{modal.editing ? t('common.saveChanges') : t('admin.rules.create')}</Button>
           </>
         }
       >

@@ -103,7 +103,7 @@ describe('ChangeCalendarPage — the period on screen', () => {
     expect(segment('Week')).toHaveAttribute('aria-pressed', 'true')
     for (const name of ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']) expect(screen.getByText(name)).toBeInTheDocument()
     expect(screen.getByText('23').style.background).toBe('var(--color-brand)')
-    expect(screen.getByText('22').style.background).toBe('var(--color-surface-alt)')
+    expect(screen.getByText('22').style.background).toBe('var(--color-surface-2)')
   })
 
   it('moves a week at a time, and "Today" comes back', async () => {
@@ -125,7 +125,7 @@ describe('ChangeCalendarPage — the period on screen', () => {
     // 31 August and 1–4 October are drawn, dimmed; the days of September are not.
     expect(screen.getByText('31').style.background).toBe('var(--color-surface-1)')
     expect(screen.getAllByText('4').map((d) => d.style.background)).toContain('var(--color-surface-1)')
-    expect(screen.getByText('15').style.background).toBe('var(--color-surface-alt)')
+    expect(screen.getByText('15').style.background).toBe('var(--color-surface-2)')
     // The whole month is one request, so the releases of this week are there too.
     expect(bars()).toEqual(expect.arrayContaining(['CHG00000001', 'CHG00000006']))
     await user.click(screen.getByRole('button', { name: 'Next period' }))

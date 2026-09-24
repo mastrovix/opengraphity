@@ -1,3 +1,4 @@
+import { useCILabels } from '@/hooks/useCILabels'
 import { useState } from 'react'
 import { useLocation, Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -37,6 +38,7 @@ export function Breadcrumb() {
   const { pathname } = useLocation()
   // F-22: l'etichetta dei tipi CI la decide il disegnatore del cliente.
   const { getCIType } = useMetamodel()
+  const ciLabels = useCILabels()
 
   const LABELS: Record<string, string> = {
     dashboard:          t('sidebar.dashboard'),
@@ -77,8 +79,9 @@ export function Breadcrumb() {
     // L'etichetta del cliente per un tipo di CI vince sulle chiavi dei tipi
     // spediti (revisione totale · F-22): il breadcrumb diceva «Server» anche
     // dopo che il disegnatore l'aveva rinominato «Host fisico».
+    // useCILabels (review of 23 Sep 2026): the per-language labels first, not `label` alone.
     const ciType = getCIType(part)
-    if (ciType?.label) return ciType.label
+    if (ciType?.label || ciType?.labels?.length) return ciLabels.typeLabel(part)
     if (LABELS[part]) return LABELS[part]
     if (/^[0-9a-f-]{20,}$/i.test(part)) return t('topbar.detail')
     if (/^\d+$/.test(part)) return t('topbar.detail')

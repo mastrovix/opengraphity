@@ -196,7 +196,7 @@ export function AutoTriggersPage() {
     { key: 'id', label: t('common.actions'), sortable: true, render: (_v, row) => (
       <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
         <Button variant="icon" size="xs" title={t('common.edit')} onClick={() => openEdit(row)}><Pencil size={14} aria-hidden="true" /></Button>
-        <Button variant="icon" size="xs" title={t('common.delete')} onClick={() => void handleDelete(row)} style={{ color: 'var(--color-danger)', borderColor: palette.danger.border }}><Trash2 size={14} aria-hidden="true" /></Button>
+        <Button variant="icon" size="xs" title={t('common.delete')} onClick={() => handleDelete(row)} style={{ color: 'var(--color-danger)', borderColor: palette.danger.border }}><Trash2 size={14} aria-hidden="true" /></Button>
       </div>
     ) },
   ]

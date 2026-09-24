@@ -74,6 +74,15 @@ describe('porta-il-fascicolo', () => {
     expect(dispatch).toHaveBeenCalledWith(cfg.valore, { issue: 25, problemNumber: 'PRB00000003' })
   })
 
+  // Review of 23 Sep 2026: every retry opened another issue.
+  it('un ritentativo trova la issue sul Problem: nessuna issue nuova, si chiede solo l\'analisi', async () => {
+    inAttesa = [{ issue: 25 }]
+    await _perITest.portaIlFascicolo(DATI)
+    expect(apriIssue).not.toHaveBeenCalled()
+    expect(ordine).toEqual(['dispatch'])
+    expect(dispatch).toHaveBeenCalledWith(cfg.valore, { issue: 25, problemNumber: 'PRB00000003' })
+  })
+
   it('senza repository configurato non si chiama GitHub, e non è un errore', async () => {
     cfg.valore = null
     await expect(_perITest.portaIlFascicolo(DATI)).resolves.toBeUndefined()

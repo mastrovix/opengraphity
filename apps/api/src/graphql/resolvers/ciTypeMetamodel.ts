@@ -5,7 +5,7 @@ import { GraphQLError } from 'graphql'
 import { invalidateSchema } from '../../lib/schemaInvalidator.js'
 import { toPascalCase, CI_FIELD_TYPES, isCIFieldType } from '@opengraphity/schema-generator'
 import { assertNewCITypeName, assertNewCIFieldName, type ExistingCIType } from '../../lib/metamodelNames.js'
-import { CHAIN_FAMILIES, chainFamiliesToJSON } from '../../lib/chainCalculator.js'
+import { CHAIN_FAMILIES, chainFamiliesToJSON, calculateAllChains } from '../../lib/chainCalculator.js'
 import { assertRelationshipTypeName, defaultServiceRoleOf, splitRelationshipTypes } from '../../lib/ciMetamodelForTenant.js'
 import { assertFieldName, assertLabel } from '../../lib/cypherIdentifiers.js'
 import { parseLocalizedLabels, serializeLocalizedLabels } from '@opengraphity/types'
@@ -996,6 +996,11 @@ export function buildMetamodelMutations() {
       }, true)
 
       invalidateSchema(ctx.tenantId)
+      // The chain of a CI follows the families of its type AND of the types
+      // upstream of it (review of 23 Sep 2026): a change of families left
+      // every CI with its old chain, shown and filterable. The whole tenant is
+      // recomputed, in its batch.
+      if (updates['chain_families'] !== undefined) await calculateAllChains(ctx.tenantId)
       return fetchCITypeById(args.id, ctx.tenantId)
     },
 

@@ -38,7 +38,7 @@ import { analizzaConfigurazione } from '../lib/proposalAnalysts.js'
 import { analizzaPiattaforma } from '../lib/platformAnalyst.js'
 import { analizzaLavoroQuotidiano } from '../lib/dailyWorkAnalyst.js'
 import { analizzaConfigurazioneConIlModello } from '../lib/configurationAnalyst.js'
-import { scriviProposta, scadiLeVecchie, risvegliaLeRimandate, type ProposalToWrite } from '../lib/proposals.js'
+import { scriviProposta, scadiLeVecchie, risvegliaLeRimandate, purgaLeChiuse, type ProposalToWrite } from '../lib/proposals.js'
 
 export const PROPOSAL_SCANNER_QUEUE = 'proposal-scanner'
 
@@ -104,8 +104,9 @@ export async function proposalScannerProcessor(job: Job<ProposalScanJobData>): P
    */
   const scadute = await scadiLeVecchie(tenantId)
   const risvegliate = await risvegliaLeRimandate(tenantId)
-  if (scadute > 0 || risvegliate > 0) {
-    logger.info({ module: 'proposals', tenantId, scadute, risvegliate }, 'proposal-scanner: lifecycle swept')
+  const purgate = await purgaLeChiuse(tenantId)
+  if (scadute > 0 || risvegliate > 0 || purgate > 0) {
+    logger.info({ module: 'proposals', tenantId, scadute, risvegliate, purgate }, 'proposal-scanner: lifecycle swept')
   }
 
   /*

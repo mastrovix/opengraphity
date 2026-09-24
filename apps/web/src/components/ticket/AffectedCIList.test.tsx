@@ -47,6 +47,7 @@ async function render(cis: AffectedCIRef[], statuses?: string[]) {
       affectedCIs={cis}
       excludedTypes={[]}
       ciResults={[]}
+      canEdit
       onSearchChange={vi.fn()}
       onAddCI={vi.fn()}
       onRemoveCI={vi.fn()}
@@ -91,6 +92,7 @@ describe('AffectedCIList — i tipi di CI esclusi non si propongono', () => {
       <AffectedCIList
         affectedCIs={[]}
         excludedTypes={['certificate']}
+        canEdit
         ciResults={[ci({ id: 'srv-1', name: 'SRV-01', type: 'server' }), ci({ id: 'cert-1', name: 'cert-portale', type: 'certificate' })]}
         onSearchChange={vi.fn()}
         onAddCI={onAddCI}

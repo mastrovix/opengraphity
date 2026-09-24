@@ -42,7 +42,7 @@ describe('validateCI', () => {
   it('a thrown Error object is read too, not stringified as [object Object]', async () => {
     const r = await validateCI({ x: 1 }, { fields: [field('x', { validationScript: 'throw new Error("boom")' })] })
     expect(r.valid).toBe(false)
-    expect(r.errors['x']).not.toBe('')
+    expect(r.errors['x']).toBe('Error: boom')
   })
 
   it('a field script that passes leaves no error', async () => {
@@ -110,5 +110,25 @@ describe('getFieldDefault', () => {
     await expect(getFieldDefault('env', {}, rotto)).rejects.toThrow('default_script of field "env" failed: nope')
     const oggetto = { fields: [{ name: 'env', defaultScript: 'throw [1]' }] }
     await expect(getFieldDefault('env', {}, oggetto)).rejects.toThrow(/\[1\]/)
+  })
+})
+
+/*
+ * Review of 23 Sep 2026: the scripts run at every keystroke, on the main
+ * thread, and had no limit — `while (!input.port) {}` as a default script
+ * froze «New server» for every operator. Real QuickJS, real deadline.
+ */
+describe('a script that never ends', () => {
+  it('a default script that loops is stopped and becomes the field\'s error, not a frozen tab', async () => {
+    const started = Date.now()
+    await expect(getFieldDefault('port', {}, { fields: [{ name: 'port', defaultScript: 'while (!input.port) {}' }] }))
+      .rejects.toThrow(/default_script of field "port" failed: The script ran for more than \d+ ms and was stopped/)
+    expect(Date.now() - started).toBeLessThan(3000)
+  })
+
+  it('a validation script that loops is the field\'s error', async () => {
+    const r = await validateCI({ x: 1 }, { fields: [field('x', { validationScript: 'for (;;) {}' })] })
+    expect(r.valid).toBe(false)
+    expect(r.errors['x']).toMatch(/was stopped/)
   })
 })

@@ -1,3 +1,4 @@
+import { useCILabels } from '@/hooks/useCILabels'
 import { useLocation } from 'react-router-dom'
 // F-21: i contatori della barra non interrogano l'API a scheda nascosta.
 import { pausedWhenHidden } from '@/lib/polling'
@@ -52,6 +53,7 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   const { t } = useTranslation()
+  const ciLabels = useCILabels()
   const { pathname } = useLocation()
 
   // Same source of truth as the route guards: the PERMISSIONS of `me.role`
@@ -241,7 +243,8 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
               <SubItem
                 key={ct.name}
                 to={to}
-                label={ct.label || (labelKey ? t(labelKey) : ct.name)}
+                // useCILabels: the customer's per-language labels first (review of 23 Sep 2026).
+                label={(ct.label || ct.labels?.length) ? ciLabels.typeLabel(ct.name) : (labelKey ? t(labelKey) : ct.name)}
                 iconNode={<CIIcon icon={ct.icon} size={12} color={C.brand} />}
                 isActive={to === attiva}
               />

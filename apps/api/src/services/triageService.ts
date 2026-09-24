@@ -124,7 +124,13 @@ async function loadCIImpact(tenantId: string, ciIds: string[]): Promise<CIImpact
       WHERE ci.id IN $ciIds
       OPTIONAL MATCH (dep)-[:DEPENDS_ON]->(ci)
       WITH ci, count(DISTINCT dep) AS dependentCount
-      OPTIONAL MATCH (cap:BusinessCapability {tenant_id: $tenantId})-[*1..4]-(ci)
+      // The capabilities that REALLY depend on this CI (review of 23 Sep 2026):
+      // capability → ENABLED_BY → business application, which is the CI or
+      // whose service map INCLUDES it. It was any relationship in any
+      // direction up to 4 hops — through a shared team almost every CI
+      // «reached» some capability, and the triage raised its severity.
+      OPTIONAL MATCH (cap:BusinessCapability {tenant_id: $tenantId})-[:ENABLED_BY]->(ba:BusinessApplication {tenant_id: $tenantId})
+        WHERE ba = ci OR EXISTS { MATCH (ba)-[:HAS_SERVICE_MAP]->(:ServiceMap {tenant_id: $tenantId})-[:INCLUDES]->(ci) }
       RETURN ci.name AS name, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS type, ci.environment AS environment,
              dependentCount, collect(DISTINCT cap.name)[..5] AS capabilities
     `, { tenantId, ciIds: ciIds.slice(0, 5) })

@@ -5,7 +5,8 @@ import { reportFieldLabels } from './reportFieldLabels.js'
 import { identityLabeler, loadReportValueLabeler, type ReportValueLabeler, type ReportValueSource } from './reportValueLabels.js'
 import type { Lingua } from './enumValueLabels.js'
 import { labelsClosedTo } from './labelReadAccess.js'
-import { ForbiddenError } from './errors.js'
+import { ForbiddenError, ValidationError } from './errors.js'
+import { isQueryTimeout, REPORT_SECTION_TIMEOUT_MS } from './queryTimeout.js'
 
 export interface ReportSectionResult {
   sectionId: string
@@ -155,7 +156,14 @@ export async function executeReportSection(
     const session = getSession(undefined, 'READ')
     let executed: ExecutedData
     try {
-      const result = await session.executeRead(tx => tx.run(query, params))
+      let result: Awaited<ReturnType<typeof session.run>>
+      try {
+        result = await session.executeRead(tx => tx.run(query, params), { timeout: REPORT_SECTION_TIMEOUT_MS })
+      } catch (err) {
+        if (!isQueryTimeout(err)) throw err
+        throw new ValidationError(`The section ran for more than ${REPORT_SECTION_TIMEOUT_MS / 1000} seconds and was stopped: narrow it with a filter`,
+          { key: 'errors.report.sectionTimeout', params: { seconds: String(REPORT_SECTION_TIMEOUT_MS / 1000) } })
+      }
       const labeler = await loadReportValueLabeler(session, tenantId, [groupSource, ...columns.map(c => c.source)], opts.language)
       executed = mapSectionRecords(chartType, section, result.records, columns, { group: groupSource, labeler })
     } finally {

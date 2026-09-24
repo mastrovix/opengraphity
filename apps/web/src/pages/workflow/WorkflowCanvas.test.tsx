@@ -54,7 +54,8 @@ vi.mock('@xyflow/react', async (importOriginal) => {
         {nodes.map((n) => {
           const Box = nodeTypes[n.type!]!
           return (
-            <div key={n.id} data-node={n.id} onClick={(e) => onNodeClick?.(e, n)}>
+            // The class, `data-id` and focus React Flow gives a step: the keyboard path reads them.
+            <div key={n.id} data-node={n.id} className="react-flow__node" data-id={n.id} tabIndex={0} onClick={(e) => onNodeClick?.(e, n)}>
               <Box id={n.id} data={n.data} selected={!!n.selected} />
             </div>
           )
@@ -62,9 +63,11 @@ vi.mock('@xyflow/react', async (importOriginal) => {
         {edges.map((e) => {
           const Arrow = edgeTypes[e.type!]!
           return (
-            <Arrow key={e.id} id={e.id} data={e.data} selected={!!e.selected} animated={!!e.animated} markerEnd="url(#arrow)"
-              sourceX={0} sourceY={0} targetX={200} targetY={100}
-              sourcePosition={actual.Position.Right} targetPosition={actual.Position.Left} />
+            <div key={e.id} className="react-flow__edge" data-id={e.id} data-testid={`edge-${e.id}`} tabIndex={0}>
+              <Arrow id={e.id} data={e.data} selected={!!e.selected} animated={!!e.animated} markerEnd="url(#arrow)"
+                sourceX={0} sourceY={0} targetX={200} targetY={100}
+                sourcePosition={actual.Position.Right} targetPosition={actual.Position.Left} />
+            </div>
           )
         })}
         {children}
@@ -260,5 +263,28 @@ describe('WorkflowCanvas — legend and panels', () => {
     canvas({ children: <aside aria-label="side panel">Edit the step</aside> })
     for (const entry of LEGEND) expect(screen.getByText(entry)).toBeInTheDocument()
     expect(screen.getByRole('complementary', { name: 'side panel' })).toHaveTextContent('Edit the step')
+  })
+})
+
+// Review of 23 Sep 2026: React Flow sends Enter and Space to its own selection only.
+describe('WorkflowCanvas — from the keyboard', () => {
+  it('Enter on a focused step, or Space on a focused arrow, opens its panel as a click does', async () => {
+    const nodes = [stepNode(step('s1', 'new', 'start')), stepNode(step('s2', 'triage', 'standard', 'Triage desk'))]
+    const edges = [arrow(tr('t1', 'Take'))]
+    const { user, props } = canvas({ nodes, edges })
+    ;(screen.getByText('Triage desk').closest('.react-flow__node') as HTMLElement).focus()
+    await user.keyboard('{Enter}')
+    expect(props.onNodeClick).toHaveBeenCalledWith(expect.anything(), nodes[1])
+    screen.getByTestId('edge-t1').focus()
+    await user.keyboard(' ')
+    expect(props.onEdgeClick).toHaveBeenCalledWith(expect.anything(), edges[0])
+  })
+
+  it('other keys do nothing', async () => {
+    const nodes = [stepNode(step('s2', 'triage', 'standard', 'Triage desk'))]
+    const { user, props } = canvas({ nodes })
+    ;(screen.getByText('Triage desk').closest('.react-flow__node') as HTMLElement).focus()
+    await user.keyboard('a{Tab}')
+    expect(props.onNodeClick).not.toHaveBeenCalled()
   })
 })

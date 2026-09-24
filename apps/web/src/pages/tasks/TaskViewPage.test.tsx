@@ -397,6 +397,17 @@ describe('TaskViewPage: the deployment plan', () => {
     await attendiURL('/changes/ch-1')
   })
 
+  // Review of 23 Sep 2026: a refused save cleared the flag anyway, and «Complete» locked the old plan.
+  it('a refused save keeps the plan unsaved: «Save plan» stays, «Complete» stays disabled', async () => {
+    apolloFinto.esiti['SaveDeployPlan'] = { error: new Error('a step ends before it starts') }
+    const { user } = setUp('deploy-plan', 'dp-1', { teams: ['t-sup'] })
+    await user.type(screen.getByLabelText('Title *'), ' and cache')
+    await user.click(screen.getByRole('button', { name: 'Save plan' }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('a step ends before it starts'))
+    expect(screen.getByRole('button', { name: 'Save plan' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Complete the plan' })).toBeDisabled()
+  })
+
   it('the owner team reads the plan and nudges the support team instead', () => {
     setUp('deploy-plan', 'dp-1', { teams: ['t-own'] })
     expect(screen.getByLabelText('Title *')).toBeDisabled()

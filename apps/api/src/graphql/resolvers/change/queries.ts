@@ -698,19 +698,19 @@ export async function changeImpactedCIs(_: unknown, args: { changeId: string; de
     }>(session, `
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:AFFECTS_CI]->(affected)
       WHERE affected.tenant_id = $tenantId AND coalesce(c.deleted, false) = false
-      MATCH path = (impacted)-[:${relPattern}*1..${depth}]->(affected)
-      WHERE impacted.tenant_id = $tenantId
-        AND NOT (c)-[:AFFECTS_CI]->(impacted)
-      WITH impacted, affected, path, length(path) AS dist
-      ORDER BY dist ASC
-      WITH impacted, affected,
-           collect(path)[0] AS bestPath,
-           min(dist) AS distance
-      WITH impacted, affected, bestPath, distance
-      RETURN DISTINCT
+      WITH collect(DISTINCT affected) AS targets
+      UNWIND targets AS affected
+      // The candidates first, then one shortest path per pair — the incident's
+      // way (B-34), review of 23 Sep 2026: every path up to 5 hops was
+      // enumerated only to keep the first.
+      MATCH (impacted)-[:${relPattern}*1..${depth}]->(affected)
+      WHERE impacted.tenant_id = $tenantId AND NOT impacted IN targets
+      WITH DISTINCT impacted, affected
+      MATCH bestPath = shortestPath((impacted)-[:${relPattern}*1..${depth}]->(affected))
+      RETURN
         properties(impacted) AS impactedProps, head([l IN labels(impacted) WHERE l <> 'ConfigurationItem']) AS impactedLabel,
         properties(affected) AS affectedProps, head([l IN labels(affected) WHERE l <> 'ConfigurationItem']) AS affectedLabel,
-        distance,
+        length(bestPath) AS distance,
         [n IN nodes(bestPath) | n.name] AS pathNames
       ORDER BY distance ASC, impactedProps.name ASC
     `, { changeId: args.changeId, tenantId: ctx.tenantId })

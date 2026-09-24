@@ -15,7 +15,7 @@ import type {
   ConditionEvaluator,
   StepEnteredListener,
 } from './types.js'
-import { WORKFLOW_ACTION_TYPES, isWorkflowActionType } from './types.js'
+import { WAIT_EXIT_TRIGGERS, WORKFLOW_ACTION_TYPES, isWorkflowActionType } from './types.js'
 import { runAction } from './actions.js'
 
 const workflowLogger = pino({ level: process.env['LOG_LEVEL'] ?? 'info' }).child({ module: 'workflow' })
@@ -305,6 +305,76 @@ export class WorkflowEngine {
    *  - lo status dell'entità è sincronizzato nella stessa transazione, con
    *    label esplicita.
    */
+  /**
+   * Schedules the timer of a `timer_wait` step just entered; returns the
+   * problem, when the workflow will never leave the step, or null.
+   *
+   * Il timer ha un id (revisione totale · E-28): senza `jobId` un
+   * rientro nello stesso passo di attesa accodava un SECONDO timer, che
+   * poi transizionava due volte. La coda è quella del tenant, aperta
+   * una volta per processo: prima una `Queue` nuova a ogni transizione
+   * lasciava connessioni aperte quando `add` lanciava.
+   */
+  private async scheduleTimerWait(
+    session: Session,
+    t: { instanceId: string; queueTenantId: string; tenantId: string; stepId: string; stepName: string; delayMinutes: number },
+  ): Promise<string | null> {
+    try {
+      // The tenant's own queue (23 Sep 2026): a producer singleton of
+      // @opengraphity/events, never closed here.
+      const { tenantQueue } = await import('@opengraphity/events')
+      const queue = tenantQueue('notification-jobs', t.queueTenantId)
+      // Il passo di arrivo si legge ADESSO solo per dire subito se l'arco
+      // manca (un passo di attesa senza uscita automatica è una definizione
+      // rotta, e l'amministratore lo deve sapere al primo ingresso). Chi
+      // esegue il job lo risolve di nuovo al momento della scadenza —
+      // in mezzo il workflow può essere cambiato (B-18): il nome nel
+      // payload è un'indicazione, non il bersaglio.
+      const nextTransRes = await session.executeRead(tx =>
+        tx.run(`
+          MATCH (step:WorkflowStep {id: $stepId, tenant_id: $tenantId})-[tr:TRANSITIONS_TO]->(nextStep:WorkflowStep)
+          WHERE tr.trigger IN $exitTriggers
+          RETURN nextStep.name AS toStep
+          ORDER BY coalesce(nextStep.step_order, 999), nextStep.name
+          LIMIT 1
+        `, { stepId: t.stepId, tenantId: t.tenantId, exitTriggers: [...WAIT_EXIT_TRIGGERS] }),
+      )
+      const toStep = nextTransRes.records[0]?.get('toStep') as string | null
+      if (toStep) {
+        // Re-entering the step REPLACES the timer (review of 23 Sep 2026):
+        // the id is one per instance and step, and BullMQ ignores an add
+        // whose id it still holds — completed jobs were kept, so a second
+        // visit scheduled nothing and the ticket waited for ever. The
+        // earlier visit's job goes (pending or done), and completed
+        // timers no longer pile up in Redis.
+        const jobId = `timer_wait:${t.instanceId}:${t.stepId}`
+        await queue.remove(jobId)
+        await queue.add('timer_wait', {
+          instanceId: t.instanceId,
+          toStep,
+          tenantId:   t.queueTenantId,
+        }, {
+          delay: t.delayMinutes * 60 * 1000,
+          // E-28: un'attesa per istanza e per passo. Un rientro nello
+          // stesso passo sostituisce il timer, non ne aggiunge un secondo.
+          jobId,
+          removeOnComplete: true,
+          removeOnFail:     { age: 7 * 24 * 3600 },
+        })
+        workflowLogger.info({ instanceId: t.instanceId, toStep, delayMinutes: t.delayMinutes }, '[workflow-engine] timer_wait job scheduled')
+      } else {
+        const msg = `timer_wait: step "${t.stepName}" has no automatic or timer transition — the workflow will never leave this step`
+        workflowLogger.error({ instanceId: t.instanceId, stepName: t.stepName }, `[workflow-engine] ${msg}`)
+        return msg
+      }
+    } catch (e) {
+      const msg = `timer_wait scheduling failed: ${e instanceof Error ? e.message : String(e)} — the workflow will never leave step "${t.stepName}"`
+      workflowLogger.error({ err: e, instanceId: t.instanceId }, `[workflow-engine] ${msg}`)
+      return msg
+    }
+    return null
+  }
+
   async transition(
     session: Session,
     input: TransitionInput,
@@ -683,55 +753,11 @@ export class WorkflowEngine {
         workflowLogger.error({ instanceId: input.instanceId, stepName: nextStepName, timerDelayMinutes }, `[workflow-engine] ${msg}`)
         actionErrors.push(msg)
       } else if (nextStepType === 'timer_wait') {
-        /**
-         * Il timer ha un id (revisione totale · E-28): senza `jobId` un
-         * rientro nello stesso passo di attesa accodava un SECONDO timer, che
-         * poi transizionava due volte. La coda è quella del tenant, aperta
-         * una volta per processo: prima una `Queue` nuova a ogni transizione
-         * lasciava connessioni aperte quando `add` lanciava.
-         */
-        try {
-          // The tenant's own queue (23 Sep 2026): a producer singleton of
-          // @opengraphity/events, never closed here.
-          const { tenantQueue } = await import('@opengraphity/events')
-          const queue = tenantQueue('notification-jobs', wi['tenant_id'] as string)
-          // Il passo di arrivo si legge ADESSO solo per dire subito se l'arco
-          // manca (un passo di attesa senza uscita automatica è una definizione
-          // rotta, e l'amministratore lo deve sapere al primo ingresso). Chi
-          // esegue il job lo risolve di nuovo al momento della scadenza —
-          // in mezzo il workflow può essere cambiato (B-18): il nome nel
-          // payload è un'indicazione, non il bersaglio.
-          const nextTransRes = await session.executeRead(tx =>
-            tx.run(`
-              MATCH (step:WorkflowStep {id: $stepId, tenant_id: $tenantId})-[tr:TRANSITIONS_TO {trigger: 'automatic'}]->(nextStep:WorkflowStep)
-              RETURN nextStep.name AS toStep
-              ORDER BY coalesce(nextStep.step_order, 999), nextStep.name
-              LIMIT 1
-            `, { stepId: nextStepId, tenantId: input.tenantId }),
-          )
-          const toStep = nextTransRes.records[0]?.get('toStep') as string | null
-          if (toStep) {
-            await queue.add('timer_wait', {
-              instanceId: input.instanceId,
-              toStep,
-              tenantId:   wi['tenant_id'] as string,
-            }, {
-              delay: delayMinutes * 60 * 1000,
-              // E-28: un'attesa per istanza e per passo. Un rientro nello
-              // stesso passo sostituisce il timer, non ne aggiunge un secondo.
-              jobId: `timer_wait:${input.instanceId}:${nextStepId}`,
-            })
-            workflowLogger.info({ instanceId: input.instanceId, toStep, delayMinutes }, '[workflow-engine] timer_wait job scheduled')
-          } else {
-            const msg = `timer_wait: step "${nextStepName}" has no automatic transition — the workflow will never leave this step`
-            workflowLogger.error({ instanceId: input.instanceId, stepName: nextStepName }, `[workflow-engine] ${msg}`)
-            actionErrors.push(msg)
-          }
-        } catch (e) {
-          const msg = `timer_wait scheduling failed: ${e instanceof Error ? e.message : String(e)} — the workflow will never leave step "${nextStepName}"`
-          workflowLogger.error({ err: e, instanceId: input.instanceId }, `[workflow-engine] ${msg}`)
-          actionErrors.push(msg)
-        }
+        const problem = await this.scheduleTimerWait(session, {
+          instanceId: input.instanceId, queueTenantId: wi['tenant_id'] as string, tenantId: input.tenantId,
+          stepId: nextStepId, stepName: nextStepName, delayMinutes,
+        })
+        if (problem) actionErrors.push(problem)
       }
 
       for (const listener of this.stepEnteredListeners) {
@@ -884,8 +910,16 @@ export async function initialStepSelection(
       stepName: r.get('stepName') as string, definitionCategory: (r.get('defCategory') ?? null) as string | null,
     } : null
   }
+  /*
+   * A definition marked catalog-only (a catalog item's own itinerary) is never
+   * the fallback of a generic ticket (owner's decision, review of 23 Sep 2026):
+   * a catalog copy without a category, once active, took every new request by
+   * its version, which every designer save increments. It is reached only by
+   * its id, from its catalog item (the branch above).
+   */
   const res = await tx.run(`
     MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: $entityType, active: true})
+    WHERE coalesce(wd.catalog_only, false) = false
     ${INITIAL_STEP_MATCH},
       CASE
         WHEN wd.category IS NOT NULL AND wd.category = $category THEN 0

@@ -124,6 +124,8 @@ describe('CIFieldEditor', () => {
     const { user, rerender } = renderEditor({ initial: first, onSave })
     const dialog = screen.getByRole('dialog', { name: 'Edit field: ip' })
     expect(within(dialog).getByLabelText('Technical name (slug) *')).toBeDisabled()
+    // The type of an existing field does not change (review of 23 Sep 2026).
+    expect(within(dialog).getByLabelText('Type')).toBeDisabled()
     expect(within(dialog).getByLabelText('Label *')).toHaveValue('IP address')
     await user.type(within(dialog).getByLabelText('Label *'), ' (v4)')
 

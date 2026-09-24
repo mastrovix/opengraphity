@@ -578,6 +578,18 @@ describe('writeFormAnswer', () => {
     expect(queries.some((q) => q.query.includes('SET r += $props'))).toBe(false)
   })
 
+  // Review of 23 Sep 2026: on a correction the formula saw 'false' and '2000' — strings — where creation gives false and 2000.
+  it('correcting an answer, the formula sees the other answers with their type, as at creation', async () => {
+    graph({ ...TICKET, urgent: false })
+    let seen: Record<string, unknown> = {}
+    vi.mocked(runFormulaScript).mockImplementation(async (_code, input) => { seen = input as Record<string, unknown>; return { ok: true, value: 1 } as never })
+    await writeFormAnswer(session, 't1', 'sr-1', 'detail', 'y')
+    expect(seen['cost']).toBe(2000)
+    expect(seen['urgent'] === undefined || seen['urgent'] === false).toBe(true)
+    expect(seen['sys']).toEqual(['mail', 'crm'])
+    expect(seen['detail']).toBe('y')
+  })
+
   it('a request deleted between the read and the write is NOT FOUND', async () => {
     graph(TICKET, { written: false })
     expect(await errorKey(() => writeFormAnswer(session, 't1', 'sr-1', 'detail', 'z'))).toBe('errors.notFound')

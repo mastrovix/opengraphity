@@ -57,3 +57,60 @@ describe('runPagedPass', () => {
     await expect(runPagedPass<Row>({ fetchPage: async () => (page++ === 0 ? rows(2, 10) : rows(2, 0)), keyOf: (r) => r.id, handle: async () => {}, onError: vi.fn(), pageSize: 2 })).rejects.toThrow(/cursor did not advance/)
   })
 })
+
+/*
+ * Review of 23 Sep 2026: every run started from the first key, so 4,000 rows
+ * that kept failing hid every row after them, for ever.
+ */
+describe('runPagedPass — resuming where the previous run stopped', () => {
+  const memoryStore = () => {
+    const m = new Map<string, string>()
+    return {
+      m,
+      get: vi.fn(async (k: string) => m.get(k) ?? null),
+      set: vi.fn(async (k: string, v: string) => { m.set(k, v) }),
+      clear: vi.fn(async (k: string) => { m.delete(k) }),
+    }
+  }
+
+  it('a truncated run saves its cursor; the next one goes on from there, wraps to the first key and stops where it began', async () => {
+    const store = memoryStore()
+    const seen: string[][] = [[], []]
+    let run = 0
+    const pass = (maxPages: number) => runPagedPass<Row>({
+      fetchPage: async (cursor, limit) => source(250)(cursor, limit),
+      keyOf: (r) => r.id, handle: async (r) => { seen[run]!.push(r.id) }, onError: vi.fn(),
+      pageSize: 100, maxPages, resume: { key: 'events:x:t1', store },
+    })
+    expect(await pass(2)).toEqual({ evaluated: 200, failed: 0, truncated: true })
+    expect(store.m.get('events:x:t1')).toBe('r00199')
+    run = 1
+    expect(await pass(5)).toEqual({ evaluated: 250, failed: 0, truncated: false })
+    // The rest first, then from the start up to where this run began: every row once in the lap.
+    expect(seen[1]!.slice(0, 50)).toEqual(rows(50, 200).map((r) => r.id))
+    expect(seen[1]!.slice(50)).toEqual(rows(200).map((r) => r.id))
+    // The lap is complete: the next run starts from the first key.
+    expect(store.m.has('events:x:t1')).toBe(false)
+  })
+
+  it('rows that keep failing in front no longer hide the rows after them', async () => {
+    const store = memoryStore()
+    const handled = new Set<string>()
+    const pass = () => runPagedPass<Row>({
+      fetchPage: async (cursor, limit) => source(500)(cursor, limit),
+      keyOf: (r) => r.id,
+      handle: async (r) => { if (r.id < 'r00400') throw new Error('always failing'); handled.add(r.id) },
+      onError: vi.fn(), pageSize: 100, maxPages: 3, resume: { key: 'k', store },
+    })
+    await pass()
+    expect(handled.size).toBe(0)
+    await pass()
+    expect(handled.size).toBe(100)
+  })
+
+  it('without resume nothing is read or saved: every run starts from the first key', async () => {
+    const store = memoryStore()
+    await runPagedPass<Row>({ fetchPage: async (c, l) => source(50)(c, l), keyOf: (r) => r.id, handle: async () => {}, onError: vi.fn(), pageSize: 100 })
+    expect(store.get).not.toHaveBeenCalled()
+  })
+})

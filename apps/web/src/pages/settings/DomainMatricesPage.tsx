@@ -317,7 +317,7 @@ function PreApprovedChangeTypesCard() {
               {t('pages.domainMatrices.preApproved.none')}
             </p>
           )}
-          <Button onClick={() => void savePreApproved({ variables: { types: current } })} disabled={!dirty || saving}>
+          <Button onClick={() => savePreApproved({ variables: { types: current } })} disabled={!dirty || saving}>
             <Save size={14} /> {t('common.save')}
           </Button>
         </>
@@ -422,7 +422,7 @@ function RiskBandsCard() {
             <Button variant="secondary" onClick={addRow}>
               <Plus size={14} /> {t('pages.domainMatrices.riskBands.addBand')}
             </Button>
-            <Button onClick={() => void saveRiskBands({ variables: { entries: current.map(({ band, upTo }) => ({ band, upTo })) } })} disabled={!canSave}>
+            <Button onClick={() => saveRiskBands({ variables: { entries: current.map(({ band, upTo }) => ({ band, upTo })) } })} disabled={!canSave}>
               <Save size={14} /> {t('common.save')}
             </Button>
           </div>
@@ -475,7 +475,7 @@ function EnvironmentWeightCard() {
               style={{ width: 90 }}
               aria-label={t('pages.domainMatrices.environmentWeight.title')}
             />
-            <Button onClick={() => void saveWeight({ variables: { weight: parsed } })} disabled={draft === null || !valid || savingWeight}>
+            <Button onClick={() => saveWeight({ variables: { weight: parsed } })} disabled={draft === null || !valid || savingWeight}>
               <Save size={14} /> {t('common.save')}
             </Button>
           </div>

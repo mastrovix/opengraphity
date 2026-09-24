@@ -38,7 +38,7 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   {
     anyOf: ['workspace.use'],
     query: [
-      'globalSearch', 'entityFilterFields', 'searchUsers', 'users', 'user', 'teams', 'team',
+      'globalSearch', 'entityFilterFields', 'searchUsers', 'usersByIds', 'users', 'user', 'teams', 'team',
       'myTasks', 'myPendingApprovals', 'pendingTicketApprovals', 'myNotifications', 'isWatching', 'watchers',
       'notificationRouting', 'aiSettings', 'tenantTimezoneSettings', 'tenantInAppRetentionDays', 'serviceCalendars',
       'ciTypes', 'baseCIType', 'itilTypes', 'itilTypeFields', 'ticketCIExclusions',
@@ -221,7 +221,7 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
       // modello e riempie il costruttore: la puo chiedere chi salva i report.
       'proposeReportSection', 'removeReportSection', 'reorderReportSections', 'exportReportPDF', 'exportReportExcel'],
   },
-  { anyOf: ['report.schedule'], mutation: ['updateReportSchedule'] },
+  { anyOf: ['report.schedule'], query: ['reportDeliveryChannels'], mutation: ['updateReportSchedule'] },
   { anyOf: ['report.ai'], mutation: ['askReport'] },
   {
     anyOf: ['dashboard.use'],

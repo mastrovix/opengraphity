@@ -15,7 +15,7 @@ vi.mock('../../../lib/cache.js', () => ({
   metamodelCacheKey: (prefix: string, tenantId: string) => `${prefix}:${tenantId}`,
 }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('../../../lib/chainCalculator.js', () => ({ calculateChain: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('../../../lib/chainCalculator.js', () => ({ calculateChain: vi.fn().mockResolvedValue(undefined), recalculateChainsFrom: vi.fn().mockResolvedValue(1) }))
 vi.mock('../../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) } }))
 vi.mock('../../../services/serviceImpact/sync.js', () => ({ notifyCIGraphChanged: vi.fn().mockResolvedValue(1) }))
 vi.mock('../../../lib/ciLabelsForTenant.js', () => ({
@@ -50,6 +50,9 @@ describe('addCIRelationship / removeCIRelationship: notifica ai servizi monitora
     expect(await ciRelationshipResolvers.Mutation.addCIRelationship(null, { sourceId: 'app-3', targetId: 'srv-9', relationType: 'DEPENDS_ON' }, ctx)).toBe(true)
     expect(notifyCIGraphChanged).toHaveBeenCalledWith('t1', ['app-3', 'srv-9'], 'ci_relationship.added:DEPENDS_ON')
     expect(vi.mocked(notifyCIGraphChanged).mock.invocationCallOrder[0]!).toBeGreaterThan(session.executeWrite.mock.invocationCallOrder[0]!)
+    // The chain flows downstream: the target and what lies below it are recomputed (review of 23 Sep 2026).
+    const { recalculateChainsFrom } = await import('../../../lib/chainCalculator.js')
+    expect(recalculateChainsFrom).toHaveBeenCalledWith('srv-9', 't1')
   })
 
   it('rimozione: stessa notifica (una relazione tolta fa uscire dei componenti)', async () => {

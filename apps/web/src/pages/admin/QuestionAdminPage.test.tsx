@@ -429,6 +429,21 @@ describe('creating a question', () => {
     expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument()
   })
 
+  // Review of 23 Sep 2026: `isNew` went false only after the list was read again; a second click created a second question.
+  it('a double click on Save creates one question, and a later Save updates it', async () => {
+    apolloFinto.esiti['CreateAssessmentQuestion'] = { data: { createAssessmentQuestion: { id: 'q-new' } } }
+    const { user } = mount()
+    await user.click(screen.getByRole('button', { name: 'New' }))
+    await user.type(textField(), 'Does it need downtime?')
+    await user.type(answer(1), 'Yes')
+    await user.dblClick(save())
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Question created'))
+    expect(apolloFinto.chiamate['CreateAssessmentQuestion']).toHaveLength(1)
+    await user.click(save())
+    expect(apolloFinto.chiamate['CreateAssessmentQuestion']).toHaveLength(1)
+    expect(apolloFinto.chiamata('UpdateAssessmentQuestion')).toMatchObject({ id: 'q-new' })
+  })
+
   it('a refused creation shows the reason and keeps the new question in the editor', async () => {
     apolloFinto.esiti['CreateAssessmentQuestion'] = { error: new Error('One answer option has no text') }
     const { user } = mount()

@@ -16,6 +16,7 @@ import { config } from '../lib/config.js'
 import { logger } from '../lib/logger.js'
 import { assertSafeReadOnlyCypher, redactSensitiveValue, UnsafeCypherError, foreignTenantIn } from '../lib/cypherGuard.js'
 import { labelsClosedTo } from '../lib/labelReadAccess.js'
+import { firstRecords, isQueryTimeout, REPORT_AI_MAX_ROWS, REPORT_AI_QUERY_TIMEOUT_MS } from '../lib/queryTimeout.js'
 
 // ── Model ─────────────────────────────────────────────────────────────────
 
@@ -41,62 +42,82 @@ const MAX_TOKENS_PER_TURN = 4096
 const schemaCache = new Map<string, { schema: string; expiresAt: number }>()
 
 /**
- * Quanti nodi e quante relazioni si guardano per ricavare FORMA del grafo
- * (revisione totale · D-23).
+ * How many nodes of EACH label are read to learn the shape of the graph
+ * (full review D-23, then review of 23 Sep 2026).
  *
- * Le due letture che elencano proprietà e relazioni erano `MATCH (n)` e
- * `MATCH (a)-[r]->(b)` senza etichetta: una scansione di tutti i nodi e di
- * tutte le relazioni del database, alla prima domanda di ogni cinque minuti.
- * Per sapere «quali proprietà ha un Incident» non serve leggerli tutti: un
- * campione basta, e i CONTEGGI (che devono essere esatti, perché finiscono
- * nella risposta) restano un'aggregazione a parte.
+ * The property and relationship readings were once `MATCH (n)` and
+ * `MATCH (a)-[r]->(b)` over the whole database; then a sample of the first
+ * 20,000 nodes of the tenant, not stratified by label — on a large tenant
+ * whole labels (tickets written later than the audit entries) fell out of
+ * «Available nodes». Now the labels come from the exact counts, and each
+ * label is sampled on its own: its first nodes give its properties and its
+ * outgoing relationships.
  */
-const SCHEMA_NODE_SAMPLE = 20_000
-const SCHEMA_REL_SAMPLE  = 20_000
+export const SCHEMA_SAMPLE_PER_LABEL = 200
+
+/** A label read from the database, as a Cypher identifier. */
+const quotedLabel = (label: string): string => '`' + label.replace(/`/g, '``') + '`'
 
 async function buildSchemaContext(session: ReturnType<typeof getSession>, tenantId: string): Promise<string> {
-  const nodesResult = await session.executeRead((tx) => tx.run(`
-    MATCH (n)
-    WHERE n.tenant_id = $tenantId
-    WITH n LIMIT toInteger($nodeSample)
-    WITH head([l IN labels(n) WHERE l <> 'ConfigurationItem']) AS label, keys(n) AS props
-    WITH label, [p IN props WHERE p <> 'tenant_id'] AS props
-    RETURN DISTINCT label, props
-    ORDER BY label
-  `, { tenantId, nodeSample: SCHEMA_NODE_SAMPLE }))
-  const relsResult = await session.executeRead((tx) => tx.run(`
-    MATCH (a)-[r]->(b)
-    WHERE a.tenant_id = $tenantId
-    WITH a, r, b LIMIT toInteger($relSample)
-    RETURN DISTINCT
-      head([l IN labels(a) WHERE l <> 'ConfigurationItem']) AS from,
-      type(r) AS rel,
-      head([l IN labels(b) WHERE l <> 'ConfigurationItem']) AS to
-    ORDER BY from, rel
-  `, { tenantId, relSample: SCHEMA_REL_SAMPLE }))
   const countsResult = await session.executeRead((tx) => tx.run(`
     MATCH (n)
     WHERE n.tenant_id = $tenantId
-    RETURN head([l IN labels(n) WHERE l <> 'ConfigurationItem']) AS label, count(n) AS count
+    WITH head([l IN labels(n) WHERE l <> 'ConfigurationItem']) AS label, count(n) AS count
+    WHERE label IS NOT NULL
+    RETURN label, count
     ORDER BY count DESC
   `, { tenantId }))
+  const labels = countsResult.records.map((r) => r.get('label') as string)
+  // One reading per label, with the label written in the text: `MATCH (n:$(label))`
+  // is planned as a scan of every node (95 s on the demo tenant, against 2.7 s
+  // for the 103 readings with the label in the text). The labels come from the
+  // database itself, quoted.
+  const shapeOf = new Map<string, { props: string[]; rels: Array<{ rel: string; to: string }> }>()
+  await session.executeRead(async (tx) => {
+    for (const label of labels) {
+      const res = await tx.run(`
+        MATCH (n:${quotedLabel(label)})
+        WHERE n.tenant_id = $tenantId
+        WITH n LIMIT toInteger($perLabel)
+        WITH collect(n) AS sample
+        CALL (sample) {
+          UNWIND sample AS n
+          UNWIND keys(n) AS k
+          WITH k WHERE k <> 'tenant_id'
+          RETURN collect(DISTINCT k) AS props
+        }
+        CALL (sample) {
+          UNWIND sample AS a
+          MATCH (a)-[r]->(b)
+          WITH DISTINCT type(r) AS rel, head([l IN labels(b) WHERE l <> 'ConfigurationItem']) AS to
+          WHERE to IS NOT NULL
+          RETURN collect({ rel: rel, to: to }) AS rels
+        }
+        RETURN props, rels
+      `, { tenantId, perLabel: SCHEMA_SAMPLE_PER_LABEL })
+      const rec = res.records[0]
+      shapeOf.set(label, {
+        props: (rec?.get('props') as string[] | undefined) ?? [],
+        rels: (rec?.get('rels') as Array<{ rel: string; to: string }> | undefined) ?? [],
+      })
+    }
+  })
 
   let schema = '## Neo4j graph schema\n\n'
 
   schema += '### Available nodes:\n'
-  for (const r of nodesResult.records) {
+  for (const r of countsResult.records) {
     const label = r.get('label') as string
-    const props = r.get('props') as string[]
-    const countRec = countsResult.records.find((c) => c.get('label') === label)
     // `toNumber` del pacchetto: il driver dà un `number` JS per i conteggi, e
     // `.toNumber()` alla cieca rompeva l'analisi AI (giro nel browser del 14 set 2026).
-    const count = countRec ? toNumber(countRec.get('count')) : 0
-    schema += `- **${label}** (${count} nodes): ${props.join(', ')}\n`
+    const count = toNumber(r.get('count'))
+    schema += `- **${label}** (${count} nodes): ${(shapeOf.get(label)?.props ?? []).join(', ')}\n`
   }
 
   schema += '\n### Relationships:\n'
-  for (const r of relsResult.records) {
-    schema += `- (${r.get('from') as string})-[:${r.get('rel') as string}]->(${r.get('to') as string})\n`
+  for (const label of [...labels].sort()) {
+    const rels = [...(shapeOf.get(label)?.rels ?? [])].sort((x, y) => x.rel.localeCompare(y.rel) || x.to.localeCompare(y.to))
+    for (const { rel, to } of rels) schema += `- (${label})-[:${rel}]->(${to})\n`
   }
 
   return schema
@@ -293,7 +314,13 @@ export async function runGuardedCypherTool(
 
   const querySession = getSession(undefined, 'READ')
   try {
-    const result = await querySession.executeRead((tx) => tx.run(query, { tenantId }))
+    // A time limit and a row limit (lib/queryTimeout.ts): the rows past the
+    // limit are never loaded, and the model is told the answer was cut.
+    const { records, cut } = await querySession.executeRead(
+      (tx) => firstRecords<import('neo4j-driver').Record>(tx.run(query, { tenantId }), REPORT_AI_MAX_ROWS),
+      { timeout: REPORT_AI_QUERY_TIMEOUT_MS },
+    )
+    const result = { records }
     // Second line behind the guard (review of 23 Sep 2026): a node of another
     // tenant never reaches the model, whatever the guard missed.
     if (result.records.some((r) => r.keys.some((k) => foreignTenantIn(r.get(String(k)), tenantId)))) {
@@ -314,9 +341,12 @@ export async function runGuardedCypherTool(
     })
     let toolResult = JSON.stringify(rows, null, 2)
     if (toolResult.length > 8000) toolResult = toolResult.slice(0, 8000) + '\n... (truncated)'
+    if (cut) toolResult += `\n... (only the first ${REPORT_AI_MAX_ROWS} rows: aggregate, or add a LIMIT)`
     return toolResult
   } catch (err: unknown) {
-    const toolResult = `Query error: ${err instanceof Error ? err.message : String(err)}`
+    const toolResult = isQueryTimeout(err)
+      ? `Query error: it ran for more than ${REPORT_AI_QUERY_TIMEOUT_MS / 1000} seconds and was stopped. Ask something smaller: aggregate, filter, add a LIMIT.`
+      : `Query error: ${err instanceof Error ? err.message : String(err)}`
     logger.warn({ toolResult }, `${logLabel} Cypher error`)
     return toolResult
   } finally {
@@ -346,6 +376,11 @@ export interface RunReportAgentOptions {
   stream?: (event: ReportAgentEvent) => void
   /** Test seam; defaults to the shared client of `lib/aiClient.ts`. */
   client?: Anthropic
+  /**
+   * Aborted when the person who asked went away (review of 23 Sep 2026): an
+   * abandoned stream kept calling the model to the end of its budget.
+   */
+  signal?: AbortSignal
 }
 
 const LOG_LABEL = '[reportAI]'
@@ -381,7 +416,7 @@ export async function runReportAgent(opts: RunReportAgentOptions): Promise<strin
   const runTurn = async (): Promise<Anthropic.Message> => {
     if (opts.stream) {
       const emit = opts.stream
-      const s = client.messages.stream({ ...base, messages })
+      const s = client.messages.stream({ ...base, messages }, { signal: opts.signal })
       // Giro del 14 set 2026 (#52): il testo di un turno nuovo si incollava a
       // quello del turno prima («I'll query…Totale:»). Paragrafo nuovo.
       let firstDelta = true
@@ -392,11 +427,12 @@ export async function runReportAgent(opts: RunReportAgentOptions): Promise<strin
       })
       return s.finalMessage()
     }
-    return client.messages.create({ ...base, messages })
+    return client.messages.create({ ...base, messages }, { signal: opts.signal })
   }
 
   // Bounded by ToolLoopBudget (iterations, rejections, tokens, time).
   while (true) {
+    if (opts.signal?.aborted) throw new Error(`${LOG_LABEL} the person who asked went away: analysis stopped`)
     budget.beforeModelCall()
     const message = await runTurn()
     // Ogni turno dell'anello è una chiamata pagata: si conta, come le altre.

@@ -36,7 +36,13 @@ vi.mock('../../lib/logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
   return { logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => child } }
 })
-vi.mock('../incidentService.js', () => ({ createIncident: vi.fn(), addIncidentComment: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('../incidentService.js', () => ({
+  createIncident: vi.fn(), addIncidentComment: vi.fn().mockResolvedValue(undefined),
+  createdIncidentOf: (err: unknown) => {
+    const ext = (err as { extensions?: Record<string, unknown> } | null)?.extensions
+    return typeof ext?.['createdIncidentId'] === 'string' ? { id: ext['createdIncidentId'], number: String(ext['createdIncidentNumber'] ?? '') } : null
+  },
+}))
 vi.mock('../events/policy.js', () => ({ getEventPolicy: vi.fn() }))
 const runEventPipeline = vi.fn(async () => ({ outcome: 'auto_resolved' }))
 vi.mock('../events/pipeline.js', () => ({ runEventPipeline }))
@@ -82,7 +88,8 @@ const Q = {
   countEv:    /MATCH \(e:Event \{tenant_id: \$tenantId, source_id: \$sourceId\}\)\s+WHERE e\.first_seen_at >= \$since\s+RETURN count\(e\) AS n/,
   end:        /SET w\.storm_since = null, w\.storm_incident_id = null, w\.storm_last_over_at = null/,
   gauge:      /WHERE w\.storm_since IS NOT NULL\s+RETURN count\(w\) AS n/,
-  tenantStorms: /MATCH \(w:InboundWebhook \{tenant_id: \$tenantId\}\)\s+WHERE w\.storm_since IS NOT NULL AND w\.id > \$cursor\s+RETURN properties\(w\) AS props\s+ORDER BY w\.id LIMIT toInteger\(\$limit\)/,
+  tenantStorms: /MATCH \(w:InboundWebhook \{tenant_id: \$tenantId\}\)\s+WHERE \(w\.storm_since IS NOT NULL OR w\.storm_reevaluation_since IS NOT NULL\) AND w\.id > \$cursor\s+RETURN properties\(w\) AS props\s+ORDER BY w\.id LIMIT toInteger\(\$limit\)/,
+  clearOwed:  /WHERE w\.storm_reevaluation_since = \$since\s+SET w\.storm_reevaluation_since = null/,
   list:       /MATCH \(w:InboundWebhook \{tenant_id: \$tenantId, entity_type: 'event'\}\)/,
   clearedInStorm: /status: 'resolved'\}\)-\[:CORRELATED_INTO\]->\(i:Incident/,
 }
@@ -94,7 +101,7 @@ function baseRules(src: Record<string, unknown> | null = source()): Array<[RegEx
   return [
     [Q.source, src ? { props: src } : null],
     [Q.start, { id: 'hook-1' }], [Q.ciNames, [{ name: 'db-01' }, { name: 'web-02' }]], [Q.markInc, (p?: Record<string, unknown>) => ({ id: p!['incidentId'] })], [Q.setInc, { id: 'hook-1' }], [Q.markOver, null], [Q.detachInc, null],
-    [Q.countEv, { n: 340 }], [Q.end, { id: 'hook-1' }], [Q.gauge, { n: 1 }], [Q.clearedInStorm, []],
+    [Q.countEv, { n: 340 }], [Q.end, { id: 'hook-1' }], [Q.gauge, { n: 1 }], [Q.clearedInStorm, []], [Q.clearOwed, null],
   ]
 }
 
@@ -583,5 +590,33 @@ describe('fine tempesta — allarmi rientrati durante la tempesta', () => {
     expect(out.ended).toBe(1)
     expect(runEventPipeline).toHaveBeenCalledTimes(2)
     expect(runEventPipeline).toHaveBeenCalledWith({ tenantId: 't1', eventId: 'ev-a', actorId: 'monitoring', mode: 'reevaluate' })
+    // The storm ends owing the re-evaluation, and the debt is cleared once it went through.
+    expect(callMatching(Q.end)!.cypher).toContain('w.storm_reevaluation_since = $since')
+    expect(callMatching(Q.clearOwed)!.params).toEqual({ sourceId: 'hook-1', tenantId: 't1', since: STORMING.storm_since })
+  })
+
+  /*
+   * Review of 23 Sep 2026: `storm_since` is cleared before the follow-up
+   * work; when the re-evaluation failed, the retry found a source no longer
+   * storming and the pass read only storming sources — the incidents stayed
+   * open for ever.
+   */
+  it('a re-evaluation that failed stays owed: the storm is not cleared of it, and the next pass redoes it', async () => {
+    vi.mocked(getEventPolicy).mockResolvedValue(policy({ storm_cooldown_minutes: 1 }) as never)
+    onCypher([...baseRules(), [Q.tenantStorms, (p?: Record<string, unknown>) => (p!['cursor'] === '' ? [{ props: source({ ...STORMING, storm_last_over_at: minutesAgo(5) }) }] : [])],
+      [Q.clearedInStorm, [{ eventId: 'ev-a' }]]])
+    vi.mocked(runEventPipeline).mockRejectedValueOnce(new Error('neo4j busy'))
+    await expect(endCooledStorms('t1', NOW)).rejects.toThrow(/failed the cooldown check/)
+    expect(callMatching(Q.clearOwed)).toBeUndefined()
+
+    // The next pass: the source no longer storms, but owes the re-evaluation.
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never); invalidateSourceCache()
+    onCypher([...baseRules(), [Q.tenantStorms, (p?: Record<string, unknown>) => (p!['cursor'] === '' ? [{ props: source({ storm_reevaluation_since: STORMING.storm_since }) }] : [])],
+      [Q.clearedInStorm, [{ eventId: 'ev-a' }]]])
+    await expect(endCooledStorms('t1', NOW)).resolves.toMatchObject({ ended: 0, active: 0, failed: 0 })
+    expect(runEventPipeline).toHaveBeenCalledWith({ tenantId: 't1', eventId: 'ev-a', actorId: 'monitoring', mode: 'reevaluate' })
+    expect(callMatching(Q.clearOwed)!.params).toMatchObject({ since: STORMING.storm_since })
+    // Not a new end: nothing published again.
+    expect(publishEvent).not.toHaveBeenCalled()
   })
 })

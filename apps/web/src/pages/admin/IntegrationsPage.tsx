@@ -305,18 +305,22 @@ export function IntegrationsPage() {
     } catch (e) { showError(e, t('toast.integration.testError', { error: errorMessage(e) })) }
   }
 
-  async function handleRegenToken(id: string) {
+  // Review of 23 Sep 2026: one click replaced the credential, and every
+  // integration using the old one started failing. Asked first, like delete.
+  async function handleRegenToken(row: InboundWebhook) {
+    if (!await confirm({ title: t('admin.integrations.regenTokenTitle', { name: row.name }), body: t('admin.integrations.regenTokenBody'), danger: true, confirmLabel: t('admin.integrations.regenToken') })) return
     try {
-      const res = await regenToken({ variables: { id } })
+      const res = await regenToken({ variables: { id: row.id } })
       const token = (res.data as { regenerateWebhookToken?: { token: string } } | undefined)?.regenerateWebhookToken?.token
       if (!token) throw new Error(t('monitoring.errors.tokenMissing', { operation: 'regenerateWebhookToken' }))
       setSecret(token); setModal('secret')
     } catch (e) { showError(e, t('toast.integration.tokenRegenFailed', { error: errorMessage(e) })) }
   }
 
-  async function handleRegenApiKey(id: string) {
+  async function handleRegenApiKey(row: ApiKeyRow) {
+    if (!await confirm({ title: t('admin.integrations.regenKeyTitle', { name: row.name }), body: t('admin.integrations.regenKeyBody'), danger: true, confirmLabel: t('admin.integrations.regenKey') })) return
     try {
-      const res = await regenKey({ variables: { id } })
+      const res = await regenKey({ variables: { id: row.id } })
       const key = (res.data as { regenerateApiKey?: { key: string } } | undefined)?.regenerateApiKey?.key
       if (!key) throw new Error(t('admin.integrations.errors.keyMissing'))
       setSecret(key); setModal('secret')
@@ -358,8 +362,8 @@ export function IntegrationsPage() {
     { key: 'lastReceivedAt', label: t('admin.integrations.columns.lastReceived'), sortable: true, render: (v) => fmtDate(v as string | null) },
     { key: 'createdAt', label: '', render: (_v, row) => row.entityType === 'event' ? null : (
       <div style={ROW_ACTIONS}>
-        <Button variant="icon" size="xs" title={t('admin.integrations.regenToken')} aria-label={t('admin.integrations.regenToken')} onClick={() => void handleRegenToken(row.id)}><RefreshCw size={13} aria-hidden="true" /></Button>
-        <Button variant="danger" size="xs" aria-label={t('common.delete')} title={t('common.delete')} onClick={() => void handleDeleteInbound(row)}><Trash2 size={13} aria-hidden="true" /></Button>
+        <Button variant="icon" size="xs" title={t('admin.integrations.regenToken')} aria-label={t('admin.integrations.regenTokenOf', { name: row.name })} onClick={() => handleRegenToken(row)}><RefreshCw size={13} aria-hidden="true" /></Button>
+        <Button variant="danger" size="xs" aria-label={t('common.delete')} title={t('common.delete')} onClick={() => handleDeleteInbound(row)}><Trash2 size={13} aria-hidden="true" /></Button>
       </div>
     ) },
   ]
@@ -381,8 +385,8 @@ export function IntegrationsPage() {
     { key: 'lastError', label: t('admin.integrations.columns.lastError'), sortable: true, render: (v) => <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-danger)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{v ? String(v) : '—'}</span> },
     { key: 'retryOnFailure', label: '', render: (_v, row) => (
       <div style={ROW_ACTIONS}>
-        <Button variant="icon" size="xs" title={t('admin.integrations.test')} aria-label={t('admin.integrations.test')} onClick={() => void handleTestOutbound(row.id)}><Play size={13} aria-hidden="true" /></Button>
-        <Button variant="danger" size="xs" aria-label={t('common.delete')} title={t('common.delete')} onClick={() => void handleDeleteOutbound(row)}><Trash2 size={13} aria-hidden="true" /></Button>
+        <Button variant="icon" size="xs" title={t('admin.integrations.test')} aria-label={t('admin.integrations.test')} onClick={() => handleTestOutbound(row.id)}><Play size={13} aria-hidden="true" /></Button>
+        <Button variant="danger" size="xs" aria-label={t('common.delete')} title={t('common.delete')} onClick={() => handleDeleteOutbound(row)}><Trash2 size={13} aria-hidden="true" /></Button>
       </div>
     ) },
   ]
@@ -400,8 +404,8 @@ export function IntegrationsPage() {
     { key: 'requestCount', label: t('admin.integrations.columns.requests'), sortable: true, render: (v) => String(v ?? 0) },
     { key: 'createdAt', label: '', render: (_v, row) => (
       <div style={ROW_ACTIONS}>
-        <Button variant="icon" size="xs" title={t('admin.integrations.regenKey')} aria-label={t('admin.integrations.regenKey')} onClick={() => void handleRegenApiKey(row.id)}><RefreshCw size={13} aria-hidden="true" /></Button>
-        <Button variant="danger" size="xs" aria-label={t('common.delete')} title={t('common.delete')} onClick={() => void handleDeleteKey(row)}><Trash2 size={13} aria-hidden="true" /></Button>
+        <Button variant="icon" size="xs" title={t('admin.integrations.regenKey')} aria-label={t('admin.integrations.regenKeyOf', { name: row.name })} onClick={() => handleRegenApiKey(row)}><RefreshCw size={13} aria-hidden="true" /></Button>
+        <Button variant="danger" size="xs" aria-label={t('common.delete')} title={t('common.delete')} onClick={() => handleDeleteKey(row)}><Trash2 size={13} aria-hidden="true" /></Button>
       </div>
     ) },
   ]
@@ -462,7 +466,7 @@ export function IntegrationsPage() {
               <div><label htmlFor={fid('in-transform-script')} style={labelS}>{t('admin.integrations.form.transformScript')}</label><textarea id={fid('in-transform-script')} style={textareaS} value={inForm.transformScript} onChange={e => setInForm({ ...inForm, transformScript: e.target.value })} /></div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
                 <Button variant="secondary" onClick={() => setModal(null)}>{t('common.cancel')}</Button>
-                <Button onClick={() => void handleCreateInbound()} disabled={!inFormValid}>{t('common.create')}</Button>
+                <Button onClick={() => handleCreateInbound()} disabled={!inFormValid}>{t('common.create')}</Button>
               </div>
             </div>
           </ModalPortal>
@@ -513,7 +517,7 @@ export function IntegrationsPage() {
               </label>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
                 <Button variant="secondary" onClick={() => setModal(null)}>{t('common.cancel')}</Button>
-                <Button onClick={() => void handleCreateOutbound()} disabled={!outForm.name || !outForm.url}>{t('common.create')}</Button>
+                <Button onClick={() => handleCreateOutbound()} disabled={!outForm.name || !outForm.url}>{t('common.create')}</Button>
               </div>
             </div>
           </ModalPortal>
@@ -553,7 +557,7 @@ export function IntegrationsPage() {
               <div><label htmlFor={fid('key-expires-at')} style={labelS}>{t('admin.integrations.form.expiresAt')}</label><Input id={fid('key-expires-at')} style={inputS} type="date" aria-describedby={fid('key-expires-at-hint')} value={keyForm.expiresAt} onChange={e => setKeyForm({ ...keyForm, expiresAt: e.target.value })} /><div id={fid('key-expires-at-hint')} style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 4 }}>{t('admin.integrations.form.expiresAtHint')}</div></div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
                 <Button variant="secondary" onClick={() => setModal(null)}>{t('common.cancel')}</Button>
-                <Button onClick={() => void handleCreateApiKey()} disabled={!keyForm.name.trim() || !keyForm.permissions.length || !Number.isInteger(keyForm.rateLimit) || keyForm.rateLimit < 1}>{t('common.create')}</Button>
+                <Button onClick={() => handleCreateApiKey()} disabled={!keyForm.name.trim() || !keyForm.permissions.length || !Number.isInteger(keyForm.rateLimit) || keyForm.rateLimit < 1}>{t('common.create')}</Button>
               </div>
             </div>
           </ModalPortal>

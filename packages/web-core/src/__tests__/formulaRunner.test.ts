@@ -9,6 +9,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { computeFormulas, runFormula } from '../formulaRunner.js'
+import { BROWSER_SCRIPT_DEADLINE_MS } from '../boundedScript.js'
 
 describe('runFormula', () => {
   it('calcola con le risposte in `input` e restituisce con `return`', async () => {
@@ -37,6 +38,28 @@ describe('runFormula', () => {
 
   it('i testi e le date si compongono come in JavaScript normale', async () => {
     expect((await runFormula('return input.nome.toUpperCase()', { nome: 'ada' })).value).toBe('ADA')
+  })
+
+  /*
+   * Review of 23 Sep 2026: the comment promised an instruction limit that did
+   * not exist, and `while(1){}` froze the tab for good. Real QuickJS, real limits.
+   */
+  it('a formula that loops is stopped at the deadline, and says so in the field', async () => {
+    const started = Date.now()
+    const r = await runFormula('for (let i = 0; i < input.qty; i++) {} while (true) {}', { qty: 1e12 })
+    expect(Date.now() - started).toBeLessThan(BROWSER_SCRIPT_DEADLINE_MS + 1500)
+    expect(r).toEqual({ value: null, error: `The script ran for more than ${BROWSER_SCRIPT_DEADLINE_MS} ms and was stopped` })
+  })
+
+  it('a formula that eats memory is stopped, and the next one runs normally', async () => {
+    const r = await runFormula('const a = []; while (true) a.push(new Array(10000).fill(1))', {})
+    expect(r.value).toBeNull()
+    expect(r.error).toMatch(/was stopped/)
+    expect(await runFormula('return 1 + 1', {})).toEqual({ value: 2, error: null })
+  })
+
+  it('a thrown error reads as «name: message», not as a JSON dump', async () => {
+    expect((await runFormula('throw new TypeError("no quantity")', {})).error).toBe('TypeError: no quantity')
   })
 })
 

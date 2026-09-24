@@ -247,9 +247,11 @@ export interface ServiceIncidentRow extends OpenIncidentRow {
   causeIds:           string[]
   maintenanceNotedAt: string | null
   keptOpenNotedAt:    string | null
+  /** The step in which «back, but cannot be auto-resolved» was already said; null when not said. */
+  cannotResolveStep:  string | null
 }
 
-interface RawServiceIncidentRow { incidentId: string; instanceId: string; step: string; number: string | null; causeIds: unknown; maintenanceNotedAt: unknown; keptOpenNotedAt: unknown }
+interface RawServiceIncidentRow { incidentId: string; instanceId: string; step: string; number: string | null; causeIds: unknown; maintenanceNotedAt: unknown; keptOpenNotedAt: unknown; cannotResolveStep: unknown }
 
 /**
  * L'incident non chiuso collegato alla mappa. Come per gli allarmi, un incident
@@ -263,6 +265,7 @@ export const FIND_SERVICE_INCIDENT_CYPHER = `
   WHERE NOT wi.current_step IN $terminalSteps OR wi.current_step = $resolvedStep
   RETURN i.id AS incidentId, wi.id AS instanceId, wi.current_step AS step, i.number AS number,
          r.cause_ids AS causeIds, r.maintenance_noted_at AS maintenanceNotedAt, r.kept_open_noted_at AS keptOpenNotedAt,
+         r.cannot_resolve_step AS cannotResolveStep,
          i.created_at AS createdAt
   ORDER BY createdAt DESC LIMIT 1`
 
@@ -279,6 +282,7 @@ export async function findServiceIncident(session: Session, tenantId: string, ma
     causeIds:           Array.isArray(row.causeIds) ? row.causeIds.map(toStr) : [],
     maintenanceNotedAt: row.maintenanceNotedAt == null ? null : toStr(row.maintenanceNotedAt),
     keptOpenNotedAt:    row.keptOpenNotedAt == null ? null : toStr(row.keptOpenNotedAt),
+    cannotResolveStep:  row.cannotResolveStep == null ? null : toStr(row.cannotResolveStep),
   }
 }
 
@@ -290,6 +294,10 @@ export async function findServiceIncident(session: Session, tenantId: string, ma
  * manutenzione è già stata scritta e `kept_open_noted_at` che è già stato detto
  * perché l'incident resta aperto sotto soglia (assegnare null cancella la
  * proprietà: la nota potrà essere riscritta al prossimo giro).
+ * `cannot_resolve_step` is the step in which the service came back but the
+ * incident could not be auto-resolved, already said once: the comment is
+ * written again only from another step (review of 23 Sep 2026 — it was
+ * repeated at every evaluation, every 10-15 minutes).
  */
 export const LINK_SERVICE_INCIDENT_CYPHER = `
   MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
@@ -298,7 +306,8 @@ export const LINK_SERVICE_INCIDENT_CYPHER = `
   ON CREATE SET r.opened_by = $openedBy, r.at = $now
   SET r.cause_ids = $causeIds,
       r.maintenance_noted_at = CASE WHEN $maintenanceNoted THEN coalesce(r.maintenance_noted_at, $now) ELSE null END,
-      r.kept_open_noted_at = CASE WHEN $keptOpenNoted THEN coalesce(r.kept_open_noted_at, $now) ELSE null END
+      r.kept_open_noted_at = CASE WHEN $keptOpenNoted THEN coalesce(r.kept_open_noted_at, $now) ELSE null END,
+      r.cannot_resolve_step = $cannotResolveStep
   RETURN r.at AS at`
 
 // ── Incident tecnici già aperti sui componenti (ondata 4) ────────────────────
@@ -340,13 +349,13 @@ export async function findTechnicalIncidents(session: Session, tenantId: string,
   return rows.map((r) => ({ number: r.number == null ? '' : toStr(r.number), title: r.title == null ? '' : toStr(r.title) }))
 }
 
-/** I due marcatori di «nota già scritta» sulla relazione: si passano sempre entrambi (null = cancella). */
-interface LinkNotes { maintenanceNoted: boolean; keptOpenNoted: boolean }
+/** I marcatori di «nota già scritta» sulla relazione: si passano sempre tutti (null = cancella). */
+interface LinkNotes { maintenanceNoted: boolean; keptOpenNoted: boolean; cannotResolveStep?: string | null }
 
 async function linkServiceIncident(session: Session, tenantId: string, mapId: string, incidentId: string, causeIds: readonly string[], notes: LinkNotes, now: string): Promise<void> {
   const row = await runQueryOne<{ at: string }>(session, LINK_SERVICE_INCIDENT_CYPHER, {
     tenantId, mapId, incidentId, causeIds: [...causeIds],
-    maintenanceNoted: notes.maintenanceNoted, keptOpenNoted: notes.keptOpenNoted,
+    maintenanceNoted: notes.maintenanceNoted, keptOpenNoted: notes.keptOpenNoted, cannotResolveStep: notes.cannotResolveStep ?? null,
     now, openedBy: MONITORING_ACTOR,
   })
   if (!row) throw new Error(`Incident ${incidentId} or ServiceMap ${mapId} vanished while linking them (tenant ${tenantId})`)
@@ -354,6 +363,11 @@ async function linkServiceIncident(session: Session, tenantId: string, mapId: st
 
 /** Nessuna nota da conservare: il caso normale (l'incident è sopra soglia o appena aperto). */
 const NO_NOTES: LinkNotes = { maintenanceNoted: false, keptOpenNoted: false }
+
+/** Some «already said» marker is on the relationship: it is cleared when the service goes back above the threshold. */
+function hasNotes(open: ServiceIncidentRow): boolean {
+  return Boolean(open.maintenanceNotedAt || open.keptOpenNotedAt || open.cannotResolveStep)
+}
 
 // ── Riconciliazione ──────────────────────────────────────────────────────────
 
@@ -433,7 +447,7 @@ async function reconcile(session: Session, input: ServiceIncidentInput): Promise
     if (open.maintenanceNotedAt) return done('none')
     await (await incidents()).addIncidentComment(open.incidentId, monitoringCtx(tenantId),
       systemTextIn(lingua, 'service.maintenance', { service: input.serviceName }))
-    await linkServiceIncident(session, tenantId, mapId, open.incidentId, open.causeIds, { maintenanceNoted: true, keptOpenNoted: open.keptOpenNotedAt !== null }, input.now)
+    await linkServiceIncident(session, tenantId, mapId, open.incidentId, open.causeIds, { maintenanceNoted: true, keptOpenNoted: open.keptOpenNotedAt !== null, cannotResolveStep: open.cannotResolveStep }, input.now)
     log.info({ ...logCtx, incidentId: open.incidentId }, 'Service in maintenance: open incident annotated once')
     return done('maintenance')
   }
@@ -468,7 +482,7 @@ async function reconcile(session: Session, input: ServiceIncidentInput): Promise
     if (sameCauseIds(open.causeIds, causeIds)) {
       // Il servizio è di nuovo sopra soglia: le note («in manutenzione»,
       // «resta aperto») vanno azzerate, così potranno essere riscritte.
-      if (open.maintenanceNotedAt || open.keptOpenNotedAt) await linkServiceIncident(session, tenantId, mapId, open.incidentId, causeIds, NO_NOTES, input.now)
+      if (hasNotes(open)) await linkServiceIncident(session, tenantId, mapId, open.incidentId, causeIds, NO_NOTES, input.now)
       return done('none')
     }
     // `cause_ids` PRIMA del commento (revisione 2 · I2): se il commento fallisce
@@ -494,7 +508,7 @@ async function reconcile(session: Session, input: ServiceIncidentInput): Promise
   }
   // Nessun incident da chiudere: le note vanno rimesse in condizione di essere
   // riscritte alla prossima volta (assegnare null cancella).
-  if (open && (open.maintenanceNotedAt || open.keptOpenNotedAt)) {
+  if (open && hasNotes(open)) {
     await linkServiceIncident(session, tenantId, mapId, open.incidentId, open.causeIds, NO_NOTES, input.now)
   }
   return done(rules.open_incident_from === 'never' ? 'disabled' : 'none')
@@ -592,17 +606,27 @@ async function openServiceIncident(session: Session, input: ServiceIncidentInput
     urgency = await serviceUrgencyOf(tenantId, health)
     severity = await derivePriority(tenantId, impact, urgency)
     technical = await findTechnicalIncidents(session, tenantId, causeIds, info)
-    incident = await (await incidents()).createIncident({
-      title:         serviceIncidentTitle(lingua, input.serviceName, health),
-      description:   serviceIncidentDescription(lingua, input.serviceName, health, impactScore, input.causes, technical),
-      severity,
-      impact,
-      urgency,
-      // SV-4: il servizio stesso fra i CI impattati, prima delle cause — così
-      // l'incident compare nel dettaglio dell'applicazione e nei filtri per CI.
-      // Soggetto alle stesse esclusioni CI di ogni incident.
-      affectedCIIds: serviceIncidentAffectedCIs(input.serviceId, causeIds),
-    }, monitoringCtx(tenantId))
+    const service = await incidents()
+    try {
+      incident = await service.createIncident({
+        title:         serviceIncidentTitle(lingua, input.serviceName, health),
+        description:   serviceIncidentDescription(lingua, input.serviceName, health, impactScore, input.causes, technical),
+        severity,
+        impact,
+        urgency,
+        // SV-4: il servizio stesso fra i CI impattati, prima delle cause — così
+        // l'incident compare nel dettaglio dell'applicazione e nei filtri per CI.
+        // Soggetto alle stesse esclusioni CI di ogni incident.
+        affectedCIIds: serviceIncidentAffectedCIs(input.serviceId, causeIds),
+      }, monitoringCtx(tenantId))
+    } catch (err) {
+      // Written, and a step after it failed (its team, its event): the marker
+      // records it, so the retry relinks it instead of opening another one at
+      // every attempt (review of 23 Sep 2026).
+      const made = service.createdIncidentOf(err)
+      if (made) await redis.set(key, made.id, 'EX', SERVICE_INCIDENT_OPENED_TTL_SECONDS, 'NX')
+      throw err
+    }
     // SUBITO dopo la creazione, prima di qualunque altra scrittura che possa
     // fallire. `NX`: se un altro attore l'ha già scritto non lo si sovrascrive.
     await redis.set(key, incident.id, 'EX', SERVICE_INCIDENT_OPENED_TTL_SECONDS, 'NX')
@@ -736,11 +760,15 @@ async function resolveServiceIncident(session: Session, input: ServiceIncidentIn
 
   const back = systemTextIn(lingua, 'service.back', { service: input.serviceName, health: serviceHealthLabel(lingua, health), score: impactScore })
   if (!path) {
+    const skipped: ServiceIncidentResult = { outcome: 'resolve_skipped', incidentId: open.incidentId, incidentNumber: open.number }
+    // Said once per step: the next evaluations (every 10-15 minutes) stay quiet until the incident moves.
+    if (open.cannotResolveStep === open.step) return skipped
+    // The marker BEFORE the comment, as for the other notes: a failed comment is not repeated by the retry.
+    await linkServiceIncident(session, tenantId, mapId, open.incidentId, causeIdsOf(input.causes), { ...NO_NOTES, cannotResolveStep: open.step }, input.now)
     await incidentService.addIncidentComment(open.incidentId, ctx,
       systemTextIn(lingua, 'service.cannotResolve', { back, step: open.step }))
-    await linkServiceIncident(session, tenantId, mapId, open.incidentId, causeIdsOf(input.causes), NO_NOTES, input.now)
     log.info({ tenantId, mapId, jobId: input.jobId, incidentId: open.incidentId, step: open.step }, 'Service is back but its incident cannot be auto-resolved from this step')
-    return { outcome: 'resolve_skipped', incidentId: open.incidentId, incidentNumber: open.number }
+    return skipped
   }
 
   for (const hop of path) {

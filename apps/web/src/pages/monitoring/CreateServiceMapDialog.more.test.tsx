@@ -85,6 +85,19 @@ describe('relationships', () => {
     for (const r of TENANT_RELS) expect(screen.getByRole('checkbox', { name: r })).toBeChecked()
   })
 
+  // Review of 23 Sep 2026: mounted closed (query skipped), the selection was fixed on the shipped fallback.
+  it('mounted closed and then opened: the tenant types all ticked, and a shipped type it lacks is never sent', async () => {
+    apolloFinto.esiti['CreateServiceMap'] = { data: { createServiceMap: { id: 'map-9', name: 'Enterprise Billing' } } }
+    const { rerender, user } = renderWithProviders(<CreateServiceMapDialog open={false} onClose={vi.fn()} />)
+    rerender(<CreateServiceMapDialog open onClose={vi.fn()} />)
+    for (const r of TENANT_RELS) expect(screen.getByRole('checkbox', { name: r })).toBeChecked()
+    await user.selectOptions(serviceSelect(), 'ba-1')
+    await user.click(screen.getByRole('checkbox', { name: 'HOSTED_ON' }))
+    await user.click(createButton())
+    await waitFor(() => expect(apolloFinto.chiamata('CreateServiceMap')).toBeDefined())
+    expect((apolloFinto.chiamata('CreateServiceMap')!['relationshipTypes'] as string[]).sort()).toEqual(['DEPENDS_ON', 'RUNS_ON'])
+  })
+
   it('a failed load shows the shipped types and says it could not load the tenant ones', () => {
     apolloFinto.erroriQuery['GetServiceRelationshipTypes'] = new Error('forbidden')
     open()

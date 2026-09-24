@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { pausedWhenHidden } from '@/lib/polling'
+import { useTicketRights } from '@/hooks/useTicketRights'
 import { useCustomFieldColumns, withCustomFieldCells } from '@/components/ticket/customFields/customFieldColumns'
 import { useFormFieldColumns, type FormFieldValue } from '@/components/ticket/formFieldColumns'
 import { useApolloClient, useQuery } from '@apollo/client/react'
@@ -38,6 +39,8 @@ const PAGE_SIZE = 50
 export function RequestListPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  // «New» leads to a route that asks the write permission: not offered without it (review of 23 Sep 2026).
+  const { canWrite } = useTicketRights('service_request')
   // Revisione totale · B-32/F-1: la lista era senza paginazione e l'API ne dava
   // 20; il contatore diceva «20 richieste» e le altre non si raggiungevano.
   const [page, setPage] = useState(0)
@@ -114,11 +117,11 @@ export function RequestListPage() {
             {loading ? '—' : t('pages.requests.count', { count: total })}
           </p>
         }
-        actions={
+        actions={canWrite && (
           <Button icon={<Plus size={15} aria-hidden="true" />} onClick={() => navigate('/requests/new')}>
             {t('pages.requests.new')}
           </Button>
-        }
+        )}
       />
 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>

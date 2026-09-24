@@ -29,8 +29,8 @@ Indice
 browser ──► nginx :80 (front door, template envsubst)
               ├─ {tenant}.localhost        → web (nginx, SPA agenti)      → /graphql, /api → api
               ├─ portal.{tenant}.localhost → portal (nginx, self-service) → /graphql, /api → api
-              ├─ $TAILSCALE_HOST (HTTPS via tailscale serve) → web + keycloak same-origin,
-              │                                                  portale sotto /portal/ (H-33)
+              ├─ $TAILSCALE_HOST (HTTPS via tailscale serve) → web + keycloak same-origin
+              └─ nginx :8081 (solo loopback) ← $TAILSCALE_HOST:8443 → portale (front-door suo)
               └─ qualunque altro Host                          → 404 (default_server, H-32)
 api :4000 (Express + Apollo, USER node) ── neo4j :7687 ── redis :6379 ── keycloak :8080
 worker        (stessa immagine dell'api, `dist/worker.js`: embedding ONNX off event-loop)
@@ -97,6 +97,12 @@ Immagini costruite dal repo:
 - Facoltativo, accesso remoto HTTPS: Tailscale con `tailscale serve --bg 80`
   sull'host (termina TLS e inoltra a nginx:80). Vedi la memoria di progetto
   "Accesso app locale + iPad via Tailscale HTTPS".
+- Facoltativo, il **portale** da remoto (review del 23 set 2026, scelta del
+  proprietario: un indirizzo suo, non `/portal/` dentro quello del web):
+  `tailscale serve --bg --https=8443 http://127.0.0.1:8081`, poi nel realm del
+  tenant, client `opengrafo-portal`, aggiungere `https://$TAILSCALE_HOST:8443/*`
+  agli indirizzi di ritorno validi e `https://$TAILSCALE_HOST:8443` alle
+  origini web. Il bundle del portale porta il tenant (`VITE_TENANT_SLUG`).
 - ~4 GB di RAM liberi (Neo4j è limitato a 2 GB, Jaeger a 512 MB).
 
 ## 3. Configurazione `infra/.env`
@@ -118,7 +124,7 @@ senza questi valori `docker compose` si rifiuta di partire.
 | `KEYCLOAK_ADMIN_PASSWORD` | admin del realm master (createUser, onboarding, script kcadm) |
 | `GRAFANA_ADMIN_PASSWORD` | admin Grafana (applicata al **primo** avvio del volume `grafana_data`) |
 | `TAILSCALE_HOST` | hostname del front-door HTTPS (server_name nginx + CSP) |
-| `TAILSCALE_TENANT_HOST` | tenant che il front-door Tailscale inoltra come `X-Forwarded-Host` (`<slug>.localhost`: l'hostname Tailscale non porta lo slug). Vale anche per il portale, che da remoto sta sotto `/portal/` dello stesso host (revisione totale · H-33). Obbligatoria dal 23 set 2026: il suo default era `c-one.localhost`, un tenant poi cancellato |
+| `TAILSCALE_TENANT_HOST` | tenant che il front-door Tailscale inoltra come `X-Forwarded-Host` (`<slug>.localhost`: l'hostname Tailscale non porta lo slug). Vale anche per il portale, che da remoto ha il suo front-door sulla porta 8443 (review del 23 set 2026). Obbligatoria dal 23 set 2026: il suo default era `c-one.localhost`, un tenant poi cancellato |
 | `VITE_KEYCLOAK_URL` | URL Keycloak raggiungibile dal browser (build del portal e del web) |
 
 Con default sicuri, da cambiare consapevolmente:

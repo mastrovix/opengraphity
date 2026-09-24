@@ -1,4 +1,4 @@
-import { StrictMode, Suspense, lazy } from 'react'
+import { StrictMode, Suspense, lazy, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ApolloProvider } from '@apollo/client/react'
 import { createBrowserRouter, RouterProvider, useRouteError, Navigate, useParams } from 'react-router-dom'
@@ -99,11 +99,14 @@ import { initKeycloak, keycloak } from '@/lib/keycloak'
 import { startTokenRefreshLoop } from '@/lib/tokenRefresh'
 import '@/index.css'
 import '@xyflow/react/dist/style.css'
+import { reportRouteError, listenForUncaughtErrors } from '@/lib/pageErrorReport'
 import i18n from '@/i18n/i18n'
 
 function RouteError() {
   const error = useRouteError() as { status?: number; statusText?: string }
   const { t } = useTranslation()
+  // The page's error goes to the server log too (lib/pageErrorReport.ts).
+  useEffect(() => { reportRouteError(error, window.location.pathname) }, [error])
   return (
     <div style={{
       display:        'flex',
@@ -169,7 +172,8 @@ const router = createBrowserRouter([
       guarded('requests/:id', <Keyed Page={ServiceRequestDetailPage} />),
       guarded('cmdb', <CMDBPage />),
       // Dynamic CI routes
-      guarded('ci/:typeName', <CIListPage />),
+      // Keyed like the others: switching type from the sidebar kept page, filter and sort (review of 23 Sep 2026).
+      guarded('ci/:typeName', <Keyed Page={CIListPage} />),
       guarded('ci/:typeName/:id', <Keyed Page={CIDetailPage} />),
       guarded('cis/:id', <Keyed Page={CIByIdRedirect} />),
       // Backward-compat redirects
@@ -277,6 +281,8 @@ initKeycloak().then((authenticated) => {
   // blip towards Keycloak retries with backoff (toast), only an invalid
   // session redirects to login (E-05).
   startTokenRefreshLoop()
+  // The errors no component catches reach the server log as well (review of 23 Sep 2026).
+  listenForUncaughtErrors()
 
   createRoot(root).render(
     <StrictMode>

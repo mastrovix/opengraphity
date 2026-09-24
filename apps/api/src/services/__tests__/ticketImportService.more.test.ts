@@ -24,6 +24,8 @@ const h = vi.hoisted(() => {
     run: async (cypher: string, params: Record<string, unknown> = {}) => {
       runs.push({ cypher, params })
       if (state.failWriteFor && cypher.includes('MERGE (') && params['externalId'] === state.failWriteFor) throw state.failWith
+      // The step of the CSV belongs to the ticket's workflow (review of 23 Sep 2026).
+      if (cypher.includes('AS known, coalesce(target.is_terminal')) return { records: [{ get: (k: string) => ({ known: true, terminal: false } as Record<string, unknown>)[k] }] }
       if (cypher.includes('MERGE (c:Counter') && cypher.includes('RETURN c.value')) {
         state.counter += 1
         const v = state.counter

@@ -26,6 +26,8 @@ interface ReportDetailViewProps {
   editSection: ReportSection | null
   sectionResults: Record<string, SectionResult>
   execLoading: boolean
+  /** report.write: settings, sections and exports are offered only with it (exports are report.write on the API). */
+  canWrite: boolean
   exportingPDF: boolean
   exportingExcel: boolean
   // Navigation
@@ -54,14 +56,14 @@ export function ReportDetailView(props: ReportDetailViewProps) {
   const { t } = useTranslation()
   const {
     view, selected, editSection, sectionResults,
-    execLoading, exportingPDF, exportingExcel,
+    execLoading, exportingPDF, exportingExcel, canWrite,
     setView, openSettings,
     handleAddSection, handleUpdateSection, handleRemoveSection, startEditSection, cancelEditSection, sectionToInput,
     handleExecuteSelected, handleExportPDF, handleExportExcel,
   } = props
 
   // ── ADD SECTION ──
-  if (view === 'add-section') {
+  if (view === 'add-section' && canWrite) {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '12px 32px', borderBottom: '1px solid var(--color-border)', background: colors.white, display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
@@ -76,7 +78,7 @@ export function ReportDetailView(props: ReportDetailViewProps) {
   }
 
   // ── EDIT SECTION ──
-  if (view === 'edit-section' && editSection) {
+  if (view === 'edit-section' && editSection && canWrite) {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '12px 32px', borderBottom: '1px solid var(--color-border)', background: colors.white, display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
@@ -107,20 +109,22 @@ export function ReportDetailView(props: ReportDetailViewProps) {
           <div style={{ fontWeight: 600, fontSize: 'var(--font-size-section-title)', color: 'var(--color-slate-dark)' }}>{selected.name}</div>
           {selected.description && <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{selected.description}</div>}
         </div>
-        <button type="button" onClick={() => openSettings(selected)} style={{ ...btnGhost, fontSize: 'var(--font-size-body)' }}>&#x2699; {t('citypeDesigner.tab.settings')}</button>
+        {canWrite && <button type="button" onClick={() => openSettings(selected)} style={{ ...btnGhost, fontSize: 'var(--font-size-body)' }}>&#x2699; {t('citypeDesigner.tab.settings')}</button>}
         <button
           type="button"
           onClick={handleExecuteSelected}
           disabled={execLoading}
           style={{ ...btnGhost, fontSize: 'var(--font-size-body)' }}
         >{execLoading ? t('common.loading') : `\u25B6 ${t('pages.reportBuilder.execute')}`}</button>
-        <button type="button" onClick={() => void handleExportPDF()} disabled={exportingPDF} style={{ ...btnGhost, fontSize: 'var(--font-size-body)' }}>
-          {exportingPDF ? '\u2026' : '\u2193 PDF'}
-        </button>
-        <button type="button" onClick={() => void handleExportExcel()} disabled={exportingExcel} style={{ ...btnGhost, fontSize: 'var(--font-size-body)' }}>
-          {exportingExcel ? '\u2026' : '\u2193 Excel'}
-        </button>
-        <button type="button" onClick={() => setView('add-section')} style={btnPrimary}>{t('pages.reports.addSection')}</button>
+        {canWrite && <>
+          <button type="button" onClick={() => void handleExportPDF()} disabled={exportingPDF} style={{ ...btnGhost, fontSize: 'var(--font-size-body)' }}>
+            {exportingPDF ? '\u2026' : '\u2193 PDF'}
+          </button>
+          <button type="button" onClick={() => void handleExportExcel()} disabled={exportingExcel} style={{ ...btnGhost, fontSize: 'var(--font-size-body)' }}>
+            {exportingExcel ? '\u2026' : '\u2193 Excel'}
+          </button>
+          <button type="button" onClick={() => setView('add-section')} style={btnPrimary}>{t('pages.reports.addSection')}</button>
+        </>}
       </div>
 
       {/* Sections */}
@@ -140,12 +144,12 @@ export function ReportDetailView(props: ReportDetailViewProps) {
                   <span style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{sec.title}</span>
                   <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', background: colors.border, padding: '2px 6px', borderRadius: 4 }}>{chartTypeLabel(t, sec.chartType)}</span>
                 </div>
-                <div style={{ display: 'flex', gap: 6 }}>
+                {canWrite && <div style={{ display: 'flex', gap: 6 }}>
                   <button type="button" onClick={() => startEditSection(sec)}
                     style={{ ...btnGhost, padding: '4px 10px', fontSize: 'var(--font-size-body)' }}>&#x270F; {t('pages.reports.editSection')}</button>
                   <button type="button" onClick={() => handleRemoveSection(selected.id, sec.id)}
                     style={{ ...btnGhost, padding: '4px 10px', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>&#x1F5D1;</button>
-                </div>
+                </div>}
               </div>
               <div style={{ padding: 16 }}>
                 {result ? (

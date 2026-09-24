@@ -236,12 +236,24 @@ async function openStormIncident(tenantId: string, sourceId: string, sourceName:
   // definizione il caso peggiore, quindi il grado più alto è la scelta giusta
   // — ma il NOME lo decide il cliente, non il codice.
   const severity = await incidentSeverityFromEvent(tenantId, MAX_EVENT_SEVERITY)
-  const incident = await incidentService.createIncident({
-    title:         systemTextIn(lingua, 'storm.title', { source: sourceName, rate }),
-    description,
-    severity,
-    affectedCIIds: [ciId],
-  }, { tenantId, userId: MONITORING_ACTOR })
+  // Written, and a step after it failed (its team, its event): the source is
+  // claimed by it all the same, and the failure thrown after — the retry finds
+  // the storm's incident instead of opening another (review of 23 Sep 2026).
+  let incident: { id: string }
+  let failure: unknown = null
+  try {
+    incident = await incidentService.createIncident({
+      title:         systemTextIn(lingua, 'storm.title', { source: sourceName, rate }),
+      description,
+      severity,
+      affectedCIIds: [ciId],
+    }, { tenantId, userId: MONITORING_ACTOR })
+  } catch (err) {
+    const made = incidentService.createdIncidentOf(err)
+    if (!made) throw err
+    incident = made
+    failure = err
+  }
 
   const s = getSession(undefined, 'WRITE')
   let claimed: { id: string } | null
@@ -271,10 +283,12 @@ async function openStormIncident(tenantId: string, sourceId: string, sourceName:
     log.error({ tenantId, sourceId, duplicateIncidentId: incident.id, incidentId: winnerId }, 'Duplicate storm incident: a concurrent job won the source; attaching to the winner')
     void audit(monitoringContext(tenantId), 'event_storm.duplicate_incident', 'InboundWebhook', sourceId, { duplicateIncidentId: incident.id, incidentId: winnerId, sourceName })
     await incidentService.addIncidentComment(incident.id, { tenantId, userId: MONITORING_ACTOR }, await systemText(tenantId, 'storm.duplicate', { source: sourceName, incident: winnerId }))
+    if (failure) throw failure
     return winnerId
   }
   incidentsAutoOpenedTotal.inc({})
   log.info({ tenantId, sourceId, incidentId: incident.id, rate, ciId }, 'Storm incident opened')
+  if (failure) throw failure
   return incident.id
 }
 
@@ -397,6 +411,7 @@ async function endStorm(tenantId: string, source: Props, actorId: string, now: s
       WHERE w.storm_since = $since
       SET w.storm_since = null, w.storm_incident_id = null, w.storm_last_over_at = null,
           w.last_storm_started_at = $since, w.last_storm_ended_at = $now, w.last_storm_incident_id = $incidentId, w.last_storm_events = toInteger($events),
+          w.storm_reevaluation_since = $since,
           w.updated_at = $now
       RETURN w.id AS id
     `, { sourceId, tenantId, since: state.since, now, incidentId: state.incidentId, events })
@@ -418,9 +433,39 @@ async function endStorm(tenantId: string, source: Props, actorId: string, now: s
   await publishEvent('event.storm_ended', tenantId, actorId, payload, now)
   void audit(monitoringContext(tenantId), 'event.storm_ended', 'InboundWebhook', sourceId, { events, durationMinutes, incidentId: state.incidentId })
   await reevaluateResolvedDuringStorm(tenantId, sourceId, state.since, actorId)
+  await clearStormReevaluation(tenantId, sourceId, state.since)
   await refreshStormGauge()
   log.info({ tenantId, sourceId, events, durationMinutes, incidentId: state.incidentId }, 'Alert storm ended')
   return true
+}
+
+/**
+ * THE RE-EVALUATION AFTER A STORM IS OWED UNTIL IT IS DONE (review of 23 Sep 2026).
+ *
+ * `endStorm` clears `storm_since` first — that is what keeps two replicas from
+ * ending the same storm twice — and the follow-up work comes after. When the
+ * re-evaluation of the alarms that cleared during the storm failed, the retry
+ * found a source no longer storming, and the periodic pass reads only
+ * storming sources: the incidents of those alarms stayed open for ever. The
+ * same SET that ends the storm now writes `storm_reevaluation_since`, cleared
+ * only once the re-evaluation is done; the periodic pass redoes it until then.
+ */
+async function clearStormReevaluation(tenantId: string, sourceId: string, since: string): Promise<void> {
+  const session = getSession(undefined, 'WRITE')
+  try {
+    await runQuery(session, `
+      MATCH (w:InboundWebhook {id: $sourceId, tenant_id: $tenantId})
+      WHERE w.storm_reevaluation_since = $since
+      SET w.storm_reevaluation_since = null
+    `, { sourceId, tenantId, since })
+  } finally { await session.close(); invalidateSourceCache(tenantId, sourceId) }
+}
+
+/** The re-evaluation still owed by a storm that ended: done again, and cleared when it goes through. */
+async function redoStormReevaluation(tenantId: string, sourceId: string, since: string): Promise<void> {
+  log.warn({ tenantId, sourceId, since }, 'The re-evaluation after an alert storm did not finish: done again')
+  await reevaluateResolvedDuringStorm(tenantId, sourceId, since, MONITORING_ACTOR)
+  await clearStormReevaluation(tenantId, sourceId, since)
 }
 
 /**
@@ -546,9 +591,12 @@ export async function trackSourceStorm(input: TrackStormInput): Promise<StormSta
  * della sorgente (lib/pagedPass.ts); un errore su una sorgente non ferma le
  * altre ma fa fallire il job. Riallinea il gauge, che resta della piattaforma
  * (un conteggio, nessun dato del tenant).
+ * It also redoes the re-evaluation still owed by a storm that ended
+ * (`storm_reevaluation_since`, review of 23 Sep 2026).
  */
 export async function endCooledStorms(tenantId: string, now: string = new Date().toISOString()): Promise<PagedPassResult & { active: number; ended: number }> {
   let ended = 0
+  let storming = 0
   const policies = new Map<string, EventPolicy>()
   const result = await runPagedPass<Props>({
     fetchPage: async (cursor, limit) => {
@@ -557,7 +605,7 @@ export async function endCooledStorms(tenantId: string, now: string = new Date()
         // The tenant's sources only: the pass runs in the tenant's own queue (23 Sep 2026).
         const rows = await runQuery<{ props: Props }>(session, `
           MATCH (w:InboundWebhook {tenant_id: $tenantId})
-          WHERE w.storm_since IS NOT NULL AND w.id > $cursor
+          WHERE (w.storm_since IS NOT NULL OR w.storm_reevaluation_since IS NOT NULL) AND w.id > $cursor
           RETURN properties(w) AS props
           ORDER BY w.id LIMIT toInteger($limit)
         `, { tenantId, cursor, limit })
@@ -567,6 +615,10 @@ export async function endCooledStorms(tenantId: string, now: string = new Date()
     keyOf: (source) => toStr(source['id']),
     handle: async (source) => {
       const tenantId = toStr(source['tenant_id'])
+      const owed = source['storm_reevaluation_since']
+      if (typeof owed === 'string' && owed !== '') await redoStormReevaluation(tenantId, toStr(source['id']), owed)
+      if (source['storm_since'] == null) return
+      storming++
       let policy = policies.get(tenantId)
       if (!policy) { policy = await getEventPolicy(tenantId); policies.set(tenantId, policy) }
       const lastOverAt = typeof source['storm_last_over_at'] === 'string' ? source['storm_last_over_at'] : toStr(source['storm_since'])
@@ -579,7 +631,7 @@ export async function endCooledStorms(tenantId: string, now: string = new Date()
   await refreshStormGauge()
   if (result.truncated) log.warn({ evaluated: result.evaluated }, 'endCooledStorms: page cap reached, remaining storming sources are checked on the next pass')
   if (result.failed > 0) throw new Error(`endCooledStorms: ${result.failed}/${result.evaluated} storming sources failed the cooldown check (see logs)`)
-  return { ...result, active: result.evaluated - ended, ended }
+  return { ...result, active: storming - ended, ended }
 }
 
 // ── Console ──────────────────────────────────────────────────────────────────

@@ -196,7 +196,7 @@ export function UsersPage() {
             <Button variant="secondary" onClick={() => setModalOpen(false)}>{t('common.cancel')}</Button>
             <Button
               disabled={!canCreate}
-              onClick={() => void createUserMut({ variables: { input: { name: `${form.firstName} ${form.lastName}`.trim(), email: form.email, password: form.password, role: form.role, teamIds: form.teamIds } } })}
+              onClick={() => createUserMut({ variables: { input: { name: `${form.firstName} ${form.lastName}`.trim(), email: form.email, password: form.password, role: form.role, teamIds: form.teamIds } } })}
             >
               {creating ? t('pages.users.creating') : t('pages.users.create')}
             </Button>

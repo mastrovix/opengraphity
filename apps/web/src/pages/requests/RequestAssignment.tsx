@@ -96,7 +96,7 @@ function AssigneeField({ request, onChanged }: { request: RequestAssignmentView;
         </Select>
         {error && <span role="alert" style={{ ...note, color: 'var(--color-danger)' }}>{t('detail.assigneesUnavailable', { error: error.message })}</span>}
         {data && members.length === 0 && <span style={note}>{t('detail.noTeamMembers')}</span>}
-        <Button variant="secondary" disabled={loading || chosen === current} onClick={() => void assignUser({ variables: { id: request.id, userId: chosen || null } })}>
+        <Button variant="secondary" disabled={loading || chosen === current} onClick={() => assignUser({ variables: { id: request.id, userId: chosen || null } })}>
           {loading ? t('detail.assigning') : t('detail.assign')}
         </Button>
       </div>
@@ -105,9 +105,14 @@ function AssigneeField({ request, onChanged }: { request: RequestAssignmentView;
 }
 
 /** Team and assignee of a request: chosen while it is open, read once it is done. */
-export function RequestAssignment({ request, onChanged }: { request: RequestAssignmentView; onChanged: () => Promise<unknown> }) {
+export function RequestAssignment({ request, canEdit, onChanged }: {
+  request: RequestAssignmentView
+  /** request.write: without it the assignment is shown, not changed (review of 23 Sep 2026). */
+  canEdit: boolean
+  onChanged: () => Promise<unknown>
+}) {
   const { t } = useTranslation()
-  if (request.completedAt) {
+  if (request.completedAt || !canEdit) {
     return (
       <>
         <DetailField label={t('detail.team')} value={request.team?.name ?? null} />

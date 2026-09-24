@@ -278,13 +278,15 @@ describe('ServicesPage', () => {
     // profondità 6, togli USES_CERTIFICATE
     const depth = within(dialog).getByRole('spinbutton', { name: 'Maximum depth' })
     await user.clear(depth); await user.type(depth, '6')
-    // C-3: la relazione definita dal cliente è fra le caselle, e parte spenta
-    // (le spunte iniziali sono i quattro tipi spediti, il default dell'API)
+    // C-3 and G-MON-5: the relationship the tenant defined is among the boxes,
+    // and it starts TICKED like the others — the API follows every type of the
+    // tenant. It used to start unticked, and this test pinned that defect
+    // (review of 23 Sep 2026).
     const custom = await within(dialog).findByRole('checkbox', { name: 'BILANCIA' })
-    expect(custom).not.toBeChecked()
+    expect(custom).toBeChecked()
     await user.click(within(dialog).getByRole('checkbox', { name: 'USES_CERTIFICATE' }))
     // nessuna relazione → bloccato con il motivo; poi rimettine una
-    for (const r of ['DEPENDS_ON', 'HOSTED_ON', 'INSTALLED_ON']) await user.click(within(dialog).getByRole('checkbox', { name: r }))
+    for (const r of ['DEPENDS_ON', 'HOSTED_ON', 'INSTALLED_ON', 'BILANCIA']) await user.click(within(dialog).getByRole('checkbox', { name: r }))
     expect(within(dialog).getByRole('alert')).toHaveTextContent('Choose at least one relationship.')
     expect(submit).toBeDisabled()
     await user.click(within(dialog).getByRole('checkbox', { name: 'DEPENDS_ON' }))

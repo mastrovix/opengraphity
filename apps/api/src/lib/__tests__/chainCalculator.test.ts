@@ -13,6 +13,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const queries: string[] = []
+const downstream = { ids: ['ci-1'] as string[] }
 
 const session = {
   executeWrite: vi.fn(async (fn: (tx: unknown) => unknown) =>
@@ -20,9 +21,9 @@ const session = {
     // restituisce più «Infrastructure» quando la query non torna righe — un CI
     // che non esiste è un errore, non una catena. Quindi la scrittura finta
     // deve restituire una riga con la catena, come fa il database.
-    fn({ run: (cypher: string) => { queries.push(cypher); return Promise.resolve({ records: [{ get: () => 'Infrastructure' }] }) } })),
+    fn({ run: (cypher: string) => { queries.push(cypher); return Promise.resolve({ records: [{ get: (k: string) => (k === 'id' ? 'ci-1' : 'Infrastructure') }] }) } })),
   executeRead: vi.fn(async (fn: (tx: unknown) => unknown) =>
-    fn({ run: (cypher: string) => { queries.push(cypher); return Promise.resolve({ records: [{ get: (k: string) => (k === 'total' ? 7 : 3) }] }) } })),
+    fn({ run: (cypher: string) => { queries.push(cypher); return Promise.resolve({ records: [{ get: (k: string) => (k === 'ids' ? downstream.ids : k === 'total' ? 7 : 3) }] }) } })),
   close: vi.fn(),
 }
 
@@ -30,7 +31,7 @@ vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(() => session) }))
 // CM-3: le relazioni lungo cui si propaga la catena vengono dal tenant.
 vi.mock('../ciMetamodelForTenant.js', () => ({ serviceRelPatternForTenant: vi.fn(async () => 'DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE|PROTEGGE') }))
 
-const { calculateAllChains, calculateChain } = await import('../chainCalculator.js')
+const { calculateAllChains, calculateChain, recalculateChainsFrom, CHAIN_DOWNSTREAM_MAX } = await import('../chainCalculator.js')
 
 beforeEach(() => { queries.length = 0; vi.clearAllMocks() })
 
@@ -71,7 +72,7 @@ describe('calculateChain', () => {
 
   it('risolve il tipo dal metamodello per etichetta, senza filtrare per tipo', async () => {
     await calculateChain('ci-1', 'tenant-1')
-    expect(queries[0]).toContain('MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})')
+    expect(queries[0]).toContain('MATCH (ci:ConfigurationItem {id: ciId, tenant_id: $tenantId})')
     expect(queries[0]).toContain('OPTIONAL MATCH (td:CITypeDefinition {neo4j_label: lbl})')
     expect(queries[0]).not.toMatch(/ci:Application OR ci:Server/)
   })
@@ -83,3 +84,24 @@ describe('calculateChain', () => {
     expect(queries.some((q) => q.includes('[:DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE|PROTEGGE*0..10]'))).toBe(true)
   })
 })
+
+// Review of 23 Sep 2026: a relationship change recomputed its two ends; the chain flows downstream.
+describe('recalculateChainsFrom', () => {
+  it('the CI and every CI downstream of it within 10 hops, in one write', async () => {
+    downstream.ids = ['ci-1', 'ci-2', 'ci-3']
+    await expect(recalculateChainsFrom('ci-1', 'tenant-1')).resolves.toBe(3)
+    expect(queries[0]).toContain('OPTIONAL MATCH (ci)-[:DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE|PROTEGGE*1..10]->(d)')
+    expect(queries[0]).toContain('collect(DISTINCT d.id)')
+    expect(queries[1]).toContain('UNWIND $ciIds AS ciId')
+    // Each upstream CI once: no path is walked twice.
+    expect(queries[1]).toContain('WITH DISTINCT upstream')
+  })
+
+  it('more CIs downstream than the cap: the whole tenant is recomputed in its batch', async () => {
+    downstream.ids = Array.from({ length: CHAIN_DOWNSTREAM_MAX + 1 }, (_, i) => `ci-${i}`)
+    await recalculateChainsFrom('ci-0', 'tenant-1')
+    expect(queries.some((q) => q.includes('UNWIND $ciIds AS ciId'))).toBe(false)
+    expect(queries.some((q) => q.includes('RETURN count(ci) AS total'))).toBe(true)
+  })
+})
+

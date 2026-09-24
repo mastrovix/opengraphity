@@ -100,7 +100,7 @@ function primeValidInstance() {
   mockSession.executeRead
     // pre-fetch guard: WorkflowInstance {id, tenant_id} trovata
     .mockResolvedValueOnce({
-      records: [makeRecord({ entityData: { id: 'inc-1', title: 'Incident 1' }, assigned_to: null, assigned_team: null })],
+      records: [makeRecord({ entityData: { id: 'inc-1', title: 'Incident 1' }, assigned_to: null, assigned_team: null, entityType: 'incident' })],
     })
     // lookup entity_type per validateRequiredFields
     .mockResolvedValueOnce({ records: [makeRecord({ et: 'incident' })] })

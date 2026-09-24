@@ -42,14 +42,14 @@ afterEach(() => {
 function mount(value: string, props: { placeholder?: string; readOnly?: boolean } = {}) {
   const onChange = vi.fn()
   const user = userEvent.setup()
-  const r = render(<RichTextEditor value={value} onChange={onChange} {...props} />)
+  const r = render(<RichTextEditor label="Content" value={value} onChange={onChange} {...props} />)
   return { ...r, user, onChange }
 }
 
 /** The page as the KB admin uses it: the Markdown lives in the parent's state. */
 function Harness({ initial, onMarkdown }: { initial: string; onMarkdown?: (md: string) => void }) {
   const [md, setMd] = useState(initial)
-  return <RichTextEditor value={md} onChange={(v) => { setMd(v); onMarkdown?.(v) }} />
+  return <RichTextEditor label="Content" value={md} onChange={(v) => { setMd(v); onMarkdown?.(v) }} />
 }
 
 /** A form that can put its body back to empty, as KBAdminPage's «New article» does. */
@@ -57,7 +57,7 @@ function StartOver() {
   const [md, setMd] = useState('')
   return (
     <>
-      <RichTextEditor value={md} onChange={setMd} />
+      <RichTextEditor label="Content" value={md} onChange={setMd} />
       <button type="button" onClick={() => { setMd('') }}>Start over</button>
       <output data-testid="form-body">{md}</output>
     </>
@@ -204,9 +204,9 @@ describe('RichTextEditor — what the toolbar writes', () => {
     const { user, onChange } = mount('Some text')
     await shows('Some text')
     await selectAll(user)
-    // Two edits in a row, with no pause between them (the toolbar acts on mousedown).
-    fireEvent.mouseDown(button('Bold (Ctrl+B)'))
-    fireEvent.mouseDown(button('Italic (Ctrl+I)'))
+    // Two edits in a row, with no pause between them (a click of the toolbar).
+    fireEvent.click(button('Bold (Ctrl+B)'))
+    fireEvent.click(button('Italic (Ctrl+I)'))
     expect(onChange).not.toHaveBeenCalled()
     await waitFor(() => expect(onChange).toHaveBeenCalled(), PAUSE)
     expect(onChange).toHaveBeenCalledTimes(1)
@@ -217,11 +217,11 @@ describe('RichTextEditor — what the toolbar writes', () => {
     const first = vi.fn()
     const second = vi.fn()
     const user = userEvent.setup()
-    const { rerender } = render(<RichTextEditor value="Some text" onChange={first} />)
+    const { rerender } = render(<RichTextEditor label="Content" value="Some text" onChange={first} />)
     await shows('Some text')
     await selectAll(user)
-    fireEvent.mouseDown(button('Bold (Ctrl+B)'))
-    rerender(<RichTextEditor value="Some text" onChange={second} />)
+    fireEvent.click(button('Bold (Ctrl+B)'))
+    rerender(<RichTextEditor label="Content" value="Some text" onChange={second} />)
     expect(await markdownSent(second)).toBe('**Some text**')
     expect(first).not.toHaveBeenCalled()
   })
@@ -442,9 +442,9 @@ describe('RichTextEditor — links and images', () => {
 describe('RichTextEditor — a value from outside', () => {
   it('a new value (another article) replaces the content, without echoing it back as an edit', async () => {
     const onChange = vi.fn()
-    const { rerender } = render(<RichTextEditor value="First article" onChange={onChange} />)
+    const { rerender } = render(<RichTextEditor label="Content" value="First article" onChange={onChange} />)
     await shows('First article')
-    rerender(<RichTextEditor value={'## Second article'} onChange={onChange} />)
+    rerender(<RichTextEditor label="Content" value={'## Second article'} onChange={onChange} />)
     await waitFor(() => expect(screen.getByRole('heading', { level: 2, name: 'Second article' })).toBeInTheDocument())
     expect(editor()).not.toHaveTextContent('First article')
     await act(async () => { await new Promise((r) => { setTimeout(r, 0) }) })
@@ -453,14 +453,14 @@ describe('RichTextEditor — a value from outside', () => {
 
   it('while the author is writing, a value from outside does not overwrite the text; once they leave, it does', async () => {
     const onChange = vi.fn()
-    const { rerender } = render(<RichTextEditor value="Draft being written" onChange={onChange} />)
+    const { rerender } = render(<RichTextEditor label="Content" value="Draft being written" onChange={onChange} />)
     await shows('Draft being written')
     editor().focus()
-    rerender(<RichTextEditor value="Saved elsewhere" onChange={onChange} />)
+    rerender(<RichTextEditor label="Content" value="Saved elsewhere" onChange={onChange} />)
     await act(async () => { await new Promise((r) => { setTimeout(r, 0) }) })
     expect(editor()).toHaveTextContent('Draft being written')
     editor().blur()
-    rerender(<RichTextEditor value="Reloaded after leaving" onChange={onChange} />)
+    rerender(<RichTextEditor label="Content" value="Reloaded after leaving" onChange={onChange} />)
     await shows('Reloaded after leaving')
   })
 
@@ -527,5 +527,29 @@ describe('RichTextEditor — a value from outside', () => {
     unmount()
     await act(async () => { await new Promise((r) => { setTimeout(r, 0) }) })
     expect(consoleError).not.toHaveBeenCalled()
+  })
+})
+
+// Review of 23 Sep 2026: the toolbar acted on mousedown only, so nothing worked from the keyboard,
+// and the text area had no name.
+describe('RichTextEditor — from the keyboard', () => {
+  it('the text area is named after its field, and the toolbar is a named group', async () => {
+    mount('Some text')
+    await shows('Some text')
+    expect(screen.getByRole('textbox', { name: 'Content' })).toBeInTheDocument()
+    expect(screen.getByRole('toolbar', { name: 'Formatting' })).toBeInTheDocument()
+  })
+
+  it('Enter on a focused toolbar button applies it, and the toggle says it is on', async () => {
+    const { user, onChange } = mount('Some text')
+    await shows('Some text')
+    await selectAll(user)
+    const bold = screen.getByRole('button', { name: 'Bold (Ctrl+B)' })
+    expect(bold).toHaveAttribute('aria-pressed', 'false')
+    bold.focus()
+    await user.keyboard('{Enter}')
+    expect(await markdownSent(onChange)).toBe('**Some text**')
+    await selectAll(user)
+    expect(screen.getByRole('button', { name: 'Bold (Ctrl+B)' })).toHaveAttribute('aria-pressed', 'true')
   })
 })

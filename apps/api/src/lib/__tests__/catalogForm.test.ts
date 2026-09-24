@@ -76,6 +76,8 @@ const { runValidationScript, runFormulaScript } = await import('../metamodelScri
 const campo = (name: string, fieldType: string, extra: Record<string, unknown> = {}) => ({
   id: `id-${name}`, name, fieldType, label: name, labels: [], help: null, helps: [],
   required: false, vocabulary: null, validationScript: null, createdAt: null, updatedAt: null,
+  // As `formFields` maps every row: a field without types or filter has [] and null.
+  refTypes: [], refFilter: null,
   ...extra,
 }) as never
 
@@ -528,6 +530,22 @@ describe('ondata 2: riferimenti e allegati', () => {
     await expect(resolveFormWrites(session, 't1', moduloRif, LIBRERIA,
       [{ name: 'dispositivo', refIds: ['inventato'] }, { name: 'per_chi', refIds: ['u-1'] }]))
       .rejects.toThrow(/does not exist here/)
+  })
+
+  // Review of 23 Sep 2026: submit checked only that the CI existed in the tenant, not its type or the field's filter.
+  it('a CI reference is checked against the field\'s types and filter, as the choices offer them', async () => {
+    const { runQuery } = await import('@opengraphity/neo4j')
+    const filtrato = new Map(LIBRERIA)
+    filtrato.set('dispositivo', campo('dispositivo', 'ref_ci', {
+      refTypes: ['server'], refFilter: JSON.stringify({ rules: [{ field: 'environment', operator: 'equals', value: 'production', logic: 'AND' }] }),
+    }))
+    vi.mocked(runQuery).mockClear()
+    await resolveFormWrites(session, 't1', moduloRif, filtrato as never,
+      [{ name: 'dispositivo', refIds: ['ci-1'] }, { name: 'per_chi', refIds: ['u-1'] }])
+    const check = vi.mocked(runQuery).mock.calls.find(([, q]) => String(q).includes('ConfigurationItem {id: $id'))!
+    expect(check[1]).toContain('any(l IN labels(n) WHERE l IN $refLabels)')
+    expect(check[1]).toContain('n.environment = $af_0')
+    expect(check[2]).toMatchObject({ id: 'ci-1', refLabels: ['Server'], af_0: 'production' })
   })
 
   it('un riferimento obbligatorio mancante è rifiutato; due id su un campo che ne prende uno pure', async () => {

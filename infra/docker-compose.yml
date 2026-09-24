@@ -316,6 +316,9 @@ services:
     container_name: opengrafo-nginx
     ports:
       - "80:80"
+      # The portal's own Tailscale front-door (review of 23 Sep 2026): loopback
+      # only, reached through `tailscale serve --https=8443` (docs/DEPLOY.md).
+      - "127.0.0.1:8081:8081"
     environment:
       # Hostname served by `tailscale serve` (HTTPS front door, iPad access)
       TAILSCALE_HOST: ${TAILSCALE_HOST:?TAILSCALE_HOST mancante in infra/.env (hostname del front-door HTTPS Tailscale, es. my-mac.tailnet.ts.net)}
@@ -554,6 +557,9 @@ services:
       SERVER_LOG_RETENTION_DAYS: ${SERVER_LOG_RETENTION_DAYS:-90}
       KEYCLOAK_URL: http://keycloak:8080
       KEYCLOAK_ADMIN_USER: admin
+      # The links of the notifications sent from here open the tenant's own
+      # address (review of 23 Sep 2026): the same template as the api.
+      TENANT_URL_TEMPLATE: ${TENANT_URL_TEMPLATE:-}
       KEYCLOAK_ADMIN_PASSWORD: "${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD mancante in infra/.env}"
     volumes:
       - api_data:/data
@@ -617,6 +623,9 @@ services:
       # Liveness probe: this container's heartbeat and, with tenants, an
       # `events-ingest` worker of some tenant connected to Redis (see `worker`)
       HEALTHCHECK_QUEUE: events-ingest
+      # The links of the notifications sent from here open the tenant's own
+      # address (review of 23 Sep 2026): the same template as the api.
+      TENANT_URL_TEMPLATE: ${TENANT_URL_TEMPLATE:-}
     volumes:
       - api_data:/data
     depends_on:

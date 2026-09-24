@@ -35,7 +35,7 @@ describe('RequestAssignment: when things do not go smoothly', () => {
   it('a team the API refuses is said, nothing is reread, and the choice stays to try again', async () => {
     apolloFinto.esiti['AssignServiceRequestToTeam'] = { error: new Error('The chosen team no longer exists in this organization') }
     const onChanged = vi.fn(async () => undefined)
-    const { user } = renderWithProviders(<RequestAssignment request={open({ team: { id: 't-desk', name: 'SUP_Service Desk' } })} onChanged={onChanged} />)
+    const { user } = renderWithProviders(<RequestAssignment request={open({ team: { id: 't-desk', name: 'SUP_Service Desk' } })} canEdit onChanged={onChanged} />)
     // Choosing the team it already has changes nothing: there is nothing to send.
     await user.click(screen.getByRole('combobox', { name: 'Team' }))
     await user.click(screen.getByRole('option', { name: 'SUP_Service Desk' }))
@@ -52,14 +52,14 @@ describe('RequestAssignment: when things do not go smoothly', () => {
 
   it('while a team or a person is being assigned the buttons wait and say so', () => {
     inFlight.add('AssignServiceRequestToTeam').add('AssignServiceRequestToUser')
-    renderWithProviders(<RequestAssignment request={open({ team: { id: 't-desk', name: 'SUP_Service Desk' } })} onChanged={vi.fn(async () => undefined)} />)
+    renderWithProviders(<RequestAssignment request={open({ team: { id: 't-desk', name: 'SUP_Service Desk' } })} canEdit onChanged={vi.fn(async () => undefined)} />)
     const waiting = screen.getAllByRole('button', { name: 'Assigning…' })
     expect(waiting).toHaveLength(2)
     for (const button of waiting) expect(button).toBeDisabled()
   })
 
   it('a completed request with nobody on it shows dashes, not blanks', () => {
-    renderWithProviders(<RequestAssignment request={open({ completedAt: '2026-09-23T10:00:00Z' })} onChanged={vi.fn(async () => undefined)} />)
+    renderWithProviders(<RequestAssignment request={open({ completedAt: '2026-09-23T10:00:00Z' })} canEdit onChanged={vi.fn(async () => undefined)} />)
     expect(screen.getByText('Team').parentElement!.nextElementSibling).toHaveTextContent('—')
     expect(screen.getByText('Assignee').parentElement!.nextElementSibling).toHaveTextContent('—')
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()

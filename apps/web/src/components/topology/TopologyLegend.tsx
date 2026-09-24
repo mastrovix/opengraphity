@@ -3,6 +3,7 @@
  * screen, the health colours and the signals. It has no D3, so it lives apart
  * from the graph (and is tested without loading it).
  */
+import { useCILabels } from '@/hooks/useCILabels'
 import { useTranslation } from 'react-i18next'
 import { humanizeValue } from '@opengraphity/web-core'
 import { alpha, colors, fontFamily, palette } from '@/lib/tokens'
@@ -14,11 +15,14 @@ import { NODE_COLOR, EDGE_COLOR, HEALTH_COLOR } from './topologyStyle'
 // ── Legend ───────────────────────────────────────────────────────────────────
 
 /**
- * The name of a CI type in the legend: the label of the metamodel, or the
- * type humanized by the one shared rule when the metamodel does not have it
- * (D29). It capitalised every word of the type key before.
+ * The name of a CI type in the legend: the one rule of the app (useCILabels —
+ * the customer's per-language label, matching the type in either spelling),
+ * or the type humanized when the metamodel does not have it (D29). It used
+ * `label` alone, by exact name (review of 23 Sep 2026).
  */
-function nodeTypeLabel(type: string, ciTypes: readonly CITypeMeta[] | undefined): string {
+function nodeTypeLabel(type: string, typeLabel: (t: string) => string, ciTypes: readonly CITypeMeta[] | undefined): string {
+  const label = typeLabel(type)
+  if (label !== type) return label
   return ciTypes?.find((ct) => ct.name === type)?.label || humanizeValue(type)
 }
 
@@ -32,6 +36,7 @@ interface LegendProps {
 
 export function TopologyLegend({ nodes, edges, ciTypes, highlightHealth = false }: LegendProps) {
   const { t } = useTranslation()
+  const ciLabels = useCILabels()
   const presentNodeTypes = [...new Set(nodes.map((n) => n.type))].sort()
   const presentEdgeTypes = [...new Set(edges.map((e) => e.type))].sort()
 
@@ -55,7 +60,7 @@ export function TopologyLegend({ nodes, edges, ciTypes, highlightHealth = false 
           {presentNodeTypes.map((type) => (
             <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
               <CIIcon icon={iconKeyForType(typeIconMap, type)} size={14} color={NODE_COLOR} style={{ flexShrink: 0, margin: 1 }} />
-              <span style={{ color: 'var(--color-slate)' }}>{nodeTypeLabel(type, ciTypes)}</span>
+              <span style={{ color: 'var(--color-slate)' }}>{nodeTypeLabel(type, ciLabels.typeLabel, ciTypes)}</span>
             </div>
           ))}
         </div>

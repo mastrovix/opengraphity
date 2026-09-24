@@ -91,7 +91,7 @@ export function AISection() {
           {(!simOk || !sizeOk) && <Hint tone="danger">{t(!simOk ? 'pages.organization.aiSimilarityInvalid' : 'pages.organization.aiSizeInvalid')}</Hint>}
           <div>
             <Button disabled={!dirty || !simOk || !sizeOk || saving}
-              onClick={() => void save({ variables: { input: { features, clusterMinSimilarity: sim, clusterMinSize: sz } } })}>
+              onClick={() => save({ variables: { input: { features, clusterMinSimilarity: sim, clusterMinSize: sz } } })}>
               {t('common.save')}
             </Button>
           </div>

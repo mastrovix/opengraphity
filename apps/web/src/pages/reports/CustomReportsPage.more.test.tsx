@@ -21,8 +21,7 @@ vi.mock('@/components/ReportChartRenderer', () => ({
   ReportChartRenderer: ({ title, data }: { title: string; data: string }) => <figure aria-label={title}>{data}</figure>,
 }))
 
-// The page's own documents for channels and teams (not exported): the same text.
-const GET_CHANNELS_SLIM = gql`query GetChannelsSlim { notificationChannels { id name platform } }`
+// The page's own document for teams (not exported): the same text.
 const GET_TEAMS_SLIM = gql`query GetTeamsSlim { teams { id name } }`
 
 const REPORT = {
@@ -40,7 +39,6 @@ function mocks() {
   const runs = { count: 0 }
   const list: GqlMock[] = [
     { request: { query: GET_REPORT_TEMPLATES }, result: { data: { reportTemplates: [REPORT] } }, maxUsageCount: Number.POSITIVE_INFINITY },
-    { request: { query: GET_CHANNELS_SLIM }, result: { data: { notificationChannels: [] } }, maxUsageCount: Number.POSITIVE_INFINITY },
     { request: { query: GET_TEAMS_SLIM }, result: { data: { teams: [] } }, maxUsageCount: Number.POSITIVE_INFINITY },
     {
       request: { query: EXECUTE_REPORT, variables: { templateId: 'r1', language: 'en' } },

@@ -150,14 +150,28 @@ export async function openIncidentFromEvent(args: OpenIncidentArgs) {
     props['description'] ? `\n${toStr(props['description'])}` : '',
   ].filter(Boolean).join('\n')
 
-  const incident = await (await incidents()).createIncident({
-    title:         toStr(props['title']),
-    description,
-    severity:      await incidentSeverityFromEvent(tenantId, severity),
-    impact:        iu.impact,
-    urgency:       iu.urgency,
-    affectedCIIds: [ciId],
-  }, { tenantId, userId: actorId })
+  const service = await incidents()
+  // Written, and a step after it failed (its team, its event): the event is
+  // linked to it all the same, and the failure is thrown after — the next pass
+  // finds the link instead of opening another incident (review of 23 Sep 2026).
+  let incident: { id: string; number: string }
+  let failure: unknown = null
+  try {
+    const created = await service.createIncident({
+      title:         toStr(props['title']),
+      description,
+      severity:      await incidentSeverityFromEvent(tenantId, severity),
+      impact:        iu.impact,
+      urgency:       iu.urgency,
+      affectedCIIds: [ciId],
+    }, { tenantId, userId: actorId })
+    incident = { ...created, id: String(created.id), number: String(created.number ?? '') }
+  } catch (err) {
+    const made = service.createdIncidentOf(err)
+    if (!made) throw err
+    incident = made
+    failure = err
+  }
 
   const own = args.session ? null : getSession(undefined, 'WRITE')
   const session = args.session ?? own!
@@ -167,6 +181,7 @@ export async function openIncidentFromEvent(args: OpenIncidentArgs) {
     await setCorrelation(session, tenantId, eventId, 'opened', now, null, { kind: manual ? 'incident_opened_manually' : 'correlated', incidentId: incident.id, actorId, always: true })
   } finally { if (own) await own.close() }
   if (!manual) incidentsAutoOpenedTotal.inc({})
+  if (failure) throw failure
   return incident
 }
 

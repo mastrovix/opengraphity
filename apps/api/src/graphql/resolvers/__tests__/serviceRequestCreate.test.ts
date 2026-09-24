@@ -159,6 +159,14 @@ describe('createServiceRequest — priorità dalla voce del catalogo', () => {
     expect(createRequest).not.toHaveBeenCalled()
   })
 
+  // Review of 23 Sep 2026: without an item the portal user chose the priority and skipped the approval.
+  it('from the portal a request without a catalog item is refused, before any lookup', async () => {
+    const err = await failure(createServiceRequest(undefined, { input: { title: 'Laptop', priority: 'critical' } }, endUser))
+    expect(err.extensions['i18n']).toMatchObject({ key: 'errors.serviceRequest.catalogItemRequired' })
+    expect(runQueryOne).not.toHaveBeenCalled()
+    expect(createRequest).not.toHaveBeenCalled()
+  })
+
   // Ondata 2: la categoria della richiesta è quella della voce, per le policy SLA per categoria.
   it('la richiesta eredita la categoria della voce', async () => {
     vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: false, priority: 'high', name: 'Sblocco account', category: 'access' })

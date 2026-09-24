@@ -64,3 +64,4 @@ export { remarkUnderline, UNDERLINE_OPEN, UNDERLINE_CLOSE } from './markdownUnde
 // Le formule dei campi calcolati (ondata 6): il renderer le usa da sé, e la
 // pagina della libreria le usa per il pulsante «Prova».
 export { runFormula, computeFormulas, type FormulaEsito } from './formulaRunner.js'
+export { newBoundedScriptVM, scriptErrorMessage, BROWSER_SCRIPT_DEADLINE_MS, BROWSER_SCRIPT_MEMORY_BYTES, type BoundedScriptVM } from './boundedScript.js'

@@ -4,7 +4,8 @@
  * It is the fastest way into a ticket, a CI or an article, and it is used from
  * the keyboard. What a user loses if these regress:
  *  - a result that opens the wrong page (every kind has its own route; a CI
- *    whose type is unknown must still open somewhere, not crash);
+ *    whose type is unknown opens on the route that resolves it; a generic
+ *    task opens its ticket);
  *  - Ctrl/Cmd+K no longer focusing the box, arrows that run past the list,
  *    Enter that opens nothing, Escape that leaves the list open;
  *  - a failed search that looks like "no results" (the user concludes the
@@ -28,7 +29,10 @@ const ALL = {
   incidents: [{ id: 'inc-1', number: 'INC0001', title: 'DB down' }],
   problems: [{ id: 'prb-1', number: 'PRB0001', title: 'DB keeps failing' }],
   serviceRequests: [],
-  tasks: [{ id: 't-1', code: 'TSK0001', taskType: 'deploy', status: 'open', changeCode: 'CHG0001', changeId: 'chg-1', ciName: 'db-01' }],
+  tasks: [
+    { id: 't-1', code: 'TSK0001', taskType: 'deploy-plan', status: 'open', changeCode: 'CHG0001', changeId: 'chg-1', ciName: 'db-01', entityType: 'change' },
+    { id: 'k-1', code: 'TSK0002', taskType: 'task', status: 'open', changeCode: 'INC0001', changeId: 'inc-1', ciName: 'Call the vendor', entityType: 'incident' },
+  ],
   kbArticles: [{ id: 'kb-1', title: 'How to restart the DB', slug: 'restart-db' }],
 }
 
@@ -43,26 +47,31 @@ describe('GlobalSearch — results', () => {
     await user.type(box(), 'db')
     const options = await screen.findAllByRole('option')
     expect(options.map((o) => o.textContent)).toEqual([
-      'db-01database instance',
+      // The type's name as the rest of the product says it (useCILabels), not the internal name with spaces.
+      'db-01Database Instance',
       'mystery',
       'CHG0001Patch the DB',
       'INC0001DB down',
       'PRB0001DB keeps failing',
-      // A task shows the change it belongs to as a badge.
-      'TSK0001deployCHG0001',
+      // A task shows its ticket as a badge: a change task its translated kind,
+      // a generic task its own title (review of 23 Sep 2026).
+      'TSK0001Deployment planCHG0001',
+      'TSK0002Call the vendorINC0001',
       'How to restart the DB',
     ])
     expect(query).toHaveBeenCalledWith(expect.objectContaining({ variables: { query: 'db', limit: 5 } }))
-    // A CI without a type still opens (on the "unknown" route) rather than crashing.
+    // A CI without a type opens on `/cis/<id>`, which resolves the type (`/ci/unknown/…` was a dead end).
     await user.click(screen.getByRole('option', { name: /mystery/ }))
-    await attendiURL('/ci/unknown/ci-2')
+    await attendiURL('/cis/ci-2')
   })
 
   it.each([
     [/CHG0001Patch/, '/changes/chg-1'],
-    [/INC0001/, '/incidents/inc-1'],
+    [/INC0001DB down/, '/incidents/inc-1'],
     [/PRB0001/, '/problems/prb-1'],
     [/TSK0001/, '/tasks/t-1'],
+    // A generic task has no page of its own: it opens its ticket, not «Task not found».
+    [/TSK0002/, '/incidents/inc-1'],
     [/How to restart/, '/knowledge-base/restart-db'],
   ])('%s opens %s', async (name, route) => {
     query.mockResolvedValue({ data: { globalSearch: ALL } })

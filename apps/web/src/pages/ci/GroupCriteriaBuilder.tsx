@@ -187,7 +187,7 @@ export function GroupCriteriaBuilder({ groupId, criteria, onSaved }: Props) {
               ? <Loader2 size={12} className="animate-spin" />
               : t('pages.ci.criteriaPreview', { count: previewTotal ?? 0 })}
           </span>
-          <Button onClick={() => void save()} disabled={!dirty || saving} icon={saving ? <Loader2 size={13} className="animate-spin" /> : undefined}>
+          <Button onClick={() => save()} disabled={!dirty || saving} icon={saving ? <Loader2 size={13} className="animate-spin" /> : undefined}>
             {t('common.save')}
           </Button>
         </div>

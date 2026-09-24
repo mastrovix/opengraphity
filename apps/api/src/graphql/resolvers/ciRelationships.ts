@@ -4,7 +4,7 @@ import { audit } from '../../lib/audit.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
 import { cache, metamodelCacheKey } from '../../lib/cache.js'
-import { calculateChain } from '../../lib/chainCalculator.js'
+import { recalculateChainsFrom } from '../../lib/chainCalculator.js'
 import { logger } from '../../lib/logger.js'
 import { notifyCIGraphChanged } from '../../services/serviceImpact/sync.js'
 
@@ -132,9 +132,10 @@ async function addCIRelationship(
       MERGE (a)-[:${relationType}]->(b)
     `, { sourceId, targetId, tenantId }))
 
-    // 6. Recalculate chains
-    await calculateChain(sourceId, tenantId)
-    await calculateChain(targetId, tenantId)
+    // 6. Recalculate chains: the chain flows downstream, so the target and
+    // every CI below it (review of 23 Sep 2026 — only the two ends were, and
+    // the source's chain does not depend on this relationship at all).
+    await recalculateChainsFrom(targetId, tenantId)
 
     // 7. Invalidate cache
     cache.invalidate(`${metamodelCacheKey('topology', tenantId)}:`)
@@ -191,9 +192,8 @@ async function removeCIRelationship(
       throw new NotFoundError('CIRelationship', `${sourceId} -${relationType}-> ${targetId}`)
     }
 
-    // 3. Recalculate chains
-    await calculateChain(sourceId, tenantId)
-    await calculateChain(targetId, tenantId)
+    // 3. Recalculate chains: the target and every CI downstream of it.
+    await recalculateChainsFrom(targetId, tenantId)
 
     // 4. Invalidate cache
     cache.invalidate(`${metamodelCacheKey('topology', tenantId)}:`)

@@ -73,6 +73,8 @@ vi.mock('../../lib/systemText.js', () => ({
 }))
 vi.mock('../../lib/domainMatrix.js', () => ({ assertDomainValue: vi.fn() }))
 vi.mock('../../lib/ticketCIExclusions.js', () => ({ assertCIsLinkable: vi.fn() }))
+vi.mock('../../lib/validateRequiredFields.js', () => ({ validateStepRequirements: vi.fn(async () => undefined) }))
+vi.mock('../../lib/stepMetadataPreflight.js', () => ({ preflightStepMetadata: vi.fn(async () => undefined) }))
 vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn() }))
 vi.mock('../../lib/stepEnteredPublisher.js', () => ({ publishStepEnteredForEntity: vi.fn() }))
 vi.mock('../../jobs/embeddingWorker.js', () => ({ enqueueEmbedding: vi.fn(async () => undefined) }))
@@ -342,6 +344,22 @@ describe('createIncident — paths not covered elsewhere', () => {
       expect(err).toBeInstanceOf(GraphQLError)
       expect(err.message).toBe('Incident INC00000042 was created, but assigning it to its team failed: neo4j down')
       expect(err.extensions['i18n']).toEqual({ key: 'errors.incident.createdButNotAssigned', params: { number: 'INC00000042', reason: 'neo4j down' } })
+      // Review of 23 Sep 2026: the error names the incident, so an automatic opener records it instead of opening another.
+      expect(svc.createdIncidentOf(err)).toEqual({ id: expect.any(String), number: 'INC00000042' })
+    })
+
+    it('an event that cannot be announced after the commit also names the incident, with its own key', async () => {
+      answers()
+      vi.mocked(publishEvent).mockRejectedValueOnce(new Error('redis down'))
+      const err = await svc.createIncident({ title: 'T', affectedCIIds: ['ci-1'] }, ctx).catch((e: unknown) => e as GraphQLError)
+      expect(err.message).toBe('Incident INC00000042 was created, but announcing it failed: redis down')
+      expect(err.extensions['i18n']).toEqual({ key: 'errors.incident.createdButNotAnnounced', params: { number: 'INC00000042', reason: 'redis down' } })
+      expect(svc.createdIncidentOf(err)).toMatchObject({ number: 'INC00000042' })
+    })
+
+    it('an error that is not about a created incident names none', () => {
+      expect(svc.createdIncidentOf(new Error('x'))).toBeNull()
+      expect(svc.createdIncidentOf(null)).toBeNull()
     })
   })
 })
@@ -365,6 +383,18 @@ describe('resolveIncident', () => {
     expect(vi.mocked(runQuery).mock.calls[0]![2]).toMatchObject({ rootCause: 'bad cable', tenantId: 't-1' })
     // incident.resolved comes from the step hook, not from here (review of 23 Sep 2026).
     expect(vi.mocked(publishEvent).mock.calls.map((c) => c[0])).not.toContain('incident.resolved')
+  })
+
+  // Review of 23 Sep 2026: the bulk resolve and Slack skipped the rules «field required entering Resolved».
+  it('the rules of the resolved step, on the stored incident plus the notes, stop the resolve before the engine', async () => {
+    const { validateStepRequirements } = await import('../../lib/validateRequiredFields.js')
+    vi.mocked(runQueryOne).mockResolvedValue({ instanceId: 'wi-1', props: { category: null } })
+    vi.mocked(validateStepRequirements).mockRejectedValueOnce(new Error('Field "category" is required for step "resolved"'))
+    await expect(svc.resolveIncident('inc-1', ctx, 'bad cable')).rejects.toThrow(/category/)
+    expect(vi.mocked(validateStepRequirements).mock.calls[0]![1]).toEqual({
+      entityType: 'incident', entityProps: { category: null }, notes: 'bad cable', tenantId: 't-1', toStep: 'resolved',
+    })
+    expect(workflowEngine.transition).not.toHaveBeenCalled()
   })
 
   it('without a "resolved" category it falls back to the first terminal step; no notes keep the old root cause', async () => {

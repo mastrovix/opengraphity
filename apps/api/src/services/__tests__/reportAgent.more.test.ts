@@ -97,9 +97,9 @@ describe('schema context', () => {
   it('lists the tenant\'s labels with exact counts and its relationships in the system prompt', async () => {
     const tenantId = freshTenant()
     const session = sessionAnswering((cypher) => {
-      if (cypher.includes('keys(n)')) return [rec({ label: 'Incident', props: ['title', 'status'] }), rec({ label: 'Team', props: ['name'] })]
-      if (cypher.includes('MATCH (a)-[r]->(b)')) return [rec({ from: 'Incident', rel: 'ASSIGNED_TO', to: 'Team' })]
-      if (cypher.includes('count(n) AS count')) return [rec({ label: 'Incident', count: { toNumber: () => 42 } })]
+      if (cypher.includes('count(n) AS count')) return [rec({ label: 'Incident', count: { toNumber: () => 42 } }), rec({ label: 'Team', count: 3 })]
+      if (cypher.includes('MATCH (n:`Incident`)')) return [rec({ props: ['title', 'status'], rels: [{ rel: 'ASSIGNED_TO', to: 'Team' }] })]
+      if (cypher.includes('MATCH (n:`Team`)')) return [rec({ props: ['name'], rels: [] })]
       return []
     })
     vi.mocked(getSession).mockReturnValue(session as never)
@@ -108,14 +108,46 @@ describe('schema context', () => {
 
     const system = (create.mock.calls[0]![0] as { system: Array<{ text: string }> }).system[0]!.text
     expect(system).toContain('- **Incident** (42 nodes): title, status')
-    // A label with no count row reads 0, not "undefined".
-    expect(system).toContain('- **Team** (0 nodes): name')
+    expect(system).toContain('- **Team** (3 nodes): name')
     expect(system).toContain('- (Incident)-[:ASSIGNED_TO]->(Team)')
     // Every schema read is scoped to the tenant.
     for (const call of session.run.mock.calls as unknown as Array<[string, Record<string, unknown>]>) {
       expect(call[1]).toMatchObject({ tenantId })
     }
     expect(session.close).toHaveBeenCalled()
+  })
+
+  /*
+   * Review of 23 Sep 2026: the labels come from the exact counts, and each is
+   * sampled on its own. A 20,000-node sample of the whole tenant, dominated by
+   * the audit entries, left the tickets written later out of the schema.
+   */
+  it('every counted label is in the schema, even one the first nodes of the tenant do not show', async () => {
+    const tenantId = freshTenant()
+    const session = sessionAnswering((cypher) => {
+      if (cypher.includes('count(n) AS count')) return [rec({ label: 'AuditEntry', count: 1_500_000 }), rec({ label: 'Problem', count: 12 })]
+      if (cypher.includes('MATCH (n:`Problem`)')) return [rec({ props: ['title'], rels: [] })]
+      return [rec({ props: [], rels: [] })]
+    })
+    vi.mocked(getSession).mockReturnValue(session as never)
+    const { client, create } = clientReturning(text('ok'))
+    await runReportAgent({ permissions: ALL, tenantId, language: 'English', messages: [{ role: 'user', content: 'q' }], client })
+    const system = (create.mock.calls[0]![0] as { system: Array<{ text: string }> }).system[0]!.text
+    expect(system).toContain('- **Problem** (12 nodes): title')
+    // The label is written in the text, quoted — `MATCH (n:$(label))` scans every node.
+    const reads = (session.run.mock.calls as unknown as Array<[string]>).map((c) => c[0])
+    expect(reads.some((q) => q.includes('MATCH (n:`AuditEntry`)'))).toBe(true)
+    expect(reads.some((q) => q.includes('$(label)'))).toBe(false)
+  })
+
+  it('a label is quoted as an identifier', async () => {
+    const tenantId = freshTenant()
+    const session = sessionAnswering((cypher) => (cypher.includes('count(n) AS count') ? [rec({ label: 'We`ird', count: 1 })] : []))
+    vi.mocked(getSession).mockReturnValue(session as never)
+    const { getCachedSchema, clearSchemaCache } = await import('../reportAgent.js')
+    clearSchemaCache()
+    expect(await getCachedSchema(tenantId)).toContain('- **We`ird** (1 nodes): ')
+    expect((session.run.mock.calls as unknown as Array<[string]>).some((c) => c[0].includes('MATCH (n:`We``ird`)'))).toBe(true)
   })
 
   /*
@@ -129,7 +161,7 @@ describe('schema context', () => {
     clearSchemaCache()
     const tenantId = freshTenant()
     let version = 1
-    const session = sessionAnswering((cypher) => (cypher.includes('keys(n)') ? [rec({ label: `V${version}`, props: [] })] : []))
+    const session = sessionAnswering((cypher) => (cypher.includes('count(n) AS count') ? [rec({ label: `V${version}`, count: 1 })] : []))
     vi.mocked(getSession).mockReturnValue(session as never)
     const t0 = Date.now()
     const now = vi.spyOn(Date, 'now').mockReturnValue(t0)
@@ -153,7 +185,7 @@ describe('schema context', () => {
     const { logger } = await import('../../lib/logger.js')
     clearSchemaCache()
     const tenantId = freshTenant()
-    vi.mocked(getSession).mockReturnValue(sessionAnswering((cypher) => (cypher.includes('keys(n)') ? [rec({ label: 'Old', props: [] })] : [])) as never)
+    vi.mocked(getSession).mockReturnValue(sessionAnswering((cypher) => (cypher.includes('count(n) AS count') ? [rec({ label: 'Old', count: 1 })] : [])) as never)
     const t0 = Date.now()
     const now = vi.spyOn(Date, 'now').mockReturnValue(t0)
     await getCachedSchema(tenantId)
@@ -167,12 +199,12 @@ describe('schema context', () => {
   it('the first question of a tenant waits, and concurrent first questions share one scan', async () => {
     const { getCachedSchema, clearSchemaCache } = await import('../reportAgent.js')
     clearSchemaCache()
-    const session = sessionAnswering((cypher) => (cypher.includes('keys(n)') ? [rec({ label: 'Incident', props: [] })] : []))
+    const session = sessionAnswering((cypher) => (cypher.includes('count(n) AS count') ? [rec({ label: 'Incident', count: 1 }), rec({ label: 'Team', count: 1 })] : []))
     vi.mocked(getSession).mockReturnValue(session as never)
     const tenantId = freshTenant()
     const [a, b] = await Promise.all([getCachedSchema(tenantId), getCachedSchema(tenantId)])
     expect(a).toBe(b)
-    // three reads (nodes, relationships, counts), once
+    // the counts, then one reading per label — once
     expect(session.run).toHaveBeenCalledTimes(3)
   })
 })
@@ -185,6 +217,18 @@ describe('the tool the model reads (D62)', () => {
 })
 
 describe('runReportAgent — input and loop edges', () => {
+  // Review of 23 Sep 2026: an abandoned stream kept calling the model to the end of its budget.
+  it('the signal reaches the model call, and an aborted one stops before the next turn', async () => {
+    const tool = message([{ type: 'tool_use', id: 'tu', name: CYPHER_TOOL.name, input: { query: SAFE_Q } }], 'tool_use')
+    const ctrl = new AbortController()
+    const create = vi.fn(async () => { ctrl.abort(); return tool })
+    const client = { messages: { create } } as unknown as Anthropic
+    await expect(runReportAgent({ permissions: ALL, tenantId: freshTenant(), messages: [{ role: 'user', content: 'q' }], client, signal: ctrl.signal }))
+      .rejects.toThrow('the person who asked went away')
+    expect(create).toHaveBeenCalledTimes(1)
+    expect((create.mock.calls[0] as unknown[])[1]).toEqual({ signal: ctrl.signal })
+  })
+
   it('refuses an empty conversation before calling the model', async () => {
     const { client, create } = clientReturning(text('x'))
     await expect(runReportAgent({ permissions: ALL, tenantId: freshTenant(), messages: [], client })).rejects.toThrow('no messages to send')
@@ -270,8 +314,17 @@ describe('runGuardedCypherTool', () => {
     const rows = Array.from({ length: 400 }, (_, i) => rec({ title: `incident number ${i} with a long title` }))
     vi.mocked(getSession).mockReturnValue(sessionAnswering(() => rows) as never)
     const out = await runGuardedCypherTool(SAFE_Q, 't1', new ToolLoopBudget(), 'L')
-    expect(out.endsWith('\n... (truncated)')).toBe(true)
-    expect(out.length).toBe(8000 + '\n... (truncated)'.length)
+    expect(out).toContain('\n... (truncated)')
+    // Review of 23 Sep 2026: the rows past the limit are not even loaded, and the model is told.
+    expect(out.endsWith('\n... (only the first 200 rows: aggregate, or add a LIMIT)')).toBe(true)
+    expect(out.length).toBe(8000 + '\n... (truncated)'.length + '\n... (only the first 200 rows: aggregate, or add a LIMIT)'.length)
+  })
+
+  it('the query runs with a time limit, and a timeout goes back to the model as advice, not as a crash', async () => {
+    const session = sessionAnswering(() => Object.assign(new Error('The transaction has been terminated'), { code: 'Neo.ClientError.Transaction.TransactionTimedOutClientConfiguration' }))
+    vi.mocked(getSession).mockReturnValue(session as never)
+    await expect(runGuardedCypherTool(SAFE_Q, 't1', new ToolLoopBudget(), 'L')).resolves.toMatch(/^Query error: it ran for more than 20 seconds and was stopped/)
+    expect(session.executeRead.mock.calls[0]![1]).toEqual({ timeout: 20_000 })
   })
 
   it('a Neo4j error goes back to the model as the tool result, and the session is closed', async () => {

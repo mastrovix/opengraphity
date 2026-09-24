@@ -720,6 +720,26 @@ function assertSLAPolicyScope(entityType: string, category: unknown): void {
   }
 }
 
+/**
+ * Response and resolution are positive whole minutes, and the response comes
+ * no later than the resolution (review of 23 Sep 2026). A policy saved with
+ * response 0 was accepted, and the SLA selector then threw for every ticket
+ * it matched: those tickets got no SLA and the coverage check failed. The
+ * same rule as a `set_sla` action (`assertRuleSLAMinutes`), with the keys of the page.
+ */
+function assertPolicyMinutes(responseMinutes: unknown, resolveMinutes: unknown): void {
+  const response = Number(responseMinutes)
+  const resolve  = Number(resolveMinutes)
+  for (const [field, value, raw] of [['responseMinutes', response, responseMinutes], ['resolveMinutes', resolve, resolveMinutes]] as const) {
+    if (!Number.isInteger(value) || value <= 0) {
+      throw new ValidationError(`${field} must be a positive whole number of minutes. Got: ${JSON.stringify(raw)}`, { key: 'errors.sla.minutesPositive', params: { field } })
+    }
+  }
+  if (response > resolve) {
+    throw new ValidationError(`The response target (${response} min) cannot be later than the resolution target (${resolve} min)`, { key: 'errors.sla.responseAfterResolve', params: { response, resolve } })
+  }
+}
+
 /** Il preavviso deve cadere dentro il tempo di risoluzione, altrimenti l'avviso partirebbe già scaduto. */
 function assertWarningMinutes(warning: unknown, resolve: unknown): number {
   const w = Number(warning)
@@ -745,6 +765,7 @@ function policyTimezone(value: unknown): string | null {
 
 async function createSLAPolicy(_: unknown, args: { input: Props }, ctx: GraphQLContext) {
   const { input } = args
+  assertPolicyMinutes(input['responseMinutes'], input['resolveMinutes'])
   const warningMinutes = assertWarningMinutes(input['warningMinutes'] ?? DEFAULT_SLA_WARNING_MINUTES, input['resolveMinutes'])
   const id  = uuidv4()
   const now = new Date().toISOString()
@@ -801,11 +822,15 @@ async function updateSLAPolicy(_: unknown, args: { id: string; input: Props }, c
       { id: args.id, tenantId: ctx.tenantId }))
     if (current[0]) assertSLAPolicyScope(current[0].entityType, args.input['category'])
   }
-  if (args.input['warningMinutes'] !== undefined || args.input['resolveMinutes'] !== undefined) {
-    const current = await withSession((session) => runQuery<{ warning: unknown; resolve: unknown }>(session,
-      'MATCH (p:SLAPolicyNode {id: $id, tenant_id: $tenantId}) RETURN p.warning_minutes AS warning, p.resolve_minutes AS resolve',
+  if (args.input['warningMinutes'] !== undefined || args.input['resolveMinutes'] !== undefined || args.input['responseMinutes'] !== undefined) {
+    const current = await withSession((session) => runQuery<{ warning: unknown; resolve: unknown; response: unknown }>(session,
+      'MATCH (p:SLAPolicyNode {id: $id, tenant_id: $tenantId}) RETURN p.warning_minutes AS warning, p.resolve_minutes AS resolve, p.response_minutes AS response',
       { id: args.id, tenantId: ctx.tenantId }))
-    if (current[0]) assertWarningMinutes(args.input['warningMinutes'] ?? current[0].warning, args.input['resolveMinutes'] ?? current[0].resolve)
+    // Checked on the FINAL values: what is not sent is what is saved.
+    if (current[0]) {
+      assertWarningMinutes(args.input['warningMinutes'] ?? current[0].warning, args.input['resolveMinutes'] ?? current[0].resolve)
+      assertPolicyMinutes(args.input['responseMinutes'] ?? current[0].response, args.input['resolveMinutes'] ?? current[0].resolve)
+    }
   }
   const sets: string[] = ['p.updated_at = $now']
   const params: Props = { id: args.id, tenantId: ctx.tenantId, now: new Date().toISOString() }

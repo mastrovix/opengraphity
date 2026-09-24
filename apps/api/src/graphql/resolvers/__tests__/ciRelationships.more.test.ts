@@ -18,7 +18,7 @@ vi.mock('../../../lib/cache.js', () => ({
   metamodelCacheKey: (prefix: string, tenantId: string) => `${prefix}:${tenantId}`,
 }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('../../../lib/chainCalculator.js', () => ({ calculateChain: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('../../../lib/chainCalculator.js', () => ({ calculateChain: vi.fn().mockResolvedValue(undefined), recalculateChainsFrom: vi.fn().mockResolvedValue(1) }))
 vi.mock('../../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }))
 vi.mock('../../../services/serviceImpact/sync.js', () => ({ notifyCIGraphChanged: vi.fn().mockResolvedValue(1) }))
 vi.mock('../../../lib/ciLabelsForTenant.js', () => ({

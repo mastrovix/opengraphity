@@ -103,7 +103,7 @@ beforeEach(() => {
   hoisted.loading = false
   apolloFinto.risposte['GetProblems'] = { problems: { items: ROWS, total: 2 } }
   apolloFinto.risposte['GetAISettings'] = ai({})
-  apolloFinto.risposte['GetMe'] = { me: { id: 'u1', name: 'Pat', email: 'p@x', role: 'custom', roleName: null, permissions: ['config.organization'], teams: [] } }
+  apolloFinto.risposte['GetMe'] = { me: { id: 'u1', name: 'Pat', email: 'p@x', role: 'custom', roleName: null, permissions: ['config.organization', 'problem.write'], teams: [] } }
   apolloFinto.risposte['GetWorkflowDefinition'] = { workflowDefinition: { steps: [
     step('under_investigation', 'Under investigation', 1), step('known_error', 'Known error', 2),
   ] } }

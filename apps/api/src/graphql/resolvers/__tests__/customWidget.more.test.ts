@@ -291,13 +291,16 @@ describe('updateCustomWidget', () => {
     expect(s.executeWrite).not.toHaveBeenCalled()
   })
 
+  /** What the update reads first: the widget as stored. */
+  const current = { entityType: 'service_request', metric: 'count', groupByField: null, filterField: null }
+
   it('sets exactly the sent fields, in the tenant', async () => {
-    const s = session([{ w: { ...stored, title: 'New' } }])
+    const s = session([current], [{ w: { ...stored, title: 'New' } }])
     const out = await Mutation.updateCustomWidget(null, { id: 'w1', input: {
       title: 'New', widgetType: 'bar', entityType: 'service_request', metric: 'count_by_field', groupByField: 'status',
       filterField: 'vpn', filterValue: 'true', timeRange: '24h', size: 'small', color: '#333333', position: 0,
     } }, ctx)
-    const [cypher, params] = s.run.mock.calls[0]! as [string, Record<string, unknown>]
+    const [cypher, params] = s.run.mock.calls[1]! as [string, Record<string, unknown>]
     for (const part of ['w.title = $title', 'w.widget_type = $widgetType', 'w.entity_type = $entityType', 'w.metric = $metric',
       'w.group_by_field = $gbf', 'w.filter_field = $ff', 'w.filter_value = $fv', 'w.time_range = $timeRange',
       'w.size = $size', 'w.color = $color', 'w.position = $position']) expect(cypher).toContain(part)
@@ -308,10 +311,26 @@ describe('updateCustomWidget', () => {
     expect(audit).toHaveBeenCalledWith(ctx, 'customWidget.updated', 'CustomWidget', 'w1')
   })
 
-  it('nulls do not overwrite: only updated_at is set', async () => {
-    const s = session([{ w: stored }])
+  it('a null on a required setting does not overwrite: only updated_at is set', async () => {
+    const s = session([current], [{ w: stored }])
     await Mutation.updateCustomWidget(null, { id: 'w1', input: { title: null, color: null } }, ctx)
-    expect(s.run.mock.calls[0]![0]).toMatch(/SET w\.updated_at = \$now\s+RETURN/)
+    expect(s.run.mock.calls[1]![0]).toMatch(/SET w\.updated_at = \$now\s+RETURN/)
+  })
+
+  // Review of 23 Sep 2026: the web sends null to clear a filter or a time range, and the old one stayed.
+  it('a null on an optional setting CLEARS it', async () => {
+    const s = session([{ ...current, filterField: 'vpn' }], [{ w: stored }])
+    await Mutation.updateCustomWidget(null, { id: 'w1', input: { filterField: null, filterValue: null, timeRange: null, groupByField: null } }, ctx)
+    const [cypher, params] = s.run.mock.calls[1]! as [string, Record<string, unknown>]
+    for (const part of ['w.filter_field = $ff', 'w.filter_value = $fv', 'w.time_range = $timeRange', 'w.group_by_field = $gbf']) expect(cypher).toContain(part)
+    expect(params).toMatchObject({ ff: null, fv: null, timeRange: null, gbf: null })
+  })
+
+  it('the widget as it will be is validated: a new entity with the old filter field is refused before writing', async () => {
+    const s = session([{ ...current, filterField: 'vpn' }])
+    const err = await failure(Mutation.updateCustomWidget(null, { id: 'w1', input: { entityType: 'certificate' } }, ctx))
+    expect(err.extensions['code']).toBe('BAD_USER_INPUT')
+    expect(s.executeWrite).not.toHaveBeenCalled()
   })
 
   it('a widget that is not there is NOT_FOUND and is not audited', async () => {

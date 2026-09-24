@@ -129,12 +129,14 @@ describe('codes', () => {
 
   it('chiaviDaCreare: only the natural keys that do not exist yet', async () => {
     many = () => [{ chiave: 'k2' }]
-    expect([...await h.chiaviDaCreare(tx, 'AssessmentTask', ['k1', 'k2', 'k3'])]).toEqual(['k1', 'k3'])
-    expect(vi.mocked(runQuery).mock.calls[0]![1]).toContain('MATCH (t:AssessmentTask)')
+    expect([...await h.chiaviDaCreare(tx, 'AssessmentTask', ['k1', 'k2', 'k3'], 't1')]).toEqual(['k1', 'k3'])
+    // The tenant with the key: the (tenant_id, change_key) constraint's index (review of 23 Sep 2026).
+    expect(vi.mocked(runQuery).mock.calls[0]![1]).toContain('MATCH (t:AssessmentTask {tenant_id: $tenantId})')
+    expect(vi.mocked(runQuery).mock.calls[0]![2]).toMatchObject({ tenantId: 't1' })
   })
 
   it('chiaviDaCreare with no keys does not query', async () => {
-    expect((await h.chiaviDaCreare(tx, 'ReviewTask', [])).size).toBe(0)
+    expect((await h.chiaviDaCreare(tx, 'ReviewTask', [], 't1')).size).toBe(0)
     expect(runQuery).not.toHaveBeenCalled()
   })
 })
@@ -348,7 +350,7 @@ describe('afterEnterStep', () => {
     many = (q) => {
       if (q.includes('RETURN ci.id AS ciId')) return [{ ciId: 'a' }, { ciId: 'b' }]
       // CI a already has its validation test (re-entering the step).
-      if (q.includes('MATCH (t:ValidationTest)')) return [{ chiave: 'c1-a' }]
+      if (q.includes('MATCH (t:ValidationTest {tenant_id: $tenantId})')) return [{ chiave: 'c1-a' }]
       return []
     }
     vi.mocked(nextSequenceBlock).mockResolvedValue(103)
@@ -364,7 +366,7 @@ describe('afterEnterStep', () => {
     one = () => ({ hook: 'review' })
     many = (q) => {
       if (q.includes('RETURN ci.id AS ciId')) return [{ ciId: 'a' }, { ciId: 'b' }]
-      if (q.includes('MATCH (t:ReviewTask)')) return [{ chiave: 'c1-b-review' }]
+      if (q.includes('MATCH (t:ReviewTask {tenant_id: $tenantId})')) return [{ chiave: 'c1-b-review' }]
       return []
     }
     vi.mocked(nextSequenceBlock).mockResolvedValue(7)

@@ -268,7 +268,7 @@ function Segmenti<T extends string>({ valore, scelte, onScegli }: {
           style={{
             border: 'none', cursor: 'pointer', padding: '5px 12px', fontSize: 'var(--font-size-label)',
             background: valore === s.v ? 'var(--color-brand)' : 'var(--color-surface)',
-            color: valore === s.v ? 'var(--color-on-brand)' : 'var(--color-slate-dark)',
+            color: valore === s.v ? 'var(--color-white)' : 'var(--color-slate-dark)',
             fontWeight: valore === s.v ? 600 : 400,
           }}
         >
@@ -481,8 +481,8 @@ export function ChangeCalendarPage() {
                         key={g.toISOString()}
                         style={{
                           padding: '3px 6px', borderRadius: '6px 6px 0 0',
-                          background: eOggi ? 'var(--color-brand)' : fuoriMese ? 'var(--color-surface-1)' : 'var(--color-surface-alt)',
-                          color: eOggi ? 'var(--color-on-brand)' : fuoriMese ? colors.slateLight : 'var(--color-slate-dark)',
+                          background: eOggi ? 'var(--color-brand)' : fuoriMese ? 'var(--color-surface-1)' : 'var(--color-surface-2)',
+                          color: eOggi ? 'var(--color-white)' : fuoriMese ? colors.slateLight : 'var(--color-slate-dark)',
                           fontSize: 'var(--font-size-label)', fontWeight: eOggi ? 700 : 500,
                           fontVariantNumeric: 'tabular-nums',
                         }}

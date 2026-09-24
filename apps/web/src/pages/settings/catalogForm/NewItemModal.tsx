@@ -109,7 +109,7 @@ export function NewItemModal({ draft, onDraft, onClose, onCreated }: {
             onClick={() => { void create() }}
             style={{
               padding: '7px 14px', borderRadius: 8, border: 'none',
-              background: ready ? 'var(--color-brand)' : 'var(--color-surface-alt)',
+              background: ready ? 'var(--color-brand)' : 'var(--color-surface-2)',
               color: ready ? colors.white : 'var(--color-slate-light)',
               fontSize: 'var(--font-size-body)', fontWeight: fontWeight.medium,
               cursor: ready && !creating ? 'pointer' : 'not-allowed',

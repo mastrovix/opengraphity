@@ -12,6 +12,7 @@ import { getSession } from '@opengraphity/neo4j'
 import { WORKFLOW_STEP_ENTERED_EVENT, type WorkflowStepEnteredPayload } from '@opengraphity/types'
 import { publishEvent } from '../lib/publishEvent.js'
 import { publishStepEnteredForEntity } from '../lib/stepEnteredPublisher.js'
+import { publishStepNotifyRules } from '../lib/stepNotifyRules.js'
 import { logger } from '../lib/logger.js'
 
 let registered = false
@@ -49,6 +50,12 @@ export function registerStepEnteredEvents(): void {
       // U-8 / D12: signed by the rule that asked for it, when it was a rule.
       actorLabel: info.actorLabel ?? null,
       fromStep:   info.fromStep,
+    })
+
+    // The step's «notify on enter», for every path and ticket type (review of 23 Sep 2026).
+    await publishStepNotifyRules({
+      tenantId: info.tenantId, instanceId: info.instanceId, stepName: info.toStep,
+      actorId: info.actorId, entityType: info.entityType, entityId: info.entityId,
     })
 
     // `incident.closed` (la regola di notifica «Incident chiuso») lo pubblicava

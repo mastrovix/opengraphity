@@ -87,6 +87,15 @@ describe('eventJobId / enqueueEvents', () => {
     expect(jobs[1]!.opts['jobId']).toBe(`ev-t1-fp-hook-1-HighLoad-${Date.parse(DATA.receivedAt)}`)
   })
 
+  // Review of 23 Sep 2026: the second same-fingerprint alarm had the same instant, and the ingest took it for a retry.
+  it('two alarms with the same fingerprint in one batch: own job id AND own instant, one millisecond apart', async () => {
+    await enqueueEvents('t1', 'hook-1', [EV, { ...EV, severity: 'critical' }, EV], DATA.receivedAt)
+    const jobs = vi.mocked(addBulk).mock.calls[0]![0] as Array<{ data: { receivedAt: string }; opts: Record<string, unknown> }>
+    const base = Date.parse(DATA.receivedAt)
+    expect(jobs.map((j) => j.opts['jobId'])).toEqual([`ev-t1-fp-hook-1-DiskFull-${base}`, `ev-t1-fp-hook-1-DiskFull-${base}-1`, `ev-t1-fp-hook-1-DiskFull-${base}-2`])
+    expect(jobs.map((j) => Date.parse(j.data.receivedAt) - base)).toEqual([0, 1, 2])
+  })
+
   it('eventIngestBackoffMs: l\'ultimo tentativo aspetta 10 minuti (un riavvio di Neo4j di qualche minuto non brucia l\'allarme); oltre la tabella vale l\'ultima; valori non validi → errore', () => {
     expect([1, 2, 3, 4].map(eventIngestBackoffMs)).toEqual([10_000, 20_000, 40_000, 600_000])
     expect(eventIngestBackoffMs(9)).toBe(600_000)

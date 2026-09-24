@@ -22,6 +22,9 @@ import { ALL_CI_LABELS as ALL_CI_LABELS_SEED } from '../../lib/ciLabels.js'
 const TENANT_ROLES: ReadonlyMap<string, 'component' | 'infrastructure' | 'certificate'> =
   new Map(Object.entries(ROLE_BY_CI_LABEL) as [string, 'component' | 'infrastructure' | 'certificate'][])
 
+// The cursors of the periodic passes (lib/pagedPass.ts), in memory.
+const { resetPassCursors } = await import('../../lib/__tests__/passCursorRedisFake.js')
+vi.mock('../../lib/bullmq.js', () => import('../../lib/__tests__/passCursorRedisFake.js'))
 vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en'), languageForUser: vi.fn(async () => 'en') }))
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(), toNumber: (v: unknown) => (v == null ? 0 : Number(v)) }))
 vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn().mockResolvedValue(undefined) }))
@@ -105,6 +108,7 @@ const writeRow = (over: Record<string, unknown> = {}) => ({ id: 'map-1', previou
 const stormNodes = [node({ ciId: 'api-03', labels: ['Application'], level: 1, role: 'entry', weight: 8, critical: true, via: null, health: 'down', stormSources: ['Zabbix prod'] })]
 
 beforeEach(() => {
+  resetPassCursors()
   vi.clearAllMocks()
   vi.mocked(getSession).mockReturnValue(session as never)
 })

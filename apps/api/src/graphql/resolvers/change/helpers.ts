@@ -131,11 +131,15 @@ export async function chiaviDaCreare(
   // l'insieme è chiuso, così non ci arriva niente da fuori.
   label: 'AssessmentTask' | 'DeployPlanTask' | 'ValidationTest' | 'DeploymentTask' | 'ReviewTask',
   chiavi: readonly string[],
+  tenantId: string,
 ): Promise<Set<string>> {
   if (chiavi.length === 0) return new Set()
+  // The tenant with the key (review of 23 Sep 2026): it is what the
+  // (tenant_id, change_key) constraint indexes — without it, a scan of the
+  // label across every tenant at each call.
   const righe = await runQuery<{ chiave: string }>(session, `
-    MATCH (t:${label}) WHERE t.change_key IN $chiavi RETURN t.change_key AS chiave
-  `, { chiavi: [...chiavi] })
+    MATCH (t:${label} {tenant_id: $tenantId}) WHERE t.change_key IN $chiavi RETURN t.change_key AS chiave
+  `, { chiavi: [...chiavi], tenantId })
   const esistenti = new Set(righe.map((r) => r.chiave))
   return new Set(chiavi.filter((k) => !esistenti.has(k)))
 }
@@ -152,6 +156,14 @@ export async function assertCIHasOwnerAndSupport(session: Session, tenantId: str
            ownerT.id AS ownerTeamId,
            supportT.id AS supportTeamId
   `, { ciIds, tenantId })
+  // An id that is not a CI of the tenant is said, not dropped (review of 23 Sep
+  // 2026): the change was created without it — with zero CIs, when none matched.
+  const found = new Set(rows.map((r) => r.id))
+  const missing = [...new Set(ciIds)].filter((id) => !found.has(id))
+  if (missing.length > 0) {
+    throw new ValidationError(`These CIs do not exist in this tenant: ${missing.join(', ')}`,
+      { key: 'errors.ci.notFoundIds', params: { ids: missing.join(', ') } })
+  }
   for (const r of rows) {
     if (!r.ownerTeamId || !r.supportTeamId) {
       logger.error({ ciId: r.id, ciName: r.name, hasOwner: !!r.ownerTeamId, hasSupport: !!r.supportTeamId },
@@ -412,8 +424,8 @@ async function createValidationAndDeploymentTasks(session: SessionOrTx, changeId
     depKey: `${changeId}-${r.ciId}-exec`,
   }))
   const daCreare = new Set([
-    ...await chiaviDaCreare(session, 'ValidationTest',  chiavi.map((c) => c.valKey)),
-    ...await chiaviDaCreare(session, 'DeploymentTask',  chiavi.map((c) => c.depKey)),
+    ...await chiaviDaCreare(session, 'ValidationTest',  chiavi.map((c) => c.valKey), tenantId),
+    ...await chiaviDaCreare(session, 'DeploymentTask',  chiavi.map((c) => c.depKey), tenantId),
   ])
   const codes = await getNextTaskCodes(session, tenantId, daCreare.size)
   let prossimo = 0
@@ -427,13 +439,13 @@ async function createValidationAndDeploymentTasks(session: SessionOrTx, changeId
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
     UNWIND $ciCodes AS cc
     MATCH (c)-[:AFFECTS_CI]->(ci {id: cc.ciId})
-    MERGE (vt:ValidationTest {change_key: cc.valKey})
+    MERGE (vt:ValidationTest {tenant_id: $tenantId, change_key: cc.valKey})
       ON CREATE SET vt.id = randomUUID(), vt.code = cc.valCode, vt.tenant_id = $tenantId,
         vt.ci_id = ci.id, vt.status = '${TASK_STATUS.PENDING}',
         vt.result = null, vt.tested_at = null, vt.created_at = $now
     MERGE (c)-[:HAS_VALIDATION]->(vt)
     WITH c, ci, cc
-    MERGE (dt:DeploymentTask {change_key: cc.depKey})
+    MERGE (dt:DeploymentTask {tenant_id: $tenantId, change_key: cc.depKey})
       ON CREATE SET dt.id = randomUUID(), dt.code = cc.depCode, dt.tenant_id = $tenantId,
         dt.ci_id = ci.id, dt.status = '${TASK_STATUS.PENDING}',
         dt.created_at = $now
@@ -451,7 +463,7 @@ async function createReviewTasks(session: SessionOrTx, changeId: string, tenantI
   // Stessa regola degli altri task: la chiave si scrive una volta sola, in
   // TypeScript, e i codici si prendono solo per quelli che nascono davvero.
   const chiavi = ciRows.map((r) => ({ ciId: r.ciId, key: `${changeId}-${r.ciId}-review` }))
-  const daCreare = await chiaviDaCreare(session, 'ReviewTask', chiavi.map((c) => c.key))
+  const daCreare = await chiaviDaCreare(session, 'ReviewTask', chiavi.map((c) => c.key), tenantId)
   const codes = await getNextTaskCodes(session, tenantId, daCreare.size)
   let prossimo = 0
   const ciCodes = chiavi.map((c) => ({
@@ -461,7 +473,7 @@ async function createReviewTasks(session: SessionOrTx, changeId: string, tenantI
   await runWrite(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
     UNWIND $ciCodes AS cc
-    MERGE (rv:ReviewTask {change_key: cc.key})
+    MERGE (rv:ReviewTask {tenant_id: $tenantId, change_key: cc.key})
       ON CREATE SET rv.id = randomUUID(), rv.code = cc.code, rv.tenant_id = $tenantId,
         rv.ci_id = cc.ciId, rv.status = '${TASK_STATUS.PENDING}', rv.created_at = $now
     MERGE (c)-[:HAS_REVIEW]->(rv)

@@ -48,7 +48,7 @@ describe('RequestAssignment', () => {
   it('without a team: the assignee waits and says why; the team is chosen among the support teams', async () => {
     const onChanged = vi.fn(async () => undefined)
     apolloFinto.esiti['AssignServiceRequestToTeam'] = { data: { assignServiceRequestToTeam: { id: 'sr-1' } } }
-    const { user } = renderWithProviders(<RequestAssignment request={open()} onChanged={onChanged} />)
+    const { user } = renderWithProviders(<RequestAssignment request={open()} canEdit onChanged={onChanged} />)
     expect(screen.getByText('Assign a team first: the assignee is one of its members.')).toBeInTheDocument()
     expect(screen.queryByRole('combobox', { name: 'Assignee' })).not.toBeInTheDocument()
     // Nobody to offer yet: the people are not even read.
@@ -66,7 +66,7 @@ describe('RequestAssignment', () => {
 
   it('with a team: only its members who can take tickets are offered, and the choice is sent', async () => {
     apolloFinto.esiti['AssignServiceRequestToUser'] = { data: { assignServiceRequestToUser: { id: 'sr-1' } } }
-    const { user } = renderWithProviders(<RequestAssignment request={open({ team: { id: 't-desk', name: 'SUP_Service Desk' } })} onChanged={vi.fn(async () => undefined)} />)
+    const { user } = renderWithProviders(<RequestAssignment request={open({ team: { id: 't-desk', name: 'SUP_Service Desk' } })} canEdit onChanged={vi.fn(async () => undefined)} />)
     expect(screen.getByRole('combobox', { name: 'Team' })).toHaveValue('SUP_Service Desk')
     const select = screen.getByRole('combobox', { name: 'Assignee' })
     expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual(['— Nobody —', 'Olga'])
@@ -78,22 +78,33 @@ describe('RequestAssignment', () => {
 
   it('an assignee from before the team stays visible, and a team with nobody to take it says so', () => {
     apolloFinto.risposte['GetAssignableUsers'] = { users: [person('u-otto', 'Otto', ['t-net'])] }
-    renderWithProviders(<RequestAssignment request={open({ team: { id: 't-desk', name: 'SUP_Service Desk' }, assignee: { id: 'u-otto', name: 'Otto' } })} onChanged={vi.fn(async () => undefined)} />)
+    renderWithProviders(<RequestAssignment request={open({ team: { id: 't-desk', name: 'SUP_Service Desk' }, assignee: { id: 'u-otto', name: 'Otto' } })} canEdit onChanged={vi.fn(async () => undefined)} />)
     expect(screen.getByRole('combobox', { name: 'Assignee' })).toHaveValue('u-otto')
     expect(screen.getByText('The team has no members: add them in Teams.')).toBeInTheDocument()
   })
 
   it('people that cannot be read are said, not shown as an empty team', () => {
     apolloFinto.erroriQuery['GetAssignableUsers'] = new Error('users down')
-    renderWithProviders(<RequestAssignment request={open({ team: { id: 't-desk', name: 'SUP_Service Desk' } })} onChanged={vi.fn(async () => undefined)} />)
+    renderWithProviders(<RequestAssignment request={open({ team: { id: 't-desk', name: 'SUP_Service Desk' } })} canEdit onChanged={vi.fn(async () => undefined)} />)
     expect(screen.getByRole('alert')).toHaveTextContent('People not loaded: users down')
   })
 
   it('a completed request shows its team and assignee, nothing to change', () => {
-    renderWithProviders(<RequestAssignment request={open({ completedAt: '2026-09-23T10:00:00Z', team: { id: 't-desk', name: 'SUP_Service Desk' }, assignee: { id: 'u-olga', name: 'Olga' } })} onChanged={vi.fn(async () => undefined)} />)
+    renderWithProviders(<RequestAssignment request={open({ completedAt: '2026-09-23T10:00:00Z', team: { id: 't-desk', name: 'SUP_Service Desk' }, assignee: { id: 'u-olga', name: 'Olga' } })} canEdit onChanged={vi.fn(async () => undefined)} />)
     expect(screen.getByText('SUP_Service Desk')).toBeInTheDocument()
     expect(screen.getByText('Olga')).toBeInTheDocument()
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  })
+})
+
+// Review of 23 Sep 2026: who only reads requests sees the assignment, and no control to change it.
+describe('RequestAssignment — without request.write', () => {
+  it('shows the team and the person, with nothing to press', () => {
+    renderWithProviders(<RequestAssignment request={open({ team: { id: 't-desk', name: 'SUP_Service Desk' }, assignee: { id: 'u-olga', name: 'Olga' } })} canEdit={false} onChanged={vi.fn(async () => undefined)} />)
+    expect(screen.getByText('SUP_Service Desk')).toBeInTheDocument()
+    expect(screen.getByText('Olga')).toBeInTheDocument()
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.queryByRole('combobox')).toBeNull()
   })
 })

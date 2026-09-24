@@ -77,7 +77,8 @@ describe('teams — one tenant-scoped query, prefetch for the field resolvers', 
       managers: [{ id: 'mgr-1' }, { id: 'mgr-2' }],
     }] as never)
 
-    const out = await Q['teams']!(null, {}, ctx) as Array<Record<string, unknown>>
+    const selecting = (...names: string[]) => ({ fieldNodes: [{ selectionSet: { selections: names.map((n) => ({ kind: 'Field', name: { value: n } })) } }], fragments: {} })
+    const out = await Q['teams']!(null, {}, ctx, selecting('id', 'members', 'ownedCIs', 'supportedCIs', 'manager') as never) as Array<Record<string, unknown>>
 
     const [, cypher, params] = vi.mocked(runQuery).mock.calls[0]!
     expect(cypher).toContain('MATCH (t:Team {tenant_id: $tenantId})')
@@ -87,7 +88,7 @@ describe('teams — one tenant-scoped query, prefetch for the field resolvers', 
     expect(cypher).toContain('WHERE sci.tenant_id = $tenantId')
     expect(cypher).toContain('ORDER BY t.name ASC')
     expect(cypher).not.toContain('WHERE t.')
-    expect(params).toEqual({ tenantId: 'tenant-1' })
+    expect(params).toEqual({ tenantId: 'tenant-1', withMembers: true, withOwned: true, withSupported: true, withManager: true })
     expect(out[0]).toMatchObject({ id: 'team-1', name: 'Network', _members: [{ id: 'u-1' }], _manager: { id: 'mgr-1' } })
     expect((out[0]!['_ownedCIs'] as Array<Record<string, unknown>>)[0]).toMatchObject({ id: 'ci-1', type: 'server' })
     expect((out[0]!['_supportedCIs'] as Array<Record<string, unknown>>)[0]).toMatchObject({ id: 'ci-2' })

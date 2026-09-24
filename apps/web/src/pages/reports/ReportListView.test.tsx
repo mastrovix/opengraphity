@@ -25,13 +25,31 @@ const template = (over: Partial<ReportTemplate> = {}): ReportTemplate => ({
 })
 
 const props = (over: Partial<Props> = {}): Props => ({
-  templates: [template()], teams: [], menuRef: createRef<HTMLDivElement>(), menuOpenId: null, setMenuOpenId: vi.fn(),
+  templates: [template()], teams: [], canWrite: true, menuRef: createRef<HTMLDivElement>(), menuOpenId: null, setMenuOpenId: vi.fn(),
   showNewDialog: false, setShowNewDialog: vi.fn(),
   newName: '', setNewName: vi.fn(), newDesc: '', setNewDesc: vi.fn(), newVis: 'private', setNewVis: vi.fn(),
   newTeamIds: [], setNewTeamIds: vi.fn(), creating: false,
   goToDetail: vi.fn(), handleExecuteAndGoToDetail: vi.fn(), openSettings: vi.fn(), duplicateTemplate: vi.fn(),
   handleDeleteTemplate: vi.fn(), handleCreateTemplate: vi.fn(), resetNew: vi.fn(),
   ...over,
+})
+
+// Review of 23 Sep 2026: an empty list said «no reports» while loading, and for good when the read failed.
+describe('ReportListView — not read yet, or not readable', () => {
+  it('a failed read says so and offers a retry, and claims neither «no reports» nor a count', async () => {
+    const onRetryTemplates = vi.fn()
+    const { user } = renderWithProviders(<ReportListView {...props({ templates: [], templatesError: { message: 'templates down' }, onRetryTemplates })} />)
+    expect(screen.getByText('templates down')).toBeInTheDocument()
+    expect(screen.queryByText(/no report/i)).toBeNull()
+    await user.click(screen.getByRole('button', { name: /retry/i }))
+    expect(onRetryTemplates).toHaveBeenCalled()
+  })
+
+  it('while loading the list is being read, not empty', () => {
+    renderWithProviders(<ReportListView {...props({ templates: [], templatesLoading: true })} />)
+    expect(screen.getByRole('status')).toHaveTextContent('Loading')
+    expect(screen.queryByText(/no report/i)).toBeNull()
+  })
 })
 
 describe('ReportListView — the new report dialog', () => {

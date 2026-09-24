@@ -4,6 +4,7 @@ import { CustomFieldsCard } from '@/components/ticket/customFields/CustomFieldsC
 import { FormAnswersCard, type FormAnswer } from '@/components/ticket/FormAnswersCard'
 import type { CustomFieldValueView } from '@/components/ticket/customFields/customFields'
 import { useMe } from '@/hooks/useMe'
+import { useTicketRights } from '@/hooks/useTicketRights'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@apollo/client/react'
@@ -79,6 +80,8 @@ export function ServiceRequestDetailPage() {
   // «tecnico L2» con quel permesso vedeva i campi in sola lettura, e un ruolo
   // chiamato «operator» SENZA il permesso vedeva il form e prendeva un 403.
   const canEditCustomFields = can('ticket.work')
+  // Review of 23 Sep 2026: edit, transitions, assignment and CIs ask request.write, as the API does.
+  const { canWrite } = useTicketRights('service_request')
   const { data, loading, error, refetch, startPolling, stopPolling } = useQuery<{ serviceRequest: ServiceRequest | null }>(GET_SERVICE_REQUEST, { variables: { id }, skip: !id, fetchPolicy: 'cache-and-network' })
   const sr = data?.serviceRequest
   const srTransitions = (sr?.availableTransitions ?? []).map(withLocalizedLabel)
@@ -199,7 +202,7 @@ export function ServiceRequestDetailPage() {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Button variant="secondary" onClick={openEdit}><Pencil size={13} style={{ marginRight: 6 }} />{t('common.edit')}</Button>
+          {canWrite && <Button variant="secondary" onClick={openEdit}><Pencil size={13} style={{ marginRight: 6 }} />{t('common.edit')}</Button>}
           <WatcherBar entityType="service_request" entityId={sr.id} />
         </div>
       </div>
@@ -231,6 +234,7 @@ export function ServiceRequestDetailPage() {
               onSearchChange={setCiSearch}
               onAddCI={(ciId) => void addCI({ variables: { requestId: sr.id, ciId } })}
               onRemoveCI={(ciId) => void removeCI({ variables: { requestId: sr.id, ciId } })}
+              canEdit={canWrite}
             />
           </div>
 
@@ -247,8 +251,8 @@ export function ServiceRequestDetailPage() {
 
         {/* Sidebar */}
         <div>
-          {/* Workflow transitions */}
-          <div style={{ marginBottom: 16 }}>
+          {/* Workflow transitions: only for who may move the request */}
+          {canWrite && <div style={{ marginBottom: 16 }}>
             <SectionCard collapsible={false} defaultOpen title={t('common.actions')}>
               {!sr.workflowInstance ? (
                 <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>
@@ -282,14 +286,14 @@ export function ServiceRequestDetailPage() {
                 </div>
               )}
             </SectionCard>
-          </div>
+          </div>}
 
           <SectionCard collapsible={false} defaultOpen title={t('detail.sections.details')}>
             <DetailField label={t('detail.ticketNumber')} value={<span style={{ fontWeight: 600 }}>{sr.number}</span>} />
             <DetailField label="SLA" value={sr.slaStatus ? <SlaBadge sla={sr.slaStatus} /> : t('pages.serviceRequestDetail.noSla')} />
             <DetailField label={t('detail.requester')} value={sr.requestedBy?.name ?? null} />
             {/* D56: the team first (support teams, searchable), then one of its members. */}
-            <RequestAssignment request={sr} onChanged={refetch} />
+            <RequestAssignment request={sr} canEdit={canWrite} onChanged={refetch} />
             <DetailField label={t('detail.dueDate')} value={sr.dueDate ? formatDate(sr.dueDate) : null} />
             <DetailField label={t('detail.createdAt')} value={formatDate(sr.createdAt)} />
             {sr.completedAt && <DetailField label={t('detail.completedAt')} value={formatDate(sr.completedAt)} />}

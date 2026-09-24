@@ -152,6 +152,18 @@ describe('addWorkflowStep (B2-1 / B-3): il passo nasce con il dato completo', ()
     expect(invalidateWorkflowCache).not.toHaveBeenCalled()
   })
 
+  // Review of 23 Sep 2026: a timed wait with no delay kept its tickets on the step for ever.
+  it('un\'attesa a tempo vuole il suo ritardo: senza, o a zero, si rifiuta senza scrivere; con, lo scrive', async () => {
+    for (const timerDelayMinutes of [undefined, 0, -5, 1.5]) {
+      await expect(M.addWorkflowStep(null, { definitionId: 'def-1', name: 'w', label: 'W', type: 'timer_wait', timerDelayMinutes }, ctx))
+        .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.workflow.timerDelayRequired' } } })
+    }
+    expect(calls.filter((c) => c.cypher.includes('CREATE (s:WorkflowStep'))).toHaveLength(0)
+    results = [{ records: [makeRecord({ entityType: 'incident' })] }]
+    await M.addWorkflowStep(null, { definitionId: 'def-1', name: 'w', label: 'W', type: 'timer_wait', timerDelayMinutes: 90 }, ctx)
+    expect(paramsOf('CREATE (s:WorkflowStep')!['timerDelayMinutes']).toBe(90)
+  })
+
   it('tipo di step fuori vocabolario → nessuna scrittura', async () => {
     await expect(M.addWorkflowStep(null, { definitionId: 'def-1', name: 'x', label: 'X', type: 'teleport' }, ctx))
       .rejects.toThrow('Invalid step type: teleport')
@@ -187,6 +199,21 @@ describe('removeWorkflowStep (B2-2 / B-1): non si cancella un passo con dei tick
     expect(writtenCypher()).toContain('DETACH DELETE')
     expect(writtenCypher()).toContain('wd.customized_at = $customizedAt')
     expect(invalidateWorkflowCache).toHaveBeenCalledWith('c-two', 'incident')
+  })
+
+  // Review of 23 Sep 2026: refused as a purpose change, allowed as a delete.
+  it('il passo di finestra di rilascio l\'ULTIMO del workflow delle change → rifiutato, come cambiandone lo scopo', async () => {
+    results = [
+      { records: [stepRow({ entityType: 'change' })] },
+      { records: [makeRecord({ n: 0 })] },                                  // the step in other active definitions
+      { records: [makeRecord({ definitionId: 'def-1', n: 1 })] },           // window steps before
+      { records: [] },                                                      // the delete
+      { records: [makeRecord({ definitionId: 'def-1', approvalSteps: 1 })] }, // approval steps after
+      { records: [makeRecord({ definitionId: 'def-1', n: 0 })] },           // window steps after
+    ]
+    await expect(M.removeWorkflowStep(null, { definitionId: 'def-1', stepName: 'implementation' }, ctx))
+      .rejects.toMatchObject({ extensions: { code: 'CONFLICT', i18n: { key: 'errors.workflow.noWindowPurpose' } } })
+    expect(invalidateWorkflowCache).not.toHaveBeenCalled()
   })
 
   it('passo iniziale → rifiutato (il processo non potrebbe più partire)', async () => {
@@ -227,7 +254,10 @@ describe('removeWorkflowStep (B2-2 / B-1): non si cancella un passo con dei tick
     results = [
       { records: [stepRow()] },                                             // lettura metadata
       { records: [makeRecord({ n: 0 })] },                                  // il passo non esiste in altre definizioni attive
+      { records: [] },                                                      // passi di finestra prima (non è una change)
       { records: [] },                                                      // DETACH DELETE
+      { records: [] },                                                      // passi di approvazione dopo (non è una change)
+      { records: [] },                                                      // passi di finestra dopo
       { records: [makeRecord({ fields: ['planned_start', 'rollback_plan'] })] }, // regole rimosse
     ]
     await M.removeWorkflowStep(null, { definitionId: 'def-1', stepName: 'pending' }, ctx)

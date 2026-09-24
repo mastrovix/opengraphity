@@ -39,6 +39,17 @@ export const apolloFinto = {
   risposte: {} as Record<string, unknown>,
   /** Operation name → error for a query. */
   erroriQuery: {} as Record<string, Error>,
+  /**
+   * Operation name → error of a poll or refetch that FAILED while the data read
+   * before is still there: Apollo keeps the previous result and sets `error`
+   * (review of 23 Sep 2026 — pages that looked at `error` only without data
+   * showed old values as current).
+   */
+  erroriDiPolling: {} as Record<string, Error>,
+  /** Operation name → the `previousData` Apollo hands back: the result for the variables asked before. */
+  precedenti: {} as Record<string, unknown>,
+  /** Operation name → the network status (7 = ready, 2 = setVariables: new variables on their way). */
+  statiDiRete: {} as Record<string, number>,
   /** Mutation name → what it resolves to. Absent = `{ data: {} }`. */
   esiti: {} as Record<string, Esito>,
   /** Every call, per operation name. */
@@ -47,7 +58,7 @@ export const apolloFinto = {
   query: vi.fn(),
   mutate: vi.fn(),
   reset() {
-    this.risposte = {}; this.erroriQuery = {}; this.esiti = {}; this.chiamate = {}
+    this.risposte = {}; this.erroriQuery = {}; this.erroriDiPolling = {}; this.precedenti = {}; this.statiDiRete = {}; this.esiti = {}; this.chiamate = {}
     this.refetch.mockClear(); this.query.mockReset(); this.mutate.mockReset()
   },
   chiamata(nome: string): Record<string, unknown> | undefined {
@@ -81,10 +92,11 @@ export function moduloApollo() {
       const nome = nomeOperazione(doc)
       if (!opts.skip) registra(nome, opts.variables)
       const error = apolloFinto.erroriQuery[nome]
+      const pollError = apolloFinto.erroriDiPolling[nome]
       return {
         data: opts.skip || error ? undefined : dati(nome, opts.variables),
-        loading: false, error, refetch: refetchComeApollo, previousData: undefined,
-        fetchMore: vi.fn(), networkStatus: 7,
+        loading: false, error: error ?? pollError, refetch: refetchComeApollo, previousData: apolloFinto.precedenti[nome],
+        fetchMore: vi.fn(), networkStatus: apolloFinto.statiDiRete[nome] ?? 7,
       }
     },
     useLazyQuery: (doc: Doc) => {

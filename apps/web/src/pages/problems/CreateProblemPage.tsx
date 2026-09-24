@@ -18,6 +18,7 @@ import { useValueStyle } from '@/hooks/useValueStyle'
 import { CustomFieldsForm } from '@/components/ticket/customFields/CustomFieldsForm'
 import { customFieldsInput, missingCustomFields, useCreationCustomFieldDefs } from '@/components/ticket/customFields/customFields'
 import { showError } from '@/lib/showError'
+import { useCreationFieldRules } from '@/hooks/useCreationFieldRules'
 import { useEnumValues } from '@/hooks/useEnumValues'
 import { useCILabels } from '@/hooks/useCILabels'
 import { CIExclusionHint } from '@/components/ticket/CIExclusionHint'
@@ -97,6 +98,11 @@ export function CreateProblemPage() {
   const { defs: customDefs } = useCreationCustomFieldDefs('problem', category || undefined)
   const [customValues, setCustomValues] = useState<Record<string, string>>({})
   const [customErrors, setCustomErrors] = useState<Record<string, string>>({})
+  // The tenant's field rules for problems (review of 23 Sep 2026): the server
+  // enforces them on create, and this form showed none — a required category
+  // was found out only from the server's error.
+  const fieldRuleSet = useCreationFieldRules('problem', { title, description, category, impact, urgency, priority, ...customValues }, customErrors)
+  const { rules: fieldRules, error: fieldRulesError } = fieldRuleSet
 
   // CM-8: i tipi di CI esclusi per questo tipo di ticket non si propongono (l'API li rifiuta comunque).
   const { excluded: excludedCITypes } = useTicketCIExclusions('problem')
@@ -139,7 +145,11 @@ export function CreateProblemPage() {
       toast.error(t('toast.incident.matrixIncomplete'))
       return
     }
-    const missing = missingCustomFields(customDefs, customValues)
+    if (fieldRulesError) {
+      showError(fieldRulesError, t('toast.incident.fieldRulesUnavailable', { error: fieldRulesError.message }))
+      return
+    }
+    const missing = [...new Set([...fieldRuleSet.missing(), ...missingCustomFields(customDefs, customValues, fieldRules)])]
     if (missing.length > 0) {
       setCustomErrors(Object.fromEntries(missing.map((m) => [m, t('forms.fieldRequired')])))
       return
@@ -217,19 +227,24 @@ export function CreateProblemPage() {
 
           {/* CATEGORIA (facoltativa): sceglie il workflow del problem e le
               policy SLA per categoria (revisione totale · B-3). */}
-          <div style={{ marginBottom: 20 }}>
-            <label htmlFor={ids.category} style={fieldLabel}>{t('pages.kb.category')}</label>
+          {fieldRuleSet.shown('category') && <div style={{ marginBottom: 20 }}>
+            <label htmlFor={ids.category} style={fieldLabel}>
+              {t('pages.kb.category')}
+              {fieldRuleSet.requiredMark('category')}
+            </label>
             {categoryLoading ? (
               <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{t('common.loading')}</span>
             ) : (
-              <select id={ids.category} value={category} onChange={e => setCategory(e.target.value)} style={inputBase}>
+              <select id={ids.category} value={category} aria-invalid={customErrors['category'] ? true : undefined}
+                onChange={e => { setCategory(e.target.value); setCustomErrors((p) => { const n = { ...p }; delete n['category']; return n }) }} style={inputBase}>
                 <option value="">{t('pages.createIncident.selectCategory')}</option>
                 {categoryValues.map(c => (
                   <option key={c} value={c}>{labelOf('category', c) ?? c}</option>
                 ))}
               </select>
             )}
-          </div>
+            {fieldRuleSet.errorOf('category')}
+          </div>}
 
           {/* IMPATTO × URGENZA → PRIORITÀ */}
           <div style={{ marginBottom: 20, display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
@@ -369,6 +384,7 @@ export function CreateProblemPage() {
               <CustomFieldsForm
                 defs={customDefs}
                 values={customValues}
+                rules={fieldRules}
                 errors={customErrors}
                 onChange={(name, value) => { setCustomValues((v) => ({ ...v, [name]: value })); setCustomErrors((p) => { const n = { ...p }; delete n[name]; return n }) }}
                 inputStyle={inputBase}

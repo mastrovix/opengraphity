@@ -104,6 +104,12 @@ async function refusalReason(res: Response, t: TFunction): Promise<string> {
   if (error && typeof error === 'object') {
     const { code, message } = error as { code?: unknown; message?: unknown }
     if (code === 'AI_DISABLED') return t('errors.ai.disabled', { feature: t('pages.organization.aiFeature.reportAnalysis') })
+    // The two refusals of the review of 23 Sep 2026, in the reader's language.
+    if (code === 'RATE_LIMITED') {
+      const { limit, retry_after: retryAfter } = error as { limit?: unknown; retry_after?: unknown }
+      return t('errors.report.rateLimited', { max: String(limit ?? ''), seconds: String(retryAfter ?? res.headers?.get('retry-after') ?? '') })
+    }
+    if (code === 'QUESTION_TOO_LONG') return t('errors.report.questionTooLong', { max: String((error as { max?: unknown }).max ?? '') })
     if (typeof message === 'string' && message.trim()) return message
   }
   return `HTTP ${res.status}`

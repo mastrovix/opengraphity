@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, RotateCw } from 'lucide-react'
 import { colors, palette } from '@/lib/tokens'
+import { currentLocale } from '@/lib/datetime'
 
 interface Props {
   /** Error message shown under the title (optional, technical) */
@@ -39,3 +40,39 @@ export function QueryError({ message, onRetry }: Props) {
     </div>
   )
 }
+
+interface StaleProps {
+  /** The error of the latest read. */
+  message: string
+  /** When the data shown was read (ms since the epoch); unknown → the banner says it may be out of date. */
+  readAt?: number | null
+  onRetry?: () => void
+}
+
+/**
+ * The latest read failed but older data is still on screen (review of
+ * 23 Sep 2026). Apollo keeps the previous result when a poll or a refetch
+ * fails, and pages that showed the error only «when there is no data» went on
+ * showing green dots and old rows as if they were current. This says it,
+ * above the data, instead of replacing it.
+ */
+export function StaleDataBanner({ message, readAt, onRetry }: StaleProps) {
+  const { t } = useTranslation()
+  const text = readAt
+    ? t('queryError.stale', { message, time: new Date(readAt).toLocaleTimeString(currentLocale(), { hour: '2-digit', minute: '2-digit', second: '2-digit' }) })
+    : t('queryError.staleNoTime', { message })
+  return (
+    <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', marginBottom: 12, background: palette.warning.bg, border: `1px solid ${palette.warning.border}`, borderRadius: 8, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>
+      <AlertTriangle size={16} color={palette.warning.strong} aria-hidden="true" />
+      <span style={{ flex: 1, wordBreak: 'break-word' }}>{text}</span>
+      {onRetry && (
+        <button type="button" onClick={onRetry}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 12px', background: colors.white, border: `1px solid ${palette.neutral.borderStrong}`, borderRadius: 6, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)' }}>
+          <RotateCw size={13} aria-hidden="true" />
+          {t('queryError.retry')}
+        </button>
+      )}
+    </div>
+  )
+}
+

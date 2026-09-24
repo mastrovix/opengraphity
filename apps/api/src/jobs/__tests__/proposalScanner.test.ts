@@ -74,6 +74,7 @@ vi.mock('../../lib/proposals.js', () => ({
   scriviProposta: async (p: Record<string, unknown>) => { fake.written.push(p); return fake.writeResult(p) },
   scadiLeVecchie: async (t: string) => { fake.sweeps.push(`expire:${t}`); return fake.expired },
   risvegliaLeRimandate: async (t: string) => { fake.sweeps.push(`wake:${t}`); return fake.woken },
+  purgaLeChiuse: async (t: string) => { fake.sweeps.push(`purge:${t}`); return 0 },
 }))
 
 const { logger } = await import('../../lib/logger.js')
@@ -125,7 +126,7 @@ describe('proposalScannerProcessor', () => {
     fake.expired = 2
     fake.analysts = { config: async (t) => { fake.sweeps.push(`analyse:${t}`); return [] } }
     await proposalScannerProcessor(job('t-a'))
-    expect(fake.sweeps).toEqual(['expire:t-a', 'wake:t-a', 'analyse:t-a'])
+    expect(fake.sweeps).toEqual(['expire:t-a', 'wake:t-a', 'purge:t-a', 'analyse:t-a'])
     // The queue says which tenant: the list of tenants is not read any more.
     expect(fake.tenantQueries).toEqual([])
     expect(vi.mocked(logger.info)).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't-a', scadute: 2, risvegliate: 0 }), expect.any(String))

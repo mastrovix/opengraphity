@@ -2,6 +2,11 @@ export function reportSDL(): string {
   return `
   # ── Custom Report Templates ────────────────────────────────────────────────
 
+  type ReportDeliveryChannel {
+    id:   ID!
+    name: String!
+  }
+
   type ReportTemplate {
     id: ID!
     name: String!

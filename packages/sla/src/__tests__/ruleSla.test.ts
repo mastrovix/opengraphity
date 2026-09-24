@@ -13,7 +13,9 @@ vi.mock('@opengraphity/neo4j', () => ({
     runs.push({ cypher, params })
     return [{ id: params['id'], tenant_id: params['tenantId'], entity_id: params['entityId'], entity_type: params['entityType'],
       started_at: params['startedAt'], response_deadline: params['responseDeadline'], resolve_deadline: params['resolveDeadline'],
-      response_met: false, resolve_met: false, breached: false, tier_severity: 'custom', tier_response_minutes: params['response'], tier_resolve_minutes: params['resolve'], tier_business_hours: false }]
+      response_met: params['responseMet'] ?? false, resolve_met: params['resolveMet'] ?? false, breached: params['breached'] ?? false,
+      resolved_at: params['resolvedAt'] ?? null, paused_at: params['pausedAt'] ?? null, paused_type: params['pausedType'] ?? null,
+      paused_total_ms: params['pausedTotalMs'] ?? 0, tier_severity: 'custom', tier_response_minutes: params['response'], tier_resolve_minutes: params['resolve'], tier_business_hours: false }]
   }),
   // E-9: `applyRuleSLA` rilegge lo stato precedente (`getSLAStatus`) per non
   // azzerare il tempo già passato.
@@ -75,5 +77,43 @@ describe('la regola vince, ma non azzera il tempo già passato (E-9)', () => {
     previous = null
     await applyRuleSLA({ tenantId: 't1', entityType: 'incident', entityId: 'i1', responseMinutes: 15, resolveMinutes: 120, ruleName: 'R', startedAt: new Date('2026-09-14T10:00:00Z') })
     expect(runs[0]!.params).toMatchObject({ startedAt: '2026-09-14T10:00:00.000Z', breached: false, responseMet: false })
+  })
+})
+
+// Review of 23 Sep 2026: the rule SLA was recreated «open». On a resolved ticket
+// the past deadline fired a breach at once; on a paused one the clock ran again.
+describe('a rule firing on a concluded or paused SLA', () => {
+  const base = {
+    id: 'sla-0', tenant_id: 't1', entity_id: 'i1', entity_type: 'incident',
+    started_at: '2026-09-14T08:00:00.000Z',
+    response_deadline: '2026-09-14T09:00:00.000Z', resolve_deadline: '2026-09-14T16:00:00.000Z',
+    response_met: true, resolve_met: false, breached: false,
+    tier_severity: 'high', tier_response_minutes: 60, tier_resolve_minutes: 480, tier_business_hours: false, tier_warning_minutes: 30,
+  }
+  const apply = () => applyRuleSLA({ tenantId: 't1', entityType: 'incident', entityId: 'i1', responseMinutes: 15, resolveMinutes: 120, ruleName: 'R' })
+  const noTimers = () => { for (const f of [scheduler.scheduleWarning, scheduler.scheduleBreachCheck, scheduler.scheduleResponseCheck]) expect(f).not.toHaveBeenCalled() }
+
+  it('a resolved SLA stays resolved, and no timer is set', async () => {
+    previous = { ...base, resolve_met: true, resolved_at: '2026-09-14T09:30:00.000Z' }
+    await apply()
+    expect(runs[0]!.params).toMatchObject({ resolveMet: true, resolvedAt: '2026-09-14T09:30:00.000Z' })
+    noTimers()
+  })
+
+  it('a paused SLA stays paused, with its type, and gets its timers back only on resume', async () => {
+    previous = { ...base, paused_at: '2026-09-14T09:00:00.000Z', paused_type: 'both' }
+    await apply()
+    expect(runs[0]!.params).toMatchObject({ pausedAt: '2026-09-14T09:00:00.000Z', pausedType: 'both' })
+    noTimers()
+  })
+
+  it('the time already spent paused does not count against the new targets', async () => {
+    previous = { ...base, paused_total_ms: 30 * 60_000 }
+    await apply()
+    // 08:00 + 120 min + 30 min paused.
+    expect(runs[0]!.params).toMatchObject({ resolveDeadline: '2026-09-14T10:30:00.000Z', pausedTotalMs: 30 * 60_000 })
+    // Running and responded: warning and breach, no response timer.
+    expect(scheduler.scheduleBreachCheck).toHaveBeenCalled()
+    expect(scheduler.scheduleResponseCheck).not.toHaveBeenCalled()
   })
 })

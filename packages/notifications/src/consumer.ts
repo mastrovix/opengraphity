@@ -2,6 +2,7 @@ import { getSession } from '@opengraphity/neo4j'
 import { sendSlackMessage, sendTeamsAdaptiveMessage } from './index.js'
 import { formatSlackIncident, formatTeamsIncident, formatSlackChange, formatTeamsChange, formatSlackChangeTask, formatTeamsChangeTask, type NotificationEvent, type IncidentData, type ChangeData, type ChangeTaskPayload, type IncidentHeadline } from './formatters.js'
 import { loadNotificationLocale } from './locale.js'
+import { deliverOnce } from './deliveryDedup.js'
 
 interface NotificationChannelRow {
   id: string
@@ -85,6 +86,32 @@ export async function loadChannels(
   }
 }
 
+/**
+ * Sends to each channel once per event, and to every one of them.
+ *
+ * Review of 23 Sep 2026: the whole Slack/Teams loop was one delivery. When one
+ * channel failed (a revoked Teams webhook, a Slack 4xx) nothing was marked,
+ * the job retried, and the healthy channels got the same message up to four
+ * times — for every event, until the broken channel was removed. And the
+ * channels after the broken one got nothing. Now each channel is marked on
+ * its own, all are tried, and the failures are thrown together at the end.
+ */
+export async function forEachChannel<C extends { id: string }>(
+  eventId: string | undefined, channels: readonly C[], send: (ch: C) => Promise<void>,
+): Promise<void> {
+  const failures: string[] = []
+  for (const ch of channels) {
+    try {
+      await deliverOnce(eventId, `channel:${ch.id}`, () => send(ch))
+    } catch (err) {
+      failures.push(`${ch.id}: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(`[notifications] ${failures.length} of ${channels.length} channel(s) failed: ${failures.join('; ')}`)
+  }
+}
+
 export async function dispatchIncidentNotification(
   tenantId: string,
   eventType: NotificationEvent,
@@ -93,12 +120,14 @@ export async function dispatchIncidentNotification(
   headline: IncidentHeadline = eventType,
   /** L'istante DELL'EVENTO, non della consegna (revisione totale · E-16). */
   occurredAt?: Date,
+  /** The event's id: each channel receives it once (see `forEachChannel`). */
+  eventId?: string,
 ): Promise<void> {
   const enriched = await enrichIncidentData(incident)
   const channels = await loadChannels(tenantId, eventType, platforms)
   if (channels.length === 0) return
   const locale = await loadNotificationLocale(tenantId)
-  for (const ch of channels) {
+  await forEachChannel(eventId, channels, async (ch) => {
     if (ch.platform === 'slack') {
       const blocks = formatSlackIncident(eventType, enriched, locale, headline, occurredAt)
       await sendSlackMessage(tenantId, ch.webhookUrl, ch.channelId, blocks)
@@ -107,7 +136,7 @@ export async function dispatchIncidentNotification(
       const card = formatTeamsIncident(eventType, enriched, locale)
       await sendTeamsAdaptiveMessage(ch.webhookUrl, card)
     }
-  }
+  })
 }
 
 export async function dispatchChangeNotification(
@@ -115,6 +144,8 @@ export async function dispatchChangeNotification(
   change: ChangeData,
   /** L'istante dell'evento (E-16). */
   occurredAt?: Date,
+  /** The event's id: each channel receives it once (see `forEachChannel`). */
+  eventId?: string,
 ): Promise<void> {
   const session = getSession(undefined, 'READ')
   let enriched = change
@@ -148,7 +179,7 @@ export async function dispatchChangeNotification(
   const channels = await loadChannels(tenantId, 'change_approved')
   if (channels.length === 0) return
   const locale = await loadNotificationLocale(tenantId)
-  for (const ch of channels) {
+  await forEachChannel(eventId, channels, async (ch) => {
     if (ch.platform === 'slack') {
       const blocks = formatSlackChange(enriched, locale, occurredAt)
       await sendSlackMessage(tenantId, ch.webhookUrl, ch.channelId, blocks)
@@ -159,7 +190,7 @@ export async function dispatchChangeNotification(
       if (!ch.webhookUrl) throw new Error(`[notifications] Teams channel ${ch.id} has no webhook_url configured`)
       await sendTeamsAdaptiveMessage(ch.webhookUrl, formatTeamsChange(enriched, locale, occurredAt))
     }
-  }
+  })
 }
 
 export async function dispatchChangeTaskNotification(
@@ -167,18 +198,20 @@ export async function dispatchChangeTaskNotification(
   payload: ChangeTaskPayload,
   /** L'istante dell'evento (E-16). */
   occurredAt?: Date,
+  /** The event's id: each channel receives it once (see `forEachChannel`). */
+  eventId?: string,
 ): Promise<void> {
   const channels = await loadChannels(tenantId, 'change_task_assigned')
   if (channels.length === 0) return
   const locale = await loadNotificationLocale(tenantId)
-  for (const ch of channels) {
+  await forEachChannel(eventId, channels, async (ch) => {
     if (ch.platform === 'slack') {
-      const blocks = formatSlackChangeTask(payload, locale, occurredAt)
+      const blocks = formatSlackChangeTask(tenantId, payload, locale, occurredAt)
       await sendSlackMessage(tenantId, ch.webhookUrl, ch.channelId, blocks)
     } else if (ch.platform === 'teams') {
       // E-18: anche qui il canale Teams veniva scartato in silenzio.
       if (!ch.webhookUrl) throw new Error(`[notifications] Teams channel ${ch.id} has no webhook_url configured`)
-      await sendTeamsAdaptiveMessage(ch.webhookUrl, formatTeamsChangeTask(payload, locale, occurredAt))
+      await sendTeamsAdaptiveMessage(ch.webhookUrl, formatTeamsChangeTask(tenantId, payload, locale, occurredAt))
     }
-  }
+  })
 }

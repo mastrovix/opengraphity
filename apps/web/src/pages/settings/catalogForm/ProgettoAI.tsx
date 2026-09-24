@@ -260,7 +260,7 @@ export function ModaleProgettoAI({ itemId, nomeVoce, etichettaDi, onChiudi, onAp
       ) : (
         <div style={{ display: 'grid', gap: 14 }}>
           {/* La frase da cui è nata: si rilegge accanto al risultato. */}
-          <div style={{ background: 'var(--color-surface-alt)', borderRadius: 8, padding: 10 }}>
+          <div style={{ background: 'var(--color-surface-2)', borderRadius: 8, padding: 10 }}>
             <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{t('pages.catalogForms.ai.youAsked')}</div>
             <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{progetto.prompt}</div>
           </div>
@@ -346,7 +346,7 @@ export function ModaleProgettoAI({ itemId, nomeVoce, etichettaDi, onChiudi, onAp
               <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 4 }}>
                 {progetto.discarded.map((s, i) => (
                   <li key={`${s.key}-${String(i)}`} style={{ display: 'flex', gap: 6, fontSize: 'var(--font-size-table)', color: 'var(--color-slate)' }}>
-                    <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 2, color: 'var(--color-amber)' }} />
+                    <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 2, color: 'var(--color-warning-dark)' }} />
                     <span><strong style={{ fontWeight: fontWeight.medium }}>{s.what}</strong>{' — '}{rendiScarto(s)}</span>
                   </li>
                 ))}
@@ -401,7 +401,7 @@ function Pillola({ tipo }: { tipo: 'library' | 'new' }) {
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 6px', borderRadius: 999,
       fontSize: 'var(--font-size-table)',
-      background: riuso ? 'var(--color-surface-alt)' : 'var(--color-brand-soft)',
+      background: riuso ? 'var(--color-surface-2)' : 'var(--color-brand-a13)',
       color: riuso ? 'var(--color-slate)' : 'var(--color-brand)',
     }}>
       {riuso ? <Recycle size={11} /> : <Plus size={11} />}
@@ -424,7 +424,7 @@ function Codice({ titolo, codice }: { titolo: string; codice: string }) {
     <div style={{ marginTop: 4 }}>
       <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{titolo}</div>
       <pre style={{
-        margin: 0, padding: 8, borderRadius: 6, background: 'var(--color-surface-alt)',
+        margin: 0, padding: 8, borderRadius: 6, background: 'var(--color-surface-2)',
         fontSize: 'var(--font-size-table)', overflowX: 'auto', whiteSpace: 'pre-wrap',
       }}><code>{codice}</code></pre>
     </div>

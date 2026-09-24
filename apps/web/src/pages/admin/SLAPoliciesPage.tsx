@@ -242,7 +242,7 @@ export function SLAPoliciesPage() {
     { key: 'id', label: t('common.actions'), sortable: false, render: (_v, row) => (
       <div style={{ display: 'inline-flex', gap: 6 }}>
         <Button variant="ghost" title={t('common.edit')} aria-label={t('common.edit')} onClick={() => modal.openEdit(row)} style={{ padding: 4 }}><Pencil size={15} aria-hidden="true" color="var(--color-slate)" /></Button>
-        <Button variant="ghost" title={t('common.delete')} aria-label={t('common.delete')} onClick={() => void handleDelete(row)} style={{ padding: 4 }}><Trash2 size={15} aria-hidden="true" color="var(--color-danger)" /></Button>
+        <Button variant="ghost" title={t('common.delete')} aria-label={t('common.delete')} onClick={() => handleDelete(row)} style={{ padding: 4 }}><Trash2 size={15} aria-hidden="true" color="var(--color-danger)" /></Button>
       </div>
     ) },
   ]
@@ -312,7 +312,7 @@ export function SLAPoliciesPage() {
         footer={
           <>
             <Button variant="secondary" size="xs" onClick={modal.close}>{t('common.cancel')}</Button>
-            <Button onClick={() => void handleSave()}>{modal.editing ? t('common.save') : t('common.create')}</Button>
+            <Button onClick={() => handleSave()}>{modal.editing ? t('common.save') : t('common.create')}</Button>
           </>
         }
       >

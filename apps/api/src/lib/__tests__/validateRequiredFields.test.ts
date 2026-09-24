@@ -14,7 +14,7 @@ import type { Session } from 'neo4j-driver'
 const runQuery = vi.fn()
 vi.mock('@opengraphity/neo4j', () => ({ runQuery: (...a: unknown[]) => runQuery(...a) }))
 
-const { validateRequiredFields, propsToFieldValues } = await import('../validateRequiredFields.js')
+const { validateRequiredFields, validateStepRequirements, propsToFieldValues } = await import('../validateRequiredFields.js')
 
 const session = {} as Session
 const rule = (field_name: string, workflow_step?: string | null) =>
@@ -86,6 +86,25 @@ describe('validateRequiredFields', () => {
     await expect(validateRequiredFields(session, {
       entityType: 'incident', tenantId: 't1', fieldValues: { title: 't' }, visibilityExclusions: ['secret'],
     })).resolves.toBeUndefined()
+  })
+})
+
+// Review of 23 Sep 2026: one check for every path that moves a ticket.
+describe('validateStepRequirements', () => {
+  it('the stored ticket, in both conventions, plus the notes as resolution and root cause, for the step entered', async () => {
+    runQuery.mockResolvedValue([rule('rootCause', 'resolved'), rule('closure_code', 'resolved'), rule('title', 'closed')])
+    const err = await failure(validateStepRequirements(session, {
+      entityType: 'problem', entityProps: { closure_code: '' }, notes: 'the switch', tenantId: 't1', toStep: 'resolved',
+    }))
+    expect(err?.extensions).toMatchObject({ code: 'VALIDATION_ERROR', fields: ['closure_code'] })
+  })
+
+  it('without notes a rule on the root cause holds', async () => {
+    runQuery.mockResolvedValue([rule('root_cause', 'resolved')])
+    const err = await failure(validateStepRequirements(session, {
+      entityType: 'incident', entityProps: {}, tenantId: 't1', toStep: 'resolved',
+    }))
+    expect(err?.extensions).toMatchObject({ fields: ['root_cause'] })
   })
 })
 

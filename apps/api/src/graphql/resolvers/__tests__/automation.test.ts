@@ -66,7 +66,7 @@ async function fakeRunQuery(_s: unknown, cypher: string, params: Props = {}): Pr
     if (cypher.includes('AS timerDelay')) return [{ timerDelay: node['timer_delay_minutes'] ?? null, eventType: node['event_type'] }]
     if (cypher.includes('AS eventType')) return [{ eventType: node['event_type'], conditions: node['conditions'] ?? null }]
     if (cypher.includes('AS entityType')) return [{ entityType: node['entity_type'] }]
-    if (cypher.includes('AS warning, p.resolve_minutes')) return [{ warning: node['warning_minutes'], resolve: node['resolve_minutes'] }]
+    if (cypher.includes('AS warning, p.resolve_minutes')) return [{ warning: node['warning_minutes'], resolve: node['resolve_minutes'], response: node['response_minutes'] }]
     if (cypher.includes('AS target')) return [{ target: node['compliance_target'], warning: node['compliance_warning'] }]
     return [{ props: { ...node } }]
   }
@@ -556,6 +556,13 @@ describe('createSLAPolicy', () => {
       .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.serviceCalendar.unknown' } } })
   })
 
+  it('a response of zero, or later than the resolution, is refused and nothing is created', async () => {
+    await expect(Mutation.createSLAPolicy(null, { input: { ...input, responseMinutes: 0 } }, ctxA))
+      .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.sla.minutesPositive', params: { field: 'responseMinutes' } } } })
+    await expect(Mutation.createSLAPolicy(null, { input: { ...input, responseMinutes: 500 } }, ctxA))
+      .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.sla.responseAfterResolve' } } })
+  })
+
   it('the warning must be a positive whole number shorter than the resolution time', async () => {
     await expect(Mutation.createSLAPolicy(null, { input: { ...input, warningMinutes: 0 } }, ctxA)).rejects.toMatchObject({ extensions: { i18n: { key: 'errors.sla.warningMinutes' } } })
     await expect(Mutation.createSLAPolicy(null, { input: { ...input, warningMinutes: 2.5 } }, ctxA)).rejects.toThrow(/positive whole number/)
@@ -582,6 +589,16 @@ describe('updateSLAPolicy', () => {
     await expect(Mutation.updateSLAPolicy(null, { id: 'p1', input: { warningMinutes: 300 } }, ctxA)).rejects.toThrow(/\(240 min\)/)
     await expect(Mutation.updateSLAPolicy(null, { id: 'p1', input: { warningMinutes: 60, resolveMinutes: 120 } }, ctxA))
       .resolves.toMatchObject({ warningMinutes: 60, resolveMinutes: 120 })
+  })
+
+  // Review of 23 Sep 2026: response 0 was stored, and the SLA selector then threw for every ticket it matched.
+  it('response and resolution are positive whole minutes, the response no later than the resolution', async () => {
+    await expect(Mutation.updateSLAPolicy(null, { id: 'p1', input: { responseMinutes: 0 } }, ctxA))
+      .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.sla.minutesPositive', params: { field: 'responseMinutes' } } } })
+    await expect(Mutation.updateSLAPolicy(null, { id: 'p1', input: { responseMinutes: 300 } }, ctxA))
+      .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.sla.responseAfterResolve', params: { response: 300, resolve: 240 } } } })
+    expect(find('SLAPolicyNode', 'p1', 'tenant-a')).toMatchObject({ response_minutes: 60, resolve_minutes: 240 })
+    await expect(Mutation.updateSLAPolicy(null, { id: 'p1', input: { responseMinutes: 90 } }, ctxA)).resolves.toMatchObject({ responseMinutes: 90 })
   })
 
   it('the minutes can be changed but never emptied: an explicit null is refused and nothing is written', async () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Button } from './Button'
 /*
@@ -104,5 +104,46 @@ describe('Button', () => {
   it('style è un override puntuale che vince sulla variante', () => {
     render(<Button style={{ backgroundColor: 'rgb(1, 2, 3)', width: 200 }}>S</Button>)
     expect(screen.getByRole('button', { name: 'S' })).toHaveStyle({ backgroundColor: 'rgb(1, 2, 3)', width: '200px' })
+  })
+})
+
+/*
+ * Review of 23 Sep 2026: a double click on «Create» made two SLA policies,
+ * two triggers, two channels. The rule lives in the button, once.
+ */
+describe('Button — an action in flight is not started twice', () => {
+  it('a returned promise disables the button until it settles; a second click in between does nothing', async () => {
+    let finish!: () => void
+    const onClick = vi.fn(() => new Promise<void>((r) => { finish = r }))
+    render(<Button onClick={onClick}>Create</Button>)
+    const btn = screen.getByRole('button', { name: 'Create' })
+    const user = userEvent.setup()
+    await user.dblClick(btn)
+    expect(onClick).toHaveBeenCalledTimes(1)
+    expect(btn).toBeDisabled()
+    expect(btn).toHaveAttribute('aria-busy', 'true')
+    await act(async () => { finish() })
+    expect(btn).toBeEnabled()
+    expect(btn).not.toHaveAttribute('aria-busy')
+    await user.click(btn)
+    expect(onClick).toHaveBeenCalledTimes(2)
+  })
+
+  it('a failed action frees the button too, and its error is written, not swallowed', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const failure = new Error('server said no')
+    const onClick = vi.fn(() => Promise.reject(failure))
+    render(<Button onClick={onClick}>Save</Button>)
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Save' }))
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled())
+    expect(err).toHaveBeenCalledWith('[Button] the action failed', failure)
+  })
+
+  it('a handler that returns nothing keeps the button as it was', async () => {
+    const onClick = vi.fn()
+    render(<Button onClick={onClick}>Open</Button>)
+    await userEvent.setup().dblClick(screen.getByRole('button', { name: 'Open' }))
+    expect(onClick).toHaveBeenCalledTimes(2)
+    expect(screen.getByRole('button', { name: 'Open' })).toBeEnabled()
   })
 })

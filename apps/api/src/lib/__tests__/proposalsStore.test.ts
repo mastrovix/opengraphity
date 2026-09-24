@@ -50,7 +50,7 @@ vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
 }))
 vi.mock('../logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
 
-const { scriviProposta, fingerprintOf } = await import('../proposals.js')
+const { scriviProposta, fingerprintOf, purgaLeChiuse } = await import('../proposals.js')
 
 const proposta = (n = 10) => ({
   tenantId: 't1', area: 'configuration' as const,
@@ -97,6 +97,34 @@ describe('le quattro porte', () => {
     expect(esito.scritta).toBe(true)
   })
 
+  // Review of 23 Sep 2026: a closed proposal held its fingerprint for ever.
+  it('1b · una RIFIUTATA torna quando la regola del rifiuto lo permette, e il vecchio nodo chiuso lascia il posto', async () => {
+    finto.esistente = { status: 'rejected' }
+    finto.lapide = { grade: 3, at: new Date(Date.now() - 60 * 86_400_000).toISOString() }
+    const esito = await scriviProposta(proposta(200))
+    expect(esito.scritta).toBe(true)
+    expect(finto.scritte[0]).toMatchObject({ closed: ['rejected', 'expired'] })
+  })
+
+  it('1c · una rifiutata di recente resta fuori, e il nodo resta', async () => {
+    finto.esistente = { status: 'rejected' }
+    finto.lapide = { grade: 3, at: new Date().toISOString() }
+    expect(await scriviProposta(proposta(10))).toEqual({ scritta: false, motivo: 'rifiutata_di_recente' })
+    expect(finto.scritte).toHaveLength(0)
+  })
+
+  it('1d · una SCADUTA torna se le prove ci sono ancora (nessuna lapide: scadere non è rifiutare)', async () => {
+    finto.esistente = { status: 'expired' }
+    expect((await scriviProposta(proposta())).scritta).toBe(true)
+  })
+
+  it('1e · accettata o «non ora» tengono ancora il posto', async () => {
+    for (const status of ['accepted', 'not_now']) {
+      finto.esistente = { status }
+      expect(await scriviProposta(proposta())).toEqual({ scritta: false, motivo: 'gia_presente' })
+    }
+  })
+
   it('3 · si ferma al tetto delle aperte', async () => {
     finto.aperte = 5
     const esito = await scriviProposta(proposta())
@@ -123,5 +151,13 @@ describe('quello che finisce sul nodo', () => {
     const scritto = finto.scritte[0]!
     expect(String(scritto['params'])).toContain('blocker')
     expect(Object.keys(scritto)).not.toContain('title')
+  })
+})
+
+// Review of 23 Sep 2026: PROPOSAL_RETENTION_MONTHS was declared and never used.
+describe('la purga delle chiuse', () => {
+  it('toglie accettate, rifiutate e scadute decise da più di 12 mesi', async () => {
+    await purgaLeChiuse('t1', new Date('2026-09-23T00:00:00.000Z'))
+    expect(finto.scritte[0]).toEqual({ tenantId: 't1', limite: '2025-09-23T00:00:00.000Z' })
   })
 })

@@ -27,6 +27,7 @@ import { GET_CATALOG_FORM_TO_FILL } from '@/graphql/queries'
 import type { CatalogFormDefinition, FormAnswerValue, FormAnswers } from '@opengraphity/types'
 import { customFieldsInput, missingCustomFields, useCreationCustomFieldDefs } from '@/components/ticket/customFields/customFields'
 import { showError } from '@/lib/showError'
+import { useCreationFieldRules } from '@/hooks/useCreationFieldRules'
 import { errorFieldName, errorHasKey, humanizeValue } from '@opengraphity/web-core'
 import { errorMessage } from '@/hooks/useMutationWithToast'
 // ── Shared styles ─────────────────────────────────────────────────────────────
@@ -86,7 +87,7 @@ export function CreateServiceRequestPage() {
   const { values: priorityValues, loading: priorityLoading } = useEnumValues('service_request', 'priority')
   const [submitted, setSubmitted]   = useState(false)
 
-  interface CatalogItem { id: string; name: string; description: string | null; category: string | null; requiresApproval: boolean; priority: string | null; active: boolean }
+  interface CatalogItem { id: string; name: string; description: string | null; category: string | null; requiresApproval: boolean; priority: string | null; active: boolean; fulfillmentTeam: { id: string; name: string } | null }
   const { data: catalogData } = useQuery<{ serviceCatalogItems: CatalogItem[] }>(GET_SERVICE_CATALOG_ADMIN, { fetchPolicy: 'cache-and-network' })
   const catalogItems = (catalogData?.serviceCatalogItems ?? []).filter((i) => i.active)
   const selectedItem = catalogItems.find((i) => i.id === catalogItemId) ?? null
@@ -201,6 +202,10 @@ export function CreateServiceRequestPage() {
   const { defs: customDefs } = useCreationCustomFieldDefs('service_request')
   const [customValues, setCustomValues] = useState<Record<string, string>>({})
   const [customErrors, setCustomErrors] = useState<Record<string, string>>({})
+  // The tenant's field rules for requests (review of 23 Sep 2026): the server enforces them on create.
+  const fieldRuleSet = useCreationFieldRules('service_request', { title, priority, description, dueDate, ...customValues }, customErrors)
+  const { rules: fieldRules, error: fieldRulesError, shown, requiredMark, errorOf: ruleError } = fieldRuleSet
+  const clearError = (field: string) => setCustomErrors((p) => { const n = { ...p }; delete n[field]; return n })
 
   /**
    * IL MODULO DELLA VOCE DI CATALOGO (moduli del catalogo, ondata 1).
@@ -398,7 +403,11 @@ export function CreateServiceRequestPage() {
     e.preventDefault()
     setSubmitted(true)
     if (!title.trim() || !priority || loading || checkingSla) return
-    const missing = missingCustomFields(customDefs, customValues)
+    if (fieldRulesError) {
+      showError(fieldRulesError, t('toast.incident.fieldRulesUnavailable', { error: fieldRulesError.message }))
+      return
+    }
+    const missing = [...new Set([...fieldRuleSet.missing(), ...missingCustomFields(customDefs, customValues, fieldRules)])]
     if (missing.length > 0) {
       setCustomErrors(Object.fromEntries(missing.map((m) => [m, t('forms.fieldRequired')])))
       return
@@ -411,7 +420,13 @@ export function CreateServiceRequestPage() {
       decisione = await checkSlaCoverage({
         entityType: 'service_request',
         priority, priorityLabel: labelOf('priority', priority) ?? priority,
-        category: null, categoryLabel: null, teamId: null, teamName: null,
+        // The request takes the item's category and fulfilment team (the
+        // server gives it both), and the SLA engine picks the policy with them:
+        // asked with nulls, a category-scoped policy looked absent (review of 23 Sep 2026).
+        category: selectedItem?.category ?? null,
+        categoryLabel: selectedItem?.category ? (labelOf('category', selectedItem.category) ?? selectedItem.category) : null,
+        teamId: selectedItem?.fulfillmentTeam?.id ?? null,
+        teamName: selectedItem?.fulfillmentTeam?.name ?? null,
       })
     } catch (err) {
       showError(err, t('toast.request.slaCoverageUnavailable', { error: err instanceof Error ? err.message : String(err) }))
@@ -575,37 +590,41 @@ export function CreateServiceRequestPage() {
             </div>
 
             {/* Due date */}
-            <div>
+            {shown('dueDate') && <div>
               <label htmlFor={ids.dueDate} style={{ display: 'block', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6, letterSpacing: '0.01em' }}>
-                {t('detail.dueDate')}
+                {t('detail.dueDate')}{requiredMark('dueDate')}
               </label>
               <input
                 id={ids.dueDate}
                 type="date"
                 value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
+                aria-invalid={customErrors['dueDate'] ? true : undefined}
+                onChange={(e) => { setDueDate(e.target.value); clearError('dueDate') }}
                 style={inputBase}
                 {...focusHandlers(false)}
               />
-            </div>
+              {ruleError('dueDate')}
+            </div>}
 
           </div>
 
           {/* Description */}
-          <div style={{ marginBottom: 0 }}>
+          {shown('description') && <div style={{ marginBottom: 0 }}>
             <label htmlFor={ids.description} style={{ display: 'block', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6, letterSpacing: '0.01em' }}>
-              {t('common.description')}
+              {t('common.description')}{requiredMark('description')}
             </label>
             <textarea
               id={ids.description}
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              aria-invalid={customErrors['description'] ? true : undefined}
+              onChange={(e) => { setDescription(e.target.value); clearError('description') }}
               placeholder={t('pages.createRequest.descriptionPlaceholder')}
               rows={4}
               style={{ ...inputBase, minHeight: 120, resize: 'vertical' }}
               {...focusHandlers(false)}
             />
-          </div>
+            {ruleError('description')}
+          </div>}
 
           {/* Campi del cliente */}
           {customDefs.length > 0 && (
@@ -613,6 +632,7 @@ export function CreateServiceRequestPage() {
               <CustomFieldsForm
                 defs={customDefs}
                 values={customValues}
+                rules={fieldRules}
                 errors={customErrors}
                 gap={24}
                 onChange={(name, value) => { setCustomValues((v) => ({ ...v, [name]: value })); setCustomErrors((p) => { const n = { ...p }; delete n[name]; return n }) }}

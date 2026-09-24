@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
+import { GraphQLError } from 'graphql'
 import { customFieldDefs, resolveCustomFieldWrites, type CustomFieldInput } from '../lib/ticketCustomFields.js'
 import { creationStepContext } from '../lib/customFieldSteps.js'
 import { nextTicketNumber } from '../lib/ticketNumbering.js'
@@ -22,6 +23,8 @@ import { systemText } from '../lib/systemText.js'
 import { assertDomainValue } from '../lib/domainMatrix.js'
 import { assertCIsLinkable } from '../lib/ticketCIExclusions.js'
 import { transitionFailed } from '../lib/transitionError.js'
+import { validateStepRequirements } from '../lib/validateRequiredFields.js'
+import { preflightStepMetadata } from '../lib/stepMetadataPreflight.js'
 
 export interface IncidentEventPayload {
   id: string; title: string; severity: string; status: string
@@ -225,6 +228,33 @@ async function assignNewIncident(
   }
 }
 
+/**
+ * The incident was written, and a step after it failed (its event, its team).
+ * The error keeps its message and key, and names the incident: an automatic
+ * opener retried and opened a second one, then a third (review of 23 Sep
+ * 2026) — it now records the one that exists.
+ */
+function createdButIncomplete(created: { id: string; number: string }, err: unknown): GraphQLError {
+  const reason = err instanceof Error ? err.message : String(err)
+  const base = err instanceof GraphQLError ? err : new GraphQLError(
+    `Incident ${created.number} was created, but announcing it failed: ${reason}`,
+    { extensions: { code: 'INTERNAL_SERVER_ERROR', i18n: { key: 'errors.incident.createdButNotAnnounced', params: { number: created.number, reason } } } },
+  )
+  return new GraphQLError(base.message, {
+    extensions: { ...base.extensions, createdIncidentId: created.id, createdIncidentNumber: created.number },
+    originalError: base,
+  })
+}
+
+/** The incident an error says was created anyway (createdButIncomplete), or null. */
+export function createdIncidentOf(err: unknown): { id: string; number: string } | null {
+  const ext = (err as { extensions?: Record<string, unknown> } | null)?.extensions
+  const id = ext?.['createdIncidentId']
+  if (typeof id !== 'string' || id === '') return null
+  const number = ext?.['createdIncidentNumber']
+  return { id, number: typeof number === 'string' ? number : '' }
+}
+
 export async function createIncident(
   input: { title: string; description?: string; severity?: string; impact?: string; urgency?: string; category?: string; affectedCIIds?: string[]; acknowledgeNoSla?: boolean | null; customFields?: CustomFieldInput[] | null; teamId?: string | null },
   ctx: ServiceCtx,
@@ -388,37 +418,45 @@ export async function createIncident(
     )
   }
 
-  // Auto-watch: creator becomes watcher
-  await withSession(async (session) => {
-    await session.executeWrite(tx => tx.run(`
-      MATCH (u:User {id: $userId, tenant_id: $tenantId})
-      MATCH (i:Incident {id: $entityId, tenant_id: $tenantId})
-      MERGE (u)-[w:WATCHES]->(i)
-        ON CREATE SET w.watched_at = $now
-    `, { userId: ctx.userId, tenantId: ctx.tenantId, entityId: id, now }))
-  }, true)
+  // From here the incident EXISTS (review of 23 Sep 2026): a failure names it,
+  // so that an automatic opener records it instead of opening another one at
+  // every retry (createdIncidentOf).
+  try {
+    // Auto-watch: creator becomes watcher
+    await withSession(async (session) => {
+      await session.executeWrite(tx => tx.run(`
+        MATCH (u:User {id: $userId, tenant_id: $tenantId})
+        MATCH (i:Incident {id: $entityId, tenant_id: $tenantId})
+        MERGE (u)-[w:WATCHES]->(i)
+          ON CREATE SET w.watched_at = $now
+      `, { userId: ctx.userId, tenantId: ctx.tenantId, entityId: id, now }))
+    }, true)
 
-  // Il CI e l'assegnatario VERI nel payload (revisione totale · B-7): erano
-  // scritti a mano come «—», e una regola di notifica che mette il CI nel
-  // testo mostrava «—» anche su un incident con tre CI. Il payload si rilegge
-  // dal grafo, come fa `assignIncidentToUser`.
-  const createdPayload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))
-  await publishEvent('incident.created', ctx.tenantId, ctx.userId, {
-    ...requirePayload(createdPayload, id),
-    affected_ci_ids: input.affectedCIIds ?? [],
-  } satisfies IncidentEventPayload, now)
+    // Il CI e l'assegnatario VERI nel payload (revisione totale · B-7): erano
+    // scritti a mano come «—», e una regola di notifica che mette il CI nel
+    // testo mostrava «—» anche su un incident con tre CI. Il payload si rilegge
+    // dal grafo, come fa `assignIncidentToUser`.
+    const createdPayload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))
+    await publishEvent('incident.created', ctx.tenantId, ctx.userId, {
+      ...requirePayload(createdPayload, id),
+      affected_ci_ids: input.affectedCIIds ?? [],
+    } satisfies IncidentEventPayload, now)
 
-  // Trigger, Business Rule e trigger a tempo: li mette in moto `incident.created`
-  // (consumers/automationConsumer.ts), come per ogni altro ticket e evento.
-  enqueueEmbedding({ entityType: 'incident', entityId: id, tenantId: ctx.tenantId, updatedAt: now }).catch((err: unknown) => {
-    logger.error({ err, incidentId: id }, '[embeddings] enqueue failed — similarity will lag until backfill')
-  })
+    // Trigger, Business Rule e trigger a tempo: li mette in moto `incident.created`
+    // (consumers/automationConsumer.ts), come per ogni altro ticket e evento.
+    enqueueEmbedding({ entityType: 'incident', entityId: id, tenantId: ctx.tenantId, updatedAt: now }).catch((err: unknown) => {
+      logger.error({ err, incidentId: id }, '[embeddings] enqueue failed — similarity will lag until backfill')
+    })
 
-  // After `incident.created`: the SLA starts there, and the assignment may change its policy (SL-10).
-  const team = input.teamId
-    ? { teamId: input.teamId, ciName: null }
-    : await supportGroupOfCIs(ctx.tenantId, input.affectedCIIds ?? [])
-  return team ? assignNewIncident(created, team, ctx) : created
+    // After `incident.created`: the SLA starts there, and the assignment may change its policy (SL-10).
+    const team = input.teamId
+      ? { teamId: input.teamId, ciName: null }
+      : await supportGroupOfCIs(ctx.tenantId, input.affectedCIIds ?? [])
+    // `await`: a returned promise would escape the catch below.
+    return team ? await assignNewIncident(created, team, ctx) : created
+  } catch (err) {
+    throw createdButIncomplete({ id: String(created.id), number: String(created.number ?? created.id) }, err)
+  }
 }
 
 export async function resolveIncident(
@@ -433,9 +471,9 @@ export async function resolveIncident(
     // if none, the first terminal step). The engine syncs entity.status
     // and records the step history; we only handle fields the engine
     // doesn't know about (resolved_at, root_cause).
-    const instanceRow = await runQueryOne<{ instanceId: string }>(session, `
+    const instanceRow = await runQueryOne<{ instanceId: string; props: Props }>(session, `
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-      RETURN wi.id AS instanceId
+      RETURN wi.id AS instanceId, properties(i) AS props
     `, { id, tenantId: ctx.tenantId })
     if (!instanceRow) throw new NotFoundError('Incident', id)
 
@@ -444,6 +482,13 @@ export async function resolveIncident(
       steps.find((s) => s.category === 'resolved') ??
       steps.find((s) => s.isTerminal)
     if (!resolvedStep) throw new ValidationError('No resolved/terminal step in incident workflow')
+
+    // The rules of the resolved step hold here too: the bulk resolve, Slack and
+    // the service monitoring come this way (review of 23 Sep 2026).
+    await validateStepRequirements(session, {
+      entityType: 'incident', entityProps: instanceRow.props, notes, tenantId: ctx.tenantId, toStep: resolvedStep.name,
+    })
+    await preflightStepMetadata(session, instanceRow.instanceId, resolvedStep.name, ctx.tenantId)
 
     const result = await workflowEngine.transition(
       session,
@@ -801,9 +846,9 @@ export async function escalateIncident(
 ) {
   const now = new Date().toISOString()
   await withSession(async (session) => {
-    const instanceRow = await runQueryOne<{ instanceId: string }>(session, `
+    const instanceRow = await runQueryOne<{ instanceId: string; props: Props }>(session, `
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-      RETURN wi.id AS instanceId
+      RETURN wi.id AS instanceId, properties(i) AS props
     `, { id, tenantId: ctx.tenantId })
     if (!instanceRow) throw new Error(`Incident ${id}: no workflow instance to escalate`)
     // Revisione · B·N-4: era un `find` su una lista senza ordine (due passi di
@@ -811,6 +856,10 @@ export async function escalateIncident(
     // prima). `targetStepByCategory` ordina per `step_order` e dice cosa manca.
     const target = await targetStepByCategory(session, ctx.tenantId, 'incident', ['escalated'],
       `escalation of incident ${id}`)
+    await validateStepRequirements(session, {
+      entityType: 'incident', entityProps: instanceRow.props, tenantId: ctx.tenantId, toStep: target,
+    })
+    await preflightStepMetadata(session, instanceRow.instanceId, target, ctx.tenantId)
     const result = await workflowEngine.transition(
       session,
       { instanceId: instanceRow.instanceId, toStepName: target,

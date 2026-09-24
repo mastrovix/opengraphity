@@ -76,8 +76,12 @@ export async function applyRuleSLA(input: RuleSLAInput): Promise<SLAStatus> {
    * che non usa l'orario di servizio (revisione totale · E-23).
    */
   const TWENTY_FOUR_SEVEN = { businessHours: false, timezone: 'UTC', calendar: null } as const
-  const responseDeadline = calculateDeadline(startedAt, response, TWENTY_FOUR_SEVEN.businessHours, TWENTY_FOUR_SEVEN.timezone, TWENTY_FOUR_SEVEN.calendar)
-  const resolveDeadline  = calculateDeadline(startedAt, resolve,  TWENTY_FOUR_SEVEN.businessHours, TWENTY_FOUR_SEVEN.timezone, TWENTY_FOUR_SEVEN.calendar)
+  // The time already spent paused does not count, as on the SLA it replaces:
+  // resuming moved those deadlines by the pause, and a 24×7 clock moves by the
+  // same milliseconds (review of 23 Sep 2026: the new deadlines ignored it).
+  const pausedMs = previous?.paused_total_ms ?? 0
+  const responseDeadline = new Date(calculateDeadline(startedAt, response, TWENTY_FOUR_SEVEN.businessHours, TWENTY_FOUR_SEVEN.timezone, TWENTY_FOUR_SEVEN.calendar).getTime() + pausedMs)
+  const resolveDeadline  = new Date(calculateDeadline(startedAt, resolve,  TWENTY_FOUR_SEVEN.businessHours, TWENTY_FOUR_SEVEN.timezone, TWENTY_FOUR_SEVEN.calendar).getTime() + pausedMs)
 
   // I job del vecchio stato non devono scattare su uno stato che non c'è più.
   await cancelSLAJobs(input.tenantId, input.entityId, 'both')
@@ -102,9 +106,16 @@ export async function applyRuleSLA(input: RuleSLAInput): Promise<SLAStatus> {
         // una regola ha cambiato l'obiettivo, e una presa in carico già fatta
         // non torna da fare (E-9).
         response_met:          $responseMet,
-        resolve_met:           false,
         breached:              $breached,
         breached_at:           $breachedAt,
+        // A concluded or paused SLA stays so (review of 23 Sep 2026): recreated
+        // «open», a rule firing on a resolved ticket published a breach for a
+        // ticket that had met its SLA, and on a paused one the clock ran again.
+        resolve_met:           $resolveMet,
+        resolved_at:           $resolvedAt,
+        paused_at:             $pausedAt,
+        paused_type:           $pausedType,
+        paused_total_ms:       $pausedTotalMs,
         tier_severity:         'custom',
         tier_response_minutes: $response,
         tier_resolve_minutes:  $resolve,
@@ -120,6 +131,11 @@ export async function applyRuleSLA(input: RuleSLAInput): Promise<SLAStatus> {
       responseMet: previous?.response_met === true,
       breached:    previous?.breached === true,
       breachedAt:  previous?.breached === true ? (previous.breached_at ?? null) : null,
+      resolveMet:  previous?.resolve_met === true,
+      resolvedAt:  previous?.resolved_at ?? null,
+      pausedAt:    previous?.paused_at ?? null,
+      pausedType:  previous?.paused_at ? (previous.paused_type ?? null) : null,
+      pausedTotalMs: pausedMs,
     })
     const row = rows[0]
     if (!row) throw new Error(`set_sla: ${input.entityType} ${input.entityId} not found, or it is not a ticket with an SLA`)
@@ -128,6 +144,13 @@ export async function applyRuleSLA(input: RuleSLAInput): Promise<SLAStatus> {
     await session.close()
   }
 
-  await Promise.all([scheduleWarning(status), scheduleBreachCheck(status), scheduleResponseCheck(status)])
+  // Timers only for a clock that is running: a concluded SLA has none, a
+  // paused one gets them back when it resumes (handleSLAResume).
+  if (!status.resolved_at && !status.resolve_met && !status.paused_at) {
+    const jobs: Promise<unknown>[] = []
+    if (!status.response_met) jobs.push(scheduleResponseCheck(status))
+    if (!status.breached) jobs.push(scheduleWarning(status), scheduleBreachCheck(status))
+    await Promise.all(jobs)
+  }
   return status
 }

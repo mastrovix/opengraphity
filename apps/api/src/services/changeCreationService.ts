@@ -25,6 +25,7 @@ import { deriveChangePriority } from '../graphql/resolvers/change/scoring.js'
 import { assertDomainValue } from '../lib/domainMatrix.js'
 import { assertCIsLinkable } from '../lib/ticketCIExclusions.js'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
+import { runQueryOne } from '@opengraphity/neo4j'
 import { getInitialStepName } from '../lib/workflowHelpers.js'
 import {
   writeAudit,
@@ -95,6 +96,18 @@ export async function createChangeRFC(
   const created = await withSession(async (session) => {
     // Letture e validazioni PRIMA della transazione: se falliscono non c'è nulla da annullare.
     await assertCIHasOwnerAndSupport(session, ctx.tenantId, affectedCIIds)
+    // The owner named must be a person of this tenant, active (review of 23 Sep
+    // 2026): an OPTIONAL MATCH dropped a wrong id, and the change had no owner.
+    if (changeOwner) {
+      const owner = await runQueryOne<{ id: string }>(session, `
+        MATCH (u:User {id: $ownerId, tenant_id: $tenantId})
+        WHERE coalesce(u.active, true) = true
+        RETURN u.id AS id`, { ownerId: changeOwner, tenantId: ctx.tenantId })
+      if (!owner) {
+        throw new ValidationError(`The change owner ${changeOwner} is not an active person of this tenant`,
+          { key: 'errors.change.ownerNotFound', params: { id: changeOwner } })
+      }
+    }
     const code = await nextChangeCode(session, ctx.tenantId)
     const taskCodes = await getNextTaskCodes(session, ctx.tenantId, affectedCIIds.length * 3)
     const ciTasks = affectedCIIds.map((ciId, i) => ({

@@ -35,7 +35,7 @@ import { Boxes, RefreshCw, XCircle, AlertTriangle, CheckCircle2, Wrench, HelpCir
 import { PageContainer } from '@/components/PageContainer'
 import { ListPageHeader } from '@/components/ListPageHeader'
 import { EmptyState } from '@/components/EmptyState'
-import { QueryError } from '@/components/QueryError'
+import { QueryError, StaleDataBanner } from '@/components/QueryError'
 import { Pagination } from '@/components/ui/Pagination'
 import { Input, Select } from '@/components/ui/FormControls'
 import { Button } from '@/components/Button'
@@ -271,7 +271,10 @@ export function ServicesPage() {
     ...pausedWhenHidden(POLL_MS),
     notifyOnNetworkStatusChange: true,
   })
-  const data = liveData ?? previousData
+  // The previous filter's rows stand in only while the new ones are on their
+  // way: after a failure they read as the answer, with the new tile pressed
+  // (review of 23 Sep 2026).
+  const data = liveData ?? (networkStatus === NetworkStatus.setVariables ? previousData : undefined)
   const updating = networkStatus === NetworkStatus.setVariables && previousData !== undefined
   useEffect(() => { if (networkStatus === NetworkStatus.ready && liveData) setLastUpdated(Date.now()) }, [networkStatus, liveData])
 
@@ -418,6 +421,7 @@ export function ServicesPage() {
         />
       </div>
 
+      {error && data && <StaleDataBanner message={error.message} readAt={lastUpdated} onRetry={() => void refetch()} />}
       {tableBody}
 
       {/* Capacità di business in sola lettura (ondata 3): sotto la tabella, non è un filtro della lista. */}
@@ -425,7 +429,8 @@ export function ServicesPage() {
         <BusinessCapabilitiesSection />
       </div>
 
-      {managesServices && <CreateServiceMapDialog open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => void refetch()} />}
+      {/* Mounted when opened: every opening starts clean (review of 23 Sep 2026). */}
+      {managesServices && createOpen && <CreateServiceMapDialog open onClose={() => setCreateOpen(false)} onCreated={() => void refetch()} />}
     </PageContainer>
   )
 }

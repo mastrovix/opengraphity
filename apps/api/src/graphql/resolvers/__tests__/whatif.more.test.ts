@@ -54,7 +54,7 @@ beforeEach(() => {
     return null
   }) as never)
   vi.mocked(runQuery).mockImplementation((async (_s: unknown, cypher: string) => {
-    if (cypher.includes('MATCH path =')) return impacted
+    if (cypher.includes('shortestPath(')) return impacted
     if (cypher.includes(':Team')) return teams
     if (cypher.includes(':ServiceMap')) return services
     return []
@@ -100,7 +100,7 @@ describe('target and traversal', () => {
     for (const [depth, expected] of [[undefined, 5], [null, 5], [0, 1], [-3, 1], [50, 10], [7, 7]] as const) {
       vi.mocked(runQuery).mockClear()
       await analyse('impact', depth)
-      const traversal = vi.mocked(runQuery).mock.calls.find(([, c]) => String(c).includes('MATCH path ='))!
+      const traversal = vi.mocked(runQuery).mock.calls.find(([, c]) => String(c).includes('shortestPath('))!
       expect(String(traversal[1])).toContain(`*1..${expected}]`)
     }
     for (const [, , params] of [...vi.mocked(runQuery).mock.calls, ...vi.mocked(runQueryOne).mock.calls]) {
@@ -171,5 +171,17 @@ describe('whatIfCompare', () => {
     const r = await whatifResolvers.Query.whatIfCompare(null, { scenarios: [{ ciId: 'db-1', action: 'impact' }, { ciId: 'db-1', action: 'remove' }] }, ctx)
     expect(r.map((x) => x.action)).toEqual(['impact', 'remove'])
     expect(r[1]!.riskScore).toBe(15)
+  })
+})
+
+// Review of 23 Sep 2026: an unbounded scenario list, each one a traversal of the CMDB, all in parallel.
+describe('whatIfCompare — bounded', () => {
+  it('more than the cap is refused with its key, before any traversal', async () => {
+    const { whatifResolvers, WHAT_IF_MAX_SCENARIOS } = await import('../whatif.js')
+    vi.mocked(runQuery).mockClear()
+    const scenarios = Array.from({ length: WHAT_IF_MAX_SCENARIOS + 1 }, (_, i) => ({ ciId: `ci-${i}`, action: 'impact' }))
+    await expect(whatifResolvers.Query.whatIfCompare(undefined, { scenarios }, ctx as never))
+      .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.whatIf.tooManyScenarios' } } })
+    expect(vi.mocked(runQuery)).not.toHaveBeenCalled()
   })
 })

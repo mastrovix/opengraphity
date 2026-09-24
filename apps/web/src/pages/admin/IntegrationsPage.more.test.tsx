@@ -61,7 +61,7 @@ const show = (route = '/admin/integrations') => renderWithProviders(<Integration
 const rowOf = (name: string) => screen.getByText(name).closest('tr')!
 const dialog = () => screen.getByRole('dialog')
 
-async function confirmDialog(user: ReturnType<typeof show>['user'], answer: 'Delete' | 'Cancel') {
+async function confirmDialog(user: ReturnType<typeof show>['user'], answer: string) {
   const d = await screen.findByRole('dialog')
   await user.click(within(d).getByRole('button', { name: answer }))
 }
@@ -176,7 +176,16 @@ describe('inbound webhooks', () => {
   it('regenerating a token shows the new one; a missing token or a failure is said', async () => {
     const { user } = show()
     await screen.findByText('Jira incidents')
-    const regen = () => user.click(within(rowOf('Jira incidents')).getByRole('button', { name: 'Regenerate token' }))
+    // Asked first (review of 23 Sep 2026): the old token stops working at once.
+    const regen = async () => {
+      await user.click(within(rowOf('Jira incidents')).getByRole('button', { name: 'Regenerate the token of Jira incidents' }))
+      await confirmDialog(user, 'Regenerate token')
+    }
+
+    await user.click(within(rowOf('Jira incidents')).getByRole('button', { name: 'Regenerate the token of Jira incidents' }))
+    expect(await screen.findByRole('dialog', { name: 'Regenerate the token of «Jira incidents»?' })).toHaveTextContent('stops working at once')
+    await confirmDialog(user, 'Cancel')
+    expect(apolloFinto.chiamate['RegenerateWebhookToken']).toBeUndefined()
 
     apolloFinto.esiti['RegenerateWebhookToken'] = { data: { regenerateWebhookToken: { token: 'tok-new' } } }
     await regen()
@@ -372,7 +381,10 @@ describe('API keys', () => {
     await confirmDialog(user, 'Cancel')
     expect(apolloFinto.chiamate['DeleteApiKey']).toHaveLength(1)
 
-    const regen = () => user.click(within(rowOf('Old importer')).getByRole('button', { name: 'Regenerate key' }))
+    const regen = async () => {
+      await user.click(within(rowOf('Old importer')).getByRole('button', { name: 'Regenerate the key of Old importer' }))
+      await confirmDialog(user, 'Regenerate key')
+    }
     apolloFinto.esiti['RegenerateApiKey'] = { data: { regenerateApiKey: { key: 'og_rotated' } } }
     await regen()
     expect(await screen.findByText('og_rotated')).toBeInTheDocument()

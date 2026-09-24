@@ -166,7 +166,7 @@ beforeEach(() => {
   toast.success.mockReset()
   toast.error.mockReset()
   toast.warning.mockReset()
-  permissions = ['ticket.work', 'problem.delete']
+  permissions = ['ticket.work', 'problem.write', 'problem.delete']
   apolloFinto.risposte['GetMe'] = () => ({ me: { id: 'u-me', name: 'Me', email: 'me@x', role: 'custom', roleName: null, permissions, teams: [] } })
   apolloFinto.risposte['GetProblem'] = { problem: problem() }
   apolloFinto.risposte['ProblemDossier'] = { problemDossier: null }
@@ -832,5 +832,19 @@ describe('ProblemDetailPage — CIs, linked tickets, comments and chat', () => {
     hoisted.keycloak.subject = undefined
     mount()
     expect(screen.getByText('internal chat on problem prb-1 as ""')).toBeInTheDocument()
+  })
+})
+
+// Review of 23 Sep 2026: every action was offered to read-only roles, and every one ended in a 403.
+describe('ProblemDetailPage — who only reads problems', () => {
+  it('sees the problem, with the root cause and workaround read only, and no transition or assignment', async () => {
+    permissions = []
+    mount()
+    expect(await screen.findByRole('heading', { level: 1 })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Mark as known error' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Reassign' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Remove assignment' })).toBeNull()
+    expect(screen.queryByRole('spinbutton')).toBeNull()
+    for (const box of screen.queryAllByRole('textbox')) expect(box).toHaveAttribute('readonly')
   })
 })

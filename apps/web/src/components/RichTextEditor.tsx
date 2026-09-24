@@ -168,13 +168,20 @@ function insertTable(editor: Editor) {
 
 // ── Toolbar button ────────────────────────────────────────────────────────────
 
+/**
+ * A toolbar button. The mouse press is stopped so the editor keeps its
+ * selection, and the action runs on `click` — which Enter and Space also
+ * fire: run on `mousedown`, the toolbar did nothing from the keyboard
+ * (review of 23 Sep 2026). A formatting toggle says whether it is on.
+ */
 function Btn({
   onClick,
-  active = false,
+  active,
   title,
   children,
 }: {
   onClick: () => void
+  /** Only for toggles (bold, lists…): exposed as `aria-pressed`. */
   active?: boolean
   title: string
   children: React.ReactNode
@@ -182,8 +189,11 @@ function Btn({
   return (
     <button
       type="button"
-      onMouseDown={(e) => { e.preventDefault(); onClick() }}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
       title={title}
+      aria-label={title}
+      aria-pressed={active}
       style={{
         display:     'inline-flex',
         alignItems:  'center',
@@ -215,6 +225,8 @@ interface RichTextEditorProps {
   placeholder?: string
   minHeight?:   string
   readOnly?:    boolean
+  /** The accessible name of the text area (the field's label). */
+  label:        string
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -225,6 +237,7 @@ export function RichTextEditor({
   placeholder,
   minHeight   = '300px',
   readOnly    = false,
+  label,
 }: RichTextEditorProps) {
   const { t } = useTranslation()
   const effectivePlaceholder = placeholder ?? t('common.writeHere')
@@ -279,6 +292,12 @@ export function RichTextEditor({
       Placeholder.configure({ placeholder: effectivePlaceholder }),
     ],
     editable: !readOnly,
+    // tiptap 3 does not re-render on a transaction by default: the toolbar
+    // showed bold, lists and headings as they were when the page was drawn,
+    // whatever the cursor stood on (found with the keyboard test, 23 Sep 2026).
+    shouldRerenderOnTransaction: true,
+    // The text area has a name, as any field does (review of 23 Sep 2026).
+    editorProps: { attributes: { role: 'textbox', 'aria-multiline': 'true', 'aria-label': label } },
     onUpdate: ({ editor: e }) => handleUpdate(e.getHTML()),
     // Leaving the editor sends an edit still waiting for the pause at once:
     // the button clicked next (Save, «New article», another article) must
@@ -320,7 +339,7 @@ export function RichTextEditor({
     <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden', background: colors.white }}>
       {/* ── Toolbar ── */}
       {!readOnly && (
-        <div style={{ background: 'var(--color-slate-bg)', borderBottom: `1px solid ${colors.border}`, padding: '6px 8px', display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
+        <div role="toolbar" aria-label={t('richText.toolbar')} style={{ background: 'var(--color-slate-bg)', borderBottom: `1px solid ${colors.border}`, padding: '6px 8px', display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
           {/* Text formatting: each one is kept by the Markdown (underline as <u>…</u>, see the Turndown rules). */}
           <Btn onClick={() => editor.chain().focus().toggleBold().run()}          active={editor.isActive('bold')}          title={t('richText.bold')}><Bold size={14} /></Btn>
           <Btn onClick={() => editor.chain().focus().toggleItalic().run()}        active={editor.isActive('italic')}        title={t('richText.italic')}><Italic size={14} /></Btn>

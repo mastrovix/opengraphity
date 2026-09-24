@@ -68,3 +68,18 @@ describe('inputs at the edges', () => {
     expect(head.length).toBe(MAX_STACK_HEAD + 1)
   })
 })
+
+// Review of 23 Sep 2026: the word class stopped at Latin-1, and names in other scripts passed as they were.
+describe('names in any script are masked', () => {
+  it.each([
+    ['SLA engine failed for tenant Ярослав Петров', 'SLA engine failed for tenant <w>'],
+    ['User 山田太郎 not found', 'User <w> not found'],
+    ['Customer Ελληνική Εταιρεία rejected', 'Customer <w> rejected'],
+    ['Contract renewal for Łukasz Żółkiewski expired', 'Contract <w> for <w> expired'],
+  ])('%s', async (message, expected) => {
+    const { normalizzaMessaggio } = await import('../serverLogScrub.js')
+    const out = normalizzaMessaggio(message)
+    expect(out.template).toBe(expected)
+    expect(out.mascherate).toBeGreaterThan(0)
+  })
+})

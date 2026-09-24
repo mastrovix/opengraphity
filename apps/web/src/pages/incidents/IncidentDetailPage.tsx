@@ -3,6 +3,7 @@ import { TicketOLACard } from '@/components/ticket/ola/TicketOLACard'
 import { CustomFieldsCard } from '@/components/ticket/customFields/CustomFieldsCard'
 import type { CustomFieldValueView } from '@/components/ticket/customFields/customFields'
 import { useMe } from '@/hooks/useMe'
+import { useTicketRights } from '@/hooks/useTicketRights'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useConfirm } from '@/hooks/useConfirm'
@@ -206,6 +207,10 @@ export function IncidentDetailPage() {
   // «tecnico L2» con quel permesso vedeva i campi in sola lettura, e un ruolo
   // chiamato «operator» SENZA il permesso vedeva il form e prendeva un 403.
   const canEditCustomFields = can('ticket.work')
+  // Review of 23 Sep 2026: every action below asks the permission the API asks.
+  const { canWrite, canWork } = useTicketRights('incident')
+  const canOpenChange = can('change.write')
+  const canLinkProblem = canWrite || can('problem.write')
   const { data, loading, error, refetch, startPolling, stopPolling } = useQuery<{ incident: Incident | null }>(
     GET_INCIDENT,
     { variables: { id }, skip: !id },
@@ -387,7 +392,7 @@ export function IncidentDetailPage() {
     )
   }
 
-  const manualTransitions = incident.availableTransitions.filter((t) => t.toStep !== undefined).map(withLocalizedLabel)
+  const manualTransitions = canWrite ? incident.availableTransitions.filter((t) => t.toStep !== undefined).map(withLocalizedLabel) : []
   const historyDesc       = [...incident.workflowHistory].reverse()
 
   return (
@@ -406,12 +411,12 @@ export function IncidentDetailPage() {
         transitioning={transitioning}
         onBack={() => navigate(-1)}
         onTransitionClick={handleTransitionClick}
-        onRequestChange={() => navigate(`/changes/new?incidentId=${incident.id}`)}
+        onRequestChange={canOpenChange ? () => navigate(`/changes/new?incidentId=${incident.id}`) : null}
       />
 
       {/* Watchers bar + PDF export */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <Button
+        {canWrite && <Button
           variant="secondary"
           icon={<Pencil size={13} />}
           onClick={() => {
@@ -425,11 +430,11 @@ export function IncidentDetailPage() {
           }}
         >
           {t('common.edit')}
-        </Button>
-        <Button
+        </Button>}
+        {canWrite && <Button
           variant="secondary"
           disabled={settingMajor}
-          onClick={() => void (async () => {
+          onClick={() => (async () => {
             // Giro nel browser del 14 set 2026 (#21): dichiarare un Major
             // Incident avvisa il Change Manager e le regole di escalation;
             // partiva al primo clic, senza conferma.
@@ -442,13 +447,13 @@ export function IncidentDetailPage() {
           style={incident.major ? { color: 'var(--color-danger)', borderColor: 'var(--color-danger)' } : undefined}
         >
           {t(incident.major ? 'pages.incidentDetail.revokeMajor' : 'pages.incidentDetail.declareMajor')}
-        </Button>
+        </Button>}
         {/*
           La bozza KB si offre sui ticket CHIUSI o RISOLTI, riconosciuti dai
           metadata del passo e non dai due nomi di fabbrica (B-22): con un
           passo di risoluzione rinominato il bottone non compariva mai.
         */}
-        {(incidentStepIsTerminal(incident.status) || incidentStepCategory(incident.status) === 'resolved') && (
+        {canWrite && (incidentStepIsTerminal(incident.status) || incidentStepCategory(incident.status) === 'resolved') && (
           <Button
             variant="secondary"
             disabled={kbDraftLoading || kbArticlesOn !== true}
@@ -604,7 +609,7 @@ export function IncidentDetailPage() {
 
                 {/* Assegnazione a due step — nascosta quando l'incident è in
                     uno step terminale (es. closed / resolved). */}
-                {!incidentStepByName.get(incident.status)?.isTerminal && (
+                {canWrite && !incidentStepByName.get(incident.status)?.isTerminal && (
                   <IncidentAssignment incident={incident} usersData={usersData} usersError={usersError} onAssigned={() => void refetch()} />
                 )}
             </div>
@@ -622,6 +627,7 @@ export function IncidentDetailPage() {
             onSearchChange={setCiSearch}
             onAddCI={(ciId) => void addCI({ variables: { incidentId: incident.id, ciId } })}
             onRemoveCI={(ciId) => void removeCI({ variables: { incidentId: incident.id, ciId } })}
+            canEdit={canWork}
           />
 
           {/* Ticket collegati (sezione unica, stile change) */}
@@ -634,18 +640,21 @@ export function IncidentDetailPage() {
                 items: incident.linkedIncidents ?? [],
                 onLink: (otherId) => void linkRelated({ variables: { entityType: 'incident', entityId: incident.id, otherId } }),
                 onUnlink: (otherId) => void unlinkRelated({ variables: { entityType: 'incident', entityId: incident.id, otherId } }),
+                canEdit: canWork,
               },
               {
                 kind: 'PROBLEM', label: typeLabel('problem'), routeBase: '/problems',
                 items: incident.linkedProblems ?? [],
                 onLink: (problemId) => void linkIncProblem({ variables: { problemId, incidentId: incident.id } }),
                 onUnlink: (problemId) => void unlinkIncProblem({ variables: { problemId, incidentId: incident.id } }),
+                canEdit: canLinkProblem,
               },
               {
                 kind: 'CHANGE', label: typeLabel('change'), routeBase: '/changes',
                 items: incident.linkedChanges ?? [],
                 onLink: (changeId) => void linkResolved({ variables: { changeId, entityType: 'incident', entityId: incident.id } }),
                 onUnlink: (changeId) => void unlinkResolved({ variables: { changeId, entityType: 'incident', entityId: incident.id } }),
+                canEdit: canWork,
               },
             ]}
           />

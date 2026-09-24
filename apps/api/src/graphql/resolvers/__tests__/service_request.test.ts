@@ -188,7 +188,8 @@ describe('createServiceRequest — form answers and SLA acknowledgement', () => 
   })
 
   it('a portal user cannot acknowledge "no SLA": it would hide a coverage gap from the admin', async () => {
-    const err = await failure(Mutation.createServiceRequest(null, { input: { title: 'T', priority: 'low', acknowledgeNoSla: true } }, portalUser))
+    vi.mocked(runQueryOne).mockResolvedValueOnce({ requiresApproval: false, priority: 'low', name: 'VPN', category: null, workflowDefinitionId: null, active: true })
+    const err = await failure(Mutation.createServiceRequest(null, { input: { title: 'T', catalogItemId: 'cat-1', acknowledgeNoSla: true } }, portalUser))
     expect(err.extensions['code']).toBe('FORBIDDEN')
     expect(createRequest).not.toHaveBeenCalled()
   })

@@ -303,7 +303,7 @@ function RuleCard({ rule, options }: { rule: AnomalyRule; options: Options }) {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, borderTop: `1px solid ${colors.border}`, paddingTop: 12 }}>
           <Button
-            onClick={() => void save({ variables: { ruleKey: rule.ruleKey, settings: current } })}
+            onClick={() => save({ variables: { ruleKey: rule.ruleKey, settings: current } })}
             disabled={draft === null || problem !== null || saving}
           >
             <Save size={14} aria-hidden="true" /> {t('common.save')}

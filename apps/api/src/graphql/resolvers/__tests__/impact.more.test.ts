@@ -102,7 +102,7 @@ describe('computeImpactAnalysis — incidents and changes', () => {
 
 describe('computeImpactAnalysis — blast radius rows', () => {
   it('maps each impacted CI; a CI without environment stays without one (not "unknown")', async () => {
-    rowsFor = [['MATCH path = (ci)', [
+    rowsFor = [['shortestPath((ci)', [
       { id: 'c2', name: 'db', label: 'Server', environment: 'prod', distance: 1 },
       { id: 'c3', name: 'cache', label: 'Server', environment: null, distance: 2 },
     ]]]

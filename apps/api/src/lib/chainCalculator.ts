@@ -34,12 +34,19 @@ async function chainRelPattern(tenantId: string): Promise<string> {
   return serviceRelPatternForTenant(tenantId)
 }
 
-export async function calculateChain(ciId: string, tenantId: string): Promise<string> {
+/**
+ * The chain of each of these CIs, in ONE query (review of 23 Sep 2026: a
+ * relationship change recomputes every CI downstream, not only its two ends).
+ * Returns the chain per id; a CI that is not there is absent.
+ */
+export async function calculateChains(ciIds: readonly string[], tenantId: string): Promise<Map<string, string>> {
+  if (ciIds.length === 0) return new Map()
   const relPattern = await chainRelPattern(tenantId)
   const session = getSession(undefined, 'WRITE')
   try {
     const result = await session.executeWrite(tx => tx.run(`
-      MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
+      UNWIND $ciIds AS ciId
+      MATCH (ci:ConfigurationItem {id: ciId, tenant_id: $tenantId})
       WITH ci, labels(ci) AS ciLabels
       UNWIND ciLabels AS lbl
       // La definizione del tipo si risolve come in tutto il resto del prodotto
@@ -70,6 +77,8 @@ export async function calculateChain(ciId: string, tenantId: string): Promise<st
         WITH ci
         OPTIONAL MATCH (upstream)-[:${relPattern}*1..10]->(ci)
         WHERE upstream.tenant_id = ci.tenant_id
+        // Each upstream CI once: the planner prunes instead of walking every path.
+        WITH DISTINCT upstream
         WITH upstream, labels(upstream) AS uLabels
         UNWIND uLabels AS uLbl
         // tenant-ok(condivisi): tipo CI condiviso per label
@@ -84,16 +93,50 @@ export async function calculateChain(ciId: string, tenantId: string): Promise<st
         WHEN hasAppUpstream THEN 'Application'
         ELSE 'Infrastructure'
       END
-      RETURN ci.chain AS chain
-    `, { ciId, tenantId }))
-    // Niente ripiego muto: se il CI non c'è (più) lo si dice, invece di
-    // restituire «Infrastructure» come se la catena fosse stata calcolata.
-    const chain = result.records[0]?.get('chain') as string | undefined
-    if (!chain) throw new Error(`calculateChain: CI ${ciId} not found in tenant ${tenantId}`)
-    return chain
+      RETURN ci.id AS id, ci.chain AS chain
+    `, { ciIds: [...ciIds], tenantId }))
+    return new Map(result.records.map((r) => [r.get('id') as string, r.get('chain') as string]))
   } finally {
     await session.close()
   }
+}
+
+export async function calculateChain(ciId: string, tenantId: string): Promise<string> {
+  // Niente ripiego muto: se il CI non c'è (più) lo si dice, invece di
+  // restituire «Infrastructure» come se la catena fosse stata calcolata.
+  const chain = (await calculateChains([ciId], tenantId)).get(ciId)
+  if (!chain) throw new Error(`calculateChain: CI ${ciId} not found in tenant ${tenantId}`)
+  return chain
+}
+
+/** Above this many CIs downstream, the whole tenant is recomputed in its batch instead. */
+export const CHAIN_DOWNSTREAM_MAX = 2_000
+
+/**
+ * A relationship into this CI changed: its chain and the chain of every CI
+ * downstream of it within the chain's 10 hops can change (review of 23 Sep
+ * 2026 — only the two ends were recomputed, and the CIs further down kept
+ * their old chain). Returns how many CIs were recomputed.
+ */
+export async function recalculateChainsFrom(ciId: string, tenantId: string): Promise<number> {
+  const relPattern = await chainRelPattern(tenantId)
+  const session = getSession(undefined, 'READ')
+  let ids: string[]
+  try {
+    const res = await session.executeRead(tx => tx.run(`
+      MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
+      OPTIONAL MATCH (ci)-[:${relPattern}*1..10]->(d)
+      WHERE d.tenant_id = $tenantId
+      WITH ci, collect(DISTINCT d.id) AS downstream
+      RETURN [ci.id] + downstream AS ids
+    `, { ciId, tenantId }))
+    ids = (res.records[0]?.get('ids') as string[] | undefined) ?? []
+  } finally {
+    await session.close()
+  }
+  if (ids.length > CHAIN_DOWNSTREAM_MAX) return (await calculateAllChains(tenantId)).total
+  await calculateChains(ids, tenantId)
+  return ids.length
 }
 
 /**

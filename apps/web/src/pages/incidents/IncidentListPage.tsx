@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { pausedWhenHidden } from '@/lib/polling'
+import { useTicketRights } from '@/hooks/useTicketRights'
 import { useCustomFieldColumns, withCustomFieldCells } from '@/components/ticket/customFields/customFieldColumns'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
@@ -104,6 +105,8 @@ export function IncidentListPage() {
 
   const { fields: filterFields } = useEntityFields('Incident')
   const navigate = useNavigate()
+  // «New» leads to a route that asks the write permission: not offered without it (review of 23 Sep 2026).
+  const { canWrite } = useTicketRights('incident')
   const location = useLocation()
   const [page, setPage] = useState(0)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
@@ -218,11 +221,11 @@ export function IncidentListPage() {
             {loading ? '—' : t('pages.incidents.count', { count: total })}
           </p>
         }
-        actions={
+        actions={canWrite && (
           <Button icon={<Plus size={15} aria-hidden="true" />} onClick={() => navigate('/incidents/new')}>
             {t('pages.incidents.new')}
           </Button>
-        }
+        )}
       />
 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
@@ -248,7 +251,8 @@ export function IncidentListPage() {
         <QueryError message={error.message} onRetry={() => void refetch()} />
       ) : (
         <>
-          <BulkActionsBar count={selectedIds.size} onClear={clearSelection}>
+          {/* Bulk assign and resolve ask incident.write: without it nothing is selectable. */}
+          {canWrite && <BulkActionsBar count={selectedIds.size} onClear={clearSelection}>
             <Button
               variant="secondary"
               size="xs"
@@ -267,7 +271,7 @@ export function IncidentListPage() {
             >
               {t('bulk.resolve')}
             </Button>
-          </BulkActionsBar>
+          </BulkActionsBar>}
 
           <SortableFilterTable<Incident>
             columns={columns}
@@ -278,7 +282,7 @@ export function IncidentListPage() {
             onSort={handleSort}
             sortField={sortField}
             sortDir={sortDir}
-            selectable
+            selectable={canWrite}
             selectedIds={selectedIds}
             onToggleRow={toggleRow}
             onToggleAll={toggleAll}

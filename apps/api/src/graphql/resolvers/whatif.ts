@@ -1,4 +1,5 @@
 import { GraphQLError } from 'graphql'
+import { ValidationError } from '../../lib/errors.js'
 import { getSession, runQuery, runQueryOne, toNumber } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { audit } from '../../lib/audit.js'
@@ -24,8 +25,8 @@ function impactLevel(dist: number, action: string): string {
 
 /** Open incidents linked to any of $impactedIds (tenant-scoped, non-terminal). */
 export const OPEN_INCIDENTS_ON_CIS_CYPHER = `
-  MATCH (ci)<-[:AFFECTED_BY]-(inc:Incident {tenant_id: $tenantId})
-  WHERE ci.id IN $impactedIds AND ci.tenant_id = $tenantId AND NOT inc.status IN $terminalSteps
+  MATCH (ci:ConfigurationItem {tenant_id: $tenantId})<-[:AFFECTED_BY]-(inc:Incident {tenant_id: $tenantId})
+  WHERE ci.id IN $impactedIds AND NOT inc.status IN $terminalSteps
   RETURN count(DISTINCT inc) AS cnt
 `
 
@@ -59,17 +60,19 @@ async function whatIfAnalysis(_: unknown, args: WhatIfArgs, ctx: GraphQLContext)
     targetEnv = tgt.env
     targetStatus = tgt.status
 
-    // Traversal — single query, deduplicated by CI, shortest path only.
+    // Traversal — the candidates first (DISTINCT: the planner prunes, no path
+    // is enumerated), then ONE shortest path per candidate (review of 23 Sep
+    // 2026: every path up to depth 10 was collected, exponential on diamonds
+    // and two-way links).
     // CM-3: le relazioni dei servizi del tenant, non una lista scritta qui.
     const relPattern = await serviceRelPatternForTenant(tenantId)
     impactedRows = await runQuery<Row>(s1, `
       MATCH (target:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
-      MATCH path = (impacted)-[:${relPattern}*1..${depth}]->(target)
+      MATCH (impacted)-[:${relPattern}*1..${depth}]->(target)
       WHERE impacted.tenant_id = $tenantId AND impacted.id <> $ciId
-      WITH impacted, path, length(path) AS dist
-      ORDER BY dist ASC
-      WITH impacted, collect(path)[0] AS bestPath, min(dist) AS distance
-      WITH impacted, distance, [n IN nodes(bestPath) | n.name] AS pathNames,
+      WITH DISTINCT target, impacted
+      MATCH bestPath = shortestPath((impacted)-[:${relPattern}*1..${depth}]->(target))
+      WITH impacted, length(bestPath) AS distance, [n IN nodes(bestPath) | n.name] AS pathNames,
            [l IN labels(impacted) WHERE l <> 'ConfigurationItem'] AS lbls
       RETURN impacted.id AS id, impacted.name AS name, lbls,
              impacted.environment AS env, impacted.status AS status,
@@ -98,7 +101,7 @@ async function whatIfAnalysis(_: unknown, args: WhatIfArgs, ctx: GraphQLContext)
     const s2 = getSession(undefined, 'READ')
     try {
       teams = await runQuery<TeamRow>(s2, `
-        MATCH (ci)-[:OWNED_BY]->(t:Team {tenant_id: $tenantId})
+        MATCH (ci:ConfigurationItem {tenant_id: $tenantId})-[:OWNED_BY]->(t:Team {tenant_id: $tenantId})
         WHERE ci.id IN $impactedIds
         RETURN DISTINCT t.id AS id, t.name AS name, count(DISTINCT ci) AS cnt
       `, { impactedIds, tenantId })
@@ -195,7 +198,18 @@ async function whatIfAnalysis(_: unknown, args: WhatIfArgs, ctx: GraphQLContext)
 
 // ── whatIfCompare ────────────────────────────────────────────────────────────
 
+/**
+ * How many scenarios one comparison runs (review of 23 Sep 2026): the list was
+ * unbounded, open to viewers, and every scenario is a traversal of the CMDB,
+ * all in parallel.
+ */
+export const WHAT_IF_MAX_SCENARIOS = 10
+
 async function whatIfCompare(_: unknown, args: { scenarios: { ciId: string; action: string }[] }, ctx: GraphQLContext) {
+  if (args.scenarios.length > WHAT_IF_MAX_SCENARIOS) {
+    throw new ValidationError(`At most ${WHAT_IF_MAX_SCENARIOS} scenarios can be compared at once (got ${args.scenarios.length})`,
+      { key: 'errors.whatIf.tooManyScenarios', params: { max: String(WHAT_IF_MAX_SCENARIOS) } })
+  }
   return Promise.all(args.scenarios.map(s => whatIfAnalysis(_, { ciId: s.ciId, action: s.action }, ctx)))
 }
 

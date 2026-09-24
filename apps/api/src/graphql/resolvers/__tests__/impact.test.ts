@@ -69,7 +69,7 @@ describe('computeImpactAnalysis', () => {
   it('origine E impattati usano il predicato del tenant (tipo del cliente compreso)', async () => {
     await computeImpactAnalysis(session as never, 'tenant-1', ['ci-1'])
 
-    const blast = queries.find((q) => q.includes('MATCH path = (ci)<-['))
+    const blast = queries.find((q) => q.includes('shortestPath((ci)<-['))
     expect(blast, 'nessuna query di blast radius').toBeDefined()
     expect(blast).toContain('(ci:Application OR ci:LoadBalancer OR ci:Server)')
     expect(blast).toContain('(impacted:Application OR impacted:LoadBalancer OR impacted:Server)')

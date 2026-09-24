@@ -13,7 +13,8 @@ export const ALLOWED_BASE_FIELDS = new Set([
 
 // `health` (salute dal monitoraggio, Event Management): `is_empty` = CI mai
 // toccato da un allarme, il filtro "senza monitoraggio" della pagina Salute CI.
-export const ALL_CIS_ALLOWED_FIELDS = new Set(['name', 'status', 'environment', 'createdAt', 'health'])
+// The fields common to every CI: one list, in lib (the ref_ci filter uses it too).
+export { ALL_CIS_ALLOWED_FIELDS } from '../../lib/refCiFilter.js'
 
 // ── Sort whitelist ────────────────────────────────────────────────────────────
 

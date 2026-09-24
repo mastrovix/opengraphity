@@ -38,7 +38,7 @@ export function OrganizationNameSection() {
           <FieldLabel htmlFor={`${uid}-name`}>{t('pages.organization.nameLabel')}</FieldLabel>
           <Input id={`${uid}-name`} value={name} maxLength={120} onChange={(e) => setName(e.target.value)} />
         </div>
-        <Button onClick={() => void save({ variables: { name: trimmed } })} disabled={saving || !valid || trimmed === data?.tenantName}>
+        <Button onClick={() => save({ variables: { name: trimmed } })} disabled={saving || !valid || trimmed === data?.tenantName}>
           {t('common.save')}
         </Button>
       </div>

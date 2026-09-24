@@ -53,7 +53,10 @@ const optionTexts = (el: HTMLElement) => within(el).getAllByRole('option').map((
 beforeEach(() => {
   apolloFinto.reset()
   apolloFinto.risposte['GetTeams'] = { teams: [{ id: 't1', name: 'Network' }] }
-  apolloFinto.risposte['GetUsers'] = { users: [{ id: 'u1', name: 'Ada', email: 'ada@x.io' }] }
+  apolloFinto.risposte['SearchUsers'] = { searchUsers: [{ id: 'u1', name: 'Ada', email: 'ada@x.io' }] }
+  apolloFinto.risposte['UsersByIds'] = (v?: Record<string, unknown>) => ({
+    usersByIds: [{ id: 'u1', name: 'Ada', email: 'ada@x.io', active: true }].filter((u) => (v?.['ids'] as string[]).includes(u.id)),
+  })
   fields.metamodel = [
     f('assignee', 'user'), f('team', 'team'), f('env', 'enum', { enumValues: ['production', 'test'], enumTypeName: 'environment' }),
     f('free', 'enum'), f('vip', 'boolean'), f('due', 'date'), f('count', 'number'), f('title', 'string'),
@@ -63,12 +66,15 @@ beforeEach(() => {
 })
 
 describe('ConditionRowEditor — the value control follows the field type', () => {
-  it('a user field is picked from the users, by id', async () => {
+  // Review of 23 Sep 2026: searched on the server among the people who can be given tickets, not a select of everyone.
+  it('a user field is searched among the people who can be given tickets, and kept by id', async () => {
     const { user, onChange } = mount({ field: 'assignee', operator: 'equals', value: '' })
-    const value = selects()[2]!
-    expect(optionTexts(value)).toEqual(['-- User --', 'Ada (ada@x.io)'])
-    await user.selectOptions(value, 'u1')
+    const box = screen.getByRole('combobox', { name: 'Person' })
+    await user.click(box)
+    expect(apolloFinto.chiamata('SearchUsers')).toMatchObject({ permission: 'ticket.assignable' })
+    await user.click(await screen.findByRole('option', { name: /Ada/ }))
     expect(onChange).toHaveBeenCalledWith({ value: 'u1' })
+    expect(apolloFinto.chiamata('GetUsers')).toBeUndefined()
   })
 
   it('a team field is picked from the teams, by id', async () => {

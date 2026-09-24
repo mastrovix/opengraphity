@@ -132,8 +132,13 @@ const BUILDERS: Record<AnomalyRuleKey, Builder> = {
         MATCH (ci)
         ${CI_MATCH}
           ${typeFilter('ci', s.ciLabels)}
-        MATCH path = (ci)-[:${relPattern(s.relations, 'dependency_cycle')}*2..${String(max)}]->(ci)
-        WITH ci, min(length(path)) AS cycleLen
+        // The shortest cycle through the CI: one step to a neighbour, then the
+        // shortest way back (review of 23 Sep 2026 — every cycle up to the
+        // maximum was enumerated to keep the shortest).
+        MATCH (ci)-[:${relPattern(s.relations, 'dependency_cycle')}]->(next)
+        WHERE next <> ci
+        MATCH back = shortestPath((next)-[:${relPattern(s.relations, 'dependency_cycle')}*1..${String(max - 1)}]->(ci))
+        WITH ci, min(length(back)) + 1 AS cycleLen
         RETURN DISTINCT
           ci.id                      AS entityId,
           'CI'                       AS entityType,

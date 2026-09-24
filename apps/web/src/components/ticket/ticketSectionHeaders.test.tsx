@@ -48,6 +48,7 @@ describe('testate dei riquadri dei ticket', () => {
       <AffectedCIList
         affectedCIs={[ci]}
         excludedTypes={[]}
+        canEdit
         ciResults={[]}
         onSearchChange={() => {}}
         onAddCI={() => {}}

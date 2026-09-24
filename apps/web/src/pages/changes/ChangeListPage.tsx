@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { pausedWhenHidden } from '@/lib/polling'
+import { useTicketRights } from '@/hooks/useTicketRights'
 import { useCustomFieldColumns, withCustomFieldCells } from '@/components/ticket/customFields/customFieldColumns'
 import { useQuery } from '@apollo/client/react'
 import { useNavigate, useLocation } from 'react-router-dom'
@@ -54,6 +55,8 @@ const filtersVariable = (group: FilterGroup | null): string | null =>
 export function ChangeListPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  // «New» leads to a route that asks the write permission: not offered without it (review of 23 Sep 2026).
+  const { canWrite } = useTicketRights('change')
   const location = useLocation()
 
   const [page, setPage]             = useState(0)
@@ -174,11 +177,11 @@ export function ChangeListPage() {
             {loading ? '—' : t('pages.changes.count', { count: total })}
           </p>
         }
-        actions={
+        actions={canWrite && (
           <Button icon={<Plus size={15} aria-hidden="true" />} onClick={() => navigate('/changes/new')}>
             {t('pages.changes.new')}
           </Button>
-        }
+        )}
       />
 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>

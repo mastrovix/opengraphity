@@ -65,6 +65,9 @@ const ctx = (userId = 'u1', role = 'operator') => ({
 
 /** Un `Record` di neo4j finto: `get(chiave)`. */
 const rec = (campi: Record<string, unknown>) => ({ get: (k: string) => campi[k] ?? null })
+/** The params of the write that gave a decision back (lib: giveBackDecision), if any. */
+const givenBack = () => write.mock.calls.find((c) => String(c[0]).includes("SET a.status = 'pending'"))?.[1] as Record<string, unknown> | undefined
+const { audit } = await import('../../../lib/audit.js')
 
 /** La riga che le SET restituiscono: tutte le colonne del nodo. */
 const rigaAggiornata = (over: Record<string, unknown> = {}) => rec({
@@ -261,6 +264,8 @@ describe('approveRequest — l\'articolo della base di conoscenza', () => {
     expect(r.code).toBe('BAD_USER_INPUT')
     expect(r.message).toContain('no transition to a published step')
     expect(sendToUser).not.toHaveBeenCalled()
+    // Review of 23 Sep 2026: the approval was committed before the move, and stayed «approved» for ever.
+    expect(givenBack()).toMatchObject({ id: 'a1', tenantId: 't1', approvedBy: '[]' })
   })
 
   it('se il motore RIFIUTA, la mutation fallisce: non si dice «pubblicato» a vuoto', async () => {
@@ -270,6 +275,9 @@ describe('approveRequest — l\'articolo della base di conoscenza', () => {
     expect(r.code).toBe('CONFLICT')
     expect(r.message).toContain('una guardia non passa')
     expect(sendToUser).not.toHaveBeenCalled()
+    // The request is pending again, with the approvals given before: it can be decided again.
+    expect(givenBack()).toMatchObject({ id: 'a1', approvedBy: '[]' })
+    expect(audit).not.toHaveBeenCalledWith(expect.anything(), 'approval.approved', 'ApprovalRequest', 'a1')
   })
 
   it('pubblicato davvero: la notifica dice «pubblicato», non «approvato»', async () => {

@@ -278,17 +278,37 @@ describe('CIDynamicForm — scripts and metamodel problems', () => {
     expect(await screen.findByText('Metamodel:')).toBeInTheDocument()
   })
 
-  it('teams that cannot be loaded are reported next to the group pickers', async () => {
-    apolloFinto.erroriQuery['GetTeams'] = new Error('teams down')
+  it('teams that cannot be loaded are said in the group picker', async () => {
+    apolloFinto.erroriQuery['GetTeamChoices'] = new Error('teams down')
     const type = ciType([], [
       { id: 'sr1', name: 'ownerGroup', label: 'Owner Group', relationshipType: 'OWNED_BY', targetEntity: 'Team', required: false, order: 1 },
     ] as CITypeDef['systemRelations'])
-    mount({ type })
-    expect(await screen.findByRole('alert')).toHaveTextContent('Teams could not be loaded: teams down')
+    const { user } = mount({ type })
+    await user.click(await screen.findByRole('combobox', { name: 'Owner Group' }))
+    expect(await screen.findByText(/teams down/)).toBeInTheDocument()
+  })
+
+  // D34 on creation (review of 23 Sep 2026): each group offers the teams of its type, as on the CI page.
+  it('each group offers the teams of its type: owner teams for the owner, support teams for the support', async () => {
+    apolloFinto.risposte['GetTeamChoices'] = { teams: [
+      { id: 'team-1', name: 'Network', type: 'support', isChangeManager: false },
+      { id: 'team-2', name: 'Apps Owners', type: 'owner', isChangeManager: false },
+    ] }
+    const type = ciType([], [
+      { id: 'sr1', name: 'ownerGroup', label: 'Owner Group', relationshipType: 'OWNED_BY', targetEntity: 'Team', required: false, order: 1 },
+      { id: 'sr2', name: 'supportGroup', label: 'Support Group', relationshipType: 'SUPPORTED_BY', targetEntity: 'Team', required: false, order: 2 },
+    ] as CITypeDef['systemRelations'])
+    const { user } = mount({ type })
+    await user.click(await screen.findByRole('combobox', { name: 'Owner Group' }))
+    expect(await screen.findByRole('option', { name: 'Apps Owners' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Network' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('combobox', { name: 'Support Group' }))
+    expect(await screen.findByRole('option', { name: 'Network' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Apps Owners' })).not.toBeInTheDocument()
   })
 
   it('a required group blocks the save and is named; once chosen it travels as <relation>Id', async () => {
-    apolloFinto.risposte['GetTeams'] = { teams: [{ id: 'team-1', name: 'Network' }] }
+    apolloFinto.risposte['GetTeamChoices'] = { teams: [{ id: 'team-1', name: 'Network', type: 'owner', isChangeManager: false }] }
     const type = ciType([], [
       { id: 'sr2', name: 'supportGroup', label: 'Support Group', relationshipType: 'SUPPORTED_BY', targetEntity: 'Team', required: false, order: 2 },
       { id: 'sr1', name: 'ownerGroup', label: 'Owner Group', relationshipType: 'OWNED_BY', targetEntity: 'Team', required: true, order: 1 },
@@ -299,21 +319,26 @@ describe('CIDynamicForm — scripts and metamodel problems', () => {
     expect(screen.queryByLabelText(/Managed by/)).not.toBeInTheDocument()
     await user.click(await screen.findByRole('button', { name: 'Save' }))
     expect(await screen.findByText('Owner Group is required')).toBeInTheDocument()
-    expect(screen.getByLabelText(/Owner Group/)).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByRole('combobox', { name: 'Owner Group' })).toHaveAttribute('aria-invalid', 'true')
     expect(onSubmit).not.toHaveBeenCalled()
-    await user.selectOptions(screen.getByLabelText(/Owner Group/), 'Network')
+    await user.click(screen.getByRole('combobox', { name: 'Owner Group' }))
+    await user.click(await screen.findByRole('option', { name: 'Network' }))
     expect(screen.queryByText('Owner Group is required')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({ name: 'srv', ownerGroupId: 'team-1' }))
   })
 
   it('un-choosing a group stores null, not an empty id', async () => {
-    apolloFinto.risposte['GetTeams'] = { teams: [{ id: 'team-1', name: 'Network' }] }
+    apolloFinto.risposte['GetTeamChoices'] = { teams: [{ id: 'team-1', name: 'Network', type: 'support', isChangeManager: false }] }
     const type = ciType([], [
       { id: 'sr2', name: 'supportGroup', label: 'Support Group', relationshipType: 'SUPPORTED_BY', targetEntity: 'Team', required: false, order: 1 },
     ] as CITypeDef['systemRelations'])
-    const { user, onSubmit } = mount({ type, initial: { name: 'srv', supportGroupId: 'team-1' } })
-    await user.selectOptions(await screen.findByLabelText(/Support Group/), '')
+    const { user, onSubmit } = mount({ type, initial: { name: 'srv' } })
+    const box = await screen.findByRole('combobox', { name: 'Support Group' })
+    await user.click(box)
+    await user.click(await screen.findByRole('option', { name: 'Network' }))
+    await user.click(box)
+    await user.click(await screen.findByRole('option', { name: '— select —' }))
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({ name: 'srv', supportGroupId: null }))
   })
@@ -321,6 +346,6 @@ describe('CIDynamicForm — scripts and metamodel problems', () => {
   it('without group relations the teams are not even asked for', async () => {
     mount()
     await screen.findByLabelText(/Hostname/)
-    expect(apolloFinto.chiamata('GetTeams')).toBeUndefined()
+    expect(apolloFinto.chiamate['GetTeamChoices']).toBeUndefined()
   })
 })

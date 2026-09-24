@@ -6,6 +6,7 @@ import {
 import type { ReportWhitelist } from './reportWhitelist.js'
 import type { ReportValueSource } from './reportValueLabels.js'
 import { isTemporalField } from '@opengraphity/types'
+import { FIELD_PROPERTY_ALIASES } from './fieldProperty.js'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -161,6 +162,17 @@ function toSnakeCase(s: string): string {
 }
 
 /**
+ * The graph property of a field of an entity (review of 23 Sep 2026): the
+ * same alias table as the filters and the widgets (fieldProperty.ts). The
+ * builder mapped names with toSnakeCase only, and an incident's priority is
+ * stored in `severity`, a change's type in `change_type`: «incidents by
+ * priority» was one «(none)» bar and a KPI on priority = critical said 0.
+ */
+function proprieta(label: string | null | undefined, field: string): string {
+  return (label ? FIELD_PROPERTY_ALIASES[label]?.[field] : undefined) ?? toSnakeCase(field)
+}
+
+/**
  * Il NOME DI UNA COLONNA come si legge (mai interpolato in Cypher: quello è
  * l'alias `c0`, `c1`, …).
  *
@@ -190,7 +202,7 @@ export function tableColumnName(
  */
 export type ReportFieldLabels = ReadonlyMap<string, string>
 
-function parseFilters(filtersJson: string | null, what: string): FilterClause[] {
+function parseFilters(filtersJson: string | null, what: string, label: string | null = null): FilterClause[] {
   if (!filtersJson) return []
   let clauses: unknown
   try { clauses = JSON.parse(filtersJson) }
@@ -203,7 +215,7 @@ function parseFilters(filtersJson: string | null, what: string): FilterClause[] 
   return clauses.map((c, i) => {
     if (!c || typeof c !== 'object') throw new ValidationError(`${what}: filter #${i} must be an object`)
     const f = c as Partial<FilterClause>
-    const field = assertFieldName(toSnakeCase(String(f.field ?? '')), `${what}: filter #${i} field`)
+    const field = assertFieldName(proprieta(label, String(f.field ?? '')), `${what}: filter #${i} field`)
     if (!(FILTER_OPERATORS as readonly string[]).includes(String(f.operator))) {
       throw new ValidationError(`${what}: filter #${i} unknown operator ${JSON.stringify(f.operator)}`)
     }
@@ -368,7 +380,7 @@ export function validateReportSection(section: ReportSectionDef, whitelist: Repo
     for (const sf of (n.selectedFields ?? [])) {
       assertFieldName(toSnakeCase(String(sf)), `${nw}: selectedFields`)
     }
-    parseFilters(n.filters ?? null, nw)
+    parseFilters(n.filters ?? null, nw, n.neo4jLabel)
   }
 
   const roots = section.nodes.filter(n => n.isRoot)
@@ -497,7 +509,7 @@ export function buildReportQuery(
 
   const rootVar = v(rootNode.id)
   matchLines.push(`MATCH (${rootVar}:${rootNode.neo4jLabel} {tenant_id: $tenantId})`)
-  const rootWhere = buildWhereClause(rootVar, parseFilters(rootNode.filters, 'root node'), params, rootVar)
+  const rootWhere = buildWhereClause(rootVar, parseFilters(rootNode.filters, 'root node', rootNode.neo4jLabel), params, rootVar)
   if (rootWhere) matchLines.push(rootWhere)
   visited.add(rootNode.id)
 
@@ -521,7 +533,7 @@ export function buildReportQuery(
     matchLines.push(outgoing
       ? `MATCH (${parentVar})-[:${relType}]->(${childVar}:${childNode.neo4jLabel})`
       : `MATCH (${parentVar})<-[:${relType}]-(${childVar}:${childNode.neo4jLabel})`)
-    const childWhere = buildWhereClause(childVar, parseFilters(childNode.filters, `node ${childNode.id}`), params, childVar)
+    const childWhere = buildWhereClause(childVar, parseFilters(childNode.filters, `node ${childNode.id}`, childNode.neo4jLabel), params, childVar)
     if (childWhere) matchLines.push(childWhere)
     visited.add(childNode.id)
     queue.push(childNode.id)
@@ -558,20 +570,29 @@ export function buildReportQuery(
    * Gli archi che l'albero non ha percorso: si applicano come EXISTS, dopo i
    * MATCH, quando entrambi i loro estremi sono nella query.
    */
+  // One WHERE, not one per edge (review of 23 Sep 2026): after a filtered
+  // node, or with two such edges, the query read `WHERE …` / `WHERE EXISTS …`
+  // and Neo4j refused it — the saved or scheduled report failed.
+  const esistenze: string[] = []
   for (const edge of edges) {
     if (archiConsumati.has(edge.id)) continue
     if (!visited.has(edge.sourceNodeId) || !visited.has(edge.targetNodeId)) continue
     const a = v(edge.sourceNodeId)
     const b = v(edge.targetNodeId)
-    matchLines.push(edge.direction === 'incoming'
-      ? `WHERE EXISTS { (${a})<-[:${edge.relationshipType}]-(${b}) }`
-      : `WHERE EXISTS { (${a})-[:${edge.relationshipType}]->(${b}) }`)
+    esistenze.push(edge.direction === 'incoming'
+      ? `EXISTS { (${a})<-[:${edge.relationshipType}]-(${b}) }`
+      : `EXISTS { (${a})-[:${edge.relationshipType}]->(${b}) }`)
+  }
+  if (esistenze.length) {
+    const last = matchLines.length - 1
+    if (matchLines[last]!.startsWith('WHERE ')) matchLines[last] = `${matchLines[last]!} AND ${esistenze.join(' AND ')}`
+    else matchLines.push(`WHERE ${esistenze.join(' AND ')}`)
   }
 
   // 3. Group node (validation guarantees groupByNodeId, when set, exists)
   const groupNode  = groupByNodeId ? nodes.find(n => n.id === groupByNodeId)! : rootNode
   const groupVar   = v(groupNode.id)
-  const groupField = groupByField ? assertFieldName(toSnakeCase(groupByField), 'groupByField') : null
+  const groupField = groupByField ? assertFieldName(proprieta(groupNode.neo4jLabel, groupByField), 'groupByField') : null
 
   // 4. RETURN clause
   const limitVal   = limit ?? 20
@@ -592,7 +613,7 @@ export function buildReportQuery(
   const metrica = section.metric != null && section.metric !== '' && isReportMetric(section.metric)
     ? section.metric : 'count'
   const campoMetrica = (REPORT_METRICS_WITH_FIELD as readonly string[]).includes(metrica) && section.metricField
-    ? assertFieldName(toSnakeCase(section.metricField), 'metricField') : null
+    ? assertFieldName(proprieta(rootNode.neo4jLabel, section.metricField), 'metricField') : null
   const misura = campoMetrica === null
     ? `count(${rootVar})`
     : metrica === 'avg' ? `avg(toFloat(${rootVar}.${campoMetrica}))`
@@ -727,7 +748,7 @@ export function buildReportQuery(
       for (const rn of nodiRisultato) {
         const rv = v(rn.id)
         for (const sf of (rn.selectedFields ?? [])) {
-          const snakeSf = assertFieldName(toSnakeCase(sf), `node ${rn.id} selectedFields`)
+          const snakeSf = assertFieldName(proprieta(rn.neo4jLabel, sf), `node ${rn.id} selectedFields`)
           const alias   = `c${columns.length}`
           columns.push({ alias, name: tableColumnName(rn, sf, opts.fieldLabels, conPrefisso), source: { neo4jLabel: rn.neo4jLabel, field: sf } })
           cols.push(`${rv}.${snakeSf} AS ${alias}`)

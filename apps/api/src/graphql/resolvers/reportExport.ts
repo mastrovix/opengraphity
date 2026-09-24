@@ -272,6 +272,26 @@ export function excelJsFrom(mod: { default?: typeof ExcelJS } & Partial<typeof E
   throw new Error('exceljs: no Workbook export found (neither default.Workbook nor Workbook)')
 }
 
+/**
+ * A worksheet name Excel accepts, unique in the workbook (review of 23 Sep 2026).
+ *
+ * The section title cut to 31 characters: two sections with the same title,
+ * an empty one or one called «Summary» made ExcelJS throw, and the whole
+ * export — and the scheduled email — failed. Excel compares names ignoring
+ * case, refuses `History` and a name that starts or ends with a quote.
+ * `taken` holds the lower-cased names already used, and is updated.
+ */
+export function worksheetName(title: string, index: number, taken: Set<string>): string {
+  const base = title.replace(/[\\/*?:[\]]/g, '_').replace(/^'+|'+$/g, '').trim().slice(0, 31) || `Section ${index + 1}`
+  let name = base.toLowerCase() === 'history' ? `${base} (1)` : base
+  for (let n = 2; taken.has(name.toLowerCase()); n++) {
+    const suffix = ` (${n})`
+    name = `${base.slice(0, 31 - suffix.length)}${suffix}`
+  }
+  taken.add(name.toLowerCase())
+  return name
+}
+
 export async function generateExcel(templateName: string, data: SectionData[], filePath: string, locale: NotificationLocale): Promise<void> {
   const Excel = excelJsFrom(await import('exceljs') as never)
   const workbook = new Excel.Workbook()
@@ -288,9 +308,9 @@ export async function generateExcel(templateName: string, data: SectionData[], f
     : notificationText(locale, 'exportSectionsMany', { count: String(data.length) })
   summary.columns = [{ width: 40 }]
 
-  for (const sec of data) {
-    const safeName = sec.title.replace(/[\\/*?:[\]]/g, '_').slice(0, 31)
-    const sheet = workbook.addWorksheet(safeName)
+  const taken = new Set(['summary'])
+  for (const [index, sec] of data.entries()) {
+    const sheet = workbook.addWorksheet(worksheetName(sec.title, index, taken))
 
     sheet.getCell('A1').value = sec.title
     sheet.getCell('A1').font = { bold: true, size: 12 }

@@ -23,6 +23,9 @@ import { GraphQLError } from 'graphql'
 // dalla policy degli allarmi (cache in memoria): qui la policy è mockata, così
 // la mappa resta UNA sola query nel test.
 // Le note si compongono nella lingua del cliente: qui italiano, come le attese.
+// The cursors of the periodic passes (lib/pagedPass.ts), in memory.
+const { resetPassCursors } = await import('../../lib/__tests__/passCursorRedisFake.js')
+vi.mock('../../lib/bullmq.js', () => import('../../lib/__tests__/passCursorRedisFake.js'))
 vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it'), languageForUser: vi.fn(async () => 'it') }))
 vi.mock('../events/policy.js', () => ({ getEventPolicy: vi.fn().mockResolvedValue({ suppress_upstream_hops: 1,
   // Ondata 7 · C-4: la SEMANTICA del ciclo di vita («ritirato», «in
@@ -151,6 +154,7 @@ function diffCypher(state = stateRow(), applyRow: unknown = { version: 3, status
 }
 
 beforeEach(() => {
+  resetPassCursors()
   vi.clearAllMocks()
   vi.mocked(getSession).mockReturnValue(session as never)
   vi.mocked(evaluateServiceMap).mockResolvedValue({ mapId: 'map-1', health: 'down', previousHealth: 'operational', impactScore: 62, changed: true, stale: false, healthIfActive: null, causes: [], incident: null })

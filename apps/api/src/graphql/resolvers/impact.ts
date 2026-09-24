@@ -32,11 +32,15 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
     UNWIND $ciIds AS ciId
     MATCH (ci:ConfigurationItem {id: ciId, tenant_id: $tenantId})
     WHERE ${ciPredicate}
-    MATCH path = (ci)<-[:${impactRelPattern}*1..5]-(impacted)
+    MATCH (ci)<-[:${impactRelPattern}*1..5]-(impacted)
     WHERE ${impactedPredicate}
     AND impacted.tenant_id = $tenantId
     AND NOT impacted.id IN $ciIds
-    WITH impacted, head([l IN labels(impacted) WHERE l <> 'ConfigurationItem']) AS lbl, min(length(path)) AS distance
+    // The candidates, then one shortest path each (review of 23 Sep 2026): the
+    // length of every path was computed only to keep the smallest.
+    WITH DISTINCT ci, impacted
+    MATCH p = shortestPath((ci)<-[:${impactRelPattern}*1..5]-(impacted))
+    WITH impacted, head([l IN labels(impacted) WHERE l <> 'ConfigurationItem']) AS lbl, min(length(p)) AS distance
     RETURN DISTINCT
       impacted.id AS id, impacted.name AS name,
       lbl AS label,
@@ -57,7 +61,7 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
   // 2a. Open incidents
   const openResult = await session.executeRead((tx) => tx.run(`
     UNWIND $ciIds AS ciId
-    MATCH (i:Incident {tenant_id: $tenantId})-[:AFFECTED_BY]->(ci {id: ciId})
+    MATCH (ci:ConfigurationItem {id: ciId, tenant_id: $tenantId})<-[:AFFECTED_BY]-(i:Incident {tenant_id: $tenantId})
     WHERE NOT i.status IN $terminalSteps
     RETURN DISTINCT i.id AS id, i.number AS number, i.title AS title,
            i.severity AS severity, i.status AS status,
@@ -70,7 +74,7 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
   const sinceIncidents = new Date(Date.now() - weights.recentIncidentsDays * DAY_MS).toISOString()
   const recentIncResult = await session.executeRead((tx) => tx.run(`
     UNWIND $ciIds AS ciId
-    MATCH (i:Incident {tenant_id: $tenantId})-[:AFFECTED_BY]->(ci {id: ciId})
+    MATCH (ci:ConfigurationItem {id: ciId, tenant_id: $tenantId})<-[:AFFECTED_BY]-(i:Incident {tenant_id: $tenantId})
     WHERE i.created_at >= $since
     AND i.status IN $terminalSteps
     RETURN DISTINCT i.id AS id, i.number AS number, i.title AS title,
@@ -101,7 +105,7 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
   const sinceChanges = new Date(Date.now() - weights.recentChangesDays * DAY_MS).toISOString()
   const changeResult = await session.executeRead((tx) => tx.run(`
     UNWIND $ciIds AS ciId
-    MATCH (c:Change {tenant_id: $tenantId})-[:AFFECTS_CI]->(ci {id: ciId})
+    MATCH (ci:ConfigurationItem {id: ciId, tenant_id: $tenantId})<-[:AFFECTS_CI]-(c:Change {tenant_id: $tenantId})
     WHERE c.created_at >= $since AND coalesce(c.deleted, false) = false
     OPTIONAL MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
     RETURN c.id AS id, c.code AS code, c.title AS title,

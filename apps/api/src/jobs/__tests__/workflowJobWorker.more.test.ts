@@ -51,7 +51,7 @@ vi.mock('@opengraphity/neo4j', () => ({
 }))
 
 const transition = vi.fn()
-vi.mock('@opengraphity/workflow', () => ({ workflowEngine: { transition: (...a: unknown[]) => transition(...a) } }))
+vi.mock('@opengraphity/workflow', () => ({ WAIT_EXIT_TRIGGERS: ['automatic', 'timer'], workflowEngine: { transition: (...a: unknown[]) => transition(...a) } }))
 
 const runStepDeadlineSweep = vi.fn()
 vi.mock('../../lib/stepDeadlines.js', () => ({ runStepDeadlineSweep: (...a: unknown[]) => runStepDeadlineSweep(...a) }))

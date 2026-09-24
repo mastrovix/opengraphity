@@ -12,13 +12,15 @@ export function CustomReportsPage() {
       {h.view === 'list' && (
         <ReportListView
           templates={h.templates} teams={h.teams}
+          templatesLoading={h.templatesLoading} templatesError={h.templatesError ?? null}
+          onRetryTemplates={() => void h.refetchTemplates()} teamsError={h.teamsError ?? null}
           menuRef={h.menuRef} menuOpenId={h.menuOpenId} setMenuOpenId={h.setMenuOpenId}
           showNewDialog={h.showNewDialog} setShowNewDialog={h.setShowNewDialog}
           newName={h.newName} setNewName={h.setNewName}
           newDesc={h.newDesc} setNewDesc={h.setNewDesc}
           newVis={h.newVis} setNewVis={h.setNewVis}
           newTeamIds={h.newTeamIds} setNewTeamIds={h.setNewTeamIds}
-          creating={h.creating}
+          creating={h.creating} canWrite={h.canWrite}
           goToDetail={h.goToDetail}
           handleExecuteAndGoToDetail={h.handleExecuteAndGoToDetail}
           openSettings={h.openSettings}
@@ -35,7 +37,7 @@ export function CustomReportsPage() {
           selected={h.selected}
           editSection={h.editSection}
           sectionResults={h.sectionResults}
-          execLoading={h.execLoading}
+          execLoading={h.execLoading} canWrite={h.canWrite}
           exportingPDF={h.exportingPDF}
           exportingExcel={h.exportingExcel}
           setView={h.setView}
@@ -54,7 +56,8 @@ export function CustomReportsPage() {
 
       {h.view === 'settings' && h.selected && (
         <ReportScheduleSettings
-          selected={h.selected} teams={h.teams} channels={h.channels} updating={h.updating}
+          selected={h.selected} teams={h.teams} channels={h.channels} updating={h.updating} canSchedule={h.canSchedule}
+          teamsError={h.teamsError ?? null} channelsError={h.channelsError ?? null}
           settingsName={h.settingsName} setSettingsName={h.setSettingsName}
           settingsDesc={h.settingsDesc} setSettingsDesc={h.setSettingsDesc}
           settingsVis={h.settingsVis} setSettingsVis={h.setSettingsVis}

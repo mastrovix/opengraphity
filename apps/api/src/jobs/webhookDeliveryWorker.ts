@@ -227,9 +227,9 @@ export async function enqueueOutboundWebhooks(
   } finally {
     await session.close()
   }
-  // No catch-all: a failure to enqueue means events are LOST for every
-  // subscriber — it must propagate to the caller (event consumer job), which
-  // fails visibly and retries, instead of dissolving into a log line.
+  // No catch-all: a failure to enqueue means the event is LOST for every
+  // subscriber — it propagates to the caller, which decides what to do with
+  // it (publishEvent logs it with the event id, see there).
 }
 
 /** Parses stored webhook headers. Missing → {}; corrupt → throws (fail-loud). */

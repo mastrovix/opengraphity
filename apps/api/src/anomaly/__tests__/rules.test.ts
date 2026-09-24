@@ -56,7 +56,9 @@ describe('buildAnomalyRule', () => {
     expect(spof.cypher).toContain('AND (ci:Firewall)')
     expect(spof.cypher).toContain('MATCH (dep)-[:DEPENDS_ON|CONNECTS_TO]->(ci)')
     const cycle = buildAnomalyRule('dependency_cycle', resolved('dependency_cycle', { threshold: 4 }))
-    expect(cycle.cypher).toContain('[:DEPENDS_ON*2..4]')
+    // Cycles of 2 to 4 links: one step, then the shortest way back in 1 to 3 (review of 23 Sep 2026).
+    expect(cycle.cypher).toContain('MATCH (ci)-[:DEPENDS_ON]->(next)')
+    expect(cycle.cypher).toContain('shortestPath((next)-[:DEPENDS_ON*1..3]->(ci))')
     // D49: from the applications only, on the relations the engine resolved (every relation of the tenant when none is chosen)
     const cluster = buildAnomalyRule('isolated_cluster', resolved('isolated_cluster', { ciLabels: ['Application'], relations: ['DEPENDS_ON', 'REALIZES'] }))
     expect(cluster.cypher).toContain('AND (ci:Application)')

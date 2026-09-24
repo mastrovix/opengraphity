@@ -987,6 +987,9 @@
       "provisionPartial": "Configuration created, but this is still missing: {{gaps}}",
       "loading": "Loading workflow…",
       "noneForTenant": "No workflow found for this tenant.",
+      "addTransitionTo": "Add a transition to",
+      "pickStep": "— Step —",
+      "addTransition": "Add",
       "openTransition": "Open transition {{name}}",
       "stepsFixedHint": "The steps of this workflow are fixed. You can customise labels, actions and conditions.",
       "defaultBadge": "Default",
@@ -1132,6 +1135,10 @@
       "settings": "Settings",
       "emptyHintBefore": "This dashboard is empty. Click",
       "emptyHintAfter": "to add your reports.",
+      "emptyShared": "This dashboard is empty. Only its owner adds reports to it.",
+      "noneYet": "You have no dashboard yet.",
+      "createFirst": "Create your first dashboard",
+      "sharedBy": "Shared by {{name}}",
       "emptyEditTitle": "Empty dashboard",
       "emptyEditHint": "Use the panel on the right to add custom widgets or reports.",
       "drag": "Drag",
@@ -1370,7 +1377,8 @@
       "count_other": "{{count}} reports",
       "new": "New report",
       "execute": "Run",
-      "modify": "Edit"
+      "modify": "Edit",
+      "open": "Open"
     },
     "questions": {
       "optionLabel": "Answer text",
@@ -1735,6 +1743,12 @@
       "planWithoutDates_other": "{{count}} plans with no dates: {{codes}}"
     },
     "reportSchedule": {
+      "teamsError": "The teams could not be read: {{message}}",
+      "channelsError": "The Slack channels could not be read: {{message}}",
+      "channelsErrorKept": "The Slack channels could not be read: {{message}}. The channel chosen before is kept.",
+      "notAllowedOn": "This report is sent on a schedule. Only who can schedule reports changes it.",
+      "notAllowedOff": "This report is not scheduled. Only who can schedule reports sets a schedule.",
+      "noSlackChannels": "No Slack channel to send it to: an administrator adds one in Settings → Notifications (only active Slack channels are offered).",
       "lastRun": "Last run: {{date}}",
       "preset": {
         "dailyAt9": "Every day at 9:00",
@@ -2995,6 +3009,12 @@
     "customEventType": "Event type (custom)"
   },
   "workflow": {
+    "designer": {
+      "leave": "Leave",
+      "discardTitle": "Leave without saving?",
+      "discardBody_one": "One change is kept only here and is not saved yet: leaving throws it away.",
+      "discardBody_other": "{{count}} changes are kept only here and are not saved yet: leaving throws them away."
+    },
     "addAction": "Add action",
     "removeAction": "Remove",
     "actionType": "Action type",
@@ -3067,6 +3087,8 @@
     "panel": {
       "label": "Label",
       "labelTranslationsHint": "With a new label the shipped translations ({{translations}}) no longer apply; put the label back to «{{original}}» and they return.",
+      "timerDelay": "Delay (minutes)",
+      "timerDelayInvalid": "A timed wait needs a whole number of minutes greater than zero.",
       "name": "Name (technical)",
       "type": "Type",
       "enter_actions": "Enter actions",
@@ -3086,8 +3108,17 @@
       "deleteStepTitle": "Delete the step \"{{step}}\"?",
       "deleteStepBody": "The transitions attached to it are removed too.",
       "entityTypeUnavailable": "The workflow entity type is unavailable ({{error}}): the fields and values of the conditions cannot be loaded.",
+      "titleKeyRequired": "Write the title of the notification, or switch it off: without a title it is not sent.",
       "titleKeyPlaceholder": "e.g. notification.custom.step.title",
       "inputField": "Input field",
+      "inputFieldSaved": "{{value}} (as saved)",
+      "inputFieldOption": {
+        "notes": "Notes",
+        "rootCause": "Root cause",
+        "rejection_reason": "Rejection reason",
+        "defer_reason": "Deferral reason",
+        "reopen_reason": "Reopening reason"
+      },
       "deleteTransitionTitle": "Delete the transition {{from}} → {{to}}?",
       "expectedArray": "{{field}}: expected a JSON array, found {{found}}",
       "isOpenStep": "The entity counts as \"open\" in this step",
@@ -3335,6 +3366,8 @@
     "searchCIExcluding": "Search CIs (excluded: {{types}}) — min. 2 characters…"
   },
   "queryError": {
+    "stale": "Could not refresh: {{message}}. What you see was read at {{time}}.",
+    "staleNoTime": "Could not refresh: {{message}}. What you see may be out of date.",
     "title": "Failed to load data",
     "retry": "Retry"
   },
@@ -3729,6 +3762,12 @@
       "toggleLabel": "Toggle {{name}}",
       "regenToken": "Regenerate token",
       "regenKey": "Regenerate key",
+      "regenTokenOf": "Regenerate the token of {{name}}",
+      "regenKeyOf": "Regenerate the key of {{name}}",
+      "regenTokenTitle": "Regenerate the token of «{{name}}»?",
+      "regenTokenBody": "The current token stops working at once: every tool that sends to this webhook must be given the new one.",
+      "regenKeyTitle": "Regenerate the API key «{{name}}»?",
+      "regenKeyBody": "The current key stops working at once: every integration using it must be given the new one.",
       "test": "Test",
       "copy": "Copy",
       "copyEndpoint": "Copy endpoint",
@@ -3875,6 +3914,13 @@
     "backToDashboard": "Back to Dashboard"
   },
   "errors": {
+    "whatIf": {
+      "tooManyScenarios": "At most {{max}} scenarios can be compared at once."
+    },
+    "logs": {
+      "filterOperator": "Unknown log filter operator «{{operator}}»: the filter was not applied.",
+      "filterField": "Unknown log field «{{field}}»: the filter was not applied."
+    },
     "labelsNotObject": "Labels: a JSON object was expected",
     "ciNotFound": "CI not found",
     "ciNotFoundHint": "No CI with id {{id}}: it may have been deleted.",
@@ -3889,6 +3935,8 @@
       "categoryNotApplicable": "A {{type}} has no category: its SLA policy cannot depend on one.",
       "warningMinutes": "The warning must be a positive whole number of minutes.",
       "warningLongerThanResolve": "The warning ({{warning}} min before the deadline) must be shorter than the resolution time ({{resolve}} min).",
+      "minutesPositive": "Response and resolution times are whole minutes greater than zero.",
+      "responseAfterResolve": "The response time ({{response}} min) cannot be longer than the resolution time ({{resolve}} min).",
       "minutesRequired": "{{field}} cannot be emptied: an SLA policy always has it."
     },
     "ola": {
@@ -4024,9 +4072,11 @@
       "assignedButNotAdvanced": "The assignment was saved, but the incident did not move to «{{step}}»: {{reason}}",
       "workflowInstance": "The incident was not created: its workflow could not be started ({{reason}}). Check the incident workflow of this category in the designer: it needs exactly one initial step.",
       "teamNotFound": "The chosen team no longer exists in this organization: choose another one.",
+      "createdButNotAnnounced": "Incident {{number}} was created, but announcing it failed: {{reason}}",
       "createdButNotAssigned": "Incident {{number}} was created, but assigning it to its team failed: {{reason}}"
     },
     "change": {
+      "ownerNotFound": "The change owner is not an active person of this organization.",
       "needsCI": "A change must have at least one impacted CI.",
       "whyRequired": "The \"why\" field is required.",
       "whatRequired": "The \"what\" field is required.",
@@ -4048,10 +4098,12 @@
       "calendarRange": "The calendar range is empty or reversed: from {{from}} to {{to}}."
     },
     "import": {
+      "stepNotInWorkflow": "The status «{{step}}» is not a step of this ticket's workflow.",
       "tenantRequired": "The tenant is missing: the import does not know where to write.",
       "rowsArray": "The rows to import must be a list.",
       "noWorkflow": "No active {{entityType}} workflow: the import would not know which state to put the tickets in.",
       "noInitialStep": "The {{entityType}} workflow has no initial step: the import would not know where to start.",
+      "timerDelayRequired": "{{where}}: a timed wait needs its delay, a whole number of minutes greater than zero.",
       "invalidCsv": "Invalid CSV: {{reason}}",
       "noRows": "The CSV has no data rows: a header and at least one row are needed."
     },
@@ -4109,6 +4161,8 @@
       "concurrentEdit": "The workflow was changed by someone else (version {{current}}, you were editing v{{expected}}): your changes were not applied. Reload the page so you do not overwrite theirs.",
       "manyInitial": "Only one step can be initial: you marked {{count}} ({{steps}}).",
       "initialAndTerminal": "Step \"{{name}}\" is terminal: it cannot also be the initial step, or every new ticket would be born already closed. Clear «terminal step», or pick another initial step.",
+      "noInitialStep": "The workflow would have no initial step: no new ticket could be created. Mark another step as initial first.",
+      "timerDelayRequired": "{{where}}: a timed wait needs its delay, a whole number of minutes greater than zero.",
       "stepsNotInDefinition": "Steps not found, or not part of this definition.",
       "stepHasInstances": "Step \"{{name}}\" cannot be deleted: {{count}} workflow instances are on this step right now ({{detail}}). Move them to another step first — deleting it would leave them without a current step, unable to move.",
       "stepNotInDefinition": "Step \"{{name}}\" is not in definition {{definition}}: the number of instances on it cannot be told.",
@@ -4124,6 +4178,7 @@
         "all_reviews_confirmed": "The reviews are not confirmed yet for every CI.",
         "all_tasks_complete": "Some tasks of this step are still to be done: close or cancel them before moving on."
       },
+      "unknownEntityType": "This workflow belongs to «{{entityType}}», which cannot be moved from here.",
       "changeUsesChangeTransition": "A change moves through its own transitions (with the approval checks), not this generic one.",
       "unknownActionType": "Action type «{{type}}» does not exist. Available: {{allowed}}.",
       "updateFieldNeedsField": "The «update field» action needs the field to write.",
@@ -4134,6 +4189,7 @@
       "copyNameRequired": "The copy needs a name.",
       "copyNameTaken": "A {{entityType}} workflow called \"{{name}}\" already exists.",
       "noApproverTarget": "Approval cannot start: the people or teams configured to approve have no active member in this organization.",
+      "usedByCatalogItems": "«{{name}}» is the workflow of catalog items ({{items}}): switching it off would stop their requests from being created. Give them another workflow first.",
       "lastActiveDefinition": "\"{{name}}\" is the last active {{entityType}} workflow without a category: switching it off would stop every new {{entityType}} from being created. Activate another one first.",
       "stepTypeNotImplemented": "Step type «{{type}}» is not executed by the workflow engine: such a step would behave like a standard step, following a single transition. It cannot be added until the engine implements it.",
       "taskOnlyOnEnter": "A task can only be created ENTERING a step, not leaving one ({{field}}): on exit it would be stamped with the next step, and would hold the wrong one.",
@@ -4222,6 +4278,7 @@
       "validationFailed": "The CI is not valid: {{details}}",
       "noTypeLabel": "CI {{id}} has no type: the data is incomplete and its type cannot be told.",
       "unknownTypeOnRecord": "The type of this CI cannot be told ({{type}}). No active type of this tenant declares it: the type was deleted or deactivated, or the CI came from a discovery with a type the metamodel does not have.",
+      "notFoundIds": "These CIs do not exist in this organization: {{ids}}.",
       "missingGroups": "CI \"{{ci}}\" has no Owner Group or Support Group.",
       "relationNotDeclared": "{{relation}} from {{source}} to {{target}} is not declared in the metamodel: add it to the CI type in the designer.",
       "notANumber": "{{field}}: «{{value}}» is not a number.",
@@ -4265,7 +4322,7 @@
       }
     },
     "problem": {
-      "ciMissing": "Problem created, but {{missing}} of the {{total}} given CIs do not exist in this tenant, or are not Configuration Items ({{ids}}).",
+      "ciMissing": "{{missing}} of the {{total}} given CIs do not exist in this organization, or are not Configuration Items ({{ids}}): the problem was not created.",
       "noKnownErrorStep": "No step of the problem workflow declares the «Documented known error» purpose, so the Known Error Database has nothing to list. Assign that purpose to the step where problems are documented as known errors, in the workflow designer.",
       "workflowInstance": "The problem was not created: its workflow could not be started ({{reason}}). Check the problem workflow of this category in the designer: it needs exactly one initial step."
     },
@@ -4409,6 +4466,7 @@
       "inAppRetention": "Notifications are kept for a whole number of days between {{min}} and {{max}}.",
       "name": "The organization name must have 1–{{max}} characters.",
       "slugShape": "\"{{slug}}\" is not a valid tenant slug: 3 to 32 characters, lowercase letters, digits and hyphens, not starting or ending with a hyphen.",
+      "reservedNotManaged": "«{{slug}}» is reserved: it is not a customer's tenant and cannot be suspended, resumed or deleted.",
       "slugReserved": "\"{{slug}}\" is a name the product reserves and cannot be a tenant.",
       "nameEmpty": "The tenant name cannot be empty.",
       "nameTooLong": "The tenant name is too long: {{max}} characters at most.",
@@ -4434,6 +4492,7 @@
     "internalDatabase": "Internal database error (reference {{ref}}). Tell your administrator: the details are in the API log.",
     "serviceRequest": {
       "priorityFromCatalog": "The priority of a request from the catalog is set by the catalog item.",
+      "catalogItemRequired": "A request from the portal is opened from a catalog item.",
       "catalogItemWithoutPriority": "The catalog item «{{item}}» has no priority, so a request cannot be opened from it. An administrator sets it in Admin → Service catalog.",
       "catalogItemInactive": "The catalog item \"{{item}}\" is not active: no new request can be opened from it. Re-activate it in Admin → Service catalog, or pick another item.",
       "priorityRequired": "Choose the priority of the request.",
@@ -4722,6 +4781,9 @@
       "truncated": "The model answer was cut off: the request was too big. Describe fewer things, or split it in two."
     },
     "report": {
+      "sectionTimeout": "The section ran too long and was stopped: narrow it with a filter.",
+      "questionTooLong": "The question is too long: at most {{max}} characters.",
+      "rateLimited": "Too many analyses in a minute: at most {{max}}. Try again in {{seconds}} seconds.",
       "tableWithoutColumns": "A table needs at least one column: choose the fields to show.",
       "granularityNeedsDate": "Grouping by period needs a date field, and the field chosen is not one. Pick a date field, or remove the period.",
       "labelNotReadable": "Your role cannot read the data of this section."
@@ -4757,6 +4819,7 @@
       "missingRouteParam": "Route parameter “{{name}}” is missing."
     },
     "users": {
+      "tooManyIds": "At most {{max}} people can be named at once.",
       "unknownPermission": "Unknown permission «{{permission}}»."
     }
   },
@@ -4784,6 +4847,7 @@
     }
   },
   "richText": {
+    "toolbar": "Formatting",
     "bold": "Bold (Ctrl+B)",
     "italic": "Italic (Ctrl+I)",
     "underline": "Underline (Ctrl+U)",
@@ -5132,8 +5196,7 @@
       "metamodelError": "Metamodel:",
       "saving": "Saving...",
       "valueOutsideVocabulary": "{{value}} — no longer in the vocabulary",
-      "fieldRequired": "{{field}} is required",
-      "teamsError": "Teams could not be loaded: {{error}}"
+      "fieldRequired": "{{field}} is required"
     },
     "ciGraph": {
       "showBlastRadius": "Show blast radius",
@@ -6891,6 +6954,7 @@
       "validationPlaceholder": "// Example:\nif (!value.startsWith('http')) throw 'Not a valid URL'",
       "defaultHint": "Variables: <code>input</code>. Return the default value.",
       "slugName": "Technical name (slug) *",
+      "typeFixed": "The type of an existing field cannot change: its values are already on the CIs.",
       "slugNameSnake": "Technical name (slug, snake_case) *",
       "slugNamePlaceholder": "e.g. load_balancer",
       "displayLabel": "Label (display name) *",
@@ -7743,7 +7807,11 @@
       "placeholder": "Search a person by name or email…",
       "changeWork": "People whose role can work on changes.",
       "nobody": "No active person has a role that can do this: check the roles.",
-      "typeToFind": "Type a name to find the others."
+      "typeToFind": "Type a name to find the others.",
+      "label": "Person",
+      "inactive": "{{name}} (no longer active)",
+      "assignable": "Active people whose role can be assigned tickets.",
+      "approvers": "Active people whose role can decide approvals."
     }
   }
 }

@@ -50,6 +50,7 @@ const page = (items: unknown[], total = items.length) => ({ incidents: { items, 
 
 beforeEach(() => {
   apolloFinto.reset()
+  apolloFinto.risposte['GetMe'] = { me: { id: 'u-me', name: 'Me', email: 'me@x', role: 'custom', roleName: null, permissions: ['incident.write'], teams: [] } }
   resetInFlight()
   toast.success.mockReset()
   toast.error.mockReset()
@@ -334,5 +335,16 @@ describe('IncidentListPage: acting on many incidents', () => {
     expect(apolloFinto.chiamate['AssignIncidentToTeam']).toBeUndefined()
     // The selection survives a change of mind.
     expect(toolbar()).toHaveTextContent('1 selected')
+  })
+})
+
+// Review of 23 Sep 2026: «New» and the bulk actions ask incident.write, as the API does.
+describe('IncidentListPage — who only reads incidents', () => {
+  it('lists them, with no New and nothing to select for bulk actions', async () => {
+    apolloFinto.risposte['GetMe'] = { me: { id: 'u-me', name: 'Me', email: 'me@x', role: 'custom', roleName: null, permissions: ['incident.read'], teams: [] } }
+    mount()
+    expect(await screen.findByRole('heading', { level: 1 })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /New incident/i })).toBeNull()
+    expect(screen.queryByRole('checkbox')).toBeNull()
   })
 })

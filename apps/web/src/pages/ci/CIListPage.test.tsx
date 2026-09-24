@@ -106,6 +106,7 @@ const optionsOf = (name: string) => within(screen.getByRole('combobox', { name }
 
 beforeEach(() => {
   apolloFinto.reset()
+  apolloFinto.risposte['GetMe'] = { me: { id: 'u-me', name: 'Me', email: 'me@x', role: 'custom', roleName: null, permissions: ['cmdb.write'], teams: [] } }
   held.clear()
   toast.success.mockReset()
   toast.error.mockReset()
@@ -279,7 +280,8 @@ describe('before the list: the metamodel', () => {
     const value = { ciTypes: [SERVER], loading: false, error: null, getCIType: (n: string) => [SERVER].find((t) => t.name === n) }
     renderWithProviders(<MetamodelContext.Provider value={value}><CIListPage /></MetamodelContext.Provider>, { route: '/ci', path: '/ci' })
     expect(screen.getByText('CI type "" not found.')).toBeInTheDocument()
-    expect(Object.keys(apolloFinto.chiamate).filter((op) => op !== 'GetBaseCIType')).toEqual([])
+    // Who the reader is (GetMe) is asked on every page; nothing about CIs is.
+    expect(Object.keys(apolloFinto.chiamate).filter((op) => op !== 'GetBaseCIType' && op !== 'GetMe')).toEqual([])
   })
 
   /*
@@ -386,5 +388,15 @@ describe('export', () => {
     const { user } = renderList()
     await user.click(screen.getByRole('button', { name: 'Export CSV' }))
     await waitFor(() => expect(exportToCsv).toHaveBeenCalledWith('server', expect.any(Array), []))
+  })
+})
+
+// Review of 23 Sep 2026: creating a CI asks cmdb.write, as the API does.
+describe('CIListPage — who only reads the CMDB', () => {
+  it('is not offered to add a CI', async () => {
+    apolloFinto.risposte['GetMe'] = { me: { id: 'u-me', name: 'Me', email: 'me@x', role: 'custom', roleName: null, permissions: ['cmdb.read'], teams: [] } }
+    renderList()
+    expect(await screen.findByRole('heading', { level: 1 })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^New|^Add/ })).toBeNull()
   })
 })

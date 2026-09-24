@@ -70,6 +70,25 @@ beforeEach(() => {
   vi.mocked(runQueryOne).mockResolvedValue(null as never)
 })
 
+// Review of 23 Sep 2026: the automation editors downloaded every person to name the one or two a rule names.
+describe('usersByIds', () => {
+  it('names the tenant\'s people with these ids, inactive ones too, each id once', async () => {
+    vi.mocked(runQuery).mockResolvedValueOnce([{ id: 'u-2', name: 'Bob', email: 'bob@x', active: false }] as never)
+    await expect(Q.usersByIds(null, { ids: ['u-2', 'u-2', 'u-9'] }, asRole('operator'))).resolves.toEqual([{ id: 'u-2', name: 'Bob', email: 'bob@x', active: false }])
+    const [, cypher, params] = vi.mocked(runQuery).mock.calls[0]!
+    expect(cypher).toContain('MATCH (u:User {tenant_id: $tenantId})')
+    expect(cypher).not.toContain('u.active, true) = true')
+    expect(params).toEqual({ tenantId: 'tenant-1', ids: ['u-2', 'u-9'] })
+  })
+
+  it('no id asks nothing; more than the cap is refused with its key', async () => {
+    await expect(Q.usersByIds(null, { ids: [] }, asRole('operator'))).resolves.toEqual([])
+    expect(runQuery).not.toHaveBeenCalled()
+    const many = Array.from({ length: 101 }, (_, i) => `u-${i}`)
+    await expect(Q.usersByIds(null, { ids: many }, asRole('operator'))).rejects.toMatchObject({ extensions: { i18n: { key: 'errors.users.tooManyIds' } } })
+  })
+})
+
 describe('searchUsers', () => {
   it('searches active users of the tenant only, 5 by default', async () => {
     vi.mocked(runQuery).mockResolvedValueOnce([{ id: 'u-2', name: 'Bob', email: 'bob@x' }] as never)

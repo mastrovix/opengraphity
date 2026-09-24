@@ -6,6 +6,7 @@ import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { toast } from 'sonner'
 import { useMetamodel, type CITypeDef } from '@/contexts/MetamodelContext'
+import { useMe } from '@/hooks/useMe'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
@@ -82,6 +83,8 @@ export function CIListPage() {
   const { t } = useTranslation()
   const { typeName } = useParams<{ typeName: string }>()
   const navigate = useNavigate()
+  // Creating a CI asks cmdb.write on the API: not offered without it (review of 23 Sep 2026).
+  const canCreate = useMe().can('cmdb.write')
   const { getCIType, loading: metamodelLoading, error: metamodelError } = useMetamodel()
   const [page, setPage] = useState(0)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
@@ -223,11 +226,11 @@ export function CIListPage() {
             {loading ? '—' : t('pages.ci.count', { count: total })}
           </p>
         }
-        actions={
+        actions={canCreate && (
           <Button icon={<Plus size={15} aria-hidden="true" />} onClick={() => setShowCreate(true)}>
             {newLabel}
           </Button>
-        }
+        )}
       />
 
       {baseEnums.error && <QueryError message={`${t('pages.cmdb.baseEnumsUnavailable')}: ${baseEnums.error}`} />}

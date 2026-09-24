@@ -78,6 +78,14 @@ export function buttonStyleForCategory(category: string | null | undefined): But
 export const REJECTION_INPUT_FIELD = 'rejection_reason'
 
 /**
+ * What a transition asks the person for: the kinds the shipped workflows use
+ * (review of 23 Sep 2026). The panel offered only `rootCause` and `notes`, so
+ * a shipped «Reject» (rejection_reason) showed «None» and, once changed, could
+ * not be chosen again.
+ */
+export const TRANSITION_INPUT_FIELDS = ['notes', 'rootCause', REJECTION_INPUT_FIELD, 'defer_reason', 'reopen_reason'] as const
+
+/**
  * IS THIS TRANSITION DESTRUCTIVE? Decided here, once, for every page that
  * draws transition buttons (D27, tour of 23 Sep 2026: the only action on a
  * request in approval was «Reject», drawn as the blue primary button).

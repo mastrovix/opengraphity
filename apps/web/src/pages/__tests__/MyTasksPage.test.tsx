@@ -129,11 +129,13 @@ describe('MyTasksPage — «Take it»', () => {
     expect(apolloFinto.chiamata('AssignAssessmentTaskToUser')).toEqual({ taskId: 'as-1', userId: 'u-7' })
   })
 
-  it('a deploy plan can be claimed too', async () => {
+  // Review of 23 Sep 2026: this test pinned the assessment mutation for a deploy plan, which the API answers NotFound.
+  it('a deploy plan is claimed with its own mutation', async () => {
     serve([], [task({ id: 'dp-1', kind: 'deploy-plan', status: 'pending', entityType: 'change', entityNumber: 'CHG9' })])
     const { user } = renderWithProviders(<MyTasksPage />)
     await user.click(takeIt()[0]!)
-    await waitFor(() => expect(apolloFinto.chiamata('AssignAssessmentTaskToUser')).toEqual({ taskId: 'dp-1', userId: 'u-7' }))
+    await waitFor(() => expect(apolloFinto.chiamata('AssignDeployPlanTaskToUser')).toEqual({ taskId: 'dp-1', userId: 'u-7' }))
+    expect(apolloFinto.chiamata('AssignAssessmentTaskToUser')).toBeUndefined()
   })
 
   it('while the current user is unknown, a change task is not claimed for nobody', async () => {

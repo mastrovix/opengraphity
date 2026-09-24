@@ -2,6 +2,11 @@
  * CI ⇄ ticket relations wired in resolvers/index.ts (`ciIncidents`,
  * `ciChanges`). The former `allCIs/ciById/blastRadius` here were dead copies
  * (B-09): the live ones come from buildDynamicCIResolvers (dynamic-ci.ts).
+ *
+ * Every query starts FROM the CI, labelled (review of 23 Sep 2026): `(n {id})`
+ * without a label cannot use the ConfigurationItem(id) index, and the planner
+ * started from every incident, change or problem of the tenant — 50,000 on
+ * the demo tenant — at each opening of a CI page.
  */
 import { withSession, runQuery } from './ci-utils.js'
 import type { GraphQLContext } from '../../context.js'
@@ -14,7 +19,7 @@ import { mapChange } from './change/mappers.js'
 async function ciIncidents(_: unknown, args: { ciId: string }, ctx: GraphQLContext) {
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props }>(session,
-      `MATCH (i:Incident {tenant_id: $tenantId})-[:${TICKET_CI_RELATIONSHIP.incident}]->(n {id: $ciId})
+      `MATCH (n:ConfigurationItem {id: $ciId, tenant_id: $tenantId})<-[:${TICKET_CI_RELATIONSHIP.incident}]-(i:Incident {tenant_id: $tenantId})
        RETURN properties(i) AS props
        ORDER BY i.created_at DESC`,
       { ciId: args.ciId, tenantId: ctx.tenantId },
@@ -31,7 +36,7 @@ async function ciIncidents(_: unknown, args: { ciId: string }, ctx: GraphQLConte
 async function ciChanges(_: unknown, args: { ciId: string }, ctx: GraphQLContext) {
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props }>(session,
-      `MATCH (c:Change {tenant_id: $tenantId})-[:${TICKET_CI_RELATIONSHIP.change}]->(n {id: $ciId})
+      `MATCH (n:ConfigurationItem {id: $ciId, tenant_id: $tenantId})<-[:${TICKET_CI_RELATIONSHIP.change}]-(c:Change {tenant_id: $tenantId})
        WHERE coalesce(c.deleted, false) = false
        RETURN properties(c) AS props
        ORDER BY c.created_at DESC`,
@@ -50,7 +55,7 @@ async function ciChanges(_: unknown, args: { ciId: string }, ctx: GraphQLContext
 async function ciProblems(_: unknown, args: { ciId: string }, ctx: GraphQLContext) {
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props }>(session,
-      `MATCH (p:Problem {tenant_id: $tenantId})-[:${TICKET_CI_RELATIONSHIP.problem}]->(n {id: $ciId, tenant_id: $tenantId})
+      `MATCH (n:ConfigurationItem {id: $ciId, tenant_id: $tenantId})<-[:${TICKET_CI_RELATIONSHIP.problem}]-(p:Problem {tenant_id: $tenantId})
        RETURN properties(p) AS props
        ORDER BY p.created_at DESC`,
       { ciId: args.ciId, tenantId: ctx.tenantId },
@@ -71,7 +76,7 @@ async function ciProblems(_: unknown, args: { ciId: string }, ctx: GraphQLContex
 async function ciServiceRequests(_: unknown, args: { ciId: string }, ctx: GraphQLContext) {
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props }>(session,
-      `MATCH (r:ServiceRequest {tenant_id: $tenantId})-[:${TICKET_CI_RELATIONSHIP.service_request}]->(n {id: $ciId, tenant_id: $tenantId})
+      `MATCH (n:ConfigurationItem {id: $ciId, tenant_id: $tenantId})<-[:${TICKET_CI_RELATIONSHIP.service_request}]-(r:ServiceRequest {tenant_id: $tenantId})
        RETURN properties(r) AS props
        ORDER BY r.created_at DESC`,
       { ciId: args.ciId, tenantId: ctx.tenantId },

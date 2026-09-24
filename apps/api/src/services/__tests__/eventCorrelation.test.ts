@@ -53,7 +53,8 @@ const inMemoryEval = async (_lua: string, _n: number, key: string, owner: string
   lockStore.delete(key)
   return 1
 }
-const redis = { set: vi.fn(inMemorySet), eval: vi.fn(inMemoryEval) }
+// `get`/`del` answer the cursors of the periodic passes (lib/pagedPass.ts): none saved, each pass from the start.
+const redis = { set: vi.fn(inMemorySet), eval: vi.fn(inMemoryEval), get: vi.fn(async () => null), del: vi.fn(async () => 1) }
 vi.mock('../../lib/bullmq.js', () => ({ getSharedRedis: () => redis }))
 vi.mock('@opengraphity/workflow', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@opengraphity/workflow')>()),   // seed reale (INCIDENT_WORKFLOW_BASE)
@@ -74,6 +75,10 @@ vi.mock('../../lib/ciMetamodelForTenant.js', () => ({
   suppressionRelPatternForTenant: vi.fn(async () => 'DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE'),
 }))
 vi.mock('../incidentService.js', () => ({
+  createdIncidentOf: (err: unknown) => {
+    const ext = (err as { extensions?: Record<string, unknown> } | null)?.extensions
+    return typeof ext?.['createdIncidentId'] === 'string' ? { id: ext['createdIncidentId'], number: String(ext['createdIncidentNumber'] ?? '') } : null
+  },
   createIncident: vi.fn(), resolveIncident: vi.fn(), addIncidentComment: vi.fn().mockResolvedValue(undefined), publishIncidentTransition: vi.fn().mockResolvedValue(undefined),
 }))
 // Revisione (3.1): i moduli vivono in services/events/; le facciate ri-esportano,
@@ -1487,6 +1492,16 @@ describe('lock sul raggruppamento (Redis in memoria)', () => {
     vi.mocked(incidentService.createIncident).mockRejectedValueOnce(new Error('Neo4j down'))
     await expect(runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).rejects.toThrow('Neo4j down')
     expect(redis.eval).toHaveBeenCalledWith(expect.any(String), 1, key, redis.set.mock.calls[0]![1])
+    expect(lockStore.size).toBe(0)
+  })
+
+  // Review of 23 Sep 2026: the incident was written and its team assignment failed; each retry opened another one.
+  it('an incident written before a later step failed: the event is linked to it, and the error still propagates', async () => {
+    onCypher(baseRules())
+    const failure = Object.assign(new Error('assigning it to its team failed'), { extensions: { createdIncidentId: 'inc-made', createdIncidentNumber: 'INC00000042' } })
+    vi.mocked(incidentService.createIncident).mockRejectedValueOnce(failure)
+    await expect(runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).rejects.toThrow('assigning it to its team failed')
+    expect(callMatching(Q.attach)!.params).toMatchObject({ incidentId: 'inc-made' })
     expect(lockStore.size).toBe(0)
   })
 

@@ -244,7 +244,7 @@ describe('globalSearch', () => {
     expect(res.tasks.map((t) => t.taskType)).toEqual(['assessment', 'deploy-plan', 'validation', 'deployment', 'review'])
     expect(res.tasks[0]).toEqual({
       id: 't-1', code: 'TASK00000001', taskType: 'assessment', status: 'pending',
-      changeCode: 'CHG00000001', changeId: 'chg-1', ciName: 'web-01',
+      changeCode: 'CHG00000001', changeId: 'chg-1', ciName: 'web-01', entityType: 'change',
     })
     expect(paramsOf('HAS_ASSESSMENT|HAS_DEPLOY_PLAN')['q']).toBe('TASK0000')
     expect(paramsOf('HAS_ASSESSMENT|HAS_DEPLOY_PLAN')['limit']).toBe(5)

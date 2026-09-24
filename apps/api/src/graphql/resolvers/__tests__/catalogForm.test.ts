@@ -203,10 +203,26 @@ describe('Query.portalReferenceChoices — le tre porte', () => {
       null, { itemId: 'v1', field: 'server', search: 'vm' }, ctx)
     expect(out).toEqual([{ id: 'ci1', label: 'VM-01' }])
     const [, cypher, params] = runQuery.mock.calls.at(-1) as [unknown, string, Record<string, unknown>]
-    expect(params['etichette']).toEqual(['VirtualMachine'])
+    expect(params['refLabels']).toEqual(['VirtualMachine'])
     expect(params['cerca']).toBe('vm')
     // Nessuna etichetta interpolata nel testo della query.
     expect(cypher).not.toContain('VirtualMachine')
+  })
+})
+
+// Review of 23 Sep 2026: the field's CMDB filter was applied by the web client only.
+describe('Query.portalReferenceChoices — the field\'s filter', () => {
+  it('the choices are the CIs of the types AND within the filter', async () => {
+    runQueryOne.mockResolvedValue({ id: 'v1', name: 'Nuovo PC', form: moduloCon({ field: 'server' }), updatedAt: null })
+    formFieldsByName.mockResolvedValue(new Map([['server', campo({
+      name: 'server', fieldType: 'ref_ci', refTypes: ['server'],
+      refFilter: JSON.stringify({ rules: [{ field: 'environment', operator: 'equals', value: 'production', logic: 'AND' }] }),
+    })]]))
+    runQuery.mockResolvedValueOnce([]).mockResolvedValue([{ id: 'ci1', label: 'SRV-01' }])
+    await catalogFormResolvers.Query.portalReferenceChoices(null, { itemId: 'v1', field: 'server' }, ctx)
+    const [, cypher, params] = runQuery.mock.calls.at(-1) as [unknown, string, Record<string, unknown>]
+    expect(cypher).toContain('n.environment = $af_0')
+    expect(params).toMatchObject({ refLabels: ['Server'], af_0: 'production' })
   })
 })
 

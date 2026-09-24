@@ -56,12 +56,13 @@ describe('generic workflow tasks', () => {
   it('are found by code and badged with the ticket number, after the change tasks', async () => {
     prime({
       changeTasks: [{ id: 'ct-1', code: 'TASK00000041', label: 'ReviewTask', status: 'pending', changeCode: 'CHG00000003', changeId: 'chg-3', ciName: 'db-01' }],
-      genericTasks: [{ id: 'k-1', code: 'TASK00000042', state: 'open', titolo: 'Call the vendor', entityNumber: 'INC00000007', entityId: 'inc-7' }],
+      genericTasks: [{ id: 'k-1', code: 'TASK00000042', state: 'open', titolo: 'Call the vendor', entityNumber: 'INC00000007', entityId: 'inc-7', entityType: 'incident' }],
     })
     const res = await globalSearch(null, { query: 'TASK0000004' }, ctx)
     expect(res.tasks).toEqual([
-      { id: 'ct-1', code: 'TASK00000041', taskType: 'review', status: 'pending', changeCode: 'CHG00000003', changeId: 'chg-3', ciName: 'db-01' },
-      { id: 'k-1', code: 'TASK00000042', taskType: 'task', status: 'open', changeCode: 'INC00000007', changeId: 'inc-7', ciName: 'Call the vendor' },
+      { id: 'ct-1', code: 'TASK00000041', taskType: 'review', status: 'pending', changeCode: 'CHG00000003', changeId: 'chg-3', ciName: 'db-01', entityType: 'change' },
+      // The ticket's type: the web leads a generic task to its ticket (review of 23 Sep 2026).
+      { id: 'k-1', code: 'TASK00000042', taskType: 'task', status: 'open', changeCode: 'INC00000007', changeId: 'inc-7', ciName: 'Call the vendor', entityType: 'incident' },
     ])
     const [, , params] = vi.mocked(runQuery).mock.calls.find(([, c]) => String(c).includes('[:HAS_TASK]'))!
     expect(params).toMatchObject({ tenantId: 'tenant-1', q: 'TASK0000004' })

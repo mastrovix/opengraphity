@@ -22,7 +22,7 @@ const ci = (over: Partial<AffectedCIRef>): AffectedCIRef =>
 function renderList(props: Partial<Parameters<typeof AffectedCIList>[0]> = {}) {
   const handlers = { onSearchChange: vi.fn(), onAddCI: vi.fn(), onRemoveCI: vi.fn() }
   const r = renderWithProviders(
-    <AffectedCIList affectedCIs={[]} excludedTypes={[]} ciResults={[]} {...handlers} {...props} />,
+    <AffectedCIList affectedCIs={[]} excludedTypes={[]} ciResults={[]} canEdit {...handlers} {...props} />,
     { mocks: [baseCITypeMock()] },
   )
   return { ...r, ...handlers }
@@ -79,5 +79,16 @@ describe('AffectedCIList — the linked CIs', () => {
     expect(onRemoveCI).toHaveBeenCalledWith('srv-9')
     await user.click(screen.getByRole('button', { name: 'web-09' }))
     await attendiURL('/ci/server/srv-9')
+  })
+})
+
+// Review of 23 Sep 2026: who may not change the CIs sees them, and no control to add or remove.
+describe('AffectedCIList — read only', () => {
+  it('lists the CIs without Add CI and without the remove buttons', async () => {
+    const { user } = renderList({ canEdit: false, defaultOpen: true, affectedCIs: [ci({})] })
+    await user.click(await screen.findByRole('button', { name: /server/i }))
+    expect(screen.getByRole('button', { name: 'db-01' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Add CI/ })).toBeNull()
+    expect(screen.queryByTitle(/Remove/)).toBeNull()
   })
 })

@@ -219,8 +219,12 @@ export function SyncSourcesTab({
 
   const selectedConnector = connectors.find(c => c.type === selectedType)
 
+  // One creation at a time: the submit of the form is not a Button onClick, so it guards itself (review of 23 Sep 2026).
+  const [creating, setCreating] = useState(false)
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
+    if (creating) return
+    setCreating(true)
     const config: Record<string, string> = {}
     for (const f of selectedConnector?.configFields ?? []) {
       // Revisione totale · G-7: i campi con un valore predefinito lo mostravano
@@ -242,6 +246,8 @@ export function SyncSourcesTab({
       setName(''); setForm({}); setCredForm({}); setSelectedType('')
     } catch {
       // error already toasted by hook
+    } finally {
+      setCreating(false)
     }
   }
 
@@ -328,7 +334,7 @@ export function SyncSourcesTab({
           footer={
             <>
               <Button variant="secondary" onClick={() => setSchedSource(null)} style={btnStyle(colors.white, palette.neutral.textMuted)}>{t('common.cancel')}</Button>
-              <Button onClick={() => void handleSaveScheduleLocal()} style={btnStyle(colors.brand, colors.white)}>{t('common.save')}</Button>
+              <Button onClick={() => handleSaveScheduleLocal()} style={btnStyle(colors.brand, colors.white)}>{t('common.save')}</Button>
             </>
           }
         >
@@ -357,7 +363,7 @@ export function SyncSourcesTab({
           footer={
             <>
               <Button variant="secondary" onClick={() => setShowCreate(false)} style={btnStyle(colors.white, palette.neutral.textMuted)}>{t('common.cancel')}</Button>
-              <Button type="submit" style={btnStyle(colors.brand, colors.white)}>{t('sync.createSource')}</Button>
+              <Button type="submit" disabled={creating} style={btnStyle(colors.brand, colors.white)}>{t('sync.createSource')}</Button>
             </>
           }
         >

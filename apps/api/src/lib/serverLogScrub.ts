@@ -185,8 +185,14 @@ export function sopravvive(parola: string, inizioFrase: boolean): boolean {
   return inizioFrase                                   // Maiuscola: solo dove è grammatica
 }
 
-/** I segnaposto già piazzati dalle regole di forma non si toccano. */
-const PAROLA_O_SEGNAPOSTO = /<[a-z]+>|[A-Za-zÀ-ÖØ-öø-ÿ]+/g
+/**
+ * I segnaposto già piazzati dalle regole di forma non si toccano. A word is
+ * ANY run of letters, in any script (review of 23 Sep 2026): the class stopped
+ * at Latin-1, so a name in Cyrillic, Greek, Chinese — or the Ł and Ż of a Polish
+ * one — was never a word, never checked, and reached the platform's archive
+ * and the model as it was.
+ */
+const PAROLA_O_SEGNAPOSTO = /<[a-z]+>|\p{L}[\p{L}\p{M}]*/gu
 /** Una fila di parole ignote è UNA cosa ignota: leggerla come tre non aggiunge niente. */
 const FILA_DI_IGNOTE = /<w>(?:[ ]+<w>)+/g
 

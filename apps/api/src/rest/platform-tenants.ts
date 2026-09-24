@@ -31,9 +31,10 @@ import { asyncHandler, restErrorHandler } from './errorHandler.js'
 import { logger } from '../lib/logger.js'
 import {
   listTenants, renameTenant, suspendTenant, resumeTenant, purgeTenant, tenantFootprint, assertSlugValido,
-  configuredReservedSlugs, resetAdminPassword,
+  configuredReservedSlugs, resetAdminPassword, tenantDomainFromTemplate,
 } from '../lib/tenantLifecycle.js'
 import { DEFAULT_TENANT_PLAN, DEFAULT_TENANT_TIMEZONE } from '../lib/tenantPlans.js'
+import { config } from '../lib/config.js'
 import { parametro } from './parametroDiRotta.js'
 import { announceTenantChange, type TenantChange } from '../lib/tenantQueueLifecycle.js'
 import { obliterateTenantQueues } from '@opengraphity/events'
@@ -173,6 +174,15 @@ router.post('/platform/tenants', asyncHandler(async (req: Request, res: Response
     return
   }
 
+  // The installation's domain and environment, not literals (review of 23 Sep 2026).
+  let domain: string
+  try {
+    domain = tenantDomainFromTemplate(config.tenantUrlTemplate)
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) })
+    return
+  }
+
   const spec = {
     slug,
     tenantName: testo('name') || slug,
@@ -182,8 +192,8 @@ router.post('/platform/tenants', asyncHandler(async (req: Request, res: Response
     firstName:  testo('adminFirstName') || 'Admin',
     lastName:   testo('adminLastName') || slug,
     adminRole:  'admin',
-    domain:     testo('domain') || 'opengrafo.com',
-    production: body['production'] === true,
+    domain,
+    production: config.isProduction,
     piIp:       undefined,
   }
 

@@ -28,6 +28,14 @@ export const collaborationSchema = `
     editedAt: String
   }
 
+  "A person named by id: \`active\` says whether they can still act."
+  type NamedUser {
+    id:     ID!
+    name:   String!
+    email:  String!
+    active: Boolean!
+  }
+
   extend type Query {
     """
     Active people whose name or e-mail contains the text. With \`permission\`,
@@ -36,6 +44,11 @@ export const collaborationSchema = `
     of downloading every person of the organization.
     """
     searchUsers(search: String!, limit: Int, permission: String): [UserSuggestion!]!
+    """
+    The people with these ids, inactive ones too (at most 100): the name of
+    whom a rule or a step already names, without downloading the directory.
+    """
+    usersByIds(ids: [ID!]!): [NamedUser!]!
     watchers(entityType: String!, entityId: ID!): [Watcher!]!
     isWatching(entityType: String!, entityId: ID!): Boolean!
     internalMessages(entityType: String!, entityId: ID!, limit: Int, before: String): [InternalMessage!]!

@@ -50,6 +50,7 @@ const page = (items: unknown[], total = items.length) => ({ serviceRequests: { i
 
 beforeEach(() => {
   apolloFinto.reset()
+  apolloFinto.risposte['GetMe'] = { me: { id: 'u-me', name: 'Me', email: 'me@x', role: 'custom', roleName: null, permissions: ['request.write'], teams: [] } }
   resetInFlight()
   csv.exportToCsv.mockReset()
   apolloFinto.risposte['GetServiceRequests'] = page([

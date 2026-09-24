@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, screen } from '@testing-library/react'
 import { CREATE_SERVICE_REQUEST } from '@/graphql/mutations'
 import { GET_SERVICE_CATALOG_ADMIN } from '@/graphql/queries'
+import { fieldRulesMocks } from '@/test/mocks/gql'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { CreateServiceRequestPage } from '../CreateServiceRequestPage'
 
@@ -26,6 +27,7 @@ describe('CreateServiceRequestPage', () => {
         request: { query: CREATE_SERVICE_REQUEST, variables: (v) => { seen.push(v); return true } },
         result: { data: { createServiceRequest: { __typename: 'ServiceRequest', id: 'sr-1', title: 'Portatile', priority: 'high', status: 'submitted', createdAt: 'x' } } },
       },
+      ...fieldRulesMocks('service_request'),
     ]
     const { user, container } = renderWithProviders(<CreateServiceRequestPage />, { mocks })
     await user.type(await screen.findByPlaceholderText('What do you need?'), 'Portatile')

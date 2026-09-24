@@ -286,7 +286,7 @@ function ProviderCard({ kind, provider, addresses }: { kind: ProviderKind; provi
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <Button variant="secondary" size="sm" icon={<FlaskConical size={14} aria-hidden="true" />} disabled={busy || !complete} onClick={() => void onTest()}>{t('pages.loginSecurity.providers.test')}</Button>
         <Button size="sm" icon={<Power size={14} aria-hidden="true" />} disabled={busy || !complete} onClick={() => void onSave(true)}>{t('pages.loginSecurity.providers.testAndActivate')}</Button>
-        {provider?.enabled && <Button variant="secondary" size="sm" disabled={busy} onClick={() => void onDeactivate()}>{t('pages.loginSecurity.providers.deactivate')}</Button>}
+        {provider?.enabled && <Button variant="secondary" size="sm" disabled={busy} onClick={() => onDeactivate()}>{t('pages.loginSecurity.providers.deactivate')}</Button>}
         {provider && <Button variant="danger" size="sm" icon={<Trash2 size={14} aria-hidden="true" />} disabled={busy} onClick={() => void onRemove()}>{t('common.delete')}</Button>}
       </div>
     </div>

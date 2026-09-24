@@ -200,7 +200,7 @@ beforeEach(() => {
   toast.success.mockReset()
   toast.error.mockReset()
   toast.warning.mockReset()
-  permissions = ['approval.override', 'change.delete', 'ticket.work']
+  permissions = ['approval.override', 'change.delete', 'change.write', 'ticket.work']
   apolloFinto.risposte['GetMe'] = () => ({ me: { id: 'u-me', name: 'Me', email: 'me@x', role: 'custom', roleName: null, permissions, teams: [{ id: 't-dba', name: 'DBA' }] } })
   apolloFinto.risposte['GetChange'] = { change: change() }
   // The same CI twice (two rows of the API for one CI): the page shows it once.
@@ -970,5 +970,16 @@ describe('ChangeDetailPage — the CIs involved', () => {
       await second.user.click(screen.getByRole('button', { name: /CI Affected/ }))
       expect(screen.getByText('orders-db', { selector: 'span' })).toBeInTheDocument()
     })
+  })
+})
+
+// Review of 23 Sep 2026: the transitions and the change's CIs ask change.write, as the API does.
+describe('ChangeDetailPage — who only reads changes', () => {
+  it('sees the change, and no transition', () => {
+    permissions = []
+    mount()
+    expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Send to approval' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Cancel the change' })).toBeNull()
   })
 })

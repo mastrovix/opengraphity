@@ -85,11 +85,18 @@ export function CreateServiceMapDialog({ open, onClose, onCreated }: Props) {
   // non c'è si mostrano i quattro spediti (la scelta predefinita dell'API), e
   // un errore si vede.
   const relTypes = relData?.serviceRelationshipTypes ?? SHIPPED_SERVICE_RELATIONSHIP_TYPES
-  // G-MON-5: appena i tipi del cliente arrivano, sono tutti selezionati.
-  useEffect(() => { setRels((prev) => prev ?? new Set(relTypes)) }, [relTypes])
+  // G-MON-5: untouched (`rels` null), every type of the tenant is selected, as
+  // the list arrives. The effect that fixed `rels` on the first list fixed it
+  // on the shipped fallback — the dialog is mounted closed, with the query
+  // skipped — and the tenant's own types came unticked (review of 23 Sep 2026).
+  // Only the types shown count: a shipped type the tenant does not have is
+  // neither previewed nor sent.
   // useMemo: altrimenti l'insieme cambia identità a ogni render e l'effetto
   // dell'anteprima ripartirebbe ogni volta.
-  const selectedRels = useMemo(() => rels ?? new Set(relTypes), [rels, relTypes])
+  const selectedRels = useMemo(
+    () => (rels ? new Set(relTypes.filter((r) => rels.has(r))) : new Set(relTypes)),
+    [rels, relTypes],
+  )
   const [create, { loading: creating }] = useMutation<{ createServiceMap: ServiceMapDetail }>(CREATE_SERVICE_MAP)
 
   /*

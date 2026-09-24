@@ -201,7 +201,8 @@ describe('ItineraryPanel: duplicating a workflow', () => {
     await user.type(name, '  Laptop for interns ')
     await user.click(screen.getByRole('button', { name: /Duplicate/ }))
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Workflow duplicated, switched off'))
-    expect(apolloFinto.chiamata('DuplicateWorkflowDefinition')).toEqual({ definitionId: 'd-hw', name: 'Laptop for interns', category: null })
+    // Catalog-only (review of 23 Sep 2026): the copy never becomes the fallback of generic requests.
+    expect(apolloFinto.chiamata('DuplicateWorkflowDefinition')).toEqual({ definitionId: 'd-hw', name: 'Laptop for interns', category: null, catalogOnly: true })
     expect(name).toHaveValue('')
     expect(apolloFinto.refetch).toHaveBeenCalled()
   })

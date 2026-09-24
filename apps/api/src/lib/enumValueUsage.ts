@@ -44,6 +44,7 @@ import { toSnakeCase } from './mappers.js'
 import { lifecyclePolicyReferences, CI_STATUS_VOCABULARY } from './ciLifecycle.js'
 import { ENVIRONMENT_VOCABULARY } from './eventVocabularies.js'
 import { DOMAIN_MATRIX_KINDS, type DomainMatrixKind } from './domainMatrix.js'
+import { formValueReferences, replaceInForms } from './enumValueFormSites.js'
 
 /**
  * Dove vivono i valori dei vocabolari **di dominio** (revisione delle otto
@@ -429,6 +430,15 @@ export async function countEnumValueUsage(
     usage.configSites = inConfig.get(usage.value) ?? []
     usage.total += usage.configSites.length
   }
+  // And the catalog forms (review of 23 Sep 2026): the answers and table cells
+  // are records, the conditions and defaults of the forms are configuration.
+  const inForms = await formValueReferences(session, tenantId, vocabularyName, values)
+  for (const usage of byValue.values()) {
+    for (const r of inForms.records.get(usage.value) ?? []) { usage.records.push(r); usage.total += r.count }
+    const formSites = inForms.sites.get(usage.value) ?? []
+    usage.configSites = [...usage.configSites, ...formSites]
+    usage.total += formSites.length
+  }
   return [...byValue.values()].filter((u) => u.total > 0)
 }
 
@@ -511,6 +521,9 @@ export async function replaceEnumValue(
   await replaceInPolicy(tx, tenantId, vocabularyName, from, to)
   await replaceInMatrices(tx, tenantId, vocabularyName, from, to)
   await replaceInConfig(tx, tenantId, vocabularyName, from, to)
+  // The answers and table cells of the catalog forms are records; the forms
+  // themselves are rewritten with them (review of 23 Sep 2026).
+  touched += await replaceInForms(tx, tenantId, vocabularyName, from, to)
   return touched
 }
 

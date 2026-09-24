@@ -59,7 +59,7 @@ vi.mock('@opengraphity/neo4j', () => ({
 }))
 
 const transition = vi.fn()
-vi.mock('@opengraphity/workflow', () => ({ workflowEngine: { transition: (...a: unknown[]) => transition(...a) } }))
+vi.mock('@opengraphity/workflow', () => ({ WAIT_EXIT_TRIGGERS: ['automatic', 'timer'], workflowEngine: { transition: (...a: unknown[]) => transition(...a) } }))
 
 const closeIncident = vi.fn()
 vi.mock('../../services/incidentService.js', () => ({ closeIncident: (...a: unknown[]) => closeIncident(...a) }))
@@ -291,11 +291,11 @@ describe('notification-jobs', () => {
     await expect(notificationProcessor(job('timer_wait', { instanceId: 'wi-2', toStep: 'closed', tenantId: 't1' }))).resolves.toBeUndefined()
     const s = sessions.at(-1)!
     expect(s.mode).toBe('WRITE')
-    expect(s.reads[0]!.p).toEqual({ instanceId: 'wi-2', tenantId: 't1' })
+    expect(s.reads[0]!.p).toEqual({ instanceId: 'wi-2', tenantId: 't1', exitTriggers: ['automatic', 'timer'] })
     // Rinegoziato (revisione · B·M-4): l'arco che conclude un'attesa può essere
     // marcato `automatic` O `timer` — il secondo era la scelta ovvia nella
     // tendina e non veniva percorso da nessuno.
-    expect(s.reads[0]!.q).toContain("tr.trigger IN ['automatic', 'timer']")
+    expect(s.reads[0]!.q).toContain('tr.trigger IN $exitTriggers')
     expect(transition).toHaveBeenCalledWith(
       expect.objectContaining({ mode: 'WRITE' }),
       // CONTRATTO RINEGOZIATO (revisione totale · E-31): il tenant è obbligatorio.

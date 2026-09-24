@@ -93,3 +93,24 @@ export function propsToFieldValues(props: Record<string, unknown>): Record<strin
   }
   return out
 }
+
+/**
+ * The requirement rules of the step being ENTERED, checked on the ticket as it
+ * is stored plus the notes of the transition (they count as the resolution or
+ * root cause). One place for every path that moves a ticket: the rules with a
+ * `workflow_step` were checked by the generic transition and by the change's
+ * (B-21), and skipped by the problem's and by resolveIncident — a rule «root
+ * cause required entering Resolved» held for one button and not for the
+ * problem page or the bulk resolve (review of 23 Sep 2026).
+ */
+export async function validateStepRequirements(
+  session: Session,
+  opts: { entityType: string; entityProps: Record<string, unknown>; notes?: string | null; tenantId: string; toStep: string },
+): Promise<void> {
+  const fieldValues = propsToFieldValues(opts.entityProps)
+  if (opts.notes) {
+    // In both conventions, like the stored fields.
+    for (const f of ['resolution_notes', 'resolutionNotes', 'root_cause', 'rootCause']) fieldValues[f] = opts.notes
+  }
+  await validateRequiredFields(session, { entityType: opts.entityType, fieldValues, tenantId: opts.tenantId, toStep: opts.toStep })
+}

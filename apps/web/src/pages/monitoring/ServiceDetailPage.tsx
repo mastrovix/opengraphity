@@ -51,7 +51,7 @@ import { toast } from 'sonner'
 import { ArrowLeft, Boxes, RotateCcw, Pause, Play, Trash2, AlertTriangle, Focus, Info, Star, Loader2, ArrowRight, GitCompareArrows, RefreshCw, Pencil } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageLoader } from '@/components/PageLoader'
-import { QueryError } from '@/components/QueryError'
+import { QueryError, StaleDataBanner } from '@/components/QueryError'
 import { EmptyState } from '@/components/EmptyState'
 import { Button } from '@/components/Button'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -154,7 +154,11 @@ export function ServiceDetailPage() {
   const loaded = (data ?? previousData)?.serviceMap ?? null
   const probe  = probeData?.serviceMap ?? null
   const behind = probe !== null && loaded !== null && probeIsAhead(probe, loaded)
-  useEffect(() => { if (behind) void refetch() }, [behind, refetch])
+  // At every poll that is still ahead, not once on the boolean: a refetch that
+  // failed left `behind` true, the effect never ran again and the page stayed
+  // on the old evaluation without a word (review of 23 Sep 2026). The probe is
+  // `no-cache`, so each poll is a new object.
+  useEffect(() => { if (behind) void refetch() }, [behind, probeData, refetch])
 
   const [reevaluate, { loading: reevaluating }] = useMutation<{ reevaluateServiceMap: ServiceMapDetail }>(REEVALUATE_SERVICE_MAP)
   const [setStatus, { loading: settingStatus }] = useMutation<{ setServiceMapStatus: ServiceMapDetail }>(SET_SERVICE_MAP_STATUS)
@@ -261,6 +265,8 @@ export function ServiceDetailPage() {
 
   return (
     <PageContainer>
+      {/* The latest read failed: what is below is the evaluation read before (review of 23 Sep 2026). */}
+      {error && <StaleDataBanner message={error.message} onRetry={() => void refetch()} />}
       <div style={{ marginBottom: 24 }}>
         <button type="button" onClick={() => navigate('/monitoring/services')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 12, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-card-title)', padding: 0 }}>
           <ArrowLeft size={14} aria-hidden="true" />

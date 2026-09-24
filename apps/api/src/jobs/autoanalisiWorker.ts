@@ -130,6 +130,22 @@ async function portaIlFascicolo(data: PortaIlFascicoloData): Promise<void> {
     return
   }
 
+  /*
+   * A RETRY DOES NOT OPEN A SECOND ISSUE (review of 23 Sep 2026). The job is
+   * retried (attempts: 3), and `jobId` only de-duplicates the enqueueing: a
+   * dispatch that failed after the issue was written opened another issue at
+   * each attempt, and moved the Problem's link to the newest. The link is on
+   * the Problem: when it is there, only the analysis is asked again. (An issue
+   * POST that GitHub completed but whose answer was lost cannot be seen from
+   * here; that one case can still make a second issue.)
+   */
+  const gia = await issueGiaAperta(data.tenantId, data.problemId)
+  if (gia !== null) {
+    log.info({ tenantId: data.tenantId, problem: data.problemNumber, issue: gia }, 'the dossier issue already exists: only the analysis is asked again')
+    await chiediAnalisi(cfg, { issue: gia, problemNumber: data.problemNumber })
+    return
+  }
+
   const fascicolo = await fascicoloDelProblem(data.tenantId, data.problemId)
   if (!fascicolo) {
     /*
@@ -154,11 +170,25 @@ async function portaIlFascicolo(data: PortaIlFascicoloData): Promise<void> {
 
   /*
    * Il legame si scrive PRIMA di chiedere l'analisi: se il dispatch fallisce e
-   * il lavoro viene ritentato, `jobId` impedisce una seconda issue e il numero
-   * è già al sicuro. Al contrario si sarebbe potuto avviare un'analisi su una
-   * issue che il Problem non conosce.
+   * il lavoro viene ritentato, il ritentativo trova il numero sul Problem e
+   * chiede solo l'analisi (issueGiaAperta, sopra). Al contrario si sarebbe
+   * potuto avviare un'analisi su una issue che il Problem non conosce.
    */
   await chiediAnalisi(cfg, { issue, problemNumber: data.problemNumber })
+}
+
+/** The issue already filed for this Problem, or null. */
+async function issueGiaAperta(tenantId: string, problemId: string): Promise<number | null> {
+  const session = getSession(undefined, 'READ')
+  try {
+    const rows = await runQuery<{ issue: unknown }>(session, `
+      MATCH (p:Problem {id: $problemId, tenant_id: $tenantId})
+      RETURN p.autoanalisi_issue AS issue`, { tenantId, problemId })
+    const issue = rows[0]?.issue
+    return issue == null ? null : Number(issue)
+  } finally {
+    await session.close()
+  }
 }
 
 async function controlla(): Promise<void> {

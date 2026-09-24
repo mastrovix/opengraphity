@@ -57,7 +57,7 @@ const VALIDAZIONI: readonly Esempio[] = [
 ]
 
 const codiceStile: React.CSSProperties = {
-  margin: 0, padding: '6px 8px', borderRadius: 6, background: 'var(--color-surface-alt)',
+  margin: 0, padding: '6px 8px', borderRadius: 6, background: 'var(--color-surface-2)',
   fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-dark)',
   whiteSpace: 'pre-wrap', overflowX: 'auto', flex: 1, minWidth: 0,
 }

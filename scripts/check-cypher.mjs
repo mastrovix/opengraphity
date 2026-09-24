@@ -792,7 +792,13 @@ if (totaleFuori > 0) {
 // 23 Sep 2026, review wave 4: +2 for the restore (restore-neo4j.ts), which creates and drops a
 // TEMPORARY index per label of the archive and removes its elementId marker per label — schema
 // commands on labels read from the archive, over the whole database, with no tenant to verify.
-const TETTO_FUORI_PERIMETRO = 198
+// 23 Sep 2026, review wave 6: +1 for the CI check of createProblem, which runs BEFORE the problem
+// is written and needs the tenant's CI label predicate (ciLabelPredicateForTenant), as the link after it.
+// 23 Sep 2026, review wave 6: +1 for a ref_ci form field's CMDB filter (lib/refCiFilter.ts), now
+// applied by the server to the portal's choices and to the submit check: the condition is the
+// field's own filter document, compiled by buildAdvancedWhere as in the CMDB lists, with the
+// fields allowed read from the metamodel — it cannot be a literal.
+const TETTO_FUORI_PERIMETRO = 200
 if (totaleFuori > TETTO_FUORI_PERIMETRO) {
   console.error(`\ncheck-cypher: le query fuori perimetro sono ${totaleFuori}, il tetto è ${TETTO_FUORI_PERIMETRO}.`)
   console.error('Una query che questo controllo non vede non riceve nemmeno la verifica del tenant_id.')

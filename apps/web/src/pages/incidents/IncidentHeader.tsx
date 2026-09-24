@@ -50,7 +50,8 @@ interface IncidentHeaderProps {
   transitioning:         boolean
   onBack:                () => void
   onTransitionClick:     (tr: WorkflowTransition) => void
-  onRequestChange:       () => void
+  /** null: the reader may not open a change (change.write), and it is not offered. */
+  onRequestChange:       (() => void) | null
 }
 
 export function IncidentHeader({
@@ -70,7 +71,7 @@ export function IncidentHeader({
   // fermo in un passo terminale aggiunto dal cliente («Annullato»), e non si
   // poteva più chiederla su un passo di risoluzione rinominato… nel verso
   // sbagliato, cioè sempre.
-  const canRequestChange = !isTerminal(incident.status) && categoryOf(incident.status) !== 'resolved'
+  const canRequestChange = onRequestChange !== null && !isTerminal(incident.status) && categoryOf(incident.status) !== 'resolved'
   return (
     <div style={{ marginBottom: 24 }}>
       {/* Row 1 — back */}
@@ -125,7 +126,7 @@ export function IncidentHeader({
           {canRequestChange && (
             <button
               type="button"
-              onClick={onRequestChange}
+              onClick={onRequestChange ?? undefined}
               style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent)', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}
             >
               {t('pages.incidents.requestChange')}

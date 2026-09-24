@@ -71,13 +71,16 @@ beforeEach(() => {
   vi.mocked(runQuery).mockImplementation((async (_s: unknown, cypher: string, params?: Record<string, unknown>) => {
     if (cypher.includes('CREATE (p:Problem')) return [{ props: { id: params?.['id'], tenant_id: params?.['tenantId'], ...(params?.['customProps'] as object) } }]
     if (cypher.includes('MERGE (p)-[r:AFFECTS]->(ci)')) return [{ linked: existingCIs.has(params?.['ciId'] as string) ? 1 : 0 }]
+    if (cypher.includes('WHERE ci.id IN $ids')) return (params?.['ids'] as string[]).filter((id) => existingCIs.has(id)).map((id) => ({ id }))
     return []
   }) as never)
   vi.mocked(workflowEngine.createInstance).mockResolvedValue({ id: 'wi-1' } as never)
 })
 
 describe('createProblem — CIs that could not be linked', () => {
-  it('reports the missing CIs with a typed error naming them, after creating the problem', async () => {
+  // Review of 23 Sep 2026: the check came after the problem was committed, and
+  // threw before its workflow and event — a problem nobody could move or close.
+  it('reports the missing CIs with a typed error naming them, BEFORE anything is written', async () => {
     existingCIs = new Set(['ci-1'])
     const err = await createProblem({ title: 'Disk full', priority: 'high', affectedCIs: ['ci-1', 'ci-ghost', 'ci-other-tenant'] }, ctx)
       .then(() => null, (e: unknown) => e)
@@ -89,9 +92,21 @@ describe('createProblem — CIs that could not be linked', () => {
       code: 'BAD_USER_INPUT',
       i18n: { key: 'errors.problem.ciMissing', params: { missing: 2, total: 3, ids: 'ci-ghost, ci-other-tenant' } },
     })
-    // The problem itself is kept: it was created and is not rolled back.
-    expect(queriesWith('CREATE (p:Problem')).toHaveLength(1)
-    expect(queriesWith('DETACH DELETE')).toHaveLength(0)
+    expect(queriesWith('WHERE ci.id IN $ids')[0]![0]).toContain('(ci:Application OR ci:Server)')
+    expect(queriesWith('CREATE (p:Problem')).toHaveLength(0)
+    expect(workflowEngine.createInstance).not.toHaveBeenCalled()
+  })
+
+  it('a CI deleted between the check and the link: the problem is completed, and the gap logged', async () => {
+    existingCIs = new Set(['ci-1', 'ci-2'])
+    vi.mocked(runQuery).mockImplementation((async (_s: unknown, cypher: string, params?: Record<string, unknown>) => {
+      if (cypher.includes('CREATE (p:Problem')) return [{ props: { id: params?.['id'], tenant_id: params?.['tenantId'] } }]
+      if (cypher.includes('WHERE ci.id IN $ids')) return [{ id: 'ci-1' }, { id: 'ci-2' }]
+      if (cypher.includes('MERGE (p)-[r:AFFECTS]->(ci)')) return [{ linked: params?.['ciId'] === 'ci-1' ? 1 : 0 }]
+      return []
+    }) as never)
+    await expect(createProblem({ title: 'P', priority: 'low', affectedCIs: ['ci-1', 'ci-2'] }, ctx)).resolves.toBeDefined()
+    expect(workflowEngine.createInstance).toHaveBeenCalled()
     expect(logger.error).toHaveBeenCalled()
   })
 

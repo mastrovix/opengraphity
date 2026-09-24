@@ -41,6 +41,14 @@ export type WorkflowTrigger =
  * Non è il vocabolario delle automazioni (lib/actionExecutor.ts): quello è un
  * altro insieme, e la loro unificazione è un'ondata successiva.
  */
+/**
+ * The triggers of the edge that concludes a timed wait (review of 23 Sep
+ * 2026): «timer» is documented as the way out of a wait step and the job
+ * consumer walks it, but the engine scheduled the timer only for
+ * «automatic» — with a «timer» exit nothing was scheduled. One list for both.
+ */
+export const WAIT_EXIT_TRIGGERS: readonly string[] = ['automatic', 'timer']
+
 export const WORKFLOW_ACTION_TYPES = [
   'sla_start',
   'sla_stop',

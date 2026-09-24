@@ -132,6 +132,8 @@ export function workflowSDL(): string {
     name:           String!
     entityType:     String!
     category:       String
+    """Reached only from its catalog items, never the fallback of a generic ticket."""
+    catalogOnly:    Boolean!
     version:        Int!
     active:         Boolean!
     steps:          [WorkflowStep!]!
@@ -179,6 +181,8 @@ export function workflowSDL(): string {
     purpose:      String
     # La scadenza del passo (JSON). Assente/null = invariata; stringa vuota = tolta.
     deadline:     String
+    # Delay of a timed wait (timer_wait), whole minutes > 0. Absent/null = unchanged.
+    timerDelayMinutes: Int
   }
 
   """

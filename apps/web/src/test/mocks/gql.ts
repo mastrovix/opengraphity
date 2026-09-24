@@ -2,7 +2,7 @@
  * Mock GraphQL riusabili (MockedProvider). I risultati includono `__typename`
  * perché la cache Apollo 4 aggiunge sempre il campo alla query.
  */
-import { GET_ME, GET_ROLES, GET_ANOMALY_STATS, GET_TEAMS, GET_TEAM_CHOICES, GET_USERS, SEARCH_USERS, GET_WORKFLOW_LIST, GET_WORKFLOW_DEFINITION, GET_ITIL_TYPES, GET_BASE_CI_TYPE, GET_DOMAIN_MATRICES, GET_PRIORITY_MATRIX } from '@/graphql/queries'
+import { GET_FIELD_VISIBILITY_RULES, GET_FIELD_REQUIREMENT_RULES, GET_ME, GET_ROLES, GET_ANOMALY_STATS, GET_TEAMS, GET_TEAM_CHOICES, GET_USERS, SEARCH_USERS, GET_WORKFLOW_LIST, GET_WORKFLOW_DEFINITION, GET_ITIL_TYPES, GET_BASE_CI_TYPE, GET_DOMAIN_MATRICES, GET_PRIORITY_MATRIX } from '@/graphql/queries'
 import type { GqlMock } from '@/test/utils'
 import { FACTORY_ROLE_PERMISSIONS, isUserRole } from '@opengraphity/types'
 
@@ -260,4 +260,16 @@ export function priorityMatrixMock(opts: Parameters<typeof domainMatricesMock>[0
     result: { data: { priorityMatrix: data.data.domainMatrices[0] } },
     maxUsageCount: Number.POSITIVE_INFINITY,
   }
+}
+
+/**
+ * The tenant's field rules for a ticket type, none by default: a creation form
+ * reads them before it sends (review of 23 Sep 2026), and without an answer it
+ * refuses to send — as it must when the rules cannot be read.
+ */
+export function fieldRulesMocks(entityType: string, rules: { visibility?: unknown[]; requirements?: unknown[] } = {}): GqlMock[] {
+  return [
+    { request: { query: GET_FIELD_VISIBILITY_RULES, variables: { entityType } }, result: { data: { fieldVisibilityRules: rules.visibility ?? [] } }, maxUsageCount: Number.POSITIVE_INFINITY },
+    { request: { query: GET_FIELD_REQUIREMENT_RULES, variables: { entityType, workflowStep: null } }, result: { data: { fieldRequirementRules: rules.requirements ?? [] } }, maxUsageCount: Number.POSITIVE_INFINITY },
+  ]
 }

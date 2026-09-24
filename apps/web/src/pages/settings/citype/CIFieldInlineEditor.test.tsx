@@ -126,6 +126,13 @@ describe('CIFieldInlineEditor — existing field', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
+  // Review of 23 Sep 2026: the API keeps the type, and the page said «Field saved» with the old type still there.
+  it('the type of an existing field is locked, and says why', () => {
+    setup({ initial: existing })
+    expect(screen.getByLabelText('Type')).toBeDisabled()
+    expect(screen.getByLabelText('Type')).toHaveAttribute('title', 'The type of an existing field cannot change: its values are already on the CIs.')
+  })
+
   it('a system field cannot change type or required flag', () => {
     setup({ initial: existing, isSystem: true })
     expect(screen.getByLabelText('Type')).toBeDisabled()

@@ -547,7 +547,9 @@ export function CIDetailPage() {
     }
   }
 
-  if (metamodelLoading || loading) {
+  // Only at the first load: a refetch (Apollo 4 turns `loading` on) swapped
+  // the whole page, and sections, graph and scroll were lost (review of 23 Sep 2026).
+  if (metamodelLoading || (loading && !data)) {
     return <div style={{ padding: 40, color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</div>
   }
   if (metamodelError) {
@@ -856,7 +858,7 @@ export function CIDetailPage() {
                       {t('common.cancel')}
                     </Button>
                     <Button
-                      onClick={() => void handleAddRelation()}
+                      onClick={() => handleAddRelation()}
                       disabled={!addRelForm.targetCI || !chosenRelation}
                       style={{ fontSize: 'var(--font-size-body)', ...(addRelForm.targetCI ? {} : { backgroundColor: palette.neutral.borderStrong }) }}
                     >

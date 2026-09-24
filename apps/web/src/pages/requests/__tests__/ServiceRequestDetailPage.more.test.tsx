@@ -80,7 +80,7 @@ beforeEach(() => {
   apolloFinto.reset()
   toast.success.mockReset()
   toast.error.mockReset()
-  perms.list = ['ticket.work']
+  perms.list = ['ticket.work', 'request.write']
   apolloFinto.risposte['GetServiceRequest'] = { serviceRequest: request() }
   apolloFinto.risposte['GetAssignableUsers'] = { users: [] }
 })
@@ -344,5 +344,16 @@ describe('ServiceRequestDetailPage: failures are shown, and nothing pretends to 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('engine down'))
     await user.click(within(screen.getByRole('dialog', { name: 'Reject' })).getByRole('button', { name: 'Close' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+})
+
+// Review of 23 Sep 2026: every action was offered to read-only roles, and every one ended in a 403.
+describe('ServiceRequestDetailPage — who only reads requests', () => {
+  it('sees the request, and no Edit, no transition, no assignment control', async () => {
+    perms.list = []
+    mount()
+    expect(await screen.findByText('Laptop')).toBeInTheDocument()
+    for (const name of [/^Edit$/, 'Approve', 'Reject']) expect(screen.queryByRole('button', { name })).toBeNull()
+    expect(screen.queryByRole('combobox', { name: 'Assignee' })).toBeNull()
   })
 })

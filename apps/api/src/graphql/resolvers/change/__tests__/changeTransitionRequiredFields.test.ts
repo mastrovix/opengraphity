@@ -56,10 +56,20 @@ vi.mock('../../../../lib/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }))
 const validateRequiredFields = vi.fn<(s: unknown, o: Record<string, unknown>) => Promise<void>>(async () => {})
-vi.mock('../../../../lib/validateRequiredFields.js', () => ({
-  validateRequiredFields: (s: unknown, o: Record<string, unknown>) => validateRequiredFields(s, o),
-  propsToFieldValues: (p: Record<string, unknown>) => ({ ...p }),
-}))
+// The change goes through the shared step check (lib/validateRequiredFields.ts,
+// review of 23 Sep 2026): the real one, over the mocked validator.
+vi.mock('../../../../lib/validateRequiredFields.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../../../lib/validateRequiredFields.js')>()
+  return {
+    validateRequiredFields: (s: unknown, o: Record<string, unknown>) => validateRequiredFields(s, o),
+    propsToFieldValues: real.propsToFieldValues,
+    validateStepRequirements: async (s: unknown, o: { entityType: string; entityProps: Record<string, unknown>; notes?: string | null; tenantId: string; toStep: string }) => {
+      const fieldValues = real.propsToFieldValues(o.entityProps)
+      if (o.notes) for (const f of ['resolution_notes', 'resolutionNotes', 'root_cause', 'rootCause']) fieldValues[f] = o.notes
+      await validateRequiredFields(s, { entityType: o.entityType, fieldValues, tenantId: o.tenantId, toStep: o.toStep })
+    },
+  }
+})
 
 const { executeChangeTransition } = await import('../changeMutations.js')
 const { workflowEngine } = await import('@opengraphity/workflow')

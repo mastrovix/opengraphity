@@ -54,7 +54,8 @@ const squash = (s: string) => s.replace(/\s+/g, ' ').trim()
 describe('whatif.openIncidents (B-06)', () => {
   it('counts incidents via AFFECTED_BY, labelled and tenant-scoped', () => {
     const q = squash(OPEN_INCIDENTS_ON_CIS_CYPHER)
-    expect(q).toContain('MATCH (ci)<-[:AFFECTED_BY]-(inc:Incident {tenant_id: $tenantId})')
+    // Anchored on the labelled CI (review of 23 Sep 2026): the ConfigurationItem(id) index, not every incident.
+    expect(q).toContain('MATCH (ci:ConfigurationItem {tenant_id: $tenantId})<-[:AFFECTED_BY]-(inc:Incident {tenant_id: $tenantId})')
     expect(q).toContain('ci.id IN $impactedIds')
     expect(q).toContain('NOT inc.status IN $terminalSteps')
     expect(q).not.toMatch(/\[:AFFECTS\]/)

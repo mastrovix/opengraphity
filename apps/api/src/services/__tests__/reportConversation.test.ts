@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { ensureConversation, loadRecentHistory, runReportConversation, saveMessage, HISTORY_LIMIT } from '../reportConversation.js'
+import { ensureConversation, loadRecentHistory, runReportConversation, saveMessage, HISTORY_LIMIT, REPORT_QUESTION_MAX_CHARS } from '../reportConversation.js'
 
 type Run = (q: string, p: Record<string, unknown>) => Promise<{ records: Array<{ get: (k: string) => unknown }> }>
 
@@ -103,6 +103,17 @@ describe('runReportConversation — the shared turn used by GraphQL and SSE', ()
       ask: async () => { throw new Error('overloaded') },
     })).rejects.toThrow('overloaded')
     expect(s.calls.filter(c => c.p['role'] === 'assistant')).toHaveLength(0)
+  })
+
+  // Review of 23 Sep 2026: a question is saved and sent again in the next ten turns — it had no cap.
+  it('a question over the cap is refused with its key before anything is saved or asked', async () => {
+    const s = fakeSession(() => [])
+    const ask = vi.fn()
+    await expect(runReportConversation({
+      session: s as never, tenantId: 't1', userId: 'u1', question: 'x'.repeat(REPORT_QUESTION_MAX_CHARS + 1), conversationId: null, ask,
+    })).rejects.toMatchObject({ extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.report.questionTooLong' } } })
+    expect(s.calls).toHaveLength(0)
+    expect(ask).not.toHaveBeenCalled()
   })
 })
 

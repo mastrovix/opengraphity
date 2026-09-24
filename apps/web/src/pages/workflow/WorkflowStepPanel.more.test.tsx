@@ -274,12 +274,14 @@ describe('WorkflowStepPanel — notification on entry', () => {
     }])
   })
 
-  it('an enabled notification without a title key is not saved as an action', async () => {
+  // Review of 23 Sep 2026: this was saved WITHOUT the notification, silently. Now it cannot be saved at all.
+  it('an enabled notification without a title key blocks the save instead of being dropped', async () => {
     const { user, onSaved } = renderPanel(step())
     await user.click(screen.getByRole('tab', { name: T('pages.workflowStep.tabNotify') }))
     await user.click(screen.getByRole('switch', { name: T('pages.workflowStep.notifyOnEnter') }))
-    await user.click(saveButton())
-    expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ enterActions: null }))
+    expect(saveButton()).toBeDisabled()
+    expect(screen.getByRole('alert')).toHaveTextContent(T('workflow.panel.titleKeyRequired'))
+    expect(onSaved).not.toHaveBeenCalled()
   })
 
   it('a saved notification is loaded into the tab and survives an unrelated save', async () => {

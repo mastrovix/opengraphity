@@ -117,7 +117,7 @@ export function CIAliasesSection({ ci, canEdit, variant }: Props) {
                   aria-label={t('events.aliases.delete', { value: a.value })}
                   title={t('common.delete')}
                   disabled={deletingId !== null}
-                  onClick={() => void handleDelete(a)}
+                  onClick={() => handleDelete(a)}
                   style={{ padding: 4 }}
                 >
                   {deletingId === a.id

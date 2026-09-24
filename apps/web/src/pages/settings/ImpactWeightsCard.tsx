@@ -97,7 +97,7 @@ export function ImpactWeightsCard() {
           {!valid && <p role="alert" style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-danger-text)' }}>{t('pages.domainMatrices.impactWeights.range')}</p>}
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
             <Button
-              onClick={() => void save({ variables: { input: Object.fromEntries((Object.keys(IMPACT_LIMITS) as Key[]).map((k) => [k, Number(current[k])])) } })}
+              onClick={() => save({ variables: { input: Object.fromEntries((Object.keys(IMPACT_LIMITS) as Key[]).map((k) => [k, Number(current[k])])) } })}
               disabled={draft === null || !valid || saving}
             >
               <Save size={14} /> {t('common.save')}

@@ -1,7 +1,20 @@
 import { registerMetamodelCacheClearer } from './schemaInvalidator.js'
 
+/**
+ * How many entries the cache holds at most (review of 23 Sep 2026). The CI
+ * list keys carry the search, the page and the filters: typing in a search box
+ * or paging adds an entry each, and an entry expired only when the SAME key was
+ * read again — on a CI type rarely written, never. Above this the expired
+ * entries are swept, and if that is not enough the oldest go.
+ */
+export const MEMORY_CACHE_MAX_ENTRIES = 2_000
+
 class MemoryCache {
+  // A Map keeps insertion order: the first keys are the oldest, and a key set
+  // again moves to the end (it is deleted first).
   private store = new Map<string, { data: unknown; expires: number }>()
+
+  constructor(private readonly maxEntries = MEMORY_CACHE_MAX_ENTRIES) {}
 
   get<T>(key: string): T | null {
     const entry = this.store.get(key)
@@ -14,7 +27,27 @@ class MemoryCache {
   }
 
   set(key: string, data: unknown, ttlSeconds: number): void {
+    this.store.delete(key)
+    if (this.store.size >= this.maxEntries) this.makeRoom()
     this.store.set(key, { data, expires: Date.now() + ttlSeconds * 1_000 })
+  }
+
+  /** Entries in memory, expired included: diagnostics and tests. */
+  size(): number {
+    return this.store.size
+  }
+
+  private makeRoom(): void {
+    const now = Date.now()
+    for (const [k, e] of this.store) if (e.expires < now) this.store.delete(k)
+    // Still full: the oldest quarter goes, so a full cache is not swept at every set.
+    if (this.store.size >= this.maxEntries) {
+      let drop = Math.max(1, Math.floor(this.maxEntries / 4))
+      for (const k of this.store.keys()) {
+        if (drop-- <= 0) break
+        this.store.delete(k)
+      }
+    }
   }
 
   invalidate(pattern: string): void {
@@ -40,6 +73,11 @@ class MemoryCache {
 }
 
 export const cache = new MemoryCache()
+
+/** A cache of its own size: tests only. */
+export function createMemoryCache(maxEntries?: number): MemoryCache {
+  return new MemoryCache(maxEntries)
+}
 
 /**
  * Le famiglie di chiavi di questa cache che dipendono dal METAMODELLO, e quindi

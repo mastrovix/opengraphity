@@ -169,6 +169,8 @@ interface StepPanelProps {
     purpose?:     string | null
     /** La scadenza del passo (JSON), `''` = nessuna. */
     deadline?:    string | null
+    /** The delay of a timed wait, in minutes (only for timer_wait). */
+    timerDelayMinutes?: number | null
   }) => void
 }
 
@@ -241,6 +243,11 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
   // Scopo del passo: '' = nessuno scopo (legittimo). Il server riceve '' come
   // «togli» e qualunque altro valore come uno scopo del vocabolario chiuso.
   const [purpose,    setPurpose]    = useState(step.purpose ?? '')
+  // The delay of a timed wait: editable here (review of 23 Sep 2026 — no mutation could set it after creation).
+  const isTimer = step.type === 'timer_wait'
+  const [timerDelay, setTimerDelay] = useState(step.timerDelayMinutes == null ? '' : String(step.timerDelayMinutes))
+  const timerDelayValid = !isTimer || (Number.isInteger(Number(timerDelay)) && Number(timerDelay) > 0)
+  const timerDelayChanged = isTimer && timerDelay !== (step.timerDelayMinutes == null ? '' : String(step.timerDelayMinutes))
 
   // Parse initial actions (computed once from props — stable until save).
   // Un JSON corrotto su enter/exit_actions NON deve far cadere l'intera pagina
@@ -313,6 +320,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
     || isOpen     !== (step.isOpen ?? !step.isTerminal)
     || category   !== (step.category ?? '')
     || purpose    !== (step.purpose  ?? '')
+    || timerDelayChanged
   const deadlineProblem     = draftProblem(deadlineDraft, deadlineTargets, entityType, purpose || null)
   const deadlineValue       = deadlineProblem ? null : deadlineFromDraft(deadlineDraft)
   const deadlineChanged     = initialDeadline.error === null
@@ -326,9 +334,13 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
   // Iniziale + terminale insieme = ogni nuovo ticket nasce già chiuso: il
   // server lo rifiuta (saveWorkflowChanges), qui si dice prima di provarci.
   const initialOnTerminal = isInitial && isTerminal
+  // A notification switched on without its title is not saved without a word
+  // (review of 23 Sep 2026): it was dropped from the step, the switch stayed on,
+  // and no notification was ever sent.
+  const notifyTitleMissing = notifyEnabled && notifyTitleKey.trim() === ''
   // Una scadenza illeggibile nel grafo blocca il Salva come le azioni corrotte:
   // riscriverla la perderebbe. Una bozza incompleta lo blocca finché non è completa.
-  const saveDisabled = actionsParseError !== null || initialOnTerminal || initialDeadline.error !== null
+  const saveDisabled = actionsParseError !== null || initialOnTerminal || initialDeadline.error !== null || !timerDelayValid || notifyTitleMissing
     || (deadlineChanged && deadlineProblem !== null) || (propsUnchanged && notifyUnchanged)
 
   // Perché «Elimina step» non si può offrire. Si guarda il DATO salvato, non le
@@ -354,16 +366,19 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
     const purposeValue = purpose.trim()
     // La scadenza viaggia solo se è cambiata: assente = il server la lascia com'è.
     const deadline = deadlineChanged ? (deadlineValue ?? '') : undefined
+    const timerDelayMinutes = timerDelayChanged ? Number(timerDelay) : undefined
     onSaveLocally?.({
       stepName: step.name, label, enterActions, exitActions,
       isInitial, isTerminal, isOpen, category: categoryValue, purpose: purposeValue,
       ...(deadline !== undefined ? { deadline } : {}),
+      ...(timerDelayMinutes !== undefined ? { timerDelayMinutes } : {}),
     })
     onSaved({
       label, enterActions, exitActions,
       isInitial, isTerminal, isOpen, category: categoryValue,
       purpose: purposeValue === '' ? null : purposeValue,
       ...(deadline !== undefined ? { deadline: deadline === '' ? null : deadline } : {}),
+      ...(timerDelayMinutes !== undefined ? { timerDelayMinutes } : {}),
     })
   }
 
@@ -712,6 +727,18 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
             )}
           </PanelField>
 
+          {isTimer && (
+            <PanelField label={t('workflow.panel.timerDelay')}>
+              <Input type="number" min={1} step={1} value={timerDelay} onChange={(e) => setTimerDelay(e.target.value)}
+                style={inputStyle} aria-label={t('workflow.panel.timerDelay')} aria-invalid={!timerDelayValid} />
+              {!timerDelayValid && (
+                <span role="alert" style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-danger)', lineHeight: 1.4 }}>
+                  {t('workflow.panel.timerDelayInvalid')}
+                </span>
+              )}
+            </PanelField>
+          )}
+
           <PanelField label={t('workflow.panel.name')}>
             <code style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{step.name}</code>
           </PanelField>
@@ -774,8 +801,14 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
                   value={notifyTitleKey}
                   onChange={(e) => setNotifyTitleKey(e.target.value)}
                   placeholder={t('workflow.panel.titleKeyPlaceholder')}
+                  aria-invalid={notifyTitleMissing}
                   style={inputStyle}
                 />
+                {notifyTitleMissing && (
+                  <p role="alert" style={{ margin: '4px 0 0', fontSize: 'var(--font-size-label)', color: 'var(--color-danger)' }}>
+                    {t('workflow.panel.titleKeyRequired')}
+                  </p>
+                )}
               </PanelField>
 
               <PanelField label={t('workflow.panel.severit')}>

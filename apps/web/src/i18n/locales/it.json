@@ -987,6 +987,9 @@
       "provisionPartial": "Configurazione creata, ma manca ancora: {{gaps}}",
       "loading": "Caricamento workflow…",
       "noneForTenant": "Nessun workflow trovato per questo tenant.",
+      "addTransitionTo": "Aggiungi una transizione verso",
+      "pickStep": "— Passo —",
+      "addTransition": "Aggiungi",
       "openTransition": "Apri la transizione {{name}}",
       "stepsFixedHint": "Gli step di questo workflow sono fissi. Puoi personalizzare label, azioni e condizioni.",
       "defaultBadge": "Default",
@@ -1132,6 +1135,10 @@
       "settings": "Impostazioni",
       "emptyHintBefore": "La dashboard è vuota. Clicca",
       "emptyHintAfter": "per aggiungere i tuoi report.",
+      "emptyShared": "Questa dashboard è vuota. I report li aggiunge solo chi l’ha creata.",
+      "noneYet": "Non hai ancora nessuna dashboard.",
+      "createFirst": "Crea la tua prima dashboard",
+      "sharedBy": "Condivisa da {{name}}",
       "emptyEditTitle": "Dashboard vuota",
       "emptyEditHint": "Usa il pannello a destra per aggiungere widget personalizzati o report.",
       "drag": "Trascina",
@@ -1370,7 +1377,8 @@
       "count_other": "{{count}} report",
       "new": "Nuovo report",
       "execute": "Esegui",
-      "modify": "Modifica"
+      "modify": "Modifica",
+      "open": "Apri"
     },
     "questions": {
       "optionLabel": "Testo della risposta",
@@ -1735,6 +1743,12 @@
       "planWithoutDates_other": "{{count}} piani senza date: {{codes}}"
     },
     "reportSchedule": {
+      "teamsError": "Non è stato possibile leggere i team: {{message}}",
+      "channelsError": "Non è stato possibile leggere i canali Slack: {{message}}",
+      "channelsErrorKept": "Non è stato possibile leggere i canali Slack: {{message}}. Il canale scelto prima resta.",
+      "notAllowedOn": "Questo report viene inviato secondo una pianificazione. La cambia solo chi può pianificare i report.",
+      "notAllowedOff": "Questo report non è pianificato. Una pianificazione la imposta solo chi può pianificare i report.",
+      "noSlackChannels": "Nessun canale Slack a cui inviarlo: un amministratore lo aggiunge in Impostazioni → Notifiche (si offrono solo i canali Slack attivi).",
       "lastRun": "Ultima esecuzione: {{date}}",
       "preset": {
         "dailyAt9": "Ogni giorno alle 9:00",
@@ -2995,6 +3009,12 @@
     "customEventType": "Tipo di evento (personalizzato)"
   },
   "workflow": {
+    "designer": {
+      "leave": "Esci",
+      "discardTitle": "Uscire senza salvare?",
+      "discardBody_one": "Una modifica è tenuta solo qui e non è ancora salvata: uscendo si perde.",
+      "discardBody_other": "{{count}} modifiche sono tenute solo qui e non sono ancora salvate: uscendo si perdono."
+    },
     "addAction": "Aggiungi azione",
     "removeAction": "Rimuovi",
     "actionType": "Tipo azione",
@@ -3067,6 +3087,8 @@
     "panel": {
       "label": "Etichetta",
       "labelTranslationsHint": "Con un'etichetta nuova le traduzioni spedite ({{translations}}) non valgono più; rimettendo «{{original}}» tornano.",
+      "timerDelay": "Ritardo (minuti)",
+      "timerDelayInvalid": "Un'attesa a tempo vuole un numero intero di minuti maggiore di zero.",
       "name": "Nome (tecnico)",
       "type": "Tipo",
       "enter_actions": "Azioni all'ingresso",
@@ -3086,8 +3108,17 @@
       "deleteStepTitle": "Eliminare lo step «{{step}}»?",
       "deleteStepBody": "Verranno rimosse anche le transizioni collegate.",
       "entityTypeUnavailable": "Tipo entità del workflow non disponibile ({{error}}): campi e valori delle condizioni non caricabili.",
+      "titleKeyRequired": "Scrivi il titolo della notifica, o spegnila: senza titolo non parte.",
       "titleKeyPlaceholder": "es. notification.custom.step.title",
       "inputField": "Campo di input",
+      "inputFieldSaved": "{{value}} (come salvato)",
+      "inputFieldOption": {
+        "notes": "Note",
+        "rootCause": "Causa radice",
+        "rejection_reason": "Motivo del rifiuto",
+        "defer_reason": "Motivo del rinvio",
+        "reopen_reason": "Motivo della riapertura"
+      },
       "deleteTransitionTitle": "Eliminare la transizione {{from}} → {{to}}?",
       "expectedArray": "{{field}}: atteso un array JSON, trovato {{found}}",
       "isOpenStep": "L'entità è considerata «aperta» in questo step",
@@ -3335,6 +3366,8 @@
     "searchCIExcluding": "Cerca CI (esclusi: {{types}}) — min. 2 caratteri…"
   },
   "queryError": {
+    "stale": "Aggiornamento non riuscito: {{message}}. Quello che vedi è stato letto alle {{time}}.",
+    "staleNoTime": "Aggiornamento non riuscito: {{message}}. Quello che vedi potrebbe non essere aggiornato.",
     "title": "Errore nel caricamento dei dati",
     "retry": "Riprova"
   },
@@ -3729,6 +3762,12 @@
       "toggleLabel": "Attiva/disattiva {{name}}",
       "regenToken": "Rigenera token",
       "regenKey": "Rigenera chiave",
+      "regenTokenOf": "Rigenera il token di {{name}}",
+      "regenKeyOf": "Rigenera la chiave di {{name}}",
+      "regenTokenTitle": "Rigenerare il token di «{{name}}»?",
+      "regenTokenBody": "Il token attuale smette subito di funzionare: ogni strumento che invia a questo webhook deve ricevere quello nuovo.",
+      "regenKeyTitle": "Rigenerare la API key «{{name}}»?",
+      "regenKeyBody": "La chiave attuale smette subito di funzionare: ogni integrazione che la usa deve ricevere quella nuova.",
       "test": "Test",
       "copy": "Copia",
       "copyEndpoint": "Copia endpoint",
@@ -3875,6 +3914,13 @@
     "backToDashboard": "Torna alla Dashboard"
   },
   "errors": {
+    "whatIf": {
+      "tooManyScenarios": "Si possono confrontare al massimo {{max}} scenari alla volta."
+    },
+    "logs": {
+      "filterOperator": "Operatore di filtro dei log sconosciuto «{{operator}}»: il filtro non è stato applicato.",
+      "filterField": "Campo dei log sconosciuto «{{field}}»: il filtro non è stato applicato."
+    },
     "labelsNotObject": "Etichette: atteso un oggetto JSON",
     "ciNotFound": "CI non trovato",
     "ciNotFoundHint": "Nessun CI con id {{id}}: potrebbe essere stato eliminato.",
@@ -3889,6 +3935,8 @@
       "categoryNotApplicable": "Un {{type}} non ha categoria: la sua policy SLA non può dipenderne.",
       "warningMinutes": "L'avviso deve essere un numero intero positivo di minuti.",
       "warningLongerThanResolve": "L'avviso ({{warning}} min prima della scadenza) deve essere più breve del tempo di risoluzione ({{resolve}} min).",
+      "minutesPositive": "I tempi di presa in carico e di risoluzione sono minuti interi maggiori di zero.",
+      "responseAfterResolve": "Il tempo di presa in carico ({{response}} min) non può superare quello di risoluzione ({{resolve}} min).",
       "minutesRequired": "{{field}} non si può svuotare: una policy SLA lo ha sempre."
     },
     "ola": {
@@ -4024,9 +4072,11 @@
       "assignedButNotAdvanced": "L'assegnazione è stata salvata, ma l'incident non è passato a «{{step}}»: {{reason}}",
       "workflowInstance": "L'incident non è stato creato: il suo workflow non è partito ({{reason}}). Controlla nel disegnatore il workflow incident di questa categoria: serve esattamente un passo iniziale.",
       "teamNotFound": "Il team scelto non esiste più in questa organizzazione: scegline un altro.",
+      "createdButNotAnnounced": "L'incident {{number}} è stato creato, ma non è stato possibile annunciarlo: {{reason}}",
       "createdButNotAssigned": "L'incident {{number}} è stato creato, ma l'assegnazione al suo team non è riuscita: {{reason}}"
     },
     "change": {
+      "ownerNotFound": "Il responsabile della change non è una persona attiva di questa organizzazione.",
       "needsCI": "Una change deve avere almeno un CI impattato.",
       "whyRequired": "Il campo «Perché» è obbligatorio.",
       "whatRequired": "Il campo «Cosa» è obbligatorio.",
@@ -4048,10 +4098,12 @@
       "calendarRange": "L'intervallo del calendario è vuoto o al rovescio: da {{from}} a {{to}}."
     },
     "import": {
+      "stepNotInWorkflow": "Lo stato «{{step}}» non è un passo del workflow di questo ticket.",
       "tenantRequired": "Manca il cliente: l'importazione non sa dove scrivere.",
       "rowsArray": "Le righe da importare devono essere una lista.",
       "noWorkflow": "Nessun workflow attivo per {{entityType}}: l'importazione non saprebbe in che stato mettere i ticket.",
       "noInitialStep": "Il workflow di {{entityType}} non ha un passo iniziale: l'importazione non saprebbe da dove partire.",
+      "timerDelayRequired": "{{where}}: un'attesa a tempo vuole il suo ritardo, un numero intero di minuti maggiore di zero.",
       "invalidCsv": "CSV non valido: {{reason}}",
       "noRows": "Il CSV non ha righe di dati: serve un'intestazione e almeno una riga."
     },
@@ -4109,6 +4161,8 @@
       "concurrentEdit": "Il workflow è stato modificato da un'altra persona (versione {{current}}, tu stavi modificando la v{{expected}}): le tue modifiche non sono state applicate. Ricarica la pagina per non sovrascrivere le sue.",
       "manyInitial": "Un solo passo può essere iniziale: ne hai marcati {{count}} ({{steps}}).",
       "initialAndTerminal": "Il passo «{{name}}» è terminale: non può essere anche il passo iniziale, altrimenti ogni ticket nuovo nascerebbe già chiuso. Togli «passo terminale», oppure scegli un altro passo iniziale.",
+      "noInitialStep": "Il workflow resterebbe senza passo iniziale: non si potrebbe creare nessun ticket nuovo. Segna prima un altro passo come iniziale.",
+      "timerDelayRequired": "{{where}}: un'attesa a tempo ha bisogno del suo ritardo, un numero intero di minuti maggiore di zero.",
       "stepsNotInDefinition": "Passi non trovati, o non appartenenti a questa definizione.",
       "stepHasInstances": "Il passo «{{name}}» non si può eliminare: {{count}} istanze di workflow si trovano ora su questo passo ({{detail}}). Spostale prima su un altro passo — eliminandolo resterebbero senza passo corrente e non potrebbero più muoversi.",
       "stepNotInDefinition": "Il passo «{{name}}» non si trova nella definizione {{definition}}: non si può dire quante istanze lo occupano.",
@@ -4124,6 +4178,7 @@
         "all_reviews_confirmed": "Le review non sono ancora confermate per tutti i CI.",
         "all_tasks_complete": "Ci sono ancora task da fare in questo passo: chiudili o annullali prima di andare avanti."
       },
+      "unknownEntityType": "Questo workflow appartiene a «{{entityType}}», che non si sposta da qui.",
       "changeUsesChangeTransition": "Una change si muove con le sue transizioni (con i controlli di approvazione), non con questa generica.",
       "unknownActionType": "Il tipo di azione «{{type}}» non esiste. Disponibili: {{allowed}}.",
       "updateFieldNeedsField": "L'azione «aggiorna campo» richiede il campo da scrivere.",
@@ -4134,6 +4189,7 @@
       "copyNameRequired": "La copia ha bisogno di un nome.",
       "copyNameTaken": "Un workflow {{entityType}} chiamato «{{name}}» esiste già.",
       "noApproverTarget": "L'approvazione non può partire: le persone o le squadre indicate non hanno nessun membro attivo in questa organizzazione.",
+      "usedByCatalogItems": "«{{name}}» è il workflow di voci del catalogo ({{items}}): spegnerlo impedirebbe di creare le loro richieste. Assegna prima un altro workflow.",
       "lastActiveDefinition": "«{{name}}» è l'ultimo iter {{entityType}} attivo senza categoria: spegnendolo non nascerebbe più nessun {{entityType}}. Attivane un altro prima.",
       "stepTypeNotImplemented": "Il tipo di passo «{{type}}» non è eseguito dal motore dei processi: un passo così si comporterebbe come un passo normale, seguendo una sola transizione. Non si può aggiungere finché il motore non lo implementa.",
       "taskOnlyOnEnter": "Un task si può creare solo ENTRANDO in un passo, non uscendone ({{field}}): uscendo nascerebbe col nome del passo successivo, e terrebbe fermo quello sbagliato.",
@@ -4222,6 +4278,7 @@
       "validationFailed": "Il CI non è valido: {{details}}",
       "noTypeLabel": "Il CI {{id}} non ha un tipo: il dato è incompleto e non si può dire di che tipo sia.",
       "unknownTypeOnRecord": "Non si sa di che tipo sia questo CI ({{type}}). Nessun tipo attivo di questo cliente lo dichiara: il tipo è stato cancellato o disattivato, oppure il CI è nato da una discovery con un tipo che il metamodello non ha.",
+      "notFoundIds": "Questi CI non esistono in questa organizzazione: {{ids}}.",
       "missingGroups": "Il CI «{{ci}}» non ha un Owner Group o un Support Group.",
       "relationNotDeclared": "{{relation}} da {{source}} a {{target}} non è dichiarata nel metamodello: aggiungila al tipo di CI nel designer.",
       "notANumber": "{{field}}: «{{value}}» non è un numero.",
@@ -4265,7 +4322,7 @@
       }
     },
     "problem": {
-      "ciMissing": "Problem creato, ma {{missing}} dei {{total}} CI indicati non esistono in questo cliente, o non sono Configuration Item ({{ids}}).",
+      "ciMissing": "{{missing}} dei {{total}} CI indicati non esistono in questa organizzazione, o non sono Configuration Item ({{ids}}): il problem non è stato creato.",
       "noKnownErrorStep": "Nessun passo del workflow dei problem dichiara lo scopo «Errore noto documentato», quindi la Known Error Database non ha niente da elencare. Assegna lo scopo al passo in cui i problem vengono documentati come errori noti, nel disegnatore del workflow.",
       "workflowInstance": "Il problem non è stato creato: il suo workflow non è partito ({{reason}}). Controlla nel disegnatore il workflow problem di questa categoria: serve esattamente un passo iniziale."
     },
@@ -4409,6 +4466,7 @@
       "inAppRetention": "Le notifiche si conservano per un numero intero di giorni fra {{min}} e {{max}}.",
       "name": "Il nome dell'organizzazione deve avere da 1 a {{max}} caratteri.",
       "slugShape": "«{{slug}}» non è uno slug valido: da 3 a 32 caratteri, minuscole, cifre e trattini, senza trattino all'inizio o alla fine.",
+      "reservedNotManaged": "«{{slug}}» è riservato: non è il tenant di un cliente e non si può sospendere, riattivare o eliminare.",
       "slugReserved": "«{{slug}}» è un nome riservato dal prodotto e non può essere un tenant.",
       "nameEmpty": "Il nome del tenant non può essere vuoto.",
       "nameTooLong": "Il nome del tenant è troppo lungo: al massimo {{max}} caratteri.",
@@ -4434,6 +4492,7 @@
     "internalDatabase": "Errore interno del database (riferimento {{ref}}). Segnalalo all'amministratore: i dettagli sono nel log dell'API.",
     "serviceRequest": {
       "priorityFromCatalog": "La priorità di una richiesta dal catalogo la decide la voce del catalogo.",
+      "catalogItemRequired": "Dal portale una richiesta si apre da una voce del catalogo.",
       "catalogItemWithoutPriority": "La voce del catalogo «{{item}}» non ha una priorità, quindi non si può aprire una richiesta. Un amministratore la imposta da Admin → Catalogo servizi.",
       "catalogItemInactive": "La voce di catalogo «{{item}}» non è attiva: non si possono aprire nuove richieste da lì. Riattivala in Admin → Catalogo Servizi, oppure scegli un'altra voce.",
       "priorityRequired": "Scegli la priorità della richiesta.",
@@ -4722,6 +4781,9 @@
       "truncated": "La risposta del modello si è interrotta a metà: la richiesta era troppo grande. Descrivi meno cose, o dividila in due."
     },
     "report": {
+      "sectionTimeout": "La sezione è durata troppo ed è stata fermata: restringila con un filtro.",
+      "questionTooLong": "La domanda è troppo lunga: al massimo {{max}} caratteri.",
+      "rateLimited": "Troppe analisi in un minuto: al massimo {{max}}. Riprova fra {{seconds}} secondi.",
       "tableWithoutColumns": "Una tabella ha bisogno di almeno una colonna: scegli i campi da mostrare.",
       "granularityNeedsDate": "Per raggruppare per periodo serve un campo data, e quello scelto non lo è. Scegli un campo data, oppure togli il periodo.",
       "labelNotReadable": "Il tuo ruolo non può leggere i dati di questa sezione."
@@ -4757,6 +4819,7 @@
       "missingRouteParam": "Manca il parametro «{{name}}» nella rotta."
     },
     "users": {
+      "tooManyIds": "Si possono nominare al massimo {{max}} persone alla volta.",
       "unknownPermission": "Permesso sconosciuto «{{permission}}»."
     }
   },
@@ -4784,6 +4847,7 @@
     }
   },
   "richText": {
+    "toolbar": "Formattazione",
     "bold": "Grassetto (Ctrl+B)",
     "italic": "Corsivo (Ctrl+I)",
     "underline": "Sottolineato (Ctrl+U)",
@@ -5132,8 +5196,7 @@
       "metamodelError": "Metamodello:",
       "saving": "Salvataggio...",
       "valueOutsideVocabulary": "{{value}} — non più nel vocabolario",
-      "fieldRequired": "{{field}} è obbligatorio",
-      "teamsError": "Impossibile caricare i team: {{error}}"
+      "fieldRequired": "{{field}} è obbligatorio"
     },
     "ciGraph": {
       "showBlastRadius": "Mostra blast radius",
@@ -6891,6 +6954,7 @@
       "validationPlaceholder": "// Esempio:\nif (!value.startsWith('http')) throw 'Indirizzo non valido'",
       "defaultHint": "Variabili: <code>input</code>. Restituisci il valore predefinito.",
       "slugName": "Nome tecnico (slug) *",
+      "typeFixed": "Il tipo di un campo esistente non cambia: i suoi valori sono già sui CI.",
       "slugNameSnake": "Nome tecnico (slug, snake_case) *",
       "slugNamePlaceholder": "es. load_balancer",
       "displayLabel": "Etichetta (nome visualizzato) *",
@@ -7743,7 +7807,11 @@
       "placeholder": "Cerca una persona per nome o email…",
       "changeWork": "Le persone il cui ruolo può lavorare sulle change.",
       "nobody": "Nessuna persona attiva ha un ruolo che può farlo: controlla i ruoli.",
-      "typeToFind": "Scrivi un nome per trovare gli altri."
+      "typeToFind": "Scrivi un nome per trovare gli altri.",
+      "label": "Persona",
+      "inactive": "{{name}} (non più attivo)",
+      "assignable": "Persone attive il cui ruolo può ricevere ticket.",
+      "approvers": "Persone attive il cui ruolo può decidere le approvazioni."
     }
   }
 }

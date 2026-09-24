@@ -66,6 +66,33 @@ export function sameValue(actual: unknown, wanted: unknown): boolean {
   return false
 }
 
+/** A date the rule editor writes (`2026-10-01`) or the graph holds (ISO): the instant, or null. */
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}(?:[T ][\d:.]+(?:Z|[+-]\d{2}:?\d{2})?)?$/
+function instantOf(v: unknown): number | null {
+  if (typeof v !== 'string' || !ISO_DATE.test(v.trim())) return null
+  const t = Date.parse(v.trim())
+  return Number.isNaN(t) ? null : t
+}
+
+/**
+ * «Greater than» / «less than» — and «after» / «before» on a date field
+ * (review of 23 Sep 2026). Dates were compared with `Number()`, and
+ * `Number('2026-10-01')` is NaN: a rule «due date after 1 October» stayed
+ * enabled and never fired. Two dates compare as instants; anything else as
+ * numbers. An EMPTY field is neither greater nor less than anything — it
+ * counted as 0, so «cost less than 5» was true on every ticket without a cost.
+ */
+function compares(actual: unknown, wanted: unknown, sign: 1 | -1): boolean {
+  if (actual == null || actual === '' || wanted == null || wanted === '') return false
+  const a = instantOf(actual)
+  const b = instantOf(wanted)
+  if (a !== null && b !== null) return sign > 0 ? a > b : a < b
+  const x = Number(actual)
+  const y = Number(wanted)
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return false
+  return sign > 0 ? x > y : x < y
+}
+
 function evalCondition(c: Condition, entity: Record<string, unknown>): boolean {
   const actual = entity[c.field]
   switch (c.operator) {
@@ -73,8 +100,8 @@ function evalCondition(c: Condition, entity: Record<string, unknown>): boolean {
     case 'not_equals':   return !sameValue(actual, c.value)
     case 'is_null':      return actual == null || actual === ''
     case 'is_not_null':  return actual != null && actual !== ''
-    case 'greater_than': return Number(actual) > Number(c.value)
-    case 'less_than':    return Number(actual) < Number(c.value)
+    case 'greater_than': return compares(actual, c.value, 1)
+    case 'less_than':    return compares(actual, c.value, -1)
     /**
      * «contiene»: dentro un testo, oppure dentro una LISTA (la selezione
      * multipla di un modulo del catalogo, ondata 5). Prima una lista cadeva

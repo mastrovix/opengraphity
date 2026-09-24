@@ -17,7 +17,7 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn() }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn() }))
 
-const { generateExcel, excelJsFrom, righeDiSerie, etichettaDelPeriodo } = await import('../reportExport.js')
+const { generateExcel, excelJsFrom, righeDiSerie, etichettaDelPeriodo, worksheetName } = await import('../reportExport.js')
 
 /**
  * LE DUE FORME DI UNA SERIE (20 set 2026, dal giro nel browser: «esportando in
@@ -79,5 +79,27 @@ describe('exceljs in Node', () => {
     const file = join(mkdtempSync(join(tmpdir(), 'og-xlsx-')), 'report.xlsx')
     await generateExcel('Report giro', [{ title: 'Sezione', chartType: 'bar', rows: [{ name: 'production', value: 2 }], kpiValue: null, tableRows: null, error: null }], file, { language: 'it', timeZone: 'Europe/Rome' })
     expect(statSync(file).size).toBeGreaterThan(1000)
+  })
+
+  // Review of 23 Sep 2026: ExcelJS throws on a duplicate, empty or reserved name, and the whole export failed.
+  it('two sections with the same title, an empty one and one called «Summary» still make a file, with the real library', async () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'og-xlsx-')), 'report.xlsx')
+    const section = (title: string) => ({ title, chartType: 'bar', rows: [{ name: 'production', value: 2 }], kpiValue: null, tableRows: null, error: null })
+    await expect(generateExcel('Report', [section('Incidents'), section('INCIDENTS'), section(''), section('Summary'), section('History')], file, { language: 'it', timeZone: 'Europe/Rome' }))
+      .resolves.toBeUndefined()
+    expect(statSync(file).size).toBeGreaterThan(1000)
+  })
+
+  it('worksheet names: unique ignoring case, never empty, within 31 characters, without the reserved ones', () => {
+    const taken = new Set(['summary'])
+    expect(worksheetName('Incidents', 0, taken)).toBe('Incidents')
+    expect(worksheetName('incidents', 1, taken)).toBe('incidents (2)')
+    expect(worksheetName('', 2, taken)).toBe('Section 3')
+    expect(worksheetName('Summary', 3, taken)).toBe('Summary (2)')
+    expect(worksheetName('History', 4, taken)).toBe('History (1)')
+    expect(worksheetName("'quoted'", 5, taken)).toBe('quoted')
+    const long = 'x'.repeat(40)
+    expect(worksheetName(long, 6, taken)).toBe('x'.repeat(31))
+    expect(worksheetName(long, 7, taken)).toBe(`${'x'.repeat(27)} (2)`)
   })
 })

@@ -1,3 +1,5 @@
+import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard'
+import { useConfirm } from '@/hooks/useConfirm'
 import { useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
@@ -66,6 +68,9 @@ export function WorkflowToolbar({
   const [timerMins,   setTimerMins]   = useState('')
   const accentColor  = colors.brand
   const canSave      = (hasChanges || pendingCount > 0) && !!def
+  // Changes kept locally until «Save changes»: leaving asks first (review of 23 Sep 2026).
+  const dirty        = hasChanges || pendingCount > 0
+  const confirm      = useConfirm()
   // Lo slug dell'etichetta: per un passo di processo È il nome, e il nome
   // diventa lo stato del ticket. Un'etichetta che non produce nessuno slug
   // («!!!», «2») darebbe un nome che il server rifiuta: meglio non offrirlo.
@@ -87,9 +92,13 @@ export function WorkflowToolbar({
       flexShrink:      0,
     }}>
       <div>
+        <UnsavedChangesGuard when={dirty} title={t('workflow.designer.discardTitle')} body={t('workflow.designer.discardBody', { count: pendingCount })} confirmLabel={t('workflow.designer.leave')} />
         <button
           type="button"
-          onClick={() => navigate('/workflow')}
+          onClick={async () => {
+            if (dirty && !(await confirm({ title: t('workflow.designer.discardTitle'), body: t('workflow.designer.discardBody', { count: pendingCount }), confirmLabel: t('workflow.designer.leave'), danger: true }))) return
+            navigate('/workflow', { state: { leaveConfirmed: true } })
+          }}
           style={{
             display:      'inline-flex',
             alignItems:   'center',
@@ -177,7 +186,9 @@ export function WorkflowToolbar({
             <>
               <Button variant="secondary" onClick={() => setShowAddStep(false)} style={{ padding: '7px 14px', border: '1px solid var(--color-border)' }}>{t('common.cancel')}</Button>
               <Button
-                disabled={!stepLabel.trim() || addingStep || (stepType === 'standard' && !stepSlug)}
+                // A timed wait needs its delay (review of 23 Sep 2026): the server refuses it without one.
+                disabled={!stepLabel.trim() || addingStep || (stepType === 'standard' && !stepSlug)
+                  || (stepType === 'timer_wait' && !(Number.isInteger(Number(timerMins)) && Number(timerMins) > 0))}
                 onClick={() => {
                   const name = stepSlug
                   // Il nome di un passo di processo diventa lo `status` del

@@ -129,7 +129,7 @@ function ControlloFinto({ tipo, segnaposto }: { tipo: string; segnaposto: string
         {[0, 1].map((r) => (
           <span key={r} style={{ display: 'flex', gap: 3 }}>
             {[0, 1, 2].map((c) => (
-              <span key={c} style={{ flex: 1, height: 10, borderRadius: 2, background: 'var(--color-surface-alt)' }} />
+              <span key={c} style={{ flex: 1, height: 10, borderRadius: 2, background: 'var(--color-surface-2)' }} />
             ))}
           </span>
         ))}

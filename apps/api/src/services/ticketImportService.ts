@@ -226,6 +226,32 @@ async function pointWorkflowToStep(
   userId: string,
   now: string,
 ): Promise<void> {
+  /*
+   * The step must be one of THIS instance's workflow (review of 23 Sep 2026):
+   * the status map is built from every active definition, and a status of
+   * another one (a category variant) matched nothing here — the ticket kept
+   * the CSV's status and a workflow elsewhere. The row fails instead, with its
+   * reason. A terminal step concludes the instance, as the engine does: left
+   * «active», historical closed tickets counted as open.
+   */
+  const probe = await tx.run(`
+    ${matchById('e', { labels: 'entities', id: '$entityId' })}
+    MATCH (e)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId})
+    // tenant-ok(traversal): definizione dell'istanza dell'entità scopata
+    OPTIONAL MATCH (:WorkflowDefinition {id: wi.definition_id})-[:HAS_STEP]->(target:WorkflowStep {name: $stepName})
+    RETURN target IS NOT NULL AS known, coalesce(target.is_terminal, target.type = 'end', false) AS terminal
+    LIMIT 1
+  `, { entityId, tenantId, stepName })
+  const found = probe.records[0]
+  if (!found || found.get('known') !== true) {
+    throw new ValidationError(`The status "${stepName}" is not a step of this ticket's workflow`,
+      { key: 'errors.import.stepNotInWorkflow', params: { step: stepName } })
+  }
+  await tx.run(`
+    ${matchById('e', { labels: 'entities', id: '$entityId' })}
+    MATCH (e)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+    SET wi.status = $wiStatus
+  `, { entityId, tenantId, wiStatus: found.get('terminal') === true ? 'completed' : 'active' })
   await tx.run(`
     ${matchById('e', { labels: 'entities', id: '$entityId' })}
     MATCH (e)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)

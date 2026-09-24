@@ -106,12 +106,26 @@ function mockQueries(opts: {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('createChangeRFC', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
     mockTx.run.mockResolvedValue({ records: [] })
     mockSession.executeWrite.mockImplementation(
       async (work: (tx: typeof mockTx) => Promise<unknown>) => work(mockTx),
     )
+    // The owner named is an active person of the tenant (review of 23 Sep 2026).
+    const { runQueryOne } = await import('@opengraphity/neo4j')
+    vi.mocked(runQueryOne).mockImplementation((async (_s: unknown, cypher: string, params?: Record<string, unknown>) =>
+      (cypher.includes('MATCH (u:User {id: $ownerId') ? { id: params?.['ownerId'] } : null)) as never)
+  })
+
+  it('an owner who is not an active person of the tenant is refused before anything is written', async () => {
+    const { runQueryOne } = await import('@opengraphity/neo4j')
+    vi.mocked(runQueryOne).mockResolvedValue(null as never)
+    mockQueries({ ciRows: [{ id: 'ci-1', name: 'db-01', ownerTeamId: 't-1', supportTeamId: 't-2' }] })
+    await expect(
+      createChangeRFC({ changeType: 'normal', title: 'Upgrade DB', why: 'w', what: 'x', affectedCIIds: ['ci-1'], changeOwner: 'user-ghost' }, ctx),
+    ).rejects.toMatchObject({ extensions: { i18n: { key: 'errors.change.ownerNotFound' } } })
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
 
   // Verifica «Cosa resta cablato», ondata 1: nessun tipo di ripiego.
@@ -119,6 +133,15 @@ describe('createChangeRFC', () => {
     await expect(
       createChangeRFC({ title: 'Upgrade DB', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1'] }, ctx),
     ).rejects.toThrow(/changeType is required/)
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+
+  // Review of 23 Sep 2026: an id that is not a CI of the tenant was dropped, and the change created without it.
+  it('an unknown CI is refused, naming it, before anything is written', async () => {
+    mockQueries({ ciRows: [{ id: 'ci-1', name: 'db-01', ownerTeamId: 't-1', supportTeamId: 't-2' }] })
+    await expect(
+      createChangeRFC({ changeType: 'normal', title: 'Upgrade DB', why: 'w', what: 'x', affectedCIIds: ['ci-1', 'typo'] }, ctx),
+    ).rejects.toMatchObject({ extensions: { i18n: { key: 'errors.ci.notFoundIds', params: { ids: 'typo' } } } })
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
 

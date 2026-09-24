@@ -184,7 +184,13 @@ function buildTools(tenantId: string, permissions: ReadonlySet<Permission>, time
         WITH ci, collect(DISTINCT {nome: dep.name, tipo: head([l IN labels(dep) WHERE l <> 'ConfigurationItem'])}) AS dipendenti_diretti
         OPTIONAL MATCH (dep2)-[:DEPENDS_ON*2]->(ci)
         WITH ci, dipendenti_diretti, count(DISTINCT dep2) AS dipendenti_secondo_livello
-        OPTIONAL MATCH (cap:BusinessCapability {tenant_id: $tenantId})-[*1..4]-(ci)
+        // The capabilities that REALLY depend on this CI (review of 23 Sep 2026):
+        // capability → ENABLED_BY → business application, which is the CI or
+        // whose service map INCLUDES it. It was any relationship in any
+        // direction up to 4 hops — through a shared team almost every CI
+        // «reached» some capability, and the triage raised its severity.
+        OPTIONAL MATCH (cap:BusinessCapability {tenant_id: $tenantId})-[:ENABLED_BY]->(ba:BusinessApplication {tenant_id: $tenantId})
+          WHERE ba = ci OR EXISTS { MATCH (ba)-[:HAS_SERVICE_MAP]->(:ServiceMap {tenant_id: $tenantId})-[:INCLUDES]->(ci) }
         WITH ci, dipendenti_diretti, dipendenti_secondo_livello,
              collect(DISTINCT cap.name)[..5] AS business_capability
         OPTIONAL MATCH (inc:Incident {tenant_id: $tenantId})-[:AFFECTED_BY]->(ci)

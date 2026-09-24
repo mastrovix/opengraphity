@@ -46,12 +46,12 @@ describe('IntegrationsPage — webhook in ingresso', () => {
     await user.click(within(incident!).getByRole('button', { name: 'Copy endpoint' }))
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Copied!'))
     expect(await navigator.clipboard.readText()).toBe(url)
-    expect(within(incident!).getByRole('button', { name: 'Regenerate token' })).toBeInTheDocument()
+    expect(within(incident!).getByRole('button', { name: /^Regenerate the token of/ })).toBeInTheDocument()
 
     // sorgente evento: niente URL copiabile né azioni, solo il rimando alle Sorgenti
     expect(within(event!).getByRole('link', { name: /Manage in Monitoring/ })).toHaveAttribute('href', '/monitoring/sources/wh2')
     expect(within(event!).queryByRole('button', { name: 'Copy endpoint' })).not.toBeInTheDocument()
-    expect(within(event!).queryByRole('button', { name: 'Regenerate token' })).not.toBeInTheDocument()
+    expect(within(event!).queryByRole('button', { name: /^Regenerate the token of/ })).not.toBeInTheDocument()
     expect(event).not.toHaveTextContent('/api/webhooks/')
     // nota che rimanda alla procedura guidata
     expect(screen.getByRole('link', { name: 'Monitoring → Sources' })).toHaveAttribute('href', '/monitoring/sources')

@@ -472,9 +472,35 @@ export function WorkflowCanvas({
     if (arco) onEdgeClick(e, arco)
   }, [onEdgeClick])
 
+  /*
+   * Enter or Space on a focused step or arrow opens its panel, as a click does
+   * (review of 23 Sep 2026). React Flow routes those keys to its own selection
+   * only, never to `onNodeClick`: a keyboard user could reach a step and not
+   * open it. The step or arrow is found by the `data-id` React Flow puts on it.
+   */
+  const nodiRef = useRef(nodes)
+  nodiRef.current = nodes
+  const apriDaTastiera = useCallback((e: React.KeyboardEvent) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return
+    const target = e.target as HTMLElement
+    const nodeEl = target.closest('.react-flow__node')
+    const edgeEl = nodeEl ? null : target.closest('.react-flow__edge')
+    const id = (nodeEl ?? edgeEl)?.getAttribute('data-id')
+    if (!id) return
+    const mouseLike = e as unknown as React.MouseEvent
+    if (nodeEl) {
+      const node = nodiRef.current.find((n) => n.id === id)
+      if (node) { e.preventDefault(); onNodeClick(mouseLike, node) }
+    } else {
+      const edge = archiRef.current.find((x) => x.id === id)
+      if (edge) { e.preventDefault(); onEdgeClick(mouseLike, edge) }
+    }
+  }, [onNodeClick, onEdgeClick])
+
   return (
     <ApriTransizione.Provider value={apriTransizione}>
-    <div style={{ flex: 1, position: 'relative', overflow: 'hidden', width: '100%', height: 'calc(var(--vh-app) - 120px)' }}>
+    {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- the keys come from the focusable steps and arrows inside */}
+    <div onKeyDown={apriDaTastiera} style={{ flex: 1, position: 'relative', overflow: 'hidden', width: '100%', height: 'calc(var(--vh-app) - 120px)' }}>
       {loading ? (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>
           {t('pages.workflow.loading')}

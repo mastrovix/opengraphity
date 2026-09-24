@@ -339,7 +339,7 @@ function ServiceCalendarsSection() {
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                     <Button variant="ghost" onClick={() => openEdit(c)}>{t('common.edit')}</Button>
-                    <Button variant="secondary" size="xs" onClick={() => void remove(c)} disabled={usedBy(c).length > 0} title={usedBy(c).length > 0 ? t('pages.organization.calendarInUse') : undefined}>
+                    <Button variant="secondary" size="xs" onClick={() => remove(c)} disabled={usedBy(c).length > 0} title={usedBy(c).length > 0 ? t('pages.organization.calendarInUse') : undefined}>
                       {t('common.delete')}
                     </Button>
                   </div>
@@ -586,7 +586,7 @@ function InAppRetentionSection() {
                   <FieldLabel htmlFor={`${uid}-days`}>{t('pages.organization.inAppRetentionDays')}</FieldLabel>
                   <Input id={`${uid}-days`} type="number" min={1} max={3650} value={days} onChange={(e) => setDays(e.target.value)} style={{ width: 140 }} />
                 </div>
-                <Button onClick={() => void save({ variables: { days: value } })} disabled={saving || !valid || value === saved}>
+                <Button onClick={() => save({ variables: { days: value } })} disabled={saving || !valid || value === saved}>
                   {t('pages.organization.inAppRetentionSave')}
                 </Button>
               </div>

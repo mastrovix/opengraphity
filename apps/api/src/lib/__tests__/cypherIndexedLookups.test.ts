@@ -37,14 +37,12 @@ const UNLABELLED_FORMS: readonly { name: string; re: RegExp }[] = [
 ]
 
 const ALLOWED: Readonly<Record<string, { count: number; reason: string }>> = {
-  'apps/api/src/lib/tenantLifecycle.ts': {
-    count: 3, reason: 'footprint and deletion of a whole tenant: every node of the tenant, whatever its label',
-  },
   'apps/api/src/scripts/backup-neo4j.ts': {
     count: 2, reason: 'the backup of one tenant: every node of the tenant, whatever its label (review of 23 Sep 2026)',
   },
   'apps/api/src/services/reportAgent.ts': {
-    count: 2, reason: 'schema introspection for the AI analysis: every label the tenant has (cached per tenant)',
+    // One since 23 Sep 2026: the properties and relationships are read per label now; only the counts read every node.
+    count: 1, reason: 'schema introspection for the AI analysis: the exact count of every label the tenant has (cached per tenant)',
   },
   'apps/api/src/scripts/migrations/20260908_1010_ci_configuration_item_label.ts': {
     count: 1, reason: 'the migration that adds :ConfigurationItem to the nodes that miss it',

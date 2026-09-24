@@ -24,6 +24,7 @@ import type { ReportTemplate, ReportSection } from './dashboard/useDashboard'
 import type { CustomWidgetData } from './dashboard/CustomWidgetCard'
 import { colors, palette } from '@/lib/tokens'
 import { showError } from '@/lib/showError'
+import { useMe } from '@/hooks/useMe'
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
@@ -114,7 +115,7 @@ function CreateDashboardDialog({ teams, onClose, onCreated }: CreateDashboardDia
             {t('common.cancel')}
           </Button>
           <Button
-            onClick={() => void handleCreate()}
+            onClick={() => handleCreate()}
             disabled={creating || !name.trim()}
             style={{ padding: '7px 14px', backgroundColor: creating || !name.trim() ? palette.teal.border : 'var(--color-brand)', fontSize: 'var(--font-size-card-title)', fontWeight: 600 }}
           >
@@ -249,7 +250,7 @@ function SettingsDialog({ dashboard, teams, canDelete, onClose, onDeleted, onUpd
             )}
             {confirmDelete && (
               <Button
-                onClick={() => void handleDelete()}
+                onClick={() => handleDelete()}
                 disabled={deleting}
                 style={{ padding: '7px 14px', backgroundColor: 'var(--color-danger)', fontSize: 'var(--font-size-card-title)', fontWeight: 600 }}
               >
@@ -262,7 +263,7 @@ function SettingsDialog({ dashboard, teams, canDelete, onClose, onDeleted, onUpd
               {t('common.cancel')}
             </Button>
             <Button
-              onClick={() => void handleSave()}
+              onClick={() => handleSave()}
               disabled={saving}
               style={{ padding: '7px 14px', backgroundColor: saving ? palette.teal.border : 'var(--color-brand)', fontSize: 'var(--font-size-card-title)', fontWeight: 600 }}
             >
@@ -355,6 +356,14 @@ export function DashboardPage() {
     handleDeleteCustomWidget,
   } = useDashboard()
 
+  // What the reader may change on THIS dashboard, as the API decides it (review
+  // of 23 Sep 2026): a colleague's shared dashboard offered Customize and
+  // Settings, and every save came back refused. Layout and widgets: the owner
+  // or dashboard.manageAll; name, default and deletion: the owner only.
+  const { me, can } = useMe()
+  const isOwner      = !!activeDash && !!me && activeDash.createdBy?.id === me.id
+  const canCustomize = isOwner || can('dashboard.manageAll')
+
   function handleAddCustomWidget() {
     setEditingWidget(null)
     setShowWidgetConfig(true)
@@ -442,12 +451,17 @@ export function DashboardPage() {
           </>
         ) : (
           <>
-            <button type="button" onClick={enterEditMode} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--color-border-strong)', background: colors.white, color: 'var(--color-slate)', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}>
+            {canCustomize && <button type="button" onClick={enterEditMode} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--color-border-strong)', background: colors.white, color: 'var(--color-slate)', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}>
               ✏ {t('pages.dashboard.customize')}
-            </button>
-            <button type="button" onClick={() => setShowSettings(true)} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--color-border-strong)', background: colors.white, color: 'var(--color-slate)', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}>
+            </button>}
+            {isOwner && <button type="button" onClick={() => setShowSettings(true)} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--color-border-strong)', background: colors.white, color: 'var(--color-slate)', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}>
               ⚙ {t('pages.dashboard.settings')}
-            </button>
+            </button>}
+            {activeDash && !canCustomize && activeDash.createdBy && (
+              <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
+                {t('pages.dashboard.sharedBy', { name: activeDash.createdBy.name })}
+              </span>
+            )}
           </>
         )}
       </div>
@@ -471,7 +485,14 @@ export function DashboardPage() {
         {header}
         {isEmpty ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>
-            {t('pages.dashboard.emptyHintBefore')} <strong>{t('pages.dashboard.customize')}</strong> {t('pages.dashboard.emptyHintAfter')}
+            {!activeDash
+              ? <>
+                  <p style={{ margin: '0 0 12px' }}>{t('pages.dashboard.noneYet')}</p>
+                  <Button onClick={() => setShowCreate(true)}>{t('pages.dashboard.createFirst')}</Button>
+                </>
+              : canCustomize
+                ? <>{t('pages.dashboard.emptyHintBefore')} <strong>{t('pages.dashboard.customize')}</strong> {t('pages.dashboard.emptyHintAfter')}</>
+                : t('pages.dashboard.emptyShared')}
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 16, padding: 24 }}>
@@ -494,7 +515,7 @@ export function DashboardPage() {
             }}
           />
         )}
-        {showSettings && activeDash && (
+        {showSettings && activeDash && isOwner && (
           <SettingsDialog
             dashboard={activeDash}
             teams={teams}

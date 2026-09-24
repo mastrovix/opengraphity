@@ -9,8 +9,7 @@ import { screen, within } from '@testing-library/react'
 import { CIDynamicForm } from './CIDynamicForm'
 import type { CITypeDef } from '@/contexts/MetamodelContext'
 import { renderWithProviders } from '@/test/utils'
-import { baseCITypeMock } from '@/test/mocks/gql'
-import { GET_TEAMS } from '@/graphql/queries'
+import { baseCITypeMock, teamChoicesMock } from '@/test/mocks/gql'
 
 vi.mock('@/lib/ciValidator', () => ({
   validateCI: vi.fn(async () => ({ valid: true, errors: {} })),
@@ -37,11 +36,8 @@ const ciType: CITypeDef = {
     { id: 'sr2', name: 'supportGroup', label: 'Support Group', relationshipType: 'SUPPORTED_BY', targetEntity: 'Team', required: false, order: 2 },
   ],
 }
-const teamsMock = {
-  request: { query: GET_TEAMS },
-  result: { data: { teams: [{ __typename: 'Team', id: 'team-1', name: 'Rete', description: null, type: null, sourcing: null, createdAt: 'x' }] } },
-  maxUsageCount: Number.POSITIVE_INFINITY,
-}
+// The owner-group picker offers owner teams (D34, also on creation).
+const teamsMock = teamChoicesMock([{ id: 'team-1', name: 'Rete', type: 'owner' }])
 
 describe('CIDynamicForm — creazione', () => {
   it('stato e ambiente con le etichette del Dizionario', async () => {
@@ -60,9 +56,8 @@ describe('CIDynamicForm — creazione', () => {
     expect(screen.queryByText('Support Group is required')).toBeNull()
     expect(onSubmit).not.toHaveBeenCalled()
 
-    const owner = screen.getByLabelText(/Owner Group/)
-    await vi.waitFor(() => expect(within(owner).getByRole('option', { name: 'Rete' })).toBeTruthy())
-    await user.selectOptions(owner, 'team-1')
+    await user.click(screen.getByRole('combobox', { name: 'Owner Group' }))
+    await user.click(await screen.findByRole('option', { name: 'Rete' }))
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await vi.waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
     expect(onSubmit.mock.calls[0]![0]).toMatchObject({ name: 'srv-01', ownerGroupId: 'team-1' })

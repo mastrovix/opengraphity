@@ -216,11 +216,13 @@ describe('the teams', () => {
     expect(consoleError).toHaveBeenCalledWith('[team_type] "vendor" is not in the vocabulary of this tenant (support, owner)')
   })
 
-  it('removing a team sends the list without it', async () => {
+  // Review of 23 Sep 2026: one membership at a time — rewriting the whole set from the list last read reverted quick clicks.
+  it('removing a team touches that membership only', async () => {
     const { user } = renderPage()
     const [removeNetwork] = screen.getAllByTitle('Remove from team')
     await user.click(removeNetwork!)
-    expect(apolloFinto.chiamata('UpdateUserTeams')).toEqual({ userId: 'u2', teamIds: ['t2'] })
+    expect(apolloFinto.chiamata('SetTeamMember')).toEqual({ teamId: 't1', userId: 'u2', member: false })
+    expect(apolloFinto.chiamata('UpdateUserTeams')).toBeUndefined()
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Teams updated'))
   })
 
@@ -233,7 +235,7 @@ describe('the teams', () => {
     expect(remove!.style.background).toBe('none')
   })
 
-  it('adding offers only the teams the person is not in, and sends the list with the new one', async () => {
+  it('adding offers only the teams the person is not in, and adds that membership only', async () => {
     const { user } = renderPage()
     await user.click(screen.getByRole('button', { name: 'Add to a team' }))
     expect(screen.getByText('Available teams')).toBeInTheDocument()
@@ -243,7 +245,7 @@ describe('the teams', () => {
     expect(within(platform).getByText('Owner')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Service Desk/ })).toBeInTheDocument()
     await user.click(platform)
-    expect(apolloFinto.chiamata('UpdateUserTeams')).toEqual({ userId: 'u2', teamIds: ['t1', 't2', 't3'] })
+    expect(apolloFinto.chiamata('SetTeamMember')).toEqual({ teamId: 't3', userId: 'u2', member: true })
     expect(screen.queryByText('Available teams')).toBeNull()
   })
 
@@ -252,7 +254,7 @@ describe('the teams', () => {
     await user.click(screen.getByRole('button', { name: 'Add to a team' }))
     await user.click(screen.getByRole('button', { name: 'Close' }))
     expect(screen.queryByText('Available teams')).toBeNull()
-    expect(apolloFinto.chiamata('UpdateUserTeams')).toBeUndefined()
+    expect(apolloFinto.chiamata('SetTeamMember')).toBeUndefined()
   })
 
   it('a person with no team, and no team left to add, are both said', async () => {
@@ -272,7 +274,7 @@ describe('the teams', () => {
   })
 
   it('a change of teams the API refuses shows its reason', async () => {
-    apolloFinto.esiti['UpdateUserTeams'] = { error: new Error('team is archived') }
+    apolloFinto.esiti['SetTeamMember'] = { error: new Error('team is archived') }
     const { user } = renderPage()
     await user.click(screen.getAllByTitle('Remove from team')[0]!)
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('team is archived'))

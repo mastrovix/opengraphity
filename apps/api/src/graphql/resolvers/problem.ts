@@ -21,7 +21,8 @@ import type { GraphQLContext } from '../../context.js'
 import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
 import { assertCIsLinkable } from '../../lib/ticketCIExclusions.js'
 import * as problemService from '../../services/problemService.js'
-import { validateRequiredFields, propsToFieldValues } from '../../lib/validateRequiredFields.js'
+import { validateRequiredFields, validateStepRequirements, propsToFieldValues } from '../../lib/validateRequiredFields.js'
+import { preflightStepMetadata } from '../../lib/stepMetadataPreflight.js'
 import { resolvePriorityPatch } from '../../lib/priority.js'
 import { assertUserInAssignedTeam, setTicketTeam, setTicketUser } from '../../services/ticketAssignment.js'
 import { assertMayAcknowledgeNoSla } from '../../lib/slaAcknowledgement.js'
@@ -520,10 +521,17 @@ async function executeProblemTransition(
   return withSession(async (session) => {
     const wiResult = await session.executeRead((tx) => tx.run(`
       MATCH (p:Problem {id: $problemId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-      RETURN wi.id AS instanceId
+      RETURN wi.id AS instanceId, properties(p) AS props
     `, { problemId: args.problemId, tenantId: ctx.tenantId }))
     if (!wiResult.records.length) throw new GraphQLError('Workflow instance not found for this problem')
     const instanceId = wiResult.records[0]!.get('instanceId') as string
+
+    // The rules of the step being entered, and its metadata, before the engine moves anything.
+    await validateStepRequirements(session, {
+      entityType: 'problem', entityProps: wiResult.records[0]!.get('props') as Props, notes: args.notes,
+      tenantId: ctx.tenantId, toStep: args.toStep,
+    })
+    await preflightStepMetadata(session, instanceId, args.toStep, ctx.tenantId)
 
     const result = await workflowEngine.transition(
       session,

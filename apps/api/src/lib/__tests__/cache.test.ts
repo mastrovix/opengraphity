@@ -123,3 +123,38 @@ describe('metamodel-derived families', () => {
     expect(cache.get('topology:t2')).toBeNull()
   })
 })
+
+// Review of 23 Sep 2026: the CI list keys carry search and paging, and nothing ever bounded the map.
+describe('MemoryCache — bounded', () => {
+  it('above the cap the expired entries are swept first', async () => {
+    const { createMemoryCache } = await import('../cache.js')
+    const c = createMemoryCache(4)
+    const now = Date.now()
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now)
+    c.set('old-1', 1, 1); c.set('old-2', 2, 1); c.set('live-1', 3, 60); c.set('live-2', 4, 60)
+    clock.mockReturnValue(now + 5_000)
+    c.set('new', 5, 60)
+    expect(c.size()).toBe(3)
+    expect([c.get('live-1'), c.get('live-2'), c.get('new')]).toEqual([3, 4, 5])
+    clock.mockRestore()
+  })
+
+  it('still full of live entries: the oldest go, never more than the cap', async () => {
+    const { createMemoryCache } = await import('../cache.js')
+    const c = createMemoryCache(4)
+    for (let i = 0; i < 10; i++) c.set(`k${i}`, i, 60)
+    expect(c.size()).toBeLessThanOrEqual(4)
+    expect(c.get('k9')).toBe(9)
+    expect(c.get('k0')).toBeNull()
+  })
+
+  it('setting a key again refreshes it: it is not the oldest any more', async () => {
+    const { createMemoryCache } = await import('../cache.js')
+    const c = createMemoryCache(4)
+    c.set('a', 1, 60); c.set('b', 2, 60); c.set('c', 3, 60); c.set('d', 4, 60)
+    c.set('a', 10, 60)
+    c.set('e', 5, 60)
+    expect(c.get('a')).toBe(10)
+    expect(c.get('b')).toBeNull()
+  })
+})

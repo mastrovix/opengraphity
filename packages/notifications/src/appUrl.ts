@@ -16,3 +16,19 @@ export function appUrl(): string {
   }
   return 'http://localhost:5173'
 }
+
+/**
+ * The base URL of ONE tenant's app, for the links sent to its people.
+ *
+ * Review of 23 Sep 2026: every link used the one process-wide APP_URL, and
+ * the tenant is chosen by subdomain — on an installation with several
+ * tenants a «View details» opened the wrong tenant, or none. With
+ * `TENANT_URL_TEMPLATE` (`https://{slug}.example.com`, the same template the
+ * platform console shows) the link is the tenant's own; without it the
+ * installation has one address, APP_URL, as before.
+ */
+export function tenantAppUrl(tenantId: string): string {
+  const template = process.env['TENANT_URL_TEMPLATE']?.trim()
+  if (template) return template.split('{slug}').join(tenantId).replace(/\/+$/, '')
+  return appUrl()
+}

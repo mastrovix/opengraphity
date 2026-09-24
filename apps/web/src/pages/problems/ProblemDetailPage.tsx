@@ -5,6 +5,7 @@ import type { CustomFieldValueView } from '@/components/ticket/customFields/cust
 import { useConfirm } from '@/hooks/useConfirm'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { useMe } from '@/hooks/useMe'
+import { useTicketRights } from '@/hooks/useTicketRights'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -180,6 +181,9 @@ export function ProblemDetailPage() {
 
   const { can } = useMe()
   const canEditCustomFields = can('ticket.work')
+  // Review of 23 Sep 2026: every action below asks the permission the API asks.
+  const { canWrite, canWork } = useTicketRights('problem')
+  const canLinkIncident = canWrite || can('incident.write')
   const { data, loading, error, refetch, startPolling, stopPolling } = useQuery<{ problem: Problem | null }>(GET_PROBLEM, { variables: { id }, skip: !id })
   const { data: usersData, error: usersError } = useQuery<{ users: User[] }>(GET_USERS)
 
@@ -324,7 +328,7 @@ export function ProblemDetailPage() {
     )
   }
 
-  const manualTransitions = problem.availableTransitions.map(withLocalizedLabel)
+  const manualTransitions = canWrite ? problem.availableTransitions.map(withLocalizedLabel) : []
   const historyDesc       = [...problem.workflowHistory].reverse()
 
   return (
@@ -409,10 +413,10 @@ export function ProblemDetailPage() {
               } />
 
               {/* Team and person */}
-              <ProblemAssignmentFields problem={problem} usersData={usersData} usersError={usersError} onAssigned={() => void refetch()} />
+              <ProblemAssignmentFields problem={problem} usersData={usersData} usersError={usersError} canEdit={canWrite} onAssigned={() => void refetch()} />
 
               {/* Affected users */}
-              <DetailField label={t('detail.affectedUsers')} value={
+              <DetailField label={t('detail.affectedUsers')} value={!canWrite ? (problem.affectedUsers ?? '—') :
                 <Input
                   type="number"
                   value={editAffectedUsers ?? (problem.affectedUsers?.toString() ?? '')}
@@ -453,6 +457,7 @@ export function ProblemDetailPage() {
           {/* Root Cause */}
           <SectionCard title={t('pages.problemDetail.rootCause')} collapsible defaultOpen={false}>
                 <Textarea
+                  readOnly={!canWrite}
                   value={editRootCause ?? (problem.rootCause ?? '')}
                   onChange={(e) => setEditRootCause(e.target.value)}
                   onBlur={() => {
@@ -462,7 +467,7 @@ export function ProblemDetailPage() {
                     }
                     setEditRootCause(null)
                   }}
-                  placeholder={t('pages.problemDetail.rootCausePlaceholder')}
+                  placeholder={canWrite ? t('pages.problemDetail.rootCausePlaceholder') : undefined}
                   rows={4}
                   style={{ padding: '8px 12px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }}
                 />
@@ -471,6 +476,7 @@ export function ProblemDetailPage() {
           {/* Workaround */}
           <SectionCard title={t('pages.problemDetail.workaround')} collapsible defaultOpen={false}>
                 <Textarea
+                  readOnly={!canWrite}
                   value={editWorkaround ?? (problem.workaround ?? '')}
                   onChange={(e) => setEditWorkaround(e.target.value)}
                   onBlur={() => {
@@ -480,7 +486,7 @@ export function ProblemDetailPage() {
                     }
                     setEditWorkaround(null)
                   }}
-                  placeholder={t('pages.problemDetail.workaroundPlaceholder')}
+                  placeholder={canWrite ? t('pages.problemDetail.workaroundPlaceholder') : undefined}
                   rows={3}
                   style={{ padding: '8px 12px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }}
                 />
@@ -493,6 +499,7 @@ export function ProblemDetailPage() {
             onSearchChange={setCiSearch}
             onAddCI={(ciId) => void addCI({ variables: { problemId: problem.id, ciId } })}
             onRemoveCI={(ciId) => void removeCI({ variables: { problemId: problem.id, ciId } })}
+            canEdit={canWrite}
           />
 
           {/* Ticket collegati (sezione unica, stile change) */}
@@ -505,18 +512,21 @@ export function ProblemDetailPage() {
                 items: problem.linkedIncidents ?? [],
                 onLink: (incidentId) => void linkIncident({ variables: { problemId: problem.id, incidentId } }),
                 onUnlink: (incidentId) => void unlinkIncident({ variables: { problemId: problem.id, incidentId } }),
+                canEdit: canLinkIncident,
               },
               {
                 kind: 'PROBLEM', label: typeLabel('problem'), routeBase: '/problems',
                 items: problem.linkedProblems ?? [],
                 onLink: (otherId) => void linkRelated({ variables: { entityType: 'problem', entityId: problem.id, otherId } }),
                 onUnlink: (otherId) => void unlinkRelated({ variables: { entityType: 'problem', entityId: problem.id, otherId } }),
+                canEdit: canWork,
               },
               {
                 kind: 'CHANGE', label: typeLabel('change'), routeBase: '/changes',
                 items: problem.linkedChanges ?? [],
                 onLink: (changeId) => void linkResolved({ variables: { changeId, entityType: 'problem', entityId: problem.id } }),
                 onUnlink: (changeId) => void unlinkResolved({ variables: { changeId, entityType: 'problem', entityId: problem.id } }),
+                canEdit: canWork,
               },
             ]}
           />
@@ -607,10 +617,12 @@ export function ProblemDetailPage() {
  * who can be taken off again. The choices being made and the two assignments
  * live here; the people are read by the page, together with the problem.
  */
-function ProblemAssignmentFields({ problem, usersData, usersError, onAssigned }: {
+function ProblemAssignmentFields({ problem, usersData, usersError, canEdit, onAssigned }: {
   problem:    Pick<Problem, 'id' | 'assignedTeam' | 'assignee'>
   usersData:  { users: User[] } | undefined
   usersError: { message: string } | undefined
+  /** problem.write: without it the assignment is shown, not changed. */
+  canEdit:    boolean
   /** An assignment went through: the problem is read again. */
   onAssigned: () => void
 }) {
@@ -631,6 +643,16 @@ function ProblemAssignmentFields({ problem, usersData, usersError, onAssigned }:
   })
 
   const users = usersData?.users ?? []
+
+  if (!canEdit) {
+    const none = <span style={{ color: 'var(--text-muted)' }}>{t('detail.notAssigned')}</span>
+    return (
+      <>
+        <DetailField label={t('detail.assignedTeam')} value={problem.assignedTeam ? <span style={{ fontWeight: 500 }}>{problem.assignedTeam.name}</span> : none} />
+        <DetailField label={t('detail.assignedTo')} value={problem.assignee ? <span style={{ fontWeight: 500 }}>{problem.assignee.name}</span> : none} />
+      </>
+    )
+  }
 
   return (
     <>

@@ -11,7 +11,7 @@
  */
 import { getSession } from '@opengraphity/neo4j'
 import { parseTenantBrand, type TenantBrand } from '@opengraphity/types'
-import { appUrl } from './appUrl.js'
+import { tenantAppUrl } from './appUrl.js'
 import { escapeHtml as e } from './escapeHtml.js'
 import { sendEmail, type EmailMessage } from './email.js'
 
@@ -43,7 +43,7 @@ export async function loadTenantBrand(tenantId: string): Promise<TenantBrand> {
 /** L'indirizzo pubblico del logo (le e-mail non hanno la sessione di chi le legge). */
 export function brandLogoUrl(tenantId: string, brand: TenantBrand): string | null {
   if (!brand.logo) return null
-  return `${appUrl()}/api/brand/${encodeURIComponent(tenantId)}/logo?v=${encodeURIComponent(brand.logo.updatedAt)}`
+  return `${tenantAppUrl(tenantId)}/api/brand/${encodeURIComponent(tenantId)}/logo?v=${encodeURIComponent(brand.logo.updatedAt)}`
 }
 
 /** Impaginazione di un'e-mail: marchio in testa, contenuto, «Powered by OpenGrafo» in fondo. */

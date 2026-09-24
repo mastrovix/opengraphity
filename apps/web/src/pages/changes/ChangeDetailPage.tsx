@@ -36,6 +36,7 @@ import {
   GET_CHANGE_IMPACTED_CIS,
 } from '@/graphql/queries'
 import { useMe } from '@/hooks/useMe'
+import { useTicketRights } from '@/hooks/useTicketRights'
 import {
   EXECUTE_CHANGE_TRANSITION,
   ADD_CI_TO_CHANGE,
@@ -88,6 +89,8 @@ export function ChangeDetailPage() {
   const { data: affectedData, refetch: refetchAffected } = useQuery<{ changeAffectedCIs: AffectedCI[] }>(GET_CHANGE_AFFECTED_CIS, { variables: { changeId }, fetchPolicy: 'cache-and-network' })
   const { data: auditData, refetch: refetchAudit } = useQuery<{ changeAuditTrail: ChangeAuditEntryData[] }>(GET_CHANGE_AUDIT_TRAIL, { variables: { changeId }, fetchPolicy: 'cache-and-network' })
   const { me, can } = useMe()
+  // Review of 23 Sep 2026: transitions and the change's CIs ask change.write, links ticket.work, as the API does.
+  const { canWrite, canWork } = useTicketRights('change')
   const meData: { me: MeData | null } = { me }
   const { steps: wfSteps, byName: wfByName, initialStep: wfInitialStep, isTerminal: wfIsTerminal, purposeOf: wfPurposeOf } = useWorkflowSteps('change')
 
@@ -197,7 +200,7 @@ export function ChangeDetailPage() {
   if (!change) return <PageContainer><p>{t('pages.changeDetail.notFound')}</p></PageContainer>
 
   const currentStep = change.workflowInstance?.currentStep ?? ''
-  const transitions = (change.availableTransitions ?? []).map(withLocalizedLabel)
+  const transitions = canWrite ? (change.availableTransitions ?? []).map(withLocalizedLabel) : []
 
   const totalTasks = affected.length * 3
   const completedTasks = affected.reduce((n, a) => n
@@ -372,12 +375,14 @@ export function ChangeDetailPage() {
             items: change.resolvesProblems ?? [],
             onLink: (entityId) => void linkTicket({ variables: { changeId, entityType: 'problem', entityId } }),
             onUnlink: (entityId) => void unlinkTicket({ variables: { changeId, entityType: 'problem', entityId } }),
+            canEdit: canWork,
           },
           {
             kind: 'INCIDENT', label: typeLabel('incident'), routeBase: '/incidents',
             items: change.resolvesIncidents ?? [],
             onLink: (entityId) => void linkTicket({ variables: { changeId, entityType: 'incident', entityId } }),
             onUnlink: (entityId) => void unlinkTicket({ variables: { changeId, entityType: 'incident', entityId } }),
+            canEdit: canWork,
           },
         ]}
       />
@@ -448,7 +453,7 @@ export function ChangeDetailPage() {
         <div>
           {ciTab === 'affected' && (
             <>
-              {currentStep === wfInitialStep?.name && (
+              {canWrite && currentStep === wfInitialStep?.name && (
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
                   <button type="button" onClick={() => setShowAddCI(true)} style={{
                     padding: '4px 10px', borderRadius: 6, border: '1px solid var(--color-brand)',
@@ -465,7 +470,7 @@ export function ChangeDetailPage() {
                   <span style={{ flex: 1, fontWeight: 500, color: 'var(--color-slate-dark)' }}>{a.ci.name}</span>
                   {a.ci.type && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.typeLabel(a.ci.type)}</span>}
                   {a.ci.environment && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.environmentLabel(a.ci.environment)}</span>}
-                  {currentStep === wfInitialStep?.name && (
+                  {canWrite && currentStep === wfInitialStep?.name && (
                     <button
                       type="button"
                       onClick={() => setConfirmRemoveCI({ id: a.ci.id, name: a.ci.name })}
@@ -578,7 +583,7 @@ export function ChangeDetailPage() {
             footer={
               <>
                 <Button variant="secondary" size="xs" onClick={() => setConfirmRemoveCI(null)}>{t('common.cancel')}</Button>
-                <Button size="xs" onClick={() => void removeCI({ variables: { changeId, ciId: confirmRemoveCI.id } })} style={{ backgroundColor: 'var(--color-danger)', fontWeight: 600 }}>{t('pages.changeDetail.remove')}</Button>
+                <Button size="xs" onClick={() => removeCI({ variables: { changeId, ciId: confirmRemoveCI.id } })} style={{ backgroundColor: 'var(--color-danger)', fontWeight: 600 }}>{t('pages.changeDetail.remove')}</Button>
               </>
             }
           >
@@ -749,7 +754,7 @@ export function ChangeDetailPage() {
           footer={
             <>
               <Button variant="secondary" size="xs" onClick={() => setConfirmDelete(false)}>{t('common.cancel')}</Button>
-              <Button size="xs" disabled={deleting} onClick={() => void deleteChange({ variables: { id: changeId } })} style={{ backgroundColor: 'var(--color-danger)', fontWeight: 600 }}>{t('common.delete')}</Button>
+              <Button size="xs" disabled={deleting} onClick={() => deleteChange({ variables: { id: changeId } })} style={{ backgroundColor: 'var(--color-danger)', fontWeight: 600 }}>{t('common.delete')}</Button>
             </>
           }
         >

@@ -51,9 +51,23 @@ export function olaOpenTicketsCypher(entityType: string): string {
    * Il tempo si misura sui SEGMENTI (`TicketTeamSegment`), che restano anche
    * dopo il passaggio di mano: basta che il team ne abbia almeno uno.
    */
+  /*
+   * The candidates come FROM THE TEAM (review of 23 Sep 2026): the tickets it
+   * has now, and those it has a segment of — both found through indexed nodes
+   * (the Team by id, `TicketTeamSegment(tenant_id, team_id)`). The query
+   * started from every ticket of the type in the tenant, filtered on an
+   * `IS NULL` no index serves: every contract read the whole tenant, every minute.
+   */
   return `
-    MATCH (e:${m.label} {tenant_id: $tenantId})
-    WHERE e.${m.field} IS NULL AND coalesce(e.deleted, false) = false
+    CALL {
+      MATCH (:Team {id: $teamId, tenant_id: $tenantId})<-[:ASSIGNED_TO_TEAM]-(e:${m.label})
+      RETURN e
+      UNION
+      MATCH (:TicketTeamSegment {tenant_id: $tenantId, team_id: $teamId})<-[:TEAM_SEGMENT]-(e:${m.label})
+      RETURN e
+    }
+    WITH DISTINCT e
+    WHERE e.tenant_id = $tenantId AND e.${m.field} IS NULL AND coalesce(e.deleted, false) = false
       AND NOT $contractId IN coalesce(e.ola_alerted, [])
     OPTIONAL MATCH (e)-[:ASSIGNED_TO_TEAM]->(ct:Team {tenant_id: $tenantId})
     OPTIONAL MATCH (e)-[:TEAM_SEGMENT]->(s:TicketTeamSegment {team_id: $teamId})

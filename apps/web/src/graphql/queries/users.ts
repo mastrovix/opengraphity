@@ -68,3 +68,14 @@ export const SEARCH_USERS = gql`
     searchUsers(search: $search, limit: $limit, permission: $permission) { id name email }
   }
 `
+
+/**
+ * The people already chosen, by id (review of 23 Sep 2026): what a rule or a
+ * step names, without downloading the directory. Inactive people too — a
+ * saved rule may still name one, and it should say who.
+ */
+export const GET_USERS_BY_IDS = gql`
+  query UsersByIds($ids: [ID!]!) {
+    usersByIds(ids: $ids) { id name email active }
+  }
+`

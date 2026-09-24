@@ -105,9 +105,12 @@ export function CIFieldInlineEditor({
           <label htmlFor={`${id}-type`} style={labelS}>{t('common.type')}</label>
           <Select
             id={`${id}-type`}
-            style={{ ...selectS, background: isSystem ? colors.slateBg : colors.white }}
+            style={{ ...selectS, background: isSystem || !!initial ? colors.slateBg : colors.white }}
             value={form.fieldType}
-            disabled={isSystem}
+            // The type of an existing field does not change: the API keeps it, and
+            // «Field saved» with the old type still there was a lie (review of 23 Sep 2026).
+            disabled={isSystem || !!initial}
+            title={initial ? t('citypeDesigner.field.typeFixed') : undefined}
             onChange={(e) => { set('fieldType', e.target.value); if (e.target.value !== 'enum') set('enumTypeId', null) }}
           >
             {FIELD_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}

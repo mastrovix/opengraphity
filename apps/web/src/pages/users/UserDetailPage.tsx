@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@apollo/client/react'
-import { gql } from '@apollo/client'
 import { PageContainer } from '@/components/PageContainer'
 import { QueryError } from '@/components/QueryError'
 import { DetailField } from '@/components/ui/DetailField'
@@ -12,7 +11,7 @@ import { Pill } from '@/components/ui/Pill'
 import { RoleBadge } from '@/components/ui/badges'
 import { useMutationWithToast } from '@/hooks/useMutationWithToast'
 import { GET_USER, GET_TEAMS } from '@/graphql/queries'
-import { SET_USER_ACTIVE, SET_USER_ROLE } from '@/graphql/mutations'
+import { SET_USER_ACTIVE, SET_USER_ROLE, SET_TEAM_MEMBER } from '@/graphql/mutations'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { useMe } from '@/hooks/useMe'
 import { Select } from '@/components/ui/FormControls'
@@ -23,12 +22,6 @@ import { formatDate } from '@/lib/datetime'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { vocabularyValueStyle } from '@/lib/domainStyle'
 import { TEAM_TYPE_VOCABULARY } from '@/lib/teamVocabularies'
-
-const UPDATE_USER_TEAMS = gql`
-  mutation UpdateUserTeams($userId: ID!, $teamIds: [ID!]!) {
-    updateUserTeams(userId: $userId, teamIds: $teamIds) { id name email role }
-  }
-`
 
 interface TeamRef {
   id:   string
@@ -77,7 +70,10 @@ export function UserDetailPage() {
   })
   const { data: allTeamsData } = useQuery<{ teams: { id: string; name: string; description: string | null; type: string | null }[] }>(GET_TEAMS)
 
-  const [updateTeams] = useMutationWithToast(UPDATE_USER_TEAMS, { successMessage: t('toast.user.teamsUpdated'), refetch })
+  // One membership at a time (review of 23 Sep 2026): `updateUserTeams` rewrote
+  // the whole set from the list last read, so two quick clicks — or another
+  // admin adding the user to a team meanwhile — were reverted.
+  const [setMembership] = useMutationWithToast(SET_TEAM_MEMBER, { successMessage: t('toast.user.teamsUpdated'), refetch })
   // Il ruolo della persona (ondata 7): i ruoli dell'organizzazione, mai l'ultimo che gestisce persone e ruoli (lo dice l'API).
   const { roles, labelOf: roleLabel } = useRoles()
   const [roleChoice, setRoleChoice] = useState<string | null>(null)
@@ -159,7 +155,7 @@ export function UserDetailPage() {
                   {roles.map((r) => <option key={r.key} value={r.key}>{roleLabel(r.key)}</option>)}
                 </Select>
                 {roleChoice !== null && roleChoice !== user.role && (
-                  <Button size="xs" disabled={savingRole} onClick={() => void setUserRole({ variables: { userId: user.id, role: roleChoice } })}>{t('pages.users.saveRole')}</Button>
+                  <Button size="xs" disabled={savingRole} onClick={() => setUserRole({ variables: { userId: user.id, role: roleChoice } })}>{t('pages.users.saveRole')}</Button>
                 )}
               </span>
             )} />
@@ -189,7 +185,7 @@ export function UserDetailPage() {
                       </div>
                     </div>
                     <button type="button"
-                      onClick={() => void updateTeams({ variables: { userId: user.id, teamIds: userTeamIds.filter(tid => tid !== team.id) } })}
+                      onClick={() => void setMembership({ variables: { teamId: team.id, userId: user.id, member: false } })}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', borderRadius: 4 }}
                       title={t('pages.userDetail.removeFromTeam')}
                       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-danger-bg)' }}
@@ -222,7 +218,7 @@ export function UserDetailPage() {
                   <button
                     type="button"
                     key={team.id}
-                    onClick={() => { void updateTeams({ variables: { userId: user.id, teamIds: [...userTeamIds, team.id] } }); setShowAddTeam(false) }}
+                    onClick={() => { void setMembership({ variables: { teamId: team.id, userId: user.id, member: true } }); setShowAddTeam(false) }}
                     className="hover-bg"
                     style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '8px 12px', cursor: 'pointer', borderBottom: i < availableTeams.length - 1 ? `1px solid ${palette.neutral.borderLight}` : 'none', ['--hover-bg' as string]: palette.info.light }}
                   >

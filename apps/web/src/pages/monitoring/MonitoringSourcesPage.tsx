@@ -193,9 +193,9 @@ export function MonitoringSourcesPage({ sampleRefetchDelayMs = SAMPLE_REFETCH_DE
       render: (_v, row) => (
         <div style={{ display: 'flex', gap: 4 }}>
           <Button variant="icon" size="xs" title={t('monitoring.sources.edit')} aria-label={t('monitoring.sources.editAria', { name: row.name })} onClick={() => navigate(`/monitoring/sources/${row.id}`)}><Pencil size={13} aria-hidden="true" /></Button>
-          <Button variant="icon" size="xs" title={t('monitoring.sources.sendSample')} aria-label={t('monitoring.sources.sendSampleAria', { name: row.name })} onClick={() => void handleSample(row)}><Send size={13} aria-hidden="true" /></Button>
-          <Button variant="icon" size="xs" title={t('monitoring.sources.regenToken')} aria-label={t('monitoring.sources.regenTokenAria', { name: row.name })} onClick={() => void handleRegen(row)}><KeyRound size={13} aria-hidden="true" /></Button>
-          <Button variant="icon" size="xs" title={t('monitoring.sources.delete')} aria-label={t('monitoring.sources.deleteAria', { name: row.name })} onClick={() => void handleDelete(row)} style={{ color: colors.danger }}><Trash2 size={13} aria-hidden="true" /></Button>
+          <Button variant="icon" size="xs" title={t('monitoring.sources.sendSample')} aria-label={t('monitoring.sources.sendSampleAria', { name: row.name })} onClick={() => handleSample(row)}><Send size={13} aria-hidden="true" /></Button>
+          <Button variant="icon" size="xs" title={t('monitoring.sources.regenToken')} aria-label={t('monitoring.sources.regenTokenAria', { name: row.name })} onClick={() => handleRegen(row)}><KeyRound size={13} aria-hidden="true" /></Button>
+          <Button variant="icon" size="xs" title={t('monitoring.sources.delete')} aria-label={t('monitoring.sources.deleteAria', { name: row.name })} onClick={() => handleDelete(row)} style={{ color: colors.danger }}><Trash2 size={13} aria-hidden="true" /></Button>
         </div>
       ),
     },

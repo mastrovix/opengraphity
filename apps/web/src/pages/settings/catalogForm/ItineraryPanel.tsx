@@ -150,7 +150,9 @@ export function ItineraryPanel() {
   const duplicaIter = async () => {
     if (!daDuplicare || nomeCopia.trim() === '') return
     try {
-      await duplica({ variables: { definitionId: daDuplicare, name: nomeCopia.trim(), category: null } })
+      // Catalog-only: the copy serves its catalog items and never becomes the
+      // fallback of generic requests (review of 23 Sep 2026, owner's decision).
+      await duplica({ variables: { definitionId: daDuplicare, name: nomeCopia.trim(), category: null, catalogOnly: true } })
     } catch {
       // The mutation's onError has already told the user; the typed name stays, to retry.
       return

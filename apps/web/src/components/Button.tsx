@@ -23,8 +23,16 @@
  *
  * Use `style` only for pinpoint overrides (e.g. a one-off width); do not
  * rebuild whole button styles inline in pages.
+ *
+ * AN ACTION IN FLIGHT IS NOT STARTED TWICE (review of 23 Sep 2026). When
+ * `onClick` returns a promise the button is disabled (and `aria-busy`) until
+ * it settles, and a second click in between does nothing. A double click on
+ * «Create» made two SLA policies, two triggers, two channels: the rule lives
+ * here, once, for every button — a handler only has to RETURN its promise
+ * (`onClick={() => save()}`, never `() => void save()`; a test holds the
+ * whole app to it).
  */
-import type { CSSProperties, MouseEvent, ReactNode } from 'react'
+import { useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
 import { colors, palette } from '@/lib/tokens'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'icon'
@@ -32,7 +40,8 @@ export type ButtonSize = 'sm' | 'xs'
 
 export interface ButtonProps {
   children?: ReactNode
-  onClick?: (e: MouseEvent<HTMLButtonElement>) => void
+  /** A returned promise keeps the button disabled until it settles. */
+  onClick?: (e: MouseEvent<HTMLButtonElement>) => void | Promise<unknown>
   disabled?: boolean
   type?: 'button' | 'submit' | 'reset'
   variant?: ButtonVariant
@@ -76,6 +85,25 @@ export function Button({
   className,
   ...aria
 }: ButtonProps) {
+  const [busy, setBusy] = useState(false)
+  // The ref answers at once: two clicks in the same frame both see `busy` false.
+  const inFlight = useRef(false)
+  const handleClick = onClick && ((e: MouseEvent<HTMLButtonElement>) => {
+    if (inFlight.current) return
+    const out = onClick(e)
+    if (!out || typeof (out as Promise<unknown>).then !== 'function') return
+    inFlight.current = true
+    setBusy(true)
+    const done = () => { inFlight.current = false; setBusy(false) }
+    // A failed action frees the button and is written to the console: the
+    // handler says it to the person (a toast), the button only must not make
+    // it an unhandled rejection — nor hide it.
+    void (out as Promise<unknown>).then(done, (err: unknown) => {
+      done()
+      console.error('[Button] the action failed', err)
+    })
+  })
+  disabled = disabled || busy
   const base: CSSProperties = {
     display: 'inline-flex',
     alignItems: 'center',
@@ -150,8 +178,9 @@ export function Button({
   return (
     <button
       type={type}
-      onClick={onClick}
+      onClick={handleClick}
       disabled={disabled}
+      aria-busy={busy || undefined}
       title={title}
       // eslint-disable-next-line jsx-a11y/no-autofocus -- passthrough: la scelta (e la sua giustificazione) sta nel call site, es. il bottone sicuro di ConfirmModal
       autoFocus={autoFocus}

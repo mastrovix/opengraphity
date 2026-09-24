@@ -10,11 +10,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const warn = vi.fn()
+// The label-by-label reads and deletion have their own tests (tenantNodes.test.ts).
+const tenantNodes = vi.hoisted(() => ({ deleted: 1234, perLabel: {} as Record<string, number> }))
+vi.mock('../tenantNodes.js', () => ({
+  deleteTenantNodes: vi.fn(async () => tenantNodes.deleted),
+  countTenantNodesByLabel: vi.fn(async () => tenantNodes.perLabel),
+}))
 vi.mock('../logger.js', () => ({ logger: { child: () => ({ warn: (...a: unknown[]) => warn(...a), info: vi.fn(), error: vi.fn() }) } }))
 vi.mock('../config.js', () => ({ config: { tenantUrlTemplate: 'https://{slug}.example.io', portalUrlTemplate: '' } }))
 
 let adminsFail = false
-let footprint: Array<Record<string, unknown>> = []
+const footprint: Array<Record<string, unknown>> = []
 const calls: Array<{ q: string; p: Record<string, unknown> }> = []
 vi.mock('@opengraphity/neo4j', () => ({
   runQuery: vi.fn(async (_s: unknown, q: string, p: Record<string, unknown>) => {
@@ -52,16 +58,15 @@ describe('listTenants when the admins cannot be read', () => {
 })
 
 describe('tenantFootprint', () => {
-  it('returns node counts per label for that tenant only, as numbers', async () => {
-    footprint = [{ etichetta: 'Incident', quanti: '12' }, { etichetta: 'User', quanti: 3 }]
-    expect(await tenantFootprint({} as never, 'acme')).toEqual({ Incident: 12, User: 3 })
-    const q = calls.find((c) => c.q.includes('labels(n)[0]'))!
-    expect(q.q).toContain('MATCH (n {tenant_id: $id})')
-    expect(q.p).toEqual({ id: 'acme' })
+  it('returns node counts per label for that tenant only, the largest first', async () => {
+    tenantNodes.perLabel = { User: 3, Incident: 12 }
+    expect(Object.entries(await tenantFootprint({} as never, 'acme'))).toEqual([['Incident', 12], ['User', 3]])
+    const { countTenantNodesByLabel } = await import('../tenantNodes.js')
+    expect(countTenantNodesByLabel).toHaveBeenCalledWith({}, 'acme')
   })
 
   it('an empty tenant has an empty footprint', async () => {
-    footprint = []
+    tenantNodes.perLabel = {}
     expect(await tenantFootprint({} as never, 'empty')).toEqual({})
   })
 })

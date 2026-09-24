@@ -9,7 +9,7 @@ import { GET_SERVICE_REQUEST, GET_ASSIGNABLE_USERS } from '@/graphql/queries'
 import { FACTORY_ROLE_PERMISSIONS, type UserRole } from '@opengraphity/types'
 import { ASSIGN_SERVICE_REQUEST_TO_USER } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
-import { teamChoicesMock } from '@/test/mocks/gql'
+import { teamChoicesMock, meMock } from '@/test/mocks/gql'
 import { ServiceRequestDetailPage } from '../ServiceRequestDetailPage'
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() }, Toaster: () => null }))
@@ -49,7 +49,7 @@ describe('ServiceRequestDetailPage — assegnatario', () => {
     const seen: unknown[] = []
     const mocks: GqlMock[] = [
       { request: { query: GET_SERVICE_REQUEST, variables: { id: 'sr-1' } }, result: { data: { serviceRequest: request() } }, maxUsageCount: Number.POSITIVE_INFINITY },
-      usersMock, teamsMock,
+      usersMock, teamsMock, meMock('operator', { maxUsageCount: Number.POSITIVE_INFINITY }),
       {
         request: { query: ASSIGN_SERVICE_REQUEST_TO_USER, variables: (v) => { seen.push(v); return true } },
         result: { data: { assignServiceRequestToUser: { __typename: 'ServiceRequest', id: 'sr-1', assignee: { __typename: 'User', id: 'u-op', name: 'Olga Operator', email: 'u-op@x' } } } },
@@ -72,7 +72,7 @@ describe('ServiceRequestDetailPage — assegnatario', () => {
   it('una richiesta conclusa mostra l\'assegnatario senza tendina', async () => {
     const mocks: GqlMock[] = [
       { request: { query: GET_SERVICE_REQUEST, variables: { id: 'sr-1' } }, result: { data: { serviceRequest: request({ completedAt: '2026-09-14T12:00:00Z', assignee: { __typename: 'User', id: 'u-op', name: 'Olga Operator', email: 'u-op@x' } }) } }, maxUsageCount: Number.POSITIVE_INFINITY },
-      usersMock, teamsMock,
+      usersMock, teamsMock, meMock('operator', { maxUsageCount: Number.POSITIVE_INFINITY }),
     ]
     renderWithProviders(<ServiceRequestDetailPage />, { mocks, route: '/requests/sr-1', path: '/requests/:id' })
     expect(await screen.findByText('Olga Operator')).toBeTruthy()
@@ -84,7 +84,7 @@ describe('ServiceRequestDetailPage — numero (giro UI 15 set · U-12)', () => {
   it('il numero della richiesta sta nella testata e fra i dettagli', async () => {
     const mocks: GqlMock[] = [
       { request: { query: GET_SERVICE_REQUEST, variables: { id: 'sr-1' } }, result: { data: { serviceRequest: request() } }, maxUsageCount: Number.POSITIVE_INFINITY },
-      usersMock, teamsMock,
+      usersMock, teamsMock, meMock('operator', { maxUsageCount: Number.POSITIVE_INFINITY }),
     ]
     renderWithProviders(<ServiceRequestDetailPage />, { mocks, route: '/requests/sr-1', path: '/requests/:id' })
     expect(await screen.findByTestId('request-number')).toHaveTextContent('SR00000001')

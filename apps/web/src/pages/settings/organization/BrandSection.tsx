@@ -128,7 +128,7 @@ export function BrandSection() {
           {!valid && <Hint tone="danger">{t(!replyOk ? 'pages.organization.replyToInvalid' : 'pages.organization.brandNameInvalid')}</Hint>}
           <div>
             <Button disabled={!dirty || !valid || saving}
-              onClick={() => void save({ variables: { input: { displayName: displayName.trim(), senderName: senderName.trim(), replyTo: replyTo.trim() || null } } })}>
+              onClick={() => save({ variables: { input: { displayName: displayName.trim(), senderName: senderName.trim(), replyTo: replyTo.trim() || null } } })}>
               {t('common.save')}
             </Button>
           </div>

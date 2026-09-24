@@ -60,6 +60,12 @@ vi.mock('sonner', () => ({
 
 const slaCheck = vi.fn<(input: unknown) => Promise<string>>()
 vi.mock('@/hooks/useSlaCoverageCheck', () => ({ useSlaCoverageCheck: () => slaCheck }))
+// The tenant's field rules (review of 23 Sep 2026), none unless a test sets them.
+const fieldRules = vi.hoisted(() => ({ rules: {} as Record<string, { visible: boolean; required: boolean }> }))
+vi.mock('@/hooks/useFormFieldRules', async (orig) => ({
+  ...(await orig<typeof import('@/hooks/useFormFieldRules')>()),
+  useFormFieldRules: () => ({ rules: fieldRules.rules, error: null }),
+}))
 
 const enumState = { values: ['low', 'high'], loading: false }
 vi.mock('@/hooks/useEnumValues', () => ({ useEnumValues: () => enumState }))
@@ -168,7 +174,7 @@ const fields = [
 
 const items = [
   { id: 'cat-1', name: 'New laptop', description: 'A company laptop', category: 'hw', requiresApproval: true, priority: 'high', active: true },
-  { id: 'cat-2', name: 'App access', description: null, category: 'access', requiresApproval: false, priority: null, active: true },
+  { id: 'cat-2', name: 'App access', description: null, category: 'access', requiresApproval: false, priority: null, active: true, fulfillmentTeam: { id: 't-iam', name: 'Identity' } },
   { id: 'cat-3', name: 'Retired item', description: null, category: null, requiresApproval: false, priority: null, active: false },
 ]
 
@@ -219,6 +225,7 @@ async function collectingUnhandledRejections(body: (seen: unknown[]) => Promise<
 
 beforeEach(() => {
   apolloFinto.reset()
+  fieldRules.rules = {}
   toastSuccess.mockClear()
   toastError.mockClear()
   slaCheck.mockReset()
@@ -364,6 +371,28 @@ describe('CreateServiceRequestPage — custom fields and SLA', () => {
     expect(input['formDraftId']).toBeUndefined()
     expect(input['catalogItemId']).toBeUndefined()
     expect(input).not.toHaveProperty('acknowledgeNoSla')
+  })
+
+  // Review of 23 Sep 2026: the check asked with no category and no team, and a category-scoped policy looked absent.
+  it('the SLA check asks with the catalog item\'s category and fulfilment team, as the request will have them', async () => {
+    const { user } = setup()
+    await chooseItem(user, 'cat-2')
+    await fillBasics(user)
+    await submit(user)
+    await waitFor(() => expect(slaCheck).toHaveBeenCalledWith(expect.objectContaining({
+      entityType: 'service_request', category: 'access', categoryLabel: 'access', teamId: 't-iam', teamName: 'Identity',
+    })))
+  })
+
+  it('a due date made required by a rule is marked, and the request is not sent without it; a hidden description is not shown', async () => {
+    fieldRules.rules = { dueDate: { visible: true, required: true }, description: { visible: false, required: false } }
+    const { user } = setup()
+    expect(screen.queryByPlaceholderText(/Describe/)).not.toBeInTheDocument()
+    expect((screen.getByLabelText(/^Due date/) as HTMLInputElement).labels?.[0]?.textContent).toMatch(/\*$/)
+    await fillBasics(user)
+    await submit(user)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Required field')
+    expect(apolloFinto.chiamata('CreateServiceRequest')).toBeUndefined()
   })
 
   it('no SLA policy and the person goes back: nothing is created', async () => {

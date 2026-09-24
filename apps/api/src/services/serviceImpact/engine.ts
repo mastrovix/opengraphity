@@ -650,6 +650,8 @@ export async function evaluateStaleOrOldMaps(tenantId: string, now: string = new
       } finally { await session.close() }
     },
     keyOf:   (r) => r.id,
+    // Each run goes on from where the previous stopped: failing maps do not hide the others (review of 23 Sep 2026).
+    resume:  { key: `services:evaluateStaleOrOldMaps:${tenantId}` },
     handle:  async (r) => { await evaluateServiceMap({ tenantId: r.tenantId, mapId: r.id, trigger: 'periodic', now }) },
     onError: (r, err) => log.error({ err, tenantId: r.tenantId, mapId: r.id }, 'Periodic service map evaluation failed'),
   })

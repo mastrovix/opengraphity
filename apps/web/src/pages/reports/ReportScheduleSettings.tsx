@@ -14,7 +14,12 @@ interface ReportScheduleSettingsProps {
   selected: ReportTemplate
   teams: { id: string; name: string }[]
   channels: Channel[]
+  /** Teams or channels that could not be read: said, not silently absent (review of 23 Sep 2026). */
+  teamsError?: { message: string } | null
+  channelsError?: { message: string } | null
   updating: boolean
+  /** report.schedule: without it the schedule is shown as it is, and not changed here. */
+  canSchedule: boolean
   // Settings form state
   settingsName: string; setSettingsName: (v: string) => void
   settingsDesc: string; setSettingsDesc: (v: string) => void
@@ -38,7 +43,7 @@ interface ReportScheduleSettingsProps {
 export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
   const { t } = useTranslation()
   const {
-    selected, teams, channels, updating,
+    selected, teams, channels, teamsError = null, channelsError = null, updating, canSchedule,
     settingsName, setSettingsName,
     settingsDesc, setSettingsDesc,
     settingsVis, setSettingsVis,
@@ -86,6 +91,9 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
           </select>
         </div>
 
+        {settingsVis === 'groups' && teamsError && (
+          <p role="alert" style={{ color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', marginBottom: 14 }}>{t('pages.reportSchedule.teamsError', { message: teamsError.message })}</p>
+        )}
         {settingsVis === 'groups' && teams.length > 0 && (
           <div style={{ marginBottom: 14 }}>
             <div style={labelStyle}>{t('pages.reportSchedule.shareWithTeams')}</div>
@@ -101,7 +109,12 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
           </div>
         )}
 
-        <div style={{ marginBottom: 20, padding: 16, background: 'var(--color-slate-bg)', borderRadius: 8, border: '1px solid var(--color-border)' }}>
+        {!canSchedule && (
+          <p role="note" style={{ marginBottom: 20, padding: 16, background: 'var(--color-slate-bg)', borderRadius: 8, border: '1px solid var(--color-border)', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
+            {selected.scheduleEnabled ? t('pages.reportSchedule.notAllowedOn') : t('pages.reportSchedule.notAllowedOff')}
+          </p>
+        )}
+        {canSchedule && <div style={{ marginBottom: 20, padding: 16, background: 'var(--color-slate-bg)', borderRadius: 8, border: '1px solid var(--color-border)' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginBottom: settingsSched ? 14 : 0 }}>
             <input type="checkbox" checked={settingsSched} onChange={e => setSettingsSched(e.target.checked)} />
             <span style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{t('pages.reportSchedule.enable')}</span>
@@ -123,6 +136,13 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
                     style={inputStyle} placeholder="0 9 * * *" />
                 </div>
               )}
+              {channelsError && (
+                <p role="alert" style={{ color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', marginBottom: 10 }}>
+                  {settingsChanId
+                    ? t('pages.reportSchedule.channelsErrorKept', { message: channelsError.message })
+                    : t('pages.reportSchedule.channelsError', { message: channelsError.message })}
+                </p>
+              )}
               {channels.length > 0 && (
                 <div style={{ marginBottom: 10 }}>
                   <label htmlFor={ids.channel} style={labelStyle}>{t('pages.reportSchedule.slackChannel')}</label>
@@ -131,6 +151,11 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
                     {channels.map((c: Channel) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
+              )}
+              {!channelsError && channels.length === 0 && (
+                <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginBottom: 10 }}>
+                  {t('pages.reportSchedule.noSlackChannels')}
+                </p>
               )}
 
               {/* Recipients */}
@@ -190,7 +215,7 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
               )}
             </>
           )}
-        </div>
+        </div>}
 
         <div style={{ display: 'flex', gap: 10 }}>
           <button type="button" onClick={() => void handleSaveSettings()} disabled={updating} style={btnPrimary}>

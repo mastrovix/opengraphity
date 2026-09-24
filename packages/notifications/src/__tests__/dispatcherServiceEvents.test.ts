@@ -150,13 +150,13 @@ describe('email: il link viene dalla tabella entity_type → percorso condivisa 
     const { renderNotificationEmail } = await import('../dispatcher.js')
 const EN_UTC = { language: 'en' as const, timeZone: 'UTC' }
     const base = { id: 'n', type: 't', title: 'k', message: 'm', severity: 'info' as const, timestamp: 'T', read: false }
-    expect(renderNotificationEmail({ ...base, entity_type: 'service', entity_id: 'map-1' }, EN_UTC)).toContain('/monitoring/services/map-1"')
-    expect(renderNotificationEmail({ ...base, entity_type: 'inbound_webhook', entity_id: 'src-1' }, EN_UTC)).toContain('/monitoring/sources/src-1"')
-    expect(renderNotificationEmail({ ...base, entity_type: 'event', entity_id: 'ev-1' }, EN_UTC)).toContain('/events/ev-1"')
-    expect(renderNotificationEmail({ ...base, entity_type: 'ci', entity_id: 'ci-1' }, EN_UTC)).toContain('/cis/ci-1"')
-    expect(renderNotificationEmail({ ...base, entity_type: 'sync', entity_id: 'run-1' }, EN_UTC)).not.toContain('<a ')
+    expect(renderNotificationEmail('t1', { ...base, entity_type: 'service', entity_id: 'map-1' }, EN_UTC)).toContain('/monitoring/services/map-1"')
+    expect(renderNotificationEmail('t1', { ...base, entity_type: 'inbound_webhook', entity_id: 'src-1' }, EN_UTC)).toContain('/monitoring/sources/src-1"')
+    expect(renderNotificationEmail('t1', { ...base, entity_type: 'event', entity_id: 'ev-1' }, EN_UTC)).toContain('/events/ev-1"')
+    expect(renderNotificationEmail('t1', { ...base, entity_type: 'ci', entity_id: 'ci-1' }, EN_UTC)).toContain('/cis/ci-1"')
+    expect(renderNotificationEmail('t1', { ...base, entity_type: 'sync', entity_id: 'run-1' }, EN_UTC)).not.toContain('<a ')
     // mai più `/${entity_type}s/${id}`: /services/map-1 era una rotta inesistente
-    expect(renderNotificationEmail({ ...base, entity_type: 'service', entity_id: 'map-1' }, EN_UTC)).not.toMatch(/href="[a-z]+:\/\/[^/"]+\/services\/map-1"/)
+    expect(renderNotificationEmail('t1', { ...base, entity_type: 'service', entity_id: 'map-1' }, EN_UTC)).not.toMatch(/href="[a-z]+:\/\/[^/"]+\/services\/map-1"/)
   })
 })
 

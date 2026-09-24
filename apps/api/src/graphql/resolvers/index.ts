@@ -1,4 +1,5 @@
-import { GraphQLError } from 'graphql'
+import { GraphQLError, type GraphQLResolveInfo } from 'graphql'
+import { selectedFields } from '../../lib/selectedFields.js'
 import { requirePermission } from '../../lib/permissions.js'
 import { setUserActiveInGraph, setUserRole as setUserRoleInGraph, tenantRoles } from '../../lib/roles.js'
 import { createRealmUser, deleteRealmUser, emailTakenError, normalizeEmail, setRealmUserEnabled } from '../../lib/tenantUsers.js'
@@ -108,17 +109,22 @@ export const USER_SORT_WHITELIST: Record<string, string> = {
 
 const meStub = {
   me: meResolvers.Query.me,
-  users: async (_: unknown, args: { sortField?: string; sortDirection?: string }, ctx: GraphQLContext) => {
+  users: async (_: unknown, args: { sortField?: string; sortDirection?: string }, ctx: GraphQLContext, info?: GraphQLResolveInfo) => {
     const session = getSession()
     try {
       // A-22: un campo non ordinabile è un errore, non un ordine diverso in silenzio.
       const orderBy = orderByOrThrow(USER_SORT_WHITELIST, args.sortField, args.sortDirection, 'u.name ASC', 'users(sortField)')
-      type Row = { props: Record<string, unknown>; teamId: string | null }
+      // The teams of every user in the SAME query when the client asks for them
+      // (review of 23 Sep 2026): User.teams opened one session per user, about
+      // 3,000 at once on the demo tenant against a pool of 50.
+      type Row = { props: Record<string, unknown>; teams: Record<string, unknown>[] | null }
       const rows = await runQuery<Row>(session, `
         MATCH (u:User {tenant_id: $tenantId})
-        RETURN properties(u) AS props, null AS teamId ORDER BY ${orderBy}
-      `, { tenantId: ctx.tenantId })
-      return rows.map((r) => mapUser(r.props))
+        RETURN properties(u) AS props,
+          CASE WHEN $withTeams THEN [ (u)-[:MEMBER_OF]->(t:Team {tenant_id: $tenantId}) | properties(t) ] END AS teams
+        ORDER BY ${orderBy}
+      `, { tenantId: ctx.tenantId, withTeams: selectedFields(info).has('teams') })
+      return rows.map((r) => (r.teams ? { ...mapUser(r.props), _teams: r.teams } : mapUser(r.props)))
     } finally {
       await session.close()
     }
@@ -148,7 +154,22 @@ async function userRoleName(parent: { role: string }, _: unknown, ctx: GraphQLCo
   return (await tenantRoles(ctx.tenantId)).get(parent.role)?.name ?? null
 }
 
-async function userTeams(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+function userTeamOf(props: Record<string, unknown>) {
+  return {
+    id:          props['id']          as string,
+    tenantId:    props['tenant_id']   as string,
+    name:        props['name']        as string,
+    description: props['description'] as string | null,
+    type:        props['type']        as string | null,
+    createdAt:   neo4jDateToISO(props['created_at']) ?? '',
+  }
+}
+
+async function userTeams(parent: { id: string; _teams?: Record<string, unknown>[] }, _: unknown, ctx: GraphQLContext) {
+  // Prefetched by `users` when the list asked for them: no session per user.
+  if (parent._teams) {
+    return parent._teams.map(userTeamOf).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
+  }
   const session = getSession()
   try {
     type Row = { props: Record<string, unknown> }
@@ -158,14 +179,7 @@ async function userTeams(parent: { id: string }, _: unknown, ctx: GraphQLContext
       RETURN properties(t) AS props
       ORDER BY t.name
     `, { id: parent.id, tenantId: ctx.tenantId })
-    return rows.map((r) => ({
-      id:          r.props['id']          as string,
-      tenantId:    r.props['tenant_id']   as string,
-      name:        r.props['name']        as string,
-      description: r.props['description'] as string | null,
-      type:        r.props['type']        as string | null,
-      createdAt:   neo4jDateToISO(r.props['created_at']) ?? '',
-    }))
+    return rows.map((r) => userTeamOf(r.props))
   } finally {
     await session.close()
   }

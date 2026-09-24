@@ -104,6 +104,25 @@ describe('before the first answer', () => {
 // ── Health ───────────────────────────────────────────────────────────────────
 
 describe('system health', () => {
+  // Review of 23 Sep 2026: a failed poll kept the last «OK» on screen, green, as if current.
+  it('a failed poll: the dots go grey, nothing is claimed «Operational», and the card says it could not read', () => {
+    apolloFinto.risposte['GetSystemHealth'] = health()
+    apolloFinto.erroriDiPolling['GetSystemHealth'] = new Error('Failed to fetch')
+    mount()
+    const card = section('System Health')
+    expect(within(card).queryByText('Operational')).toBeNull()
+    expect(within(card).getByRole('alert')).toHaveTextContent('Could not refresh: Failed to fetch')
+  })
+
+  it('metrics and tracing that cannot be read at all say so, instead of «No results» and nothing', () => {
+    apolloFinto.erroriQuery['GetSystemMetrics'] = new Error('metrics down')
+    apolloFinto.erroriQuery['GetTraceInfo'] = new Error('trace down')
+    mount()
+    expect(within(section('BullMQ Queues')).queryByText('No results')).toBeNull()
+    expect(within(section('BullMQ Queues')).getByText('metrics down')).toBeInTheDocument()
+    expect(within(section('OpenTelemetry Tracing')).getByText('trace down')).toBeInTheDocument()
+  })
+
   it('shows the uptime and, per service, its state, its latency and its error', () => {
     apolloFinto.risposte['GetSystemHealth'] = health({ checks: {
       neo4j: check({ latencyMs: 12 }),

@@ -26,7 +26,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
 import {
-  PROPOSAL_OPEN_STATUSES, PROPOSAL_EXPIRY_DAYS, PROPOSAL_LIMIT_DEFAULTS,
+  PROPOSAL_OPEN_STATUSES, PROPOSAL_EXPIRY_DAYS, PROPOSAL_LIMIT_DEFAULTS, PROPOSAL_RETENTION_MONTHS,
   evidenceGrade, proposalMayReturn,
   type ProposalArea, type ProposalStatus, type ProposalEvidence,
   type ProposalRejectionKind,
@@ -192,11 +192,20 @@ export async function scriviProposta(
   const fingerprint = fingerprintOf(p.area, p.kind, p.scope)
   const session = getSession(undefined, 'WRITE')
   try {
+    /*
+     * Only a proposal still IN PLAY holds its place (review of 23 Sep 2026):
+     * open, accepted or «not now». A rejected or expired one used to block
+     * the fingerprint for ever — the return rule after a rejection
+     * (`proposalMayReturn`) and the return of an expired one never ran. Now
+     * they fall through to the rejection record; if the proposal may come
+     * back, the closed node gives way (the fingerprint is unique) and the
+     * rejection stays in its record.
+     */
     const gia = await runQueryOne<{ status: string }>(session, `
       MATCH (p:Proposal {tenant_id: $tenantId, area: $area, fingerprint: $fingerprint})
       RETURN p.status AS status
     `, { tenantId: p.tenantId, area: p.area, fingerprint })
-    if (gia) return { scritta: false, motivo: 'gia_presente' }
+    if (gia && !PROPOSAL_STATUSES_THAT_MAY_RETURN.includes(gia.status)) return { scritta: false, motivo: 'gia_presente' }
 
     // La lapide di un rifiuto vive oltre la purga della proposta.
     const lapide = await runQueryOne<{ grade: number; at: string }>(session, `
@@ -211,6 +220,13 @@ export async function scriviProposta(
         now:           adesso,
       })
       if (!puo) return { scritta: false, motivo: 'rifiutata_di_recente' }
+    }
+    if (gia) {
+      await runQuery(session, `
+        MATCH (p:Proposal {tenant_id: $tenantId, area: $area, fingerprint: $fingerprint})
+        WHERE p.status IN $closed
+        DETACH DELETE p
+      `, { tenantId: p.tenantId, area: p.area, fingerprint, closed: [...PROPOSAL_STATUSES_THAT_MAY_RETURN] })
     }
 
     const conteggi = await runQueryOne<{ aperte: number; oggi: number }>(session, `
@@ -431,6 +447,32 @@ export async function scadiLeVecchie(tenantId: string, adesso: Date = new Date()
       SET p.status = 'expired', p.decided_at = $now
       RETURN count(p) AS n
     `, { tenantId, limite, now: adesso.toISOString() })
+    return Number(righe[0]?.n ?? 0)
+  } finally {
+    await session.close()
+  }
+}
+
+/** The closed statuses whose proposal may be written again, when the evidence allows it. */
+export const PROPOSAL_STATUSES_THAT_MAY_RETURN: readonly string[] = ['rejected', 'expired']
+
+/**
+ * Closed proposals are purged after PROPOSAL_RETENTION_MONTHS (review of 23
+ * Sep 2026): the constant was declared and never used, and every proposal
+ * ever made stayed in the graph. A rejection survives the purge in its own
+ * record (`ProposalRejection`), which is what the return rule reads.
+ */
+export async function purgaLeChiuse(tenantId: string, adesso: Date = new Date()): Promise<number> {
+  const limite = new Date(adesso)
+  limite.setUTCMonth(limite.getUTCMonth() - PROPOSAL_RETENTION_MONTHS)
+  const session = getSession(undefined, 'WRITE')
+  try {
+    const righe = await runQuery<{ n: number }>(session, `
+      MATCH (p:Proposal {tenant_id: $tenantId})
+      WHERE p.status IN ['accepted', 'rejected', 'expired'] AND p.decided_at < $limite
+      DETACH DELETE p
+      RETURN count(*) AS n
+    `, { tenantId, limite: limite.toISOString() })
     return Number(righe[0]?.n ?? 0)
   } finally {
     await session.close()

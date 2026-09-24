@@ -218,6 +218,14 @@ async function createServiceRequest(
     // L'iter della voce (moduli del catalogo, ondata 3): lo decide la voce, non chi apre la richiesta.
     let workflowDefinitionId: string | null = null
     let priority = args.input.priority ?? null
+    // Review of 23 Sep 2026: without an item a portal user chose the priority
+    // and skipped the item's approval. From the portal a request comes from the catalog.
+    if (isPortalOnly(ctx) && !args.input.catalogItemId) {
+      throw new ValidationError(
+        'A request from the portal is opened from a catalog item.',
+        { key: 'errors.serviceRequest.catalogItemRequired' },
+      )
+    }
     if (args.input.catalogItemId) {
       const item = await runQueryOne<{ requiresApproval: boolean; priority: string | null; name: string; category: string | null; workflowDefinitionId: string | null; active: boolean | null }>(session,
         `MATCH (ci:ServiceCatalogItem {id: $id, tenant_id: $tenantId})

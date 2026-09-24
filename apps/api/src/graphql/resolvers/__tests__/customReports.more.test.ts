@@ -185,21 +185,31 @@ describe('Query.reachableEntities', () => {
       { entityType: 'custom_box', label: 'Box', neo4jLabel: 'CustomBox', fields: [{ name: 'f' }], relations: [] },
       { entityType: 'server', label: 'Server', neo4jLabel: 'Server', fields: [], relations: [] },
     ] as never)
-    const s = makeSession([[
-      { targetLabel: 'Server', relType: 'RUNS_ON', direction: 'outgoing', cnt: { toNumber: () => 4 } },
-      // Matched by entityType as well as by label.
-      { targetLabel: 'custom_box', relType: 'CONTAINS', direction: 'incoming', cnt: 2 },
-      { targetLabel: null, relType: 'X', direction: 'outgoing', cnt: 1 },
-      // A technical node the builder cannot describe is not offered.
-      { targetLabel: 'ChangeAuditEntry', relType: 'HAS_AUDIT', direction: 'outgoing', cnt: 9 },
-    ]])
+    const s = makeSession([
+      // The kinds of link, discovered on the first nodes of the label…
+      [
+        { targetLabel: 'custom_box', relType: 'CONTAINS', direction: 'incoming' },
+        { targetLabel: 'Server', relType: 'RUNS_ON', direction: 'outgoing' },
+        { targetLabel: null, relType: 'X', direction: 'outgoing' },
+        // A technical node the builder cannot describe is not offered, nor counted.
+        { targetLabel: 'ChangeAuditEntry', relType: 'HAS_AUDIT', direction: 'outgoing' },
+      ],
+      // …then only the offered ones counted, exactly, in that order.
+      [{ cnt: 2 }],
+      [{ cnt: { toNumber: () => 4 } }],
+    ])
     vi.mocked(getSession).mockReturnValue(s as never)
     const out = await customReportResolvers.Query.reachableEntities(null, { fromNeo4jLabel: 'CustomBox' }, ctx)
     expect(out).toEqual([
       { entityType: 'server', label: 'Server', neo4jLabel: 'Server', fields: [], relationshipType: 'RUNS_ON', direction: 'outgoing', count: 4 },
       { entityType: 'custom_box', label: 'Box', neo4jLabel: 'CustomBox', fields: [{ name: 'f' }], relationshipType: 'CONTAINS', direction: 'incoming', count: 2 },
     ])
-    expect(s.readRun.mock.calls[0]![1]).toEqual({ tenantId: 'tenant-1' })
+    // Review of 23 Sep 2026: the discovery reads a sample, and each count has its typed pattern.
+    expect(s.readRun.mock.calls[0]![1]).toEqual({ tenantId: 'tenant-1', sample: 1_000 })
+    expect(s.readRun.mock.calls[0]![0]).toContain('WITH n LIMIT toInteger($sample)')
+    expect(s.readRun.mock.calls).toHaveLength(3)
+    expect(s.readRun.mock.calls[1]![0]).toContain('MATCH (n:CustomBox {tenant_id: $tenantId})<-[:CONTAINS]-(d:custom_box)')
+    expect(s.readRun.mock.calls[2]![0]).toContain('MATCH (n:CustomBox {tenant_id: $tenantId})-[:RUNS_ON]->(d:Server)')
   })
 })
 

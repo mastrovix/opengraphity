@@ -5,6 +5,7 @@ import { PageContainer } from '@/components/PageContainer'
 import { useState, useEffect, useRef } from 'react'
 import { Activity }         from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
+import { QueryError, StaleDataBanner } from '@/components/QueryError'
 import ReactECharts         from 'echarts-for-react'
 import { GET_SYSTEM_HEALTH, GET_SYSTEM_METRICS, GET_TRACE_INFO } from '@/graphql/queries'
 import { colors, palette } from '@/lib/tokens'
@@ -90,11 +91,17 @@ function formatUptime(seconds: number): string {
 export function MonitoringPage() {
   const { t } = useTranslation()
 
-  const { data: healthData }  = useQuery<{ systemHealth: SystemHealth }>(GET_SYSTEM_HEALTH,  { ...pausedWhenHidden(15_000), fetchPolicy: 'network-only' })
-  const { data: metricsData } = useQuery<{ systemMetrics: SystemMetrics }>(GET_SYSTEM_METRICS, { ...pausedWhenHidden(15_000), fetchPolicy: 'network-only' })
-  const { data: traceData }   = useQuery<{ traceInfo: { enabled: boolean; endpoint: string | null; recentTraces: RecentTrace[] } }>(GET_TRACE_INFO, { ...pausedWhenHidden(15_000), fetchPolicy: 'network-only' })
+  const { data: healthData, error: healthError, refetch: refetchHealth } = useQuery<{ systemHealth: SystemHealth }>(GET_SYSTEM_HEALTH,  { ...pausedWhenHidden(15_000), fetchPolicy: 'network-only' })
+  const { data: metricsData, error: metricsError, refetch: refetchMetrics } = useQuery<{ systemMetrics: SystemMetrics }>(GET_SYSTEM_METRICS, { ...pausedWhenHidden(15_000), fetchPolicy: 'network-only' })
+  const { data: traceData, error: traceError, refetch: refetchTrace } = useQuery<{ traceInfo: { enabled: boolean; endpoint: string | null; recentTraces: RecentTrace[] } }>(GET_TRACE_INFO, { ...pausedWhenHidden(15_000), fetchPolicy: 'network-only' })
 
-  const health  = healthData?.systemHealth
+  /*
+   * A failed poll keeps Apollo's last data (review of 23 Sep 2026): the
+   * Neo4j, Redis and Keycloak dots stayed green «OK» while the health query
+   * itself was failing. After a failure the health is unknown — grey dots —
+   * and each card says it could not read, above what it read before.
+   */
+  const health  = healthError ? undefined : healthData?.systemHealth
   const metrics = metricsData?.systemMetrics
   const trace   = traceData?.traceInfo
 
@@ -145,6 +152,7 @@ export function MonitoringPage() {
       {/* Section 1: System Health */}
       <div style={card}>
         <h2 style={sectionTitle}>{t('pages.monitoring.health.title')}</h2>
+        {healthError && <StaleDataBanner message={healthError.message} onRetry={() => void refetchHealth()} />}
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           {/* Overall */}
           <div style={{ ...statCard, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -191,6 +199,7 @@ export function MonitoringPage() {
       {/* Section 2: Request Metrics */}
       <div style={card}>
         <h2 style={sectionTitle}>{t('pages.monitoring.requests.title')}</h2>
+        {metricsError && <StaleDataBanner message={metricsError.message} onRetry={() => void refetchMetrics()} />}
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
           <div style={statCard}>
             <div style={{ fontSize: 'var(--font-size-body)', color: colors.slate }}>{t('pages.monitoring.requests.rpm')}</div>
@@ -229,7 +238,7 @@ export function MonitoringPage() {
       {/* Section 3: BullMQ Queues */}
       <div style={card}>
         <h2 style={sectionTitle}>{t('pages.monitoring.queues.title')}</h2>
-        {metrics?.queues && metrics.queues.length > 0 ? (
+        {metricsError && !metrics ? <QueryError message={metricsError.message} onRetry={() => void refetchMetrics()} /> : metrics?.queues && metrics.queues.length > 0 ? (
           <div className="og-scroll-x">
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
             <thead>
@@ -312,7 +321,8 @@ export function MonitoringPage() {
       {/* Section 5: OpenTelemetry Tracing */}
       <div style={card}>
         <h2 style={sectionTitle}>{t('pages.monitoring.tracing.title')}</h2>
-        {trace ? (
+        {traceError && trace && <StaleDataBanner message={traceError.message} onRetry={() => void refetchTrace()} />}
+        {traceError && !trace ? <QueryError message={traceError.message} onRetry={() => void refetchTrace()} /> : trace ? (
           trace.enabled ? (
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>

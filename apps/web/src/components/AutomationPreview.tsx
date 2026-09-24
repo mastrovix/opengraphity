@@ -7,7 +7,8 @@ import { useTranslation } from 'react-i18next'
 import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
 import { useMemo } from 'react'
 import { useQuery } from '@apollo/client/react'
-import { GET_TEAMS, GET_USERS } from '@/graphql/queries'
+import { GET_TEAMS } from '@/graphql/queries'
+import { useUserNames } from '@/hooks/useUserNames'
 import { useEntityFieldLookup, type FieldMeta } from '@/hooks/useEntityFields'
 import { palette } from '@/lib/tokens'
 import {
@@ -38,10 +39,17 @@ export function AutomationPreview({ entityType, eventType, conditions, condition
   const fieldLookup = useEntityFieldLookup(entityType)
   const vocab = useDomainVocabularies()
   const { data: teamsData } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: METAMODEL_FETCH_POLICY })
-  const { data: usersData } = useQuery<{ users: { id: string; name: string; email: string }[] }>(GET_USERS, { fetchPolicy: METAMODEL_FETCH_POLICY })
+  // The people the rule names, by id (review of 23 Sep 2026: the whole
+  // directory was downloaded to name one or two). Every value that could be a
+  // person is asked; the API answers for those that are.
+  const userIds = useMemo(() => [...new Set([
+    ...conditions.map((c) => c.value),
+    ...actions.flatMap((a) => Object.values(a.params ?? {}).flatMap((v) => String(v).split(',').map((x) => x.trim()))),
+  ].filter((v) => v !== ''))].slice(0, 100), [conditions, actions])
+  const { byId: users } = useUserNames(userIds)
 
   const teamMap = useMemo(() => new Map((teamsData?.teams ?? []).map(t => [t.id, t.name])), [teamsData])
-  const userMap = useMemo(() => new Map((usersData?.users ?? []).map(u => [u.id, `${u.name} (${u.email})`])), [usersData])
+  const userMap = useMemo(() => new Map([...users.values()].map(u => [u.id, `${u.name} (${u.email})`])), [users])
   const logic = ` ${t((conditionLogic ?? 'and').toUpperCase() === 'OR' ? 'automation.sentence.or' : 'automation.sentence.and')} `
 
   /**

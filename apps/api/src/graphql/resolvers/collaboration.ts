@@ -118,7 +118,10 @@ async function notifyWatchers(
 ): Promise<void> {
   const watchers = await withSession(async (s) => {
     const rows = await runQuery<{ userId: string; role: string | null }>(s, `
-      MATCH (u:User)-[:WATCHES]->(e {id: $entityId, tenant_id: $tenantId})
+      ${matchById('e', { labels: 'entities', id: '$entityId' })}
+      // The ticket first, by its index (review of 23 Sep 2026): a ticket matched by id
+      // without a label scanned every WATCHES edge of the database.
+      MATCH (u:User)-[:WATCHES]->(e)
       RETURN DISTINCT u.id AS userId, u.role AS role
     `, { entityId, tenantId })
     if (!internal) return rows.map(r => r.userId)
@@ -219,12 +222,38 @@ async function searchUsers(_: unknown, args: { search: string; limit?: number; p
   })
 }
 
+/** How many people one `usersByIds` names at most: a rule, a step or a preview names a handful. */
+export const USERS_BY_IDS_MAX = 100
+
+/**
+ * The names of people already chosen, by id (review of 23 Sep 2026). The
+ * automation editors downloaded every person of the organization to show the
+ * name of the one or two a rule names; the pickers search as the user types
+ * (`searchUsers`), and this names what is already saved — inactive people
+ * too, so a rule that names one says who, instead of an id.
+ */
+async function usersByIds(_: unknown, args: { ids: string[] }, ctx: GraphQLContext) {
+  const ids = [...new Set(args.ids)]
+  if (ids.length > USERS_BY_IDS_MAX) {
+    throw new ValidationError(`At most ${USERS_BY_IDS_MAX} people can be named at once (got ${ids.length})`,
+      { key: 'errors.users.tooManyIds', params: { max: String(USERS_BY_IDS_MAX) } })
+  }
+  if (ids.length === 0) return []
+  return withSession(async (s) => runQuery<{ id: string; name: string; email: string; active: boolean }>(s, `
+    MATCH (u:User {tenant_id: $tenantId})
+    WHERE u.id IN $ids
+    RETURN u.id AS id, u.name AS name, u.email AS email, coalesce(u.active, true) AS active
+    ORDER BY u.name
+  `, { tenantId: ctx.tenantId, ids }))
+}
+
 // ── Watchers ─────────────────────────────────────────────────────────────────
 
 async function watchers(_: unknown, args: { entityType: string; entityId: string }, ctx: GraphQLContext) {
   return withSession(async (s) => {
     const rows = await runQuery<Props>(s, `
-      MATCH (u:User)-[w:WATCHES]->(e {id: $entityId, tenant_id: $tenantId})
+      ${matchById('e', { labels: 'entities', id: '$entityId' })}
+      MATCH (u:User)-[w:WATCHES]->(e)
       WITH u, min(w.watched_at) AS watchedAt
       RETURN u.id AS id, u.name AS name, u.email AS email, watchedAt
       ORDER BY watchedAt DESC
@@ -424,6 +453,7 @@ async function deleteInternalMessage(_: unknown, args: { messageId: string }, ct
 export const collaborationResolvers = {
   Query: {
     searchUsers,
+    usersByIds,
     watchers,
     isWatching,
     internalMessages,

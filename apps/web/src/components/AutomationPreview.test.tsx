@@ -48,7 +48,10 @@ beforeEach(() => {
   apolloFinto.risposte['GetITILTypes'] = { itilTypes: ITIL_TYPES }
   apolloFinto.risposte['GetCITypes'] = { ciTypes: [{ name: 'server', fields: [f('hostname', 'Host name', 'string')] }] }
   apolloFinto.risposte['GetTeams'] = { teams: [{ id: 't1', name: 'Network' }] }
-  apolloFinto.risposte['GetUsers'] = { users: [{ id: 'u1', name: 'Ann Bell', email: 'ann@acme.com' }] }
+  // The people the rule names, by id (review of 23 Sep 2026): never the whole directory.
+  apolloFinto.risposte['UsersByIds'] = (v?: Record<string, unknown>) => ({
+    usersByIds: [{ id: 'u1', name: 'Ann Bell', email: 'ann@acme.com', active: true }].filter((u) => (v?.['ids'] as string[]).includes(u.id)),
+  })
   apolloFinto.risposte['EntityFilterFields'] = { entityFilterFields: [
     { name: 'environments', kind: 'SCALAR', scalarName: 'String', enumValues: ['prod', 'lab'], label: 'Environments', choices: [], formFieldType: 'multi_enum', vocabulary: 'env', rowFilter: false, settableByAutomation: true, multi: true },
   ] }
@@ -159,7 +162,7 @@ describe('AutomationPreview — actions', () => {
 
   it('while teams and people are still loading, their ids are shown as they are', () => {
     apolloFinto.risposte['GetTeams'] = undefined
-    apolloFinto.risposte['GetUsers'] = undefined
+    apolloFinto.risposte['UsersByIds'] = undefined
     expect(sentence({
       conditions: [{ field: 'assigned_to', operator: 'equals', value: 'u1' }],
       actions: [{ type: 'assign_team', params: { team_id: 't1' } }],

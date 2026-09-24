@@ -1,4 +1,9 @@
-import { getQuickJS } from 'quickjs-emscripten'
+/*
+ * The scripts of the CI types run in the browser at every keystroke: each
+ * evaluation has a deadline and the runtime a memory cap, so a looping script
+ * is an error of the field, not a frozen tab (review of 23 Sep 2026).
+ */
+import { newBoundedScriptVM, scriptErrorMessage } from '@opengraphity/web-core'
 import i18n from '@/i18n/i18n'
 
 export interface ValidationResult {
@@ -22,8 +27,7 @@ export async function validateCI(
   const errors: Record<string, string> = {}
   let globalError: string | undefined
 
-  const QuickJS = await getQuickJS()
-  const vm = QuickJS.newContext()
+  const vm = await newBoundedScriptVM()
 
   try {
     const inputJson = JSON.stringify(input)
@@ -47,10 +51,10 @@ export async function validateCI(
         const result = vm.evalCode(script)
         if (result.error) {
           const err = vm.dump(result.error)
-          errors[field.name] = typeof err === 'string' ? err : String(err)
+          errors[field.name] = scriptErrorMessage(err)
           result.error.dispose()
         } else {
-          result.value.dispose()
+          result.value?.dispose()
         }
       }
     }
@@ -64,10 +68,10 @@ export async function validateCI(
       const result = vm.evalCode(script)
       if (result.error) {
         const err = vm.dump(result.error)
-        globalError = typeof err === 'string' ? err : String(err)
+        globalError = scriptErrorMessage(err)
         result.error.dispose()
       } else {
-        result.value.dispose()
+        result.value?.dispose()
       }
     }
   } finally {
@@ -89,8 +93,7 @@ export async function isFieldVisible(
   const field = ciType.fields.find(f => f.name === fieldName)
   if (!field?.visibilityScript) return true
 
-  const QuickJS = await getQuickJS()
-  const vm = QuickJS.newContext()
+  const vm = await newBoundedScriptVM()
   try {
     const script = `(function() {
       const input = ${JSON.stringify(input)};
@@ -101,11 +104,11 @@ export async function isFieldVisible(
       const err = vm.dump(result.error)
       result.error.dispose()
       throw new Error(
-        `visibility_script of field "${fieldName}" failed: ${typeof err === 'string' ? err : JSON.stringify(err)}`,
+        `visibility_script of field "${fieldName}" failed: ${scriptErrorMessage(err)}`,
       )
     }
-    const val = vm.dump(result.value)
-    result.value.dispose()
+    const val = result.value ? vm.dump(result.value) : undefined
+    result.value?.dispose()
     return Boolean(val)
   } finally {
     vm.dispose()
@@ -120,8 +123,7 @@ export async function getFieldDefault(
   const field = ciType.fields.find(f => f.name === fieldName)
   if (!field?.defaultScript) return null
 
-  const QuickJS = await getQuickJS()
-  const vm = QuickJS.newContext()
+  const vm = await newBoundedScriptVM()
   try {
     const script = `(function() {
       const input = ${JSON.stringify(input)};
@@ -132,11 +134,11 @@ export async function getFieldDefault(
       const err = vm.dump(result.error)
       result.error.dispose()
       throw new Error(
-        `default_script of field "${fieldName}" failed: ${typeof err === 'string' ? err : JSON.stringify(err)}`,
+        `default_script of field "${fieldName}" failed: ${scriptErrorMessage(err)}`,
       )
     }
-    const val = vm.dump(result.value)
-    result.value.dispose()
+    const val = result.value ? vm.dump(result.value) : undefined
+    result.value?.dispose()
     return val
   } finally {
     vm.dispose()

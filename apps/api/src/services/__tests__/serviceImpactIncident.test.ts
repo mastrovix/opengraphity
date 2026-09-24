@@ -32,6 +32,10 @@ const fakeRedis = vi.hoisted(() => ({
   }),
 }))
 const incidentService = vi.hoisted(() => ({
+  createdIncidentOf:  (err: unknown) => {
+    const ext = (err as { extensions?: Record<string, unknown> } | null)?.extensions
+    return typeof ext?.['createdIncidentId'] === 'string' ? { id: ext['createdIncidentId'], number: String(ext['createdIncidentNumber'] ?? '') } : null
+  },
   createIncident:     vi.fn(),
   addIncidentComment: vi.fn().mockResolvedValue(undefined),
   resolveIncident:    vi.fn().mockResolvedValue(undefined),
@@ -134,7 +138,7 @@ function onCypher(rules: Array<[RegExp, unknown]>) {
 const calls = () => [...vi.mocked(runQueryOne).mock.calls, ...vi.mocked(runQuery).mock.calls].map(([, cypher, params]) => ({ cypher: cypher as string, params: params as Record<string, unknown> }))
 const callMatching = (re: RegExp) => calls().find((c) => re.test(c.cypher))
 
-const openRow = (over: Record<string, unknown> = {}) => ({ incidentId: 'inc-1', instanceId: 'wi-1', step: 'new', number: 'INC00000042', causeIds: ['db-01'], maintenanceNotedAt: null, keptOpenNotedAt: null, ...over })
+const openRow = (over: Record<string, unknown> = {}) => ({ incidentId: 'inc-1', instanceId: 'wi-1', step: 'new', number: 'INC00000042', causeIds: ['db-01'], maintenanceNotedAt: null, keptOpenNotedAt: null, cannotResolveStep: null, ...over })
 
 function input(over: Partial<Parameters<typeof reconcileServiceIncident>[0]> = {}) {
   return {
@@ -258,7 +262,7 @@ describe('apertura', () => {
     const link = callMatching(LINK_RE)!
     expect(link.cypher).toBe(LINK_SERVICE_INCIDENT_CYPHER)
     expect(link.cypher).toContain('ON CREATE SET r.opened_by = $openedBy, r.at = $now')
-    expect(link.params).toEqual({ tenantId: 't1', mapId: 'map-1', incidentId: 'inc-9', causeIds: ['db-01', 'cache-02'], maintenanceNoted: false, keptOpenNoted: false, now: NOW, openedBy: 'monitoring' })
+    expect(link.params).toEqual({ tenantId: 't1', mapId: 'map-1', incidentId: 'inc-9', causeIds: ['db-01', 'cache-02'], maintenanceNoted: false, keptOpenNoted: false, cannotResolveStep: null, now: NOW, openedBy: 'monitoring' })
 
     expect(publishEvent).toHaveBeenCalledWith('service.incident_opened', 't1', 'monitoring', {
       id: 'map-1', map_id: 'map-1', service_id: 'ba-1', name: 'Enterprise Billing',
@@ -441,6 +445,39 @@ describe('chiusura automatica', () => {
     expect(incidentService.addIncidentComment.mock.calls[0]![2]).toContain('l\'incident è in "on_hold" e non può essere risolto automaticamente da questo passo')
   })
 
+  // Review of 23 Sep 2026: evaluations run every 10-15 minutes, and the comment was written at every one of them.
+  it('back but not resolvable: said once per step — the marker before the comment, silence while the step is the same', async () => {
+    onCypher([[FIND_RE, openRow({ step: 'on_hold' })], [LINK_RE, { at: NOW }]])
+    await reconcileServiceIncident(input({ health: 'operational', impactScore: 0, causes: [] }))
+    expect(callMatching(LINK_RE)!.params).toMatchObject({ cannotResolveStep: 'on_hold' })
+    expect(incidentService.addIncidentComment).toHaveBeenCalledTimes(1)
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    onCypher([[FIND_RE, openRow({ step: 'on_hold', cannotResolveStep: 'on_hold' })], [LINK_RE, { at: NOW }]])
+    expect((await reconcileServiceIncident(input({ health: 'operational', impactScore: 0, causes: [] }))).outcome).toBe('resolve_skipped')
+    expect(incidentService.addIncidentComment).not.toHaveBeenCalled()
+    expect(callMatching(LINK_RE)).toBeUndefined()
+
+    // The incident moved to another step that cannot be left either: said again, for that step.
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    onCypher([[FIND_RE, openRow({ step: 'waiting_vendor', cannotResolveStep: 'on_hold' })], [LINK_RE, { at: NOW }]])
+    await reconcileServiceIncident(input({ health: 'operational', impactScore: 0, causes: [] }))
+    expect(incidentService.addIncidentComment).toHaveBeenCalledTimes(1)
+    expect(callMatching(LINK_RE)!.params).toMatchObject({ cannotResolveStep: 'waiting_vendor' })
+  })
+
+  it('the service falls again: the «cannot resolve» marker is cleared, so the next return is said again', async () => {
+    onCypher([[FIND_RE, openRow({ step: 'on_hold', cannotResolveStep: 'on_hold' })], [LINK_RE, { at: NOW }]])
+    expect((await reconcileServiceIncident(input())).outcome).toBe('none')
+    expect(callMatching(LINK_RE)!.params).toMatchObject({ cannotResolveStep: null })
+  })
+
+  it('maintenance keeps the «cannot resolve» marker', async () => {
+    onCypher([[FIND_RE, openRow({ step: 'on_hold', cannotResolveStep: 'on_hold' })], [LINK_RE, { at: NOW }]])
+    await reconcileServiceIncident(input({ health: 'maintenance', impactScore: 0, causes: [] }))
+    expect(callMatching(LINK_RE)!.params).toMatchObject({ maintenanceNoted: true, cannotResolveStep: 'on_hold' })
+  })
+
   it('incident già in resolved → non si tocca', async () => {
     onCypher([[FIND_RE, openRow({ step: 'resolved' })]])
     const r = await reconcileServiceIncident(input({ health: 'operational', impactScore: 0, causes: [] }))
@@ -581,6 +618,20 @@ describe('apertura idempotente (I2)', () => {
     expect(serviceIncidentOpenedKey('t1', 'map-1')).toBe('og:services:incident:opened:t1:map-1')
     expect(SERVICE_INCIDENT_OPENED_TTL_SECONDS).toBe(3600)
     expect(redisStore.has('og:services:incident:opened:t1:map-1')).toBe(false)   // ricollegato: il marcatore non serve più
+  })
+
+  // Review of 23 Sep 2026: written, then its team assignment failed — the marker was not written, and every retry opened another.
+  it('an incident written before a later step failed: the marker records it, the retry relinks it', async () => {
+    onCypher([[FIND_RE, null], [LINK_RE, { at: NOW }]])
+    incidentService.createIncident.mockRejectedValueOnce(Object.assign(new Error('team assignment failed'), { extensions: { createdIncidentId: 'inc-made', createdIncidentNumber: 'INC00000050' } }))
+    await expect(reconcileServiceIncident(input())).rejects.toThrow('team assignment failed')
+    expect(redisStore.get('og:services:incident:opened:t1:map-1')).toBe('inc-made')
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    onCypher([[FIND_RE, null], [BY_ID_RE, { number: 'INC00000050' }], [LINK_RE, { at: NOW }]])
+    const r = await reconcileServiceIncident(input())
+    expect(r).toEqual({ outcome: 'opened', incidentId: 'inc-made', incidentNumber: 'INC00000050' })
+    expect(incidentService.createIncident).not.toHaveBeenCalled()
   })
 
   it('SV-3: marcatore che punta a un incident già chiuso a mano → non lo si ricollega, se ne apre uno nuovo', async () => {

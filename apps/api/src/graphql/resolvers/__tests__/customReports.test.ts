@@ -146,10 +146,10 @@ describe('reachableEntities — whitelist validation', () => {
 describe('reachableEntities — solo entità che il costruttore sa descrivere (#12)', () => {
   it('scarta i nodi tecnici collegati (audit, istanze di workflow), tiene i tipi navigabili', async () => {
     const session = makeSession([[
-      { targetLabel: 'ChangeAuditEntry', relType: 'HAS_AUDIT', direction: 'outgoing', cnt: 40 },
-      { targetLabel: 'WorkflowInstance', relType: 'HAS_WORKFLOW', direction: 'outgoing', cnt: 12 },
-      { targetLabel: 'Application',      relType: 'DEPENDS_ON', direction: 'incoming', cnt: 3 },
-    ]])
+      { targetLabel: 'ChangeAuditEntry', relType: 'HAS_AUDIT', direction: 'outgoing' },
+      { targetLabel: 'WorkflowInstance', relType: 'HAS_WORKFLOW', direction: 'outgoing' },
+      { targetLabel: 'Application',      relType: 'DEPENDS_ON', direction: 'incoming' },
+    ], [{ cnt: 3 }]])
     vi.mocked(getSession).mockReturnValue(session as never)
     const result = await customReportResolvers.Query.reachableEntities(undefined, { fromNeo4jLabel: 'Application' }, mockCtx)
     expect(result.map((r) => r.neo4jLabel)).toEqual(['Application'])
@@ -170,5 +170,20 @@ describe('ALLOWED_NEO4J_LABELS — copertura etichette attese', () => {
     await expect(
       customReportResolvers.Query.reachableEntities(undefined, { fromNeo4jLabel: label }, mockCtx),
     ).resolves.toBeDefined()
+  })
+})
+
+// Review of 23 Sep 2026: the schedule form read notificationChannels (config.notifications).
+describe('reportDeliveryChannels — what a scheduled report can be sent to', () => {
+  it('only the tenant\'s active Slack channels, id and name, never the webhook', async () => {
+    const run = vi.fn().mockResolvedValue({ records: [{ get: (k: string) => ({ id: 'ch1', name: '#ops' } as Record<string, string>)[k] }] })
+    const session = { executeRead: vi.fn((fn: (tx: unknown) => unknown) => fn({ run })), close: vi.fn().mockResolvedValue(undefined) }
+    vi.mocked(getSession).mockReturnValue(session as never)
+    const out = await customReportResolvers.Query.reportDeliveryChannels(undefined, {}, mockCtx as never)
+    expect(out).toEqual([{ id: 'ch1', name: '#ops' }])
+    const [cypher, params] = run.mock.calls[0]!
+    expect(cypher).toContain("c.platform = 'slack' AND c.active = true")
+    expect(cypher).not.toContain('webhook')
+    expect(params).toEqual({ tenantId: 'tenant-1' })
   })
 })

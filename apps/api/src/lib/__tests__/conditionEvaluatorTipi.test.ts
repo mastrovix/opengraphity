@@ -75,3 +75,28 @@ describe('equals per tipo', () => {
     expect(sameValue(1200, 'mille')).toBe(false)
   })
 })
+
+// Review of 23 Sep 2026: `Number('2026-10-01')` is NaN — «after»/«before» on a date never matched.
+describe('«after» / «before» on a date field, and an empty field', () => {
+  const due = (value: unknown) => ({ due_date: value })
+  it('a date from the editor against an ISO instant on the ticket', () => {
+    expect(evaluateConditions([{ field: 'due_date', operator: 'greater_than', value: '2026-10-01' }], due('2026-10-15T09:00:00.000Z'))).toBe(true)
+    expect(evaluateConditions([{ field: 'due_date', operator: 'less_than', value: '2026-12-01' }], due('2026-10-15T09:00:00.000Z'))).toBe(true)
+    expect(evaluateConditions([{ field: 'due_date', operator: 'greater_than', value: '2026-12-01' }], due('2026-10-15T09:00:00.000Z'))).toBe(false)
+  })
+  it('two date-only values', () => {
+    expect(evaluateConditions([{ field: 'due_date', operator: 'greater_than', value: '2026-10-01' }], due('2026-10-02'))).toBe(true)
+    expect(evaluateConditions([{ field: 'due_date', operator: 'less_than', value: '2026-10-01' }], due('2026-10-02'))).toBe(false)
+  })
+  it('an empty field is neither greater nor less than anything (it counted as 0)', () => {
+    for (const v of [null, undefined, '']) {
+      expect(evaluateConditions([{ field: 'cost', operator: 'less_than', value: '5' }], { cost: v })).toBe(false)
+      expect(evaluateConditions([{ field: 'cost', operator: 'greater_than', value: '-1' }], { cost: v })).toBe(false)
+    }
+  })
+  it('numbers still compare as numbers, and text that is not a number matches nothing', () => {
+    expect(evaluateConditions([{ field: 'cost', operator: 'greater_than', value: '1000' }], { cost: 1200 })).toBe(true)
+    expect(evaluateConditions([{ field: 'cost', operator: 'less_than', value: '1000' }], { cost: '999' })).toBe(true)
+    expect(evaluateConditions([{ field: 'name', operator: 'greater_than', value: '3' }], { name: 'abc' })).toBe(false)
+  })
+})

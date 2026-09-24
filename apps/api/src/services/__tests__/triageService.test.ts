@@ -198,6 +198,10 @@ describe('suggestTriage — chiamata al modello', () => {
     }
     const impact = calls.find(c => (c[1] as string).includes('BusinessCapability'))!
     expect((impact[2] as Record<string, unknown>)['ciIds']).toEqual(['a', 'b', 'c', 'd', 'e'])
+    // Review of 23 Sep 2026: the modelled path, typed and directed — not any relationship up to 4 hops.
+    expect(impact[1]).toContain('(cap:BusinessCapability {tenant_id: $tenantId})-[:ENABLED_BY]->(ba:BusinessApplication {tenant_id: $tenantId})')
+    expect(impact[1]).toContain('(ba)-[:HAS_SERVICE_MAP]->(:ServiceMap {tenant_id: $tenantId})-[:INCLUDES]->(ci)')
+    expect(impact[1]).not.toContain('[*1..4]')
   })
 
   // ── A-2: i valori ammessi sono quelli di QUESTO cliente ───────────────────

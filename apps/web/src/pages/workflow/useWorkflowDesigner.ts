@@ -53,6 +53,8 @@ export interface PendingStepChange {
   purpose?:     string | null
   /** Scadenza del passo: assente = non cambia, '' = tolta, altrimenti il JSON. */
   deadline?:    string | null
+  /** Delay of a timed wait, in minutes: absent = unchanged. */
+  timerDelayMinutes?: number | null
 }
 
 export function useWorkflowDesigner(def: WorkflowDefinition | null) {
@@ -124,7 +126,8 @@ export function useWorkflowDesigner(def: WorkflowDefinition | null) {
         ? { ...step, label: pending.label, enterActions: pending.enterActions, exitActions: pending.exitActions,
             isInitial: pending.isInitial, isTerminal: pending.isTerminal, isOpen: pending.isOpen,
             category: pending.category, purpose: pending.purpose ?? null,
-            deadline: pending.deadline === undefined ? step.deadline : (pending.deadline || null) }
+            deadline: pending.deadline === undefined ? step.deadline : (pending.deadline || null),
+            timerDelayMinutes: pending.timerDelayMinutes === undefined ? step.timerDelayMinutes : pending.timerDelayMinutes }
         : step
       return {
         id:       step.id,

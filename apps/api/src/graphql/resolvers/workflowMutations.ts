@@ -22,8 +22,11 @@ import { loadTransitionRows, mapWorkflowDefinition } from './workflowMapping.js'
 import { workflowLogger } from '../../lib/logger.js'
 import { audit } from '../../lib/audit.js'
 import { hasPermission, requirePermission } from '../../lib/permissions.js'
+import type { Permission } from '@opengraphity/types'
+import { assertTimerDelayMinutes } from '../../lib/stepTimerDelay.js'
 import { APPROVAL_GATED_TICKETS, ticketApprovalRefusal } from '../../lib/ticketApprovalGate.js'
 import { validateRequiredFields } from '../../lib/validateRequiredFields.js'
+import { preflightStepMetadata } from '../../lib/stepMetadataPreflight.js'
 import { invalidateWorkflowCache } from '../../lib/workflowHelpers.js'
 import { auditStepEntered} from '../../lib/stepEvent.js'
 import { systemText } from '../../lib/systemText.js'
@@ -117,64 +120,6 @@ async function applyOnEnterFields(
      SET ${setClauses.join(', ')}, e.updated_at = $now`,
     params,
   ))
-}
-
-// ── Publish workflow.step.entered for notify_rule enter_actions ───────────────
-
-async function publishNotifyRuleActions(
-  session: import('neo4j-driver').Session,
-  instanceId: string,
-  stepName: string,
-  tenantId: string,
-  userId: string,
-  entityType: string,
-  entityId: string,
-): Promise<void> {
-  const result = await session.executeRead((tx) =>
-    tx.run(
-      `MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})
-       // tenant-ok(traversal): definizione e step seguono l'istanza appena scopata
-       MATCH (wd:WorkflowDefinition {id: wi.definition_id})
-       // tenant-ok(traversal): idem
-       MATCH (s:WorkflowStep {definition_id: wd.id, name: $stepName})
-       RETURN s.enter_actions AS enterActions, s.label AS stepLabel`,
-      { instanceId, stepName, tenantId },
-    ),
-  )
-  if (!result.records.length) return
-  const raw = result.records[0].get('enterActions') as string | null
-  // L'etichetta del passo viaggia nell'evento: è il titolo di ripiego della
-  // notifica quando la chiave i18n della regola non è tradotta (B-16), al
-  // posto della chiave grezza «notification.custom.step.title».
-  const stepLabel = (result.records[0].get('stepLabel') as string | null) ?? stepName
-  if (!raw) return
-
-  let actions: Array<{ type: string; params?: Record<string, unknown> }>
-  try { actions = JSON.parse(raw) }
-  catch (e) {
-    // Corrupt enter_actions must fail the transition, not silently drop the
-    // step's notify rules.
-    throw new GraphQLError(`Corrupt enter_actions JSON on step "${stepName}": ${e instanceof Error ? e.message : String(e)}`)
-  }
-
-  const notifyRules = actions.filter((a) => a.type === 'notify_rule')
-  for (const action of notifyRules) {
-    await publish({
-      id:             uuidv4(),
-      type:           'workflow.step.entered',
-      tenant_id:      tenantId,
-      timestamp:      new Date().toISOString(),
-      correlation_id: uuidv4(),
-      actor_id:       userId,
-      payload: {
-        stepName,
-        stepLabel,
-        entityType,
-        entityId,
-        notifyRule: action.params ?? {},
-      },
-    })
-  }
 }
 
 // ── Validazione delle azioni in scrittura (B0-5) ──────────────────────────────
@@ -504,7 +449,7 @@ export function assertManualTransitionsLabelled<R extends { records: Array<{ get
  * guardia guarda il dato del cliente (ondata 8 + rimedio 1: i tipi
  * pre-approvati sono una lista sul tenant, validata contro il suo vocabolario).
  */
-async function assertApprovalPurposeSurvives(
+export async function assertApprovalPurposeSurvives(
   tx: { run: (q: string, p: Record<string, unknown>) => Promise<{ records: Array<{ get: (k: string) => unknown }> }> },
   tenantId: string, definitionId: string,
 ): Promise<void> {
@@ -564,7 +509,32 @@ async function assertApprovalPurposeSurvives(
  * ha mai avuto uno verrebbe bloccato per una regola che non lo riguarda. Si
  * rifiuta di **togliere l'ultimo**, confrontando prima e dopo.
  */
-async function countWindowPurposeSteps(
+/**
+ * A workflow keeps an initial step (review of 23 Sep 2026). Unticking «Initial
+ * step» on the only one was saved — the checks ran only when a step was
+ * marked initial — and the next ticket of that type failed, in the face of
+ * whoever opened it. Deleting that step was already refused; this is the
+ * same end state from the other door.
+ */
+async function assertInitialStepRemains(
+  tx: { run: (q: string, p: Record<string, unknown>) => Promise<{ records: Array<{ get: (k: string) => unknown }> }> },
+  tenantId: string, definitionId: string,
+): Promise<void> {
+  const res = await tx.run(`
+    MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
+    // tenant-ok(traversal): i passi sono quelli della definizione già scopata sopra
+    OPTIONAL MATCH (wd)-[:HAS_STEP]->(s:WorkflowStep)
+      WHERE coalesce(s.is_initial, s.type = 'start')
+    RETURN wd.id AS definitionId, count(s) AS n
+  `, { definitionId, tenantId })
+  if (!res.records.length || Number(res.records[0]!.get('n')) > 0) return
+  throw new GraphQLError(
+    'The workflow would have no initial step: no new ticket could be created. Mark another step as initial first.',
+    { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.noInitialStep' } } },
+  )
+}
+
+export async function countWindowPurposeSteps(
   tx: { run: (q: string, p: Record<string, unknown>) => Promise<{ records: Array<{ get: (k: string) => unknown }> }> },
   tenantId: string, definitionId: string,
 ): Promise<number | null> {
@@ -581,7 +551,7 @@ async function countWindowPurposeSteps(
   return Number(res.records[0]!.get('n'))
 }
 
-function assertWindowPurposeSurvives(before: number | null, after: number | null): void {
+export function assertWindowPurposeSurvives(before: number | null, after: number | null): void {
   if (before == null || after == null) return
   if (before === 0 || after > 0) return
   throw new GraphQLError(
@@ -929,32 +899,12 @@ export async function removeWorkflowTransition(
   }, true)
 }
 
-/**
- * Valida i metadati JSON dello step di arrivo (on_enter_fields, enter_actions)
- * prima di transizionare: se corrotti, la mutation fallisce SENZA aver
- * avanzato il workflow.
- */
-async function preflightStepMetadata(
-  session: import('neo4j-driver').Session,
-  instanceId: string,
-  toStep: string,
-  tenantId: string,
-): Promise<void> {
-  const res = await session.executeRead((tx) => tx.run(`
-    MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})
-    // tenant-ok(traversal): step della definizione dell'istanza scopata
-    MATCH (s:WorkflowStep {definition_id: wi.definition_id, name: $toStep})
-    RETURN s.on_enter_fields AS fields, s.enter_actions AS enterActions
-  `, { instanceId, toStep, tenantId }))
-  if (!res.records.length) return // lo step non esiste: sarà l'engine a rifiutare la transizione
-  const rec = res.records[0]
-  for (const [key, label] of [['fields', 'on_enter_fields'], ['enterActions', 'enter_actions']] as const) {
-    const raw = rec.get(key) as string | null
-    if (!raw) continue
-    try { JSON.parse(raw) } catch (e) {
-      throw new GraphQLError(`Misconfigured workflow: ${label} of step "${toStep}" is not valid JSON (${e instanceof Error ? e.message : String(e)})`, { extensions: { code: 'CONFLICT', i18n: { key: 'errors.workflow.stepActionsNotJson', params: { field: label, step: toStep, reason: e instanceof Error ? e.message : String(e) } } } })
-    }
-  }
+/** The permission that moves each type of ticket with executeWorkflowTransition (changes have their own mutation). */
+const TRANSITION_WRITE_PERMISSION: Readonly<Record<string, Permission>> = {
+  incident:        'incident.write',
+  problem:         'problem.write',
+  service_request: 'request.write',
+  kb_article:      'kb.write',
 }
 
 /**
@@ -1014,6 +964,15 @@ export async function executeWorkflowTransition(
     if (entityDataResult.records[0].get('entityType') === 'change') {
       throw new GraphQLError('Changes are transitioned with executeChangeTransition (approval gate and phase side effects)', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.workflow.changeUsesChangeTransition' } } })
     }
+    // The write permission of THIS ticket's type (review of 23 Sep 2026): the
+    // mutation is open to any of four, and a custom role with kb.write alone
+    // could resolve incidents by instance id. Roles are per ticket type.
+    const movedType = entityDataResult.records[0].get('entityType') as string
+    const needed = TRANSITION_WRITE_PERMISSION[movedType]
+    if (!needed) {
+      throw new GraphQLError(`Workflow instance ${instanceId} belongs to "${movedType}", which this mutation does not move`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.unknownEntityType', params: { entityType: movedType } } } })
+    }
+    requirePermission(ctx, needed)
     await assertTicketApprovalsAllow(session, ctx, entityDataResult.records[0].get('entityType') as string, instanceId, toStep)
     const entityData: Record<string, unknown> = {
       ...((entityDataResult.records[0].get('entityData') as Record<string, unknown> | null) ?? {}),
@@ -1108,7 +1067,9 @@ export async function executeWorkflowTransition(
         const perRuolo = approverUserIds?.length || approverTeamIds?.length
           ? []
           : (await session.executeRead((tx) => tx.run(
-            `MATCH (u:User {tenant_id: $tenantId, role: $role}) RETURN u.id AS id`,
+            // Only active people approve (review of 23 Sep 2026): a deactivated
+            // admin counted, and an «all» approval could never complete.
+            `MATCH (u:User {tenant_id: $tenantId, role: $role}) WHERE coalesce(u.active, true) RETURN u.id AS id`,
             { tenantId: ctx.tenantId, role: approverRole ?? 'admin' },
           ))).records.map((r) => r.get('id') as string)
 
@@ -1271,9 +1232,6 @@ export async function executeWorkflowTransition(
         `, { instanceId, tenantId: ctx.tenantId }),
       )
       if (wiResult.records.length > 0) {
-        const r        = wiResult.records[0]
-        const tenantId = r.get('tenantId') as string
-        const incidentId = r.get('id') as string
 
         // La NOTA di transizione non si scrive più qui: la scrive l'hook
         // `onStepEntered` (lib/stepEnteredPublisher.ts), che vede anche i
@@ -1293,10 +1251,8 @@ export async function executeWorkflowTransition(
 
         await post('on_enter_fields', () => applyOnEnterFields(session, instanceId, toStep, ctx.userId, notes, ctx.tenantId))
 
-        // Publish workflow.step.entered for any notify_rule enter_actions on this step
-        // (SLA pause/resume is driven by the step's own sla_pause/sla_resume
-        // enter/exit actions, consumed by the SLA engine — see packages/sla.)
-        await post('notify rules', () => publishNotifyRuleActions(session, instanceId, toStep, tenantId, ctx.userId, 'incident', incidentId))
+        // The step's notify_rule actions go out from the engine's onStepEntered
+        // hook, for every path and ticket type (lib/stepNotifyRules.ts).
       }
 
       // ── KB Article post-transition ────────────────────────────────────────
@@ -1310,10 +1266,8 @@ export async function executeWorkflowTransition(
       )
       if (kbResult.records.length > 0) {
         const kbId     = kbResult.records[0].get('id')     as string
-        const tenantId = kbResult.records[0].get('tenantId') as string
         await post('audit step entered', () => auditStepEntered(session, ctx, 'kb_article', 'KBArticle', kbId, toStep))
         await post('on_enter_fields', () => applyOnEnterFields(session, instanceId, toStep, ctx.userId, notes, ctx.tenantId))
-        await post('notify rules', () => publishNotifyRuleActions(session, instanceId, toStep, tenantId, ctx.userId, 'kb_article', kbId))
       }
     }
 
@@ -1358,6 +1312,8 @@ export async function saveWorkflowChanges(
       purpose?:     string | null
       /** La scadenza del passo (JSON): assente/null = invariata, '' = tolta. */
       deadline?:    string | null
+      /** Delay of a timed wait, in minutes: absent/null = unchanged (lib/stepTimerDelay.ts). */
+      timerDelayMinutes?: number | null
     }> | null
     /** Optimistic lock: versione letta dal client. Null = nessun controllo. */
     expectedVersion?: number | null
@@ -1376,8 +1332,9 @@ export async function saveWorkflowChanges(
     const purposeValue = normalizeStepPurpose(st.purpose, `step "${st.stepName}"`)
     const category     = normalizeStepCategory(st.category, `step "${st.stepName}"`)
     const deadline     = normalizeStepDeadlineInput(st.deadline, `deadline of step "${st.stepName}"`)
+    const timerDelayMinutes = st.timerDelayMinutes == null ? null : assertTimerDelayMinutes(st.timerDelayMinutes, `step "${st.stepName}"`)
     return {
-      ...st, category, purposeGiven: purposeValue !== undefined, purpose: purposeValue ?? null,
+      ...st, category, purposeGiven: purposeValue !== undefined, purpose: purposeValue ?? null, timerDelayMinutes,
       deadlineGiven: deadline.given, parsedDeadline: deadline.deadline,
       deadline: deadline.deadline ? JSON.stringify(deadline.deadline) : null,
       deadlineCalendarId: deadline.deadline?.calendar_id ?? null,
@@ -1493,7 +1450,9 @@ export async function saveWorkflowChanges(
               s.purpose       = CASE WHEN st.purposeGiven THEN st.purpose ELSE s.purpose END,
               // Come lo scopo: la scadenza si deve poter TOGLIERE.
               s.deadline      = CASE WHEN st.deadlineGiven THEN st.deadline ELSE s.deadline END,
-              s.deadline_calendar_id = CASE WHEN st.deadlineGiven THEN st.deadlineCalendarId ELSE s.deadline_calendar_id END
+              s.deadline_calendar_id = CASE WHEN st.deadlineGiven THEN st.deadlineCalendarId ELSE s.deadline_calendar_id END,
+              // Only a timed wait has a delay (lib/stepTimerDelay.ts).
+              s.timer_delay_minutes = CASE WHEN st.timerDelayMinutes IS NOT NULL AND s.type = 'timer_wait' THEN st.timerDelayMinutes ELSE s.timer_delay_minutes END
         `, { definitionId, tenantId: ctx.tenantId, steps: stepRows.map(({ parsedDeadline: _p, ...row }) => row) })
 
         // Se una delle modifiche ha TOCCATO lo scopo, il workflow delle change
@@ -1518,6 +1477,7 @@ export async function saveWorkflowChanges(
             SET s.is_initial = false
           `, { definitionId, tenantId: ctx.tenantId, keep: initialStepName })
         }
+        if (steps.some((st) => st.isInitial === false)) await assertInitialStepRemains(tx, ctx.tenantId, definitionId)
       }
       // Update step positions
       if (positions.length > 0) {
@@ -1594,7 +1554,7 @@ export async function saveWorkflowChanges(
  */
 export async function duplicateWorkflowDefinition(
   _: unknown,
-  args: { definitionId: string; name: string; category?: string | null },
+  args: { definitionId: string; name: string; category?: string | null; catalogOnly?: boolean | null },
   ctx: GraphQLContext,
 ) {
   requirePermission(ctx, 'config.workflow')
@@ -1649,9 +1609,11 @@ export async function duplicateWorkflowDefinition(
           updated_at: $now,
           customized_at: $now,
           customized_by: $userId,
-          copied_from_id: $definitionId
+          copied_from_id: $definitionId,
+          catalog_only: $catalogOnly
         }`,
-      { definitionId: args.definitionId, tenantId: ctx.tenantId, newId: nuovoId, name: nome, category: categoria, now, userId: ctx.userId })
+      { definitionId: args.definitionId, tenantId: ctx.tenantId, newId: nuovoId, name: nome, category: categoria, now, userId: ctx.userId,
+        catalogOnly: args.catalogOnly === true })
 
       await tx.run(`
         MATCH (src:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep)
@@ -1747,6 +1709,24 @@ export async function setWorkflowDefinitionActive(
           throw new ValidationError(
             `"${rec.get('name') as string}" is the last active ${entityType} workflow without a category: switching it off would stop every new ${entityType} from being created. Activate another one first.`,
             { key: 'errors.workflow.lastActiveDefinition', params: { name: rec.get('name') as string, entityType } },
+          )
+        }
+      }
+
+      // A catalog item that names this workflow creates its requests with it
+      // (review of 23 Sep 2026): switched off, every request of that item
+      // failed at creation with «No active workflow definition». The items
+      // are named, so the admin knows what to change first.
+      if (!args.active) {
+        const voci = await tx.run(`
+          MATCH (i:ServiceCatalogItem {tenant_id: $tenantId, workflow_definition_id: $definitionId})
+          WHERE coalesce(i.active, true) = true
+          RETURN i.name AS name ORDER BY name LIMIT 10`, { tenantId: ctx.tenantId, definitionId: args.definitionId })
+        const nomi = voci.records.map((r) => String(r.get('name')))
+        if (nomi.length > 0) {
+          throw new ValidationError(
+            `"${rec.get('name') as string}" is the workflow of catalog items (${nomi.join(', ')}): switching it off would stop their requests from being created. Give them another workflow first.`,
+            { key: 'errors.workflow.usedByCatalogItems', params: { name: rec.get('name') as string, items: nomi.join(', ') } },
           )
         }
       }

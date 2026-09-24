@@ -52,8 +52,10 @@ vi.mock('../../../lib/priority.js', () => ({
 }))
 vi.mock('../../../lib/validateRequiredFields.js', () => ({
   validateRequiredFields: vi.fn(async () => undefined),
+  validateStepRequirements: vi.fn(async () => undefined),
   propsToFieldValues:     vi.fn((p: Record<string, unknown>) => ({ ...p })),
 }))
+vi.mock('../../../lib/stepMetadataPreflight.js', () => ({ preflightStepMetadata: vi.fn(async () => undefined) }))
 vi.mock('../../../lib/slaAcknowledgement.js', () => ({ assertMayAcknowledgeNoSla: vi.fn() }))
 vi.mock('../../../lib/ciLabelsForTenant.js', () => ({ ciLabelPredicateForTenant: vi.fn(async () => '(ci:Server)') }))
 vi.mock('../../../lib/ticketCIExclusions.js', () => ({ assertCIsLinkable: vi.fn(async () => undefined) }))
@@ -390,6 +392,20 @@ describe('Mutation.executeProblemTransition', () => {
     const res = await M.executeProblemTransition(undefined, { problemId: 'p1', toStep: 'closed' }, ctx)
     expect(res.actionErrors).toEqual(actionErrors)
     expect(logger.error).toHaveBeenCalled()
+  })
+
+  // Review of 23 Sep 2026: the problem page skipped the rules «field required entering step X».
+  it('the rules of the step being entered, on the stored problem plus the notes, before the engine', async () => {
+    const { validateStepRequirements } = await import('../../../lib/validateRequiredFields.js')
+    const { preflightStepMetadata } = await import('../../../lib/stepMetadataPreflight.js')
+    txRun.mockImplementation(async () => ({ records: [rec({ instanceId: 'wi1', props: { root_cause: null } })] }))
+    vi.mocked(validateStepRequirements).mockRejectedValueOnce(new Error('Field "root_cause" is required for step "resolved"'))
+    await expect(M.executeProblemTransition(undefined, { problemId: 'p1', toStep: 'resolved' }, ctx)).rejects.toThrow(/root_cause/)
+    expect(vi.mocked(validateStepRequirements).mock.calls[0]![1]).toEqual({
+      entityType: 'problem', entityProps: { root_cause: null }, notes: undefined, tenantId: 'tenant-1', toStep: 'resolved',
+    })
+    expect(preflightStepMetadata).not.toHaveBeenCalled()
+    expect(transition).not.toHaveBeenCalled()
   })
 
   it('NOT_FOUND when the problem cannot be re-read after the transition', async () => {

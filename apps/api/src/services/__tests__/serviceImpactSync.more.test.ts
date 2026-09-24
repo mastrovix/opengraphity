@@ -18,6 +18,9 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+// The cursors of the periodic passes (lib/pagedPass.ts), in memory.
+const { resetPassCursors } = await import('../../lib/__tests__/passCursorRedisFake.js')
+vi.mock('../../lib/bullmq.js', () => import('../../lib/__tests__/passCursorRedisFake.js'))
 vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en'), languageForUser: vi.fn(async () => 'en') }))
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(), toNumber: (v: unknown) => (v == null ? 0 : Number(v)) }))
 vi.mock('../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
@@ -83,6 +86,7 @@ function rows(r: { touch?: unknown; apply?: unknown; skip?: unknown }) {
 const metricResults = () => vi.mocked(serviceMapSyncsTotal.inc).mock.calls.map((c) => (c[0] as { result: string }).result)
 
 beforeEach(() => {
+  resetPassCursors()
   vi.clearAllMocks()
   vi.mocked(getSession).mockReturnValue(session as never)
   vi.mocked(computeServiceMapDiff).mockResolvedValue(diff())

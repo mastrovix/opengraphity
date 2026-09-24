@@ -137,6 +137,8 @@ export function buildBaseSDL(): string {
     # Custom Report Templates
     reportTemplates: [ReportTemplate!]!
     reportTemplate(id: ID!): ReportTemplate
+    # The channels a scheduled report can be delivered to: active Slack channels, id and name only.
+    reportDeliveryChannels: [ReportDeliveryChannel!]!
     navigableEntities: [NavigableEntity!]!
     navigableRelations(entityType: String!, neo4jLabel: String!): [NavigableRelation!]!
     reachableEntities(fromNeo4jLabel: String!): [ReachableEntity!]!
@@ -600,6 +602,8 @@ export function buildBaseSDL(): string {
       name:         String!
       """La categoria della copia: assente = nessuna (la copia non e per una categoria)."""
       category:     String
+      """A catalog item's own itinerary: never chosen for a generic ticket (review of 23 Sep 2026)."""
+      catalogOnly:  Boolean
     ): WorkflowDefinition!
 
     """
@@ -908,6 +912,8 @@ export function buildBaseSDL(): string {
     changeCode: String!
     changeId:   ID!
     ciName:     String!
+    """The type of the ticket the task is on (change for the change tasks): where a generic task leads."""
+    entityType: String!
   }
   ${knowledgeBaseSDL()}
   ${portalSDL()}

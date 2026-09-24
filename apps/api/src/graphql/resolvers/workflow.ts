@@ -2,6 +2,7 @@ import { GraphQLError } from 'graphql'
 import { assertDefinitionDeadlines } from '../../lib/stepDeadlineWrite.js'
 import { ADDABLE_STEP_TYPES, isUnimplementedStepType } from '@opengraphity/types'
 import { ValidationError } from '../../lib/errors.js'
+import { assertTimerDelayMinutes } from '../../lib/stepTimerDelay.js'
 import { randomUUID } from 'crypto'
 import { withSession } from './ci-utils.js'
 import { invalidateWorkflowCache } from '../../lib/workflowHelpers.js'
@@ -42,6 +43,9 @@ import {
   setWorkflowDefinitionActive,
   MARK_CUSTOMIZED,
   customizedParams,
+  assertApprovalPurposeSurvives,
+  assertWindowPurposeSurvives,
+  countWindowPurposeSteps,
 } from './workflowMutations.js'
 
 export * from './workflowQueries.js'
@@ -113,6 +117,7 @@ async function addWorkflowStep(
     )
   }
   if (!(ADDABLE_STEP_TYPES as readonly string[]).includes(type)) throw new ValidationError(`Invalid step type: ${type}`)
+  const delay = type === 'timer_wait' ? assertTimerDelayMinutes(timerDelayMinutes, `step "${name}"`) : null
   // Il nome del passo diventa lo `status` dell'entità (`engine.ts`), e da lì va
   // nei filtri, nei report e nel vocabolario `status_*`: ha la stessa forma di
   // ogni altro identificatore di dominio. Non era validato — dall'interfaccia
@@ -164,7 +169,7 @@ async function addWorkflowStep(
       `, {
         definitionId, tenantId: ctx.tenantId, stepId,
         name, label, type,
-        timerDelayMinutes: timerDelayMinutes ?? null,
+        timerDelayMinutes: delay,
         subWorkflowId: subWorkflowId ?? null,
         // Un passo nuovo nasce intermedio e aperto: `active` è la stessa
         // categoria che la migrazione dei metadata assegna a un passo non
@@ -264,12 +269,18 @@ async function removeWorkflowStep(
         RETURN count(s) AS n
       `, { tenantId: ctx.tenantId, entityType, stepName, definitionId })
       const elsewhere = Number(stillThere.records[0]?.get('n') ?? 0)
+      // The purpose guards of the other two paths (review of 23 Sep 2026):
+      // deleting the last approval or release-window step of the change
+      // workflow was refused as a purpose change and allowed as a delete.
+      const windowBefore = await countWindowPurposeSteps(tx, ctx.tenantId, definitionId)
       await tx.run(`
         MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep {name: $stepName})
         DETACH DELETE s
         SET wd.version = wd.version + 1, wd.updated_at = $now
         ${MARK_CUSTOMIZED}
       `, { definitionId, tenantId: ctx.tenantId, stepName, now: new Date().toISOString(), ...customizedParams(ctx) })
+      await assertApprovalPurposeSurvives(tx, ctx.tenantId, definitionId)
+      assertWindowPurposeSurvives(windowBefore, await countWindowPurposeSteps(tx, ctx.tenantId, definitionId))
       // Un passo che è l'arrivo di una scadenza non si elimina: la scadenza
       // resterebbe senza strada (verifica «Cosa resta cablato», ondata 3).
       await assertDefinitionDeadlines(tx, ctx.tenantId, definitionId)

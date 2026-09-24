@@ -112,6 +112,19 @@ describe('creaCompito', () => {
     expect((h.runQuery.mock.calls[0]?.[2] as Record<string, unknown>)['code']).toBeNull()
   })
 
+  // Review of 23 Sep 2026: the MERGE matched the cancelled task and left it cancelled — the step's gate passed with no work done.
+  it('re-entering the step reopens a task CANCELLED by the conclusion, clearing why and when; a completed one stays completed', async () => {
+    routeQueryOne({ existing: 'k-old' })
+    h.runQuery.mockResolvedValueOnce([createdRow({ id: 'k-old' })])
+    await creaCompito(task())
+    const [cypher, p] = [String(h.runQuery.mock.calls[0]?.[1]), h.runQuery.mock.calls[0]?.[2] as Record<string, unknown>]
+    expect(p['annullato']).toBe(TASK_STATE.CANCELLED)
+    const onMatch = cypher.slice(cypher.indexOf('ON MATCH SET'), cypher.indexOf('WITH ticket, k, squadra'))
+    for (const f of ['completed_at', 'completed_by', 'cancel_reason']) expect(onMatch).toContain(`k.${f} = CASE WHEN k.state = $annullato THEN null ELSE k.${f} END`)
+    // The state last: the items before it still read the old one.
+    expect(onMatch.trim().endsWith('k.state        = CASE WHEN k.state = $annullato THEN $statoIniziale ELSE k.state END')).toBe(true)
+  })
+
   it('a task that waits for another starts as waiting, and a due date is days from now', async () => {
     routeQueryOne({})
     h.runQuery.mockResolvedValueOnce([createdRow()])

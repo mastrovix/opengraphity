@@ -9,7 +9,13 @@
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { useQuery } from '@apollo/client/react'
-import { GET_TEAMS, GET_WORKFLOW_LIST, GET_USERS, GET_FORM_REFERENCE_FIELDS } from '@/graphql/queries'
+import { GET_TEAMS, GET_WORKFLOW_LIST, GET_FORM_REFERENCE_FIELDS } from '@/graphql/queries'
+import { UserIdPicker } from '@/components/pickers/UserIdPicker'
+import { useUserNames } from '@/hooks/useUserNames'
+
+/** Who a rule may give a ticket to, and who may decide an approval: the people offered. */
+const TICKET_ASSIGNABLE_PERMISSION = 'ticket.assignable'
+const APPROVAL_DECIDE_PERMISSION = 'approval.decide'
 import { useEnumValues } from '@/hooks/useEnumValues'
 import { useEntityFieldMetas, useFormFieldMetas, type FieldMeta } from '@/hooks/useEntityFields'
 import { isStepFieldWritable, AUTOMATION_NOTIFICATION_CHANNELS } from '@opengraphity/types'
@@ -53,7 +59,6 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
   const { t } = useTranslation()
   const targetOptions = useTargetOptions()
   const { data: teamsData }    = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: METAMODEL_FETCH_POLICY })
-  const { data: usersData }    = useQuery<{ users: { id: string; name: string; email: string }[] }>(GET_USERS, { fetchPolicy: METAMODEL_FETCH_POLICY })
   const { data: workflowData } = useQuery<{ workflowDefinitions: { id: string; name: string; entityType: string; steps: { name: string; label: string }[] }[] }>(GET_WORKFLOW_LIST, { fetchPolicy: METAMODEL_FETCH_POLICY })
   const { values: priorityValues } = useEnumValues(entityType || 'incident', 'priority')
   const { labelOf, entriesOf } = useDomainVocabularies()
@@ -86,7 +91,11 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
   const campiSquadra = (campiModulo?.formReferenceFields ?? []).filter((f) => f.fieldType === 'ref_team' || f.fieldType === 'ref_ci')
 
   const teams = teamsData?.teams ?? []
-  const users = usersData?.users ?? []
+  // The people are searched as the user types (UserIdPicker) and named by id
+  // (useUserNames): the whole directory was downloaded here at every opening
+  // (review of 23 Sep 2026).
+  const approverIds = (params['approver_user_ids'] ?? '').split(',').map((x) => x.trim()).filter(Boolean)
+  const { byId: approverNames } = useUserNames(approverIds)
   const steps = (workflowData?.workflowDefinitions ?? [])
     .filter(w => w.entityType === entityType)
     .flatMap(w => w.steps ?? [])
@@ -124,10 +133,8 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
 
     case 'assign_user':
       return (
-        <Select style={{ ...selectS, flex: 1 }} value={params['user_id'] ?? ''} onChange={e => onChange('user_id', e.target.value)}>
-          <option value="">{t('automation.params.selectUser')}</option>
-          {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
-        </Select>
+        <UserIdPicker style={{ flex: 1 }} value={params['user_id'] ?? ''} onChange={(id) => onChange('user_id', id)}
+          permission={TICKET_ASSIGNABLE_PERMISSION} hint={t('pickers.users.assignable')} label={t('pickers.users.label')} />
       )
 
     case 'transition_workflow':
@@ -170,7 +177,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
             ))}
           </Select>
           {/* Value input — adapts to field type */}
-          {renderFieldValue(params['value'] ?? '', v => onChange('value', v), selectedFieldMeta, users, teams, labelOf, t)}
+          {renderFieldValue(params['value'] ?? '', v => onChange('value', v), selectedFieldMeta, teams, labelOf, t)}
         </div>
       )
 
@@ -250,12 +257,15 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
         <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
           {choice('target_type', 'target_type', [{ value: 'team' }, { value: 'user' }], 'team')}
           <Labeled label="target_id">
-            <Select style={selectS} value={params['target_id'] ?? ''} onChange={e => onChange('target_id', e.target.value)}>
-              <option value="">{t(targetType === 'user' ? 'automation.params.userOption' : 'automation.params.teamOption')}</option>
-              {targetType === 'user'
-                ? users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)
-                : teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </Select>
+            {targetType === 'user' ? (
+              <UserIdPicker value={params['target_id'] ?? ''} onChange={(id) => onChange('target_id', id)}
+                permission={TICKET_ASSIGNABLE_PERMISSION} hint={t('pickers.users.assignable')} label={t('pickers.users.label')} />
+            ) : (
+              <Select style={selectS} value={params['target_id'] ?? ''} onChange={e => onChange('target_id', e.target.value)}>
+                <option value="">{t('automation.params.teamOption')}</option>
+                {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </Select>
+            )}
           </Labeled>
           {text('target_name', 'target_name (template)', '{assigned_team}')}
         </div>
@@ -386,21 +396,19 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
             (`approverIdList` in packages/workflow).
           */}
           <Labeled label="approver_user_ids">
-            <Select
-              style={{ ...selectS, flex: 1 }}
+            <UserIdPicker
+              style={{ flex: 1 }}
               value=""
-              onChange={(e) => {
-                if (!e.target.value) return
-                const attuali = (params['approver_user_ids'] ?? '').split(',').map((x) => x.trim()).filter(Boolean)
-                if (!attuali.includes(e.target.value)) onChange('approver_user_ids', [...attuali, e.target.value].join(','))
+              onChange={(id) => {
+                if (id && !approverIds.includes(id)) onChange('approver_user_ids', [...approverIds, id].join(','))
               }}
-            >
-              <option value="">{t('workflow.actionParams.addApprover')}</option>
-              {(usersData?.users ?? []).map((u) => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
-            </Select>
+              permission={APPROVAL_DECIDE_PERMISSION}
+              hint={t('pickers.users.approvers')}
+              label={t('workflow.actionParams.addApprover')}
+            />
             <ElencoScelti
               ids={params['approver_user_ids'] ?? ''}
-              nomeDi={(id) => (usersData?.users ?? []).find((u) => u.id === id)?.name ?? id}
+              nomeDi={(id) => approverNames.get(id)?.name ?? id}
               onChange={(v) => onChange('approver_user_ids', v)}
             />
           </Labeled>
@@ -440,7 +448,6 @@ function renderFieldValue(
   value: string,
   onValue: (v: string) => void,
   field: FieldMeta | undefined,
-  users: { id: string; name: string; email: string }[],
   teams: { id: string; name: string }[],
   labelOf: (vocabolario: string, valore: string) => string | null,
   t: TFunction,
@@ -462,10 +469,8 @@ function renderFieldValue(
 
   if (field.fieldType === 'user') {
     return (
-      <Select style={{ ...selectS, flex: 1 }} value={value} onChange={e => onValue(e.target.value)}>
-        <option value="">{t('automation.params.userOption')}</option>
-        {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
-      </Select>
+      <UserIdPicker style={{ flex: 1 }} value={value} onChange={onValue}
+        permission={TICKET_ASSIGNABLE_PERMISSION} hint={t('pickers.users.assignable')} label={t('pickers.users.label')} />
     )
   }
 

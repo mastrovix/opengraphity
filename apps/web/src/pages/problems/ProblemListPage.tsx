@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { pausedWhenHidden } from '@/lib/polling'
+import { useTicketRights } from '@/hooks/useTicketRights'
 import { useCustomFieldColumns, withCustomFieldCells } from '@/components/ticket/customFields/customFieldColumns'
 import { useQuery, useLazyQuery } from '@apollo/client/react'
 import { gql } from '@apollo/client'
@@ -67,6 +68,8 @@ export function ProblemListPage() {
   const embeddingsOn = useAIFeature('embeddings')
   const candidatesOffText = useAIDisabledText(postIncidentOn === false ? 'postIncident' : 'embeddings')
   const navigate = useNavigate()
+  // «New» leads to a route that asks the write permission: not offered without it (review of 23 Sep 2026).
+  const { canWrite } = useTicketRights('problem')
 
   // Campi del cliente (verifica «Cosa resta cablato», ondata 4): una colonna per campo.
   const customColumns = useCustomFieldColumns<Problem>('problem')
@@ -160,9 +163,9 @@ export function ProblemListPage() {
             >
               {candidatesLoading ? t('components.triage.analyzing') : t('pages.problems.candidatesButton')}
             </Button>
-            <Button icon={<Plus size={15} aria-hidden="true" />} onClick={() => navigate('/problems/new')}>
+            {canWrite && <Button icon={<Plus size={15} aria-hidden="true" />} onClick={() => navigate('/problems/new')}>
               {t('pages.problems.new')}
-            </Button>
+            </Button>}
           </div>
         }
       />

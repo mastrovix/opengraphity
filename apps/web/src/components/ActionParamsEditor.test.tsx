@@ -67,7 +67,13 @@ const vocabolari: DomainVocabularies = {
 beforeEach(() => {
   apolloFinto.reset()
   apolloFinto.risposte['GetTeams'] = { teams: TEAMS }
-  apolloFinto.risposte['GetUsers'] = { users: USERS }
+  // The people are searched on the server and named by id (review of 23 Sep 2026): never the whole directory.
+  apolloFinto.risposte['SearchUsers'] = (v?: Record<string, unknown>) => ({
+    searchUsers: USERS.filter((u) => `${u.name} ${u.email}`.toLowerCase().includes(String(v?.['search'] ?? '').toLowerCase())),
+  })
+  apolloFinto.risposte['UsersByIds'] = (v?: Record<string, unknown>) => ({
+    usersByIds: USERS.filter((u) => (v?.['ids'] as string[]).includes(u.id)).map((u) => ({ ...u, active: true })),
+  })
   apolloFinto.risposte['GetWorkflowList'] = { workflowDefinitions: WORKFLOWS }
   apolloFinto.risposte['GetITILTypes'] = { itilTypes: ITIL_TYPES }
   apolloFinto.risposte['GetCITypes'] = { ciTypes: [] }
@@ -106,6 +112,14 @@ function mount({ actionType, params = {}, entityType = 'incident', vocabulary, s
 }
 
 /** The control under a `Labeled` caption (the caption is a sibling span). */
+/** Picks a person in a UserIdPicker: search, then the option. */
+async function pickPerson(user: { click: (e: Element) => Promise<void>; type: (e: Element, t: string) => Promise<void> }, label: string, search: string, option: RegExp) {
+  const box = screen.getByRole('combobox', { name: label })
+  await user.click(box)
+  await user.type(box, search)
+  await user.click(await screen.findByRole('option', { name: option }))
+}
+
 const control = (caption: string) =>
   screen.getByText(caption, { selector: 'span' }).parentElement!.querySelector('select, input, textarea') as HTMLElement
 
@@ -123,12 +137,19 @@ describe('assignment actions', () => {
     expect(writes).toEqual([['team_id', 't2']])
   })
 
-  it('assign_user shows name and e-mail (two people can share a name) and writes user_id', async () => {
+  it('assign_user searches the people who can be given tickets, and writes user_id', async () => {
     const { user, writes } = mount({ actionType: 'assign_user' })
-    const sel = screen.getByRole('combobox')
-    expect(optionTexts(sel)).toContain('Ann (ann@x.io)')
-    await user.selectOptions(sel, 'u1')
+    await pickPerson(user, 'Person', 'ann', /Ann/)
+    expect(apolloFinto.chiamata('SearchUsers')).toMatchObject({ permission: 'ticket.assignable' })
     expect(writes).toEqual([['user_id', 'u1']])
+    // Review of 23 Sep 2026: the directory is never downloaded.
+    expect(apolloFinto.chiamata('GetUsers')).toBeUndefined()
+  })
+
+  it('a saved person is named by id', async () => {
+    mount({ actionType: 'assign_user', params: { user_id: 'u1' } })
+    expect(apolloFinto.chiamata('UsersByIds')).toEqual({ ids: ['u1'] })
+    expect(await screen.findByRole('combobox', { name: 'Person' })).toHaveValue('Ann')
   })
 })
 
@@ -197,11 +218,9 @@ describe('set_field: the value control follows the type of the chosen field', ()
     expect(optionTexts(screen.getAllByRole('combobox')[1]!)).toEqual(['-- Value --', 'new', 'closed'])
   })
 
-  it('a user field offers people', async () => {
+  it('a user field offers people, searched among those who can be given tickets', async () => {
     const { user, writes } = mount({ actionType: 'set_field', params: { field: 'assigned_to' } })
-    const val = screen.getAllByRole('combobox')[1]!
-    expect(optionTexts(val)).toContain('Ann (ann@x.io)')
-    await user.selectOptions(val, 'u1')
+    await pickPerson(user, 'Person', 'ann', /Ann/)
     expect(writes).toEqual([['value', 'u1']])
   })
 
@@ -336,9 +355,7 @@ describe('assign_to', () => {
     const { user, writes } = mount({ actionType: 'assign_to', vocabulary: 'workflow_step' })
     expect(optionTexts(control('target_id'))).toEqual(['-- Team --', 'Network', 'Desk'])
     await user.selectOptions(control('target_type'), 'user')
-    const target = control('target_id')
-    expect(optionTexts(target)).toEqual(['-- User --', 'Ann (ann@x.io)', ' (bob@x.io)'])
-    await user.selectOptions(target, 'u1')
+    await pickPerson(user, 'Person', 'ann', /Ann/)
     await user.type(control('target_name (template)'), 'n')
     expect(writes).toEqual([['target_type', 'user'], ['target_id', 'u1'], ['target_name', 'n']])
   })
@@ -443,16 +460,14 @@ describe('create_approval_request', () => {
 
   it('people are added to a comma-separated list, once each, shown by name and removable', async () => {
     const { user, current } = mount({ actionType: 'create_approval_request', vocabulary: 'workflow_step' })
-    const people = control('approver_user_ids')
     expect(screen.queryByText(/role above is ignored/)).not.toBeInTheDocument()
-    await user.selectOptions(people, 'u1')
-    await user.selectOptions(people, 'u2')
-    await user.selectOptions(people, 'u1')
+    await pickPerson(user, 'Add a person…', 'ann', /Ann/)
+    expect(apolloFinto.chiamata('SearchUsers')).toMatchObject({ permission: 'approval.decide' })
+    await pickPerson(user, 'Add a person…', 'bob', /bob@x\.io/)
+    await pickPerson(user, 'Add a person…', 'ann', /Ann/)
     expect(current.params['approver_user_ids']).toBe('u1,u2')
-    // The select resets, so the same person can be picked again without a stale value.
-    expect(people).toHaveValue('')
-    // A person with no name is offered by e-mail.
-    expect(optionTexts(people)).toContain('bob@x.io')
+    // The chosen are named by id.
+    expect(await screen.findByRole('button', { name: 'Ann ×' })).toBeInTheDocument()
     expect(screen.getByText(/role above is ignored/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Ann ×' }))
     expect(current.params['approver_user_ids']).toBe('u2')

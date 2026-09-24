@@ -99,10 +99,23 @@ describe('Query.users / Query.user', () => {
     const res = await Q['users']!(null, { sortField: 'email', sortDirection: 'DESC' }, admin)
     const [, cypher, params] = runQuery.mock.calls[0]!
     expect(cypher).toContain('ORDER BY u.email DESC')
-    expect(params).toEqual({ tenantId: 't1' })
+    // No info (no selection known): the teams are not prefetched.
+    expect(params).toEqual({ tenantId: 't1', withTeams: false })
     // `active: false` must survive the mapping; missing optional fields become null.
     expect(res).toEqual([expect.objectContaining({ id: 'u-1', active: false, firstName: 'Ann', lastName: null, slackId: 'S1', code: 'Ann' })])
     expect(session.close).toHaveBeenCalled()
+  })
+
+  // Review of 23 Sep 2026: User.teams opened one session per user — 3,000 at once on the demo tenant.
+  it('when the list selects the teams, they come in the same query and User.teams opens no session', async () => {
+    const info = { fieldNodes: [{ selectionSet: { selections: [{ kind: 'Field', name: { value: 'id' } }, { kind: 'Field', name: { value: 'teams' } }] } }], fragments: {} }
+    runQuery.mockResolvedValueOnce([{ props: annProps, teams: [{ id: 't-b', name: 'Zeta', tenant_id: 't1', created_at: 'x' }, { id: 't-a', name: 'Alpha', tenant_id: 't1', created_at: 'x' }] }])
+    const res = await Q['users']!(null, {}, admin, info as never) as Array<Record<string, unknown>>
+    expect(runQuery.mock.calls[0]![2]).toEqual({ tenantId: 't1', withTeams: true })
+    const sessions = getSession.mock.calls.length
+    const teams = await resolvers['User']!['teams']!(res[0], {}, admin) as Array<{ name: string }>
+    expect(teams.map((t) => t.name)).toEqual(['Alpha', 'Zeta'])
+    expect(getSession.mock.calls.length).toBe(sessions)
   })
 
   it('defaults to the name order and treats a missing `active` as active', async () => {

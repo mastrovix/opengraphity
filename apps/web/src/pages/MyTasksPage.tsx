@@ -12,7 +12,7 @@ import { QueryError } from '@/components/QueryError'
 import { colors, palette, lookupOrError } from '@/lib/tokens'
 import { GET_MY_TASKS } from '@/graphql/queries'
 import { useMe } from '@/hooks/useMe'
-import { ASSIGN_ASSESSMENT_TASK_TO_USER, CLAIM_TICKET_TASK } from '@/graphql/mutations'
+import { ASSIGN_ASSESSMENT_TASK_TO_USER, ASSIGN_DEPLOY_PLAN_TASK_TO_USER, CLAIM_TICKET_TASK } from '@/graphql/mutations'
 import { TASK_STATUS, ASSESSMENT_ROLE } from '@/lib/taskStatus'
 import { formatDate } from '@/lib/datetime'
 import type { TFunction } from 'i18next'
@@ -249,10 +249,17 @@ export function MyTasksPage() {
     onError:     (e) => showError(e),
   })
 
-  const [claimTask, { loading: claiming }] = useMutation(ASSIGN_ASSESSMENT_TASK_TO_USER, {
+  const [claimAssessment, { loading: claimingAssessment }] = useMutation(ASSIGN_ASSESSMENT_TASK_TO_USER, {
     onCompleted: () => { toast.success(t('toast.task.claimed')); reloadQueries(refetch) },
     onError:     (e) => showError(e),
   })
+  // A deploy plan is its own node, with its own mutation: the assessment one
+  // answered NotFound on a deploy-plan id (review of 23 Sep 2026), as TaskViewPage knew.
+  const [claimDeployPlan, { loading: claimingDeployPlan }] = useMutation(ASSIGN_DEPLOY_PLAN_TASK_TO_USER, {
+    onCompleted: () => { toast.success(t('toast.task.claimed')); reloadQueries(refetch) },
+    onError:     (e) => showError(e),
+  })
+  const claiming = claimingAssessment || claimingDeployPlan
 
   const assignedToMe = data?.myTasks?.assignedToMe ?? []
   const unassigned   = data?.myTasks?.unassigned ?? []
@@ -269,8 +276,8 @@ export function MyTasksPage() {
   const handleClaim = (task: MyTask) => {
     if (task.kind === 'task') { void claimTicketTask({ variables: { taskId: task.id } }); return }
     if (!currentUserId) { toast.error(t('toast.task.userUnknown')); return }
-    if (task.kind !== 'assessment' && task.kind !== 'deploy-plan') return
-    void claimTask({ variables: { taskId: task.id, userId: currentUserId } })
+    if (task.kind === 'assessment') void claimAssessment({ variables: { taskId: task.id, userId: currentUserId } })
+    else if (task.kind === 'deploy-plan') void claimDeployPlan({ variables: { taskId: task.id, userId: currentUserId } })
   }
 
   /**

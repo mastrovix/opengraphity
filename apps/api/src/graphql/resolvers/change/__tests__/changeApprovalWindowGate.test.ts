@@ -81,6 +81,7 @@ vi.mock('../../../../lib/logger.js', () => ({
 }))
 vi.mock('../../../../lib/validateRequiredFields.js', () => ({
   validateRequiredFields: vi.fn(async () => {}),
+  validateStepRequirements: vi.fn(async () => {}),
   propsToFieldValues: (p: Record<string, unknown>) => ({ ...p }),
 }))
 let preApproved: readonly string[] = ['standard']

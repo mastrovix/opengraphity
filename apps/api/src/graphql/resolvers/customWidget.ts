@@ -419,10 +419,14 @@ async function updateCustomWidget(
   if (input.widgetType   != null) { setParts.push('w.widget_type = $widgetType');    params['widgetType'] = input.widgetType }
   if (input.entityType   != null) { setParts.push('w.entity_type = $entityType');    params['entityType'] = input.entityType }
   if (input.metric       != null) { setParts.push('w.metric = $metric');             params['metric'] = input.metric }
-  if (input.groupByField != null) { setParts.push('w.group_by_field = $gbf');        params['gbf'] = input.groupByField }
-  if (input.filterField  != null) { setParts.push('w.filter_field = $ff');           params['ff'] = input.filterField }
-  if (input.filterValue  != null) { setParts.push('w.filter_value = $fv');           params['fv'] = input.filterValue }
-  if (input.timeRange    != null) { setParts.push('w.time_range = $timeRange');      params['timeRange'] = input.timeRange }
+  // The optional settings can be CLEARED (review of 23 Sep 2026): the web sends
+  // null to take a filter, a time range or a grouping away, and `!= null` kept
+  // the old one while the page said «saved». Present in the input = written.
+  const given = (k: string) => Object.prototype.hasOwnProperty.call(input, k)
+  if (given('groupByField')) { setParts.push('w.group_by_field = $gbf');        params['gbf'] = input.groupByField ?? null }
+  if (given('filterField'))  { setParts.push('w.filter_field = $ff');           params['ff'] = input.filterField ?? null }
+  if (given('filterValue'))  { setParts.push('w.filter_value = $fv');           params['fv'] = input.filterValue ?? null }
+  if (given('timeRange'))    { setParts.push('w.time_range = $timeRange');      params['timeRange'] = input.timeRange ?? null }
   if (input.size         != null) { setParts.push('w.size = $size');                 params['size'] = input.size }
   if (input.color        != null) { setParts.push('w.color = $color');               params['color'] = input.color }
   if (input.position     != null) { setParts.push('w.position = $position');         params['position'] = input.position }
@@ -430,6 +434,20 @@ async function updateCustomWidget(
   const session = getSession(undefined, 'WRITE')
   try {
     await assertDashboardOwnerByWidget(session, args.id, 'customWidget', ctx)
+    // The widget AS IT WILL BE is validated, as on creation: a new entity with
+    // the old filter field stored a widget that failed on every render.
+    const cur = await session.executeRead((tx) => tx.run(
+      `MATCH (d:DashboardConfig {tenant_id: $tenantId})-[:HAS_CUSTOM_WIDGET]->(w:CustomWidget {id: $id})
+       RETURN w.entity_type AS entityType, w.metric AS metric, w.group_by_field AS groupByField, w.filter_field AS filterField`,
+      { id: args.id, tenantId: ctx.tenantId }))
+    const stored = cur.records[0]
+    if (!stored) throw new NotFoundError('Widget')
+    validateWidgetConfig({
+      entityType:   input.entityType ?? (stored.get('entityType') as string),
+      metric:       input.metric ?? (stored.get('metric') as string),
+      groupByField: given('groupByField') ? input.groupByField ?? null : (stored.get('groupByField') as string | null),
+      filterField:  given('filterField') ? input.filterField ?? null : (stored.get('filterField') as string | null),
+    }, await widgetCatalog(ctx.tenantId))
     const res = await session.executeWrite((tx) =>
       tx.run(
         `MATCH (d:DashboardConfig {tenant_id: $tenantId})-[:HAS_CUSTOM_WIDGET]->(w:CustomWidget {id: $id})

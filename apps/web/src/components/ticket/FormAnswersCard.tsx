@@ -160,7 +160,7 @@ export function FormAnswersCard({ answers, revision, requestId }: {
                       style={{ width: 'auto', minWidth: 160 }}
                     />
                   )}
-                  <Button size="xs" onClick={() => void conferma(a)} disabled={loading}>{t('common.save')}</Button>
+                  <Button size="xs" onClick={() => conferma(a)} disabled={loading}>{t('common.save')}</Button>
                   <Button size="xs" variant="secondary" onClick={() => setInModifica(null)}>{t('common.cancel')}</Button>
                 </span>
               ) : null}

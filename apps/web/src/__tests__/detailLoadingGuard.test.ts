@@ -25,7 +25,10 @@ describe('le pagine con refetch non si smontano durante il ricaricamento', () =>
   it('nessuna pagina che fa refetch mostra lo scheletro su `if (loading)` da solo', () => {
     const offenders = files(PAGES).filter((f) => {
       const src = fs.readFileSync(f, 'utf8')
-      return /\brefetch\b/.test(src) && /^\s*if \(loading\)/m.test(src)
+      // `loading` as a condition of its own, alone or beside others with `||`,
+      // that draws something instead of the page (review of 23 Sep 2026:
+      // `if (metamodelLoading || loading)` slipped through).
+      return /\brefetch\b/.test(src) && /^\s*if \((?:[^()\n]*\|\|\s*)?loading(?:\s*\|\|[^()\n]*)?\)\s*\{?\s*return\s*[(<]/m.test(src)
     }).map((f) => path.relative(PAGES, f))
     expect(offenders).toEqual([])
   })

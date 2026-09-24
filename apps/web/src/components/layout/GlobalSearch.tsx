@@ -10,6 +10,9 @@ import type { LucideIcon } from 'lucide-react'
 import { apolloClient } from '@/lib/apollo'
 import { keyActivate } from '@/lib/a11y'
 import { ciPath } from '@/lib/ciPath'
+import { notificationEntityPath } from '@opengraphity/types'
+import { useCILabels, type CILabels } from '@/hooks/useCILabels'
+import { KIND_TITLE_KEY } from '@/pages/tasks/components/shared'
 import { layoutPalette as C, alpha, colors } from '@/lib/tokens'
 
 const GLOBAL_SEARCH = gql`
@@ -20,7 +23,7 @@ const GLOBAL_SEARCH = gql`
       incidents  { id number title }
       problems   { id number title }
       serviceRequests { id number title }
-      tasks      { id code taskType status changeCode changeId ciName }
+      tasks      { id code taskType status changeCode changeId ciName entityType }
       kbArticles { id title slug }
     }
   }
@@ -29,7 +32,7 @@ const GLOBAL_SEARCH = gql`
 interface SearchCI      { id: string; name: string; type: string | null }
 interface SearchChange  { id: string; code: string; title: string }
 interface SearchTicket  { id: string; number: string; title: string }
-interface SearchTask    { id: string; code: string; taskType: string; status: string; changeCode: string; changeId: string; ciName: string }
+interface SearchTask    { id: string; code: string; taskType: string; status: string; changeCode: string; changeId: string; ciName: string; entityType: string }
 interface SearchArticle { id: string; title: string; slug: string }
 
 interface GlobalSearchResults {
@@ -72,14 +75,18 @@ const GROUP_ICONS: Record<keyof GlobalSearchResults, LucideIcon> = {
 
 const GROUP_ORDER: (keyof GlobalSearchResults)[] = ['cis', 'changes', 'incidents', 'problems', 'serviceRequests', 'tasks', 'kbArticles']
 
-function toFlatItems(type: keyof GlobalSearchResults, results: GlobalSearchResults): FlatItem[] {
+/** What the rows need to be read in the viewer's words: the customer's CI type names and the task kinds. */
+interface Wording { ciLabels: CILabels; t: (key: string) => string }
+
+function toFlatItems(type: keyof GlobalSearchResults, results: GlobalSearchResults, { ciLabels, t }: Wording): FlatItem[] {
   switch (type) {
     case 'cis':
+      // The customer's name of the type, and `ciPath` for a CI without one (`/cis/<id>` resolves it) — review of 23 Sep 2026.
       return results.cis.map((ci) => ({
         key:     `ci-${ci.id}`,
-        route:   ci.type ? ciPath({ id: ci.id, type: ci.type }) : `/ci/unknown/${ci.id}`,
+        route:   ciPath({ id: ci.id, type: ci.type }),
         primary: ci.name,
-        title:   ci.type ? ci.type.replace(/_/g, ' ') : '',
+        title:   ci.type ? ciLabels.typeLabel(ci.type) : '',
       }))
     case 'changes':
       return results.changes.map((c) => ({ key: `chg-${c.id}`, route: `/changes/${c.id}`, primary: c.code, title: c.title }))
@@ -90,12 +97,14 @@ function toFlatItems(type: keyof GlobalSearchResults, results: GlobalSearchResul
     case 'serviceRequests':
       return results.serviceRequests.map((r) => ({ key: `req-${r.id}`, route: `/requests/${r.id}`, primary: r.number, title: r.title }))
     case 'tasks':
-      return results.tasks.map((t) => ({
-        key:     `task-${t.id}`,
-        route:   `/tasks/${t.id}`,
-        primary: t.code,
-        title:   t.taskType,
-        badge:   t.changeCode,
+      // A generic task has no page of its own: it leads to its ticket. `/tasks/<id>`
+      // only knows the change tasks, and answered «Task not found» (review of 23 Sep 2026).
+      return results.tasks.map((k) => ({
+        key:     `task-${k.id}`,
+        route:   k.taskType === 'task' ? (notificationEntityPath(k.entityType, k.changeId) ?? `/tasks/${k.id}`) : `/tasks/${k.id}`,
+        primary: k.code,
+        title:   k.taskType === 'task' ? k.ciName : (KIND_TITLE_KEY[k.taskType] ? t(KIND_TITLE_KEY[k.taskType]!) : k.taskType),
+        badge:   k.changeCode,
       }))
     case 'kbArticles':
       return results.kbArticles.map((a) => ({ key: `kb-${a.id}`, route: `/knowledge-base/${a.slug}`, primary: '', title: a.title }))
@@ -104,6 +113,7 @@ function toFlatItems(type: keyof GlobalSearchResults, results: GlobalSearchResul
 
 export function GlobalSearch() {
   const { t } = useTranslation()
+  const ciLabels = useCILabels()
   const navigate = useNavigate()
   const rootRef  = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -197,13 +207,13 @@ export function GlobalSearch() {
     const flatList: FlatItem[] = []
     const grouped: Group[] = []
     for (const type of GROUP_ORDER) {
-      const items = toFlatItems(type, results)
+      const items = toFlatItems(type, results, { ciLabels, t })
       if (items.length === 0) continue
       grouped.push({ type, icon: GROUP_ICONS[type], items, startIdx: flatList.length })
       flatList.push(...items)
     }
     return { groups: grouped, flat: flatList }
-  }, [results])
+  }, [results, ciLabels, t])
 
   const openItem = useCallback((item: FlatItem) => {
     setOpen(false)

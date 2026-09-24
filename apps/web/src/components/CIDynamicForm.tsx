@@ -1,11 +1,11 @@
 import { useState, useEffect, useId } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useQuery } from '@apollo/client/react'
 import type { CITypeDef, CIFieldDef } from '@/contexts/MetamodelContext'
 import { validateCI, isFieldVisible, getFieldDefault } from '@/lib/ciValidator'
 import { useCIBaseEnums } from '@/lib/ciEnums'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
-import { GET_TEAMS } from '@/graphql/queries'
+import { TeamPicker } from '@/components/pickers/TeamPicker'
+import { TEAM_TYPE } from '@/lib/teamVocabularies'
 import { colors, palette } from '@/lib/tokens'
 
 // Base (__base__) fields every CI shares — the Create input requires `name`
@@ -222,7 +222,8 @@ export function CIDynamicForm({
   const groupRelations = (ciType.systemRelations ?? [])
     .filter(sr => sr.targetEntity === 'Team' && GROUP_INPUT_RELATIONS.has(sr.name))
     .sort((a, b) => a.order - b.order)
-  const { data: teamsData, error: teamsError } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { skip: groupRelations.length === 0 })
+  // The team picked for each group, with its name for the box: the form keeps only the id.
+  const [pickedTeams, setPickedTeams] = useState<Record<string, { id: string; name: string } | null>>({})
 
   // Default script: rieseguiti a ogni modifica dei valori (con debounce), non
   // solo al mount — un default che dipende da un altro campo (es. porta in
@@ -426,10 +427,18 @@ export function CIDynamicForm({
                   {sr.label}
                   {sr.required && <span style={{ color: 'var(--color-trigger-sla-breach)', marginLeft: 2 }}>*</span>}
                 </label>
-                <select id={fieldId(key)} aria-invalid={validationErrors[key] ? true : undefined} aria-describedby={validationErrors[key] ? `${fieldId(key)}-error` : undefined} value={String(formValues[key] ?? '')} onChange={e => handleChange(key, e.target.value || null)} style={inputBase}>
-                  <option value="">{t('components.ciDynamicForm.selectOption')}</option>
-                  {(teamsData?.teams ?? []).map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
-                </select>
+                {/* D34 on creation too (review of 23 Sep 2026): owner teams for the owner
+                    group, support teams for the support group, searchable — it
+                    was a select of every team, Change Management included. */}
+                <TeamPicker
+                  role={sr.name === 'ownerGroup' ? TEAM_TYPE.OWNER : TEAM_TYPE.SUPPORT}
+                  label={sr.label}
+                  inputId={fieldId(key)}
+                  value={pickedTeams[key] ?? null}
+                  onChange={(team) => { setPickedTeams((prev) => ({ ...prev, [key]: team })); handleChange(key, team?.id ?? null) }}
+                  {...(sr.required ? {} : { clearLabel: t('components.ciDynamicForm.selectOption') })}
+                  invalid={!!validationErrors[key]}
+                />
                 {validationErrors[key] && (
                   <p id={`${fieldId(key)}-error`} style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>
                     {validationErrors[key]}
@@ -438,11 +447,6 @@ export function CIDynamicForm({
               </div>
             )
           })}
-          {teamsError && (
-            <p role="alert" style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>
-              {t('components.ciDynamicForm.teamsError', { error: teamsError.message })}
-            </p>
-          )}
         </div>
       )}
       <div>

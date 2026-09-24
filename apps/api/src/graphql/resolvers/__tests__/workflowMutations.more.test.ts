@@ -145,7 +145,7 @@ const { auditStepEntered } = await import('../../../lib/stepEvent.js')
 
 const ctx: GraphQLContext = {
   tenantId: 't-1', userId: 'u-1', userEmail: 'u@test.io', role: 'admin',
-  permissions: new Set<Permission>(['config.workflow']),
+  permissions: new Set<Permission>(['config.workflow', 'incident.write', 'problem.write', 'request.write', 'kb.write']),
 }
 const noPerms: GraphQLContext = { ...ctx, role: 'operator', permissions: new Set<Permission>() }
 
@@ -467,6 +467,24 @@ describe('executeWorkflowTransition — gates before the engine moves the ticket
     expect(workflowEngine.transition).not.toHaveBeenCalled()
   })
 
+  // Review of 23 Sep 2026: config.workflow opened the door to moving any ticket.
+  it('moving a ticket needs the write permission of its type, before the engine moves it', async () => {
+    primeInstance('incident')
+    const kbOnly = { ...ctx, role: 'operator', permissions: new Set<Permission>(['kb.write']) } as GraphQLContext
+    const e = await caught(M.executeWorkflowTransition(null, { instanceId: 'wi-1', toStep: 'resolved' }, kbOnly))
+    expect(e.extensions['code']).toBe('FORBIDDEN')
+    expect(e.message).toContain('incident.write')
+    expect(workflowEngine.transition).not.toHaveBeenCalled()
+  })
+
+  it('an instance of a type this mutation does not move is refused, naming the type', async () => {
+    primeInstance('sprint')
+    const e = await caught(run())
+    expect(e.extensions['code']).toBe('BAD_USER_INPUT')
+    expect(e.extensions['i18n']).toEqual({ key: 'errors.workflow.unknownEntityType', params: { entityType: 'sprint' } })
+    expect(workflowEngine.transition).not.toHaveBeenCalled()
+  })
+
   it('a service request that would skip its approval is refused', async () => {
     primeInstance('service_request')
     vi.mocked(requestApprovalWouldBeSkipped).mockResolvedValueOnce(true)
@@ -598,53 +616,23 @@ describe('executeWorkflowTransition — side effects after the move', () => {
     expect(out.actionErrors?.[0]).toMatch(/^on_enter_fields: Corrupt on_enter_fields JSON/)
   })
 
-  it('each notify_rule enter action publishes workflow.step.entered with the step label as fallback title', async () => {
+  // Review of 23 Sep 2026: the notify rules go out from the engine's onStepEntered hook
+  // for every path and type (lib/stepNotifyRules.ts, tested there); here they would go twice.
+  it('the manual transition does not publish the step\'s notify rules itself', async () => {
     primeInstance('incident')
     on(INCIDENT_POST, rows({ id: 'e-1', tenantId: 't-1' }))
-    on(NOTIFY, rows({
-      enterActions: JSON.stringify([{ type: 'notify_rule', params: { title_key: 'k' } }, { type: 'publish_event' }, { type: 'notify_rule' }]),
-      stepLabel: 'Resolved',
-    }))
-    await run()
-    expect(publish).toHaveBeenCalledTimes(2)
-    expect(vi.mocked(publish).mock.calls[0]![0]).toMatchObject({
-      type: 'workflow.step.entered', tenant_id: 't-1', actor_id: 'u-1',
-      payload: { stepName: 'resolved', stepLabel: 'Resolved', entityType: 'incident', entityId: 'e-1', notifyRule: { title_key: 'k' } },
-    })
-    expect(vi.mocked(publish).mock.calls[1]![0]).toMatchObject({ payload: { notifyRule: {} } })
-  })
-
-  it('a step without a label uses its name; without enter actions nothing is published', async () => {
-    primeInstance('incident')
-    on(INCIDENT_POST, rows({ id: 'e-1', tenantId: 't-1' }))
-    on(NOTIFY, rows({ enterActions: JSON.stringify([{ type: 'notify_rule' }]), stepLabel: null }))
-    await run()
-    expect(vi.mocked(publish).mock.calls[0]![0]).toMatchObject({ payload: { stepLabel: 'resolved' } })
-    vi.mocked(publish).mockClear()
-    primeInstance('incident')
-    on(INCIDENT_POST, rows({ id: 'e-1', tenantId: 't-1' }))
-    on(NOTIFY, rows({ enterActions: null, stepLabel: 'R' }))
+    on(NOTIFY, rows({ enterActions: JSON.stringify([{ type: 'notify_rule', params: { title_key: 'k' } }]), stepLabel: 'Resolved' }))
     await run()
     expect(publish).not.toHaveBeenCalled()
   })
 
-  it('corrupt enter_actions found after the move are reported, not thrown', async () => {
-    primeInstance('incident')
-    on(INCIDENT_POST, rows({ id: 'e-1', tenantId: 't-1' }))
-    on(NOTIFY, rows({ enterActions: '[oops', stepLabel: 'R' }))
-    const out = await run()
-    expect(out.actionErrors).toEqual([expect.stringMatching(/^notify rules: Corrupt enter_actions JSON/)])
-  })
-
-  it('a KB article gets its step-entered audit, on_enter_fields and notify rules', async () => {
+  it('a KB article gets its step-entered audit and on_enter_fields (its notify rules come from the hook)', async () => {
     primeInstance('kb_article')
     on("WHERE wi.entity_type = 'kb_article'", rows({ id: 'kb-1', tenantId: 't-1' }))
     on(ON_ENTER, onEnterRow('{"reviewed_by":"$userId"}', 'kb_article'))
-    on(NOTIFY, rows({ enterActions: JSON.stringify([{ type: 'notify_rule' }]), stepLabel: 'Published' }))
     await run('published')
     expect(auditStepEntered).toHaveBeenCalledWith(mockSession, ctx, 'kb_article', 'KBArticle', 'kb-1', 'published')
     expect(callOf(/MATCH \(e:KBArticle/)!.params['__val_reviewed_by']).toBe('u-1')
-    expect(vi.mocked(publish).mock.calls[0]![0]).toMatchObject({ payload: { entityType: 'kb_article', entityId: 'kb-1' } })
   })
 
   it('engine action errors and post-commit errors are returned together', async () => {
@@ -851,6 +839,30 @@ describe('saveWorkflowChanges', () => {
     expect(callOf('SET s.is_initial = false')!.params).toMatchObject({ keep: 'closed', tenantId: 't-1' })
   })
 
+  // Review of 23 Sep 2026: unticking the only initial step was saved, and the next ticket failed.
+  it('unticking the only initial step is refused; with another initial one left it is saved', async () => {
+    on(VERSION, rows({ version: 1 }))
+    on("WHERE coalesce(s.is_initial, s.type = 'start')", rows({ definitionId: 'd-1', n: 0 }))
+    const e = await caught(M.saveWorkflowChanges(null, { ...base, steps: [{ stepName: 'new', label: 'N', enterActions: null, exitActions: null, isInitial: false }] }, ctx))
+    expect(e.extensions['i18n']).toMatchObject({ key: 'errors.workflow.noInitialStep' })
+    calls.length = 0
+    on(VERSION, rows({ version: 1 }))
+    on("WHERE coalesce(s.is_initial, s.type = 'start')", rows({ definitionId: 'd-1', n: 1 }))
+    on(BUMP, wdSaved())
+    await M.saveWorkflowChanges(null, { ...base, steps: [{ stepName: 'new', label: 'N', enterActions: null, exitActions: null, isInitial: false }] }, ctx)
+  })
+
+  it('a timed wait\'s delay is validated before the save and written only on a timed wait', async () => {
+    const bad = await caught(M.saveWorkflowChanges(null, { ...base, steps: [{ stepName: 'w', label: 'W', enterActions: null, exitActions: null, timerDelayMinutes: 0 }] }, ctx))
+    expect(bad.extensions['i18n']).toMatchObject({ key: 'errors.workflow.timerDelayRequired' })
+    on(VERSION, rows({ version: 1 }))
+    on(BUMP, wdSaved())
+    await M.saveWorkflowChanges(null, { ...base, steps: [{ stepName: 'w', label: 'W', enterActions: null, exitActions: null, timerDelayMinutes: 45 }] }, ctx)
+    const write = callOf('s.timer_delay_minutes')!
+    expect(write.cypher).toContain("CASE WHEN st.timerDelayMinutes IS NOT NULL AND s.type = 'timer_wait' THEN st.timerDelayMinutes ELSE s.timer_delay_minutes END")
+    expect((write.params['steps'] as Array<Record<string, unknown>>)[0]).toMatchObject({ timerDelayMinutes: 45 })
+  })
+
   it('a purpose change runs the change-workflow guards and the deadline check', async () => {
     on(VERSION, rows({ version: 1 }))
     on('s.purpose IN $windowPurposes', rows({ definitionId: 'd-1', n: 1 }))
@@ -981,6 +993,24 @@ describe('duplicateWorkflowDefinition', () => {
     await M.duplicateWorkflowDefinition(null, { definitionId: 'd-1', name: 'X', category: '  ' }, ctx)
     expect(callOf('CREATE (dst:WorkflowDefinition)')!.params['category']).toBeNull()
   })
+
+  // Owner's decision, review of 23 Sep 2026: a catalog item's copy is catalog-only, never the generic fallback.
+  it('a copy made for the catalog is marked catalog-only', async () => {
+    on(SRC, rows({ entityType: 'request', name: 'Req' }))
+    on(OUT, rows({ props: { id: 'new', name: 'X', catalog_only: true }, steps: [] }))
+    const out = await M.duplicateWorkflowDefinition(null, { definitionId: 'd-1', name: 'X', catalogOnly: true }, ctx)
+    expect(callOf('CREATE (dst:WorkflowDefinition)')!.params['catalogOnly']).toBe(true)
+    expect(callOf('CREATE (dst:WorkflowDefinition)')!.cypher).toContain('catalog_only: $catalogOnly')
+    expect(out).toMatchObject({ catalogOnly: true })
+  })
+
+  it('a copy made anywhere else is not catalog-only', async () => {
+    on(SRC, rows({ entityType: 'request', name: 'Req' }))
+    on(OUT, rows({ props: { id: 'new', name: 'Y' }, steps: [] }))
+    const out = await M.duplicateWorkflowDefinition(null, { definitionId: 'd-1', name: 'Y' }, ctx)
+    expect(callOf('CREATE (dst:WorkflowDefinition)')!.params['catalogOnly']).toBe(false)
+    expect(out).toMatchObject({ catalogOnly: false })
+  })
 })
 
 describe('setWorkflowDefinitionActive', () => {
@@ -1018,6 +1048,16 @@ describe('setWorkflowDefinitionActive', () => {
   it('a missing count reads as zero others (refused, not allowed)', async () => {
     on(FIND, rows({ entityType: 'incident', name: 'Inc', category: null, active: true }))
     await caught(M.setWorkflowDefinitionActive(null, { definitionId: 'd-1', active: false }, ctx))
+  })
+
+  // Review of 23 Sep 2026: switched off, every request of the catalog items using it failed at creation.
+  it('switching off a workflow that catalog items use is refused, naming them', async () => {
+    on(FIND, rows({ entityType: 'service_request', name: 'Laptop flow', category: 'hardware', active: true }))
+    on('MATCH (i:ServiceCatalogItem', rows({ name: 'New laptop' }, { name: 'Laptop repair' }))
+    const e = await caught(M.setWorkflowDefinitionActive(null, { definitionId: 'd-1', active: false }, ctx))
+    expect(e.extensions['i18n']).toMatchObject({ key: 'errors.workflow.usedByCatalogItems', params: { name: 'Laptop flow', items: 'New laptop, Laptop repair' } })
+    expect(callOf('MATCH (i:ServiceCatalogItem')!.params).toEqual({ tenantId: 't-1', definitionId: 'd-1' })
+    expect(callOf(WRITE)).toBeUndefined()
   })
 
   it('a categorised definition can be switched off without the fallback check; activation is audited', async () => {

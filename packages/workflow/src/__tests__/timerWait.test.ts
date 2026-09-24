@@ -22,6 +22,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { WorkflowEngine } from '../engine.js'
 
 const add   = vi.fn(async () => ({ id: 'job-1' }))
+const remove = vi.fn(async () => 1)
 const queueAsked = vi.fn()
 
 const redisBroken = vi.hoisted(() => ({ value: false }))
@@ -36,7 +37,7 @@ vi.mock('@opengraphity/events', () => ({
   tenantQueue: (base: string, tenantId: string) => {
     queueAsked(base, tenantId)
     if (redisBroken.value) throw new Error('no Redis connection configured')
-    return { add }
+    return { add, remove }
   },
   publish:               vi.fn(),
   assertSafeOutboundUrl: vi.fn(),
@@ -64,18 +65,19 @@ function waitSession(opts: { minutes?: unknown; exit?: string | null } = {}) {
     // There are TWO reads and they must be told apart by the query, not by
     // order: the transition state, and (only when entering a wait step) the
     // automatic outgoing edge.
-    executeRead: vi.fn(async (work: (tx: { run: (q: string) => Promise<unknown> }) => Promise<unknown>) =>
-      work({ run: async (q: string) => q.includes('AS toStep')
+    executeRead: vi.fn(async (work: (tx: { run: (q: string, p?: Record<string, unknown>) => Promise<unknown> }) => Promise<unknown>) =>
+      work({ run: async (q: string, p?: Record<string, unknown>) => { exitQuery.params = p ?? null; exitQuery.cypher = q; return q.includes('AS toStep')
         ? { records: exit ? [mockRecord({ toStep: exit })] : [] }
-        : { records: [state] } })),
+        : { records: [state] } } })),
     executeWrite: vi.fn(async (work: (tx: { run: typeof txRun }) => Promise<unknown>) => work({ run: txRun })),
   }
 }
 
+const exitQuery: { cypher: string; params: Record<string, unknown> | null } = { cypher: '', params: null }
 const manual = { instanceId: 'wi-1', toStepName: 'waiting_customer', triggeredBy: 'user-1', triggerType: 'manual' as const }
 const actx = { userId: 'user-1', entityData: {} }
 
-beforeEach(() => { add.mockClear(); queueAsked.mockClear(); add.mockResolvedValue({ id: 'job-1' }) })
+beforeEach(() => { add.mockClear(); remove.mockClear(); queueAsked.mockClear(); add.mockResolvedValue({ id: 'job-1' }) })
 
 describe('timer_wait — the job that leaves the wait step', () => {
   it('enqueues the timer with the delay in milliseconds and a jobId per instance and per step', async () => {
@@ -85,7 +87,7 @@ describe('timer_wait — the job that leaves the wait step', () => {
     expect(r.actionErrors).toBeUndefined()
     expect(add).toHaveBeenCalledWith('timer_wait',
       { instanceId: 'wi-1', toStep: 'closed', tenantId: 'c-one' },
-      { delay: 30 * 60 * 1000, jobId: 'timer_wait:wi-1:step-wait' })
+      { delay: 30 * 60 * 1000, jobId: 'timer_wait:wi-1:step-wait', removeOnComplete: true, removeOnFail: { age: 7 * 24 * 3600 } })
     // The instance's tenant: its own queue, `notification-jobs@c-one`.
     expect(queueAsked).toHaveBeenCalledWith('notification-jobs', 'c-one')
   })
@@ -100,7 +102,7 @@ describe('timer_wait — the job that leaves the wait step', () => {
     const s = waitSession({ exit: null })
     const r = await new WorkflowEngine().transition(s as never, manual, actx)
     expect(r.success).toBe(true)
-    expect(r.actionErrors?.[0]).toContain('has no automatic transition — the workflow will never leave this step')
+    expect(r.actionErrors?.[0]).toContain('has no automatic or timer transition — the workflow will never leave this step')
     expect(add).not.toHaveBeenCalled()
   })
 
@@ -134,5 +136,20 @@ describe('timer_wait — the fallbacks', () => {
     add.mockRejectedValueOnce('Redis said no')
     const r = await new WorkflowEngine().transition(waitSession() as never, manual, actx)
     expect(r.actionErrors?.[0]).toContain('timer_wait scheduling failed: Redis said no')
+  })
+})
+
+// Review of 23 Sep 2026.
+describe('timer_wait — the exit edge and a second visit', () => {
+  it('the exit is an edge with trigger automatic OR timer (timer was documented and never scheduled)', async () => {
+    await new WorkflowEngine().transition(waitSession() as never, manual, actx)
+    expect(exitQuery.cypher).toContain('WHERE tr.trigger IN $exitTriggers')
+    expect(exitQuery.params).toMatchObject({ exitTriggers: ['automatic', 'timer'] })
+  })
+
+  it('re-entering the step replaces the timer: the earlier visit\'s job is removed before the new one is added', async () => {
+    await new WorkflowEngine().transition(waitSession() as never, manual, actx)
+    expect(remove).toHaveBeenCalledWith('timer_wait:wi-1:step-wait')
+    expect(remove.mock.invocationCallOrder[0]!).toBeLessThan(add.mock.invocationCallOrder[0]!)
   })
 })

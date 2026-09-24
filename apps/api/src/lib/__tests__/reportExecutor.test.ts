@@ -107,6 +107,18 @@ describe('executeReportSection', () => {
     expect(query).toContain('LIMIT toInteger($limit)')
   })
 
+  // Review of 23 Sep 2026: a section drawn by the customer ran with no time limit, on the shared database.
+  it('the section runs with a time limit, and a timeout is the section\'s error with its key', async () => {
+    const s = sessionReturning([{ value: int(1) }])
+    await executeReportSection(section({ chartType: 'kpi' }), 't1')
+    expect(s.executeRead.mock.calls[0]![1]).toEqual({ timeout: 30_000 })
+
+    s.run.mockRejectedValueOnce(Object.assign(new Error('terminated'), { code: 'Neo.ClientError.Transaction.TransactionTimedOut' }))
+    const res = await executeReportSection(section({ chartType: 'kpi' }), 't1')
+    expect(res.errorKey).toBe('errors.report.sectionTimeout')
+    expect(res.error).toMatch(/more than 30 seconds/)
+  })
+
   // Review of 23 Sep 2026: roles are per ticket type; a section rooted at a type the role cannot read read it anyway.
   it('with the viewer\'s permissions, a section on a label their role cannot read is refused and nothing is queried', async () => {
     const s = sessionReturning([{ value: int(3) }])

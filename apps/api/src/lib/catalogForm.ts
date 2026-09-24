@@ -22,6 +22,7 @@
  * varco: un obbligatorio aggirabile, o un valore scritto su un campo che non
  * doveva comparire.
  */
+import { refCiConditions } from './refCiFilter.js'
 import type { Session } from 'neo4j-driver'
 import { getSession, runQuery, runQueryOne, type Queryable } from '@opengraphity/neo4j'
 import { createMetamodelCache } from './metamodelCache.js'
@@ -1733,9 +1734,16 @@ async function assertRiferimentoEsiste(session: Session, tenantId: string, campo
   }
   let esiste: boolean
   switch (campo.fieldType) {
-    case 'ref_ci':
-      esiste = await trovato('MATCH (n:ConfigurationItem {id: $id, tenant_id: $tenantId}) RETURN n.id AS id LIMIT 1')
+    case 'ref_ci': {
+      // Of the field's types and within its filter, not just any CI of the
+      // tenant (review of 23 Sep 2026): what the choices offer is what is accepted.
+      const params: Record<string, unknown> = { id, tenantId }
+      const condizioni = await refCiConditions(session, tenantId, campo.refTypes, campo.refFilter, params)
+      const rows = await runQuery<{ id: string }>(session,
+        `MATCH (n:ConfigurationItem {id: $id, tenant_id: $tenantId}) WHERE ${condizioni || 'true'} RETURN n.id AS id LIMIT 1`, params)
+      esiste = rows.length > 0
       break
+    }
     case 'ref_user':
       esiste = await trovato('MATCH (n:User {id: $id, tenant_id: $tenantId}) RETURN n.id AS id LIMIT 1')
       break
@@ -1980,6 +1988,16 @@ export async function writeFormAnswer(
   const answers = formAnswerMap(
     catalogFormFieldNames(def).map((nome) => rispostaDaProprieta(nome, ticket.props[nome])),
   )
+  /*
+   * E le stesse risposte COL LORO TIPO, per formule e script (review of 23 Sep
+   * 2026). Alla creazione una formula vede `false` e `3`; qui vedeva `'false'`
+   * e `'3'`: correggere una risposta qualunque riscriveva `livello` da
+   * «bassa» ad «alta» (la stringa 'false' è vera) e `a + b` diventava una
+   * concatenazione. Il nodo tiene già i valori col tipo che `coerce` ha dato.
+   */
+  const tipizzate: Record<string, unknown> = Object.fromEntries(
+    catalogFormFieldNames(def).map((nome) => [nome, ticket.props[nome] ?? null]),
+  )
   const item = visibleFormItems(def, answers).find((i) => i.field === field)
   if (!item) {
     throw new ValidationError(`The field "${etichetta}" is not asked by the form this request was filled with (revision ${String(revision)}), or a condition hides it: a question that was never put has no answer to write.`,
@@ -2024,7 +2042,7 @@ export async function writeFormAnswer(
   if (!vuoto && campo.validationScript) {
     const rifiuto = await runValidationScript(
       campo.validationScript,
-      { input: { ...answers, [field]: convertito }, value: convertito },
+      { input: { ...tipizzate, [field]: convertito }, value: convertito },
       campo.name, tenantId, 'tenant',
     )
     if (rifiuto) {
@@ -2060,6 +2078,7 @@ export async function writeFormAnswer(
   const libreria = await formFieldsByName(session, tenantId, nomiDelModulo)
   const { spente, calcolati } = await stabilizzaRisposte(
     def, libreria, answers, { ...answers, [field]: convertito as FormAnswerValue }, tenantId,
+    { ...tipizzate, [field]: convertito },
   )
 
   /*
@@ -2122,11 +2141,14 @@ async function stabilizzaRisposte(
   prima: Record<string, FormAnswerValue>,
   partenza: Record<string, FormAnswerValue>,
   tenantId: string,
+  /** The same answers with their type: what the formulas see, as at creation. */
+  tipizzate: Record<string, unknown>,
 ): Promise<{ spente: string[]; calcolati: Record<string, unknown> }> {
   const nomi = catalogFormFieldNames(def)
   const nomiCalcolati = nomi.filter((n) => libreria.get(n)?.formula)
   const eranoVisibili = new Set(visibleFormItems(def, prima).map((i) => i.field))
   const stato: Record<string, FormAnswerValue> = { ...partenza }
+  const tipi: Record<string, unknown> = { ...tipizzate }
   const spente: string[] = []
   const calcolati: Record<string, unknown> = {}
 
@@ -2136,7 +2158,7 @@ async function stabilizzaRisposte(
     // Le formule: solo i calcolati VISIBILI adesso, e vedono solo i campi non
     // calcolati (`formulaInput`), così non ci sono catene fra formule.
     const visibili = new Set(visibleFormItems(def, stato).map((i) => i.field))
-    const perLaFormula = formulaInput(stato, new Set(nomiCalcolati))
+    const perLaFormula = formulaInput(tipi, new Set(nomiCalcolati))
     for (const n of nomiCalcolati) {
       if (!visibili.has(n)) continue
       const campo = libreria.get(n)!
@@ -2152,6 +2174,7 @@ async function stabilizzaRisposte(
       if (!Object.prototype.hasOwnProperty.call(calcolati, n) || calcolati[n] !== valore) cambiato = true
       calcolati[n] = valore
       stato[n] = valore as FormAnswerValue
+      tipi[n] = valore
     }
 
     // La visibilità, con i calcolati appena rifatti già dentro.
@@ -2160,6 +2183,7 @@ async function stabilizzaRisposte(
       if (!eranoVisibili.has(n) || oraVisibili.has(n) || spente.includes(n)) continue
       if (isFormAnswerEmpty(stato[n])) continue
       stato[n] = null
+      tipi[n] = null
       spente.push(n)
       delete calcolati[n]
       cambiato = true

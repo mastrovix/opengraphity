@@ -36,6 +36,8 @@ vi.mock('@opengraphity/neo4j', () => ({
   toNumber: (v: unknown) => Number(v ?? 0),
 }))
 vi.mock('../../graphql/resolvers/ci-utils.js', () => ({ withSession: vi.fn(async (fn: (s: unknown) => Promise<unknown>) => fn(session)), getSession: vi.fn() }))
+vi.mock('../../lib/validateRequiredFields.js', () => ({ validateStepRequirements: vi.fn(async () => undefined) }))
+vi.mock('../../lib/stepMetadataPreflight.js', () => ({ preflightStepMetadata: vi.fn(async () => undefined) }))
 vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn() }))
 vi.mock('../../lib/workflowHelpers.js', () => ({
   getInitialStepName: vi.fn(async () => 'new'),

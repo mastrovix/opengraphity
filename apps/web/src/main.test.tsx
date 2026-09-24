@@ -46,6 +46,8 @@ const refreshLoop = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/keycloak', () => ({ initKeycloak: kc.init, keycloak: { login: kc.login } }))
 vi.mock('@/lib/tokenRefresh', () => ({ startTokenRefreshLoop: refreshLoop }))
 vi.mock('@/lib/apollo', () => ({ apolloClient: { name: 'test client' } }))
+const logged = vi.hoisted(() => ({ error: vi.fn() }))
+vi.mock('@/lib/clientLogger', () => ({ clientLogger: { error: logged.error, warn: vi.fn(), info: vi.fn() } }))
 vi.mock('@/components/ui/sonner', () => ({ Toaster: () => null }))
 vi.mock('@/components/layout/AppLayout', async () => {
   const { createElement } = await import('react')
@@ -294,6 +296,14 @@ describe('signed in', () => {
     expect(shownPage()!.dataset['mount']).not.toBe(first)
   })
 
+  // Review of 23 Sep 2026: the CI list was the one route with a parameter that was not keyed.
+  it('the CI list is mounted again when the type changes: page, filter and sort do not carry over', async () => {
+    const first = (await opens('/ci/server', 'CIListPage')).dataset['mount']
+    await go('/ci/database')
+    await waitFor(() => expect(JSON.parse(shownPage()!.dataset['params']!)).toEqual({ typeName: 'database' }))
+    expect(shownPage()!.dataset['mount']).not.toBe(first)
+  })
+
   it.each([
     ['/applications', '/ci/application'], ['/databases', '/ci/database'], ['/database-instances', '/ci/database_instance'],
     ['/servers', '/ci/server'], ['/certificates', '/ci/certificate'],
@@ -331,6 +341,15 @@ describe('signed in', () => {
     const heading = await screen.findByRole('heading', { name: 'Unexpected error' })
     expect(within(heading.parentElement!).getByText('Something went wrong')).toBeInTheDocument()
     expect(screen.getByTestId('layout')).toContainElement(heading)
+    // Review of 23 Sep 2026: the route caught it before the ErrorBoundary, and nothing reached the server log.
+    await waitFor(() => expect(logged.error).toHaveBeenCalledWith(expect.stringMatching(/^Route error: /), expect.objectContaining({ path: '/logs' })))
+  })
+
+  it('an unknown address is not reported as a broken page', async () => {
+    logged.error.mockClear()
+    await go('/no-such-page')
+    await screen.findByRole('heading', { name: 'Page not found' })
+    expect(logged.error).not.toHaveBeenCalledWith(expect.stringMatching(/^Route error/), expect.anything())
   })
 })
 

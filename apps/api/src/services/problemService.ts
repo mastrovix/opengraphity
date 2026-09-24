@@ -60,6 +60,25 @@ export async function createProblem(
   // Campi personalizzati (ondata 4): solo dai canali che li mandano (vedi createIncident).
   const customProps = input.customFields == null ? {} : await withSession(async (session) =>
     resolveCustomFieldWrites(ctx.tenantId, 'problem', await customFieldDefs(session, ctx.tenantId, 'problem'), input.customFields, { current: null, stepContext: await creationStepContext(session, ctx.tenantId, 'problem', input.category ?? null) }))
+  // The CIs exist BEFORE the problem is written (review of 23 Sep 2026): the
+  // check came after the problem was committed and threw before its workflow
+  // and its event — a problem nobody could move or close.
+  if (input.affectedCIs?.length) {
+    const ciPredicate = await ciLabelPredicateForTenant('ci', ctx.tenantId)
+    const found = await withSession((session) => runQuery<{ id: string }>(session, `
+      MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
+      WHERE ci.id IN $ids AND ${ciPredicate}
+      RETURN ci.id AS id
+    `, { tenantId: ctx.tenantId, ids: [...new Set(input.affectedCIs)] }))
+    const known = new Set(found.map((r) => r.id))
+    const missing = input.affectedCIs.filter((ciId) => !known.has(ciId))
+    if (missing.length > 0) {
+      throw new ValidationError(
+        `${missing.length} of the ${input.affectedCIs.length} given CIs do not exist in this tenant, or are not Configuration Items (${missing.join(', ')})`,
+        { key: 'errors.problem.ciMissing', params: { missing: missing.length, total: input.affectedCIs.length, ids: missing.join(', ') } },
+      )
+    }
+  }
   const id  = uuidv4()
   const now = new Date().toISOString()
 
@@ -137,13 +156,12 @@ export async function createProblem(
         if (Number(rows[0]?.linked ?? 0) === 0) missing.push(ciId)
       }
     }, true)
+    // Checked before the problem was written: a CI missing here was deleted in
+    // between. The problem goes on (its workflow and event come next), and the
+    // gap is logged, not thrown into a half-made problem.
     if (missing.length > 0) {
       logger.error({ problemId: id, tenantId: ctx.tenantId, missing },
-        '[problemService] CI non collegati al problem: non esistono in questo cliente o non sono Configuration Item')
-      throw new ValidationError(
-        `Problem created, but ${missing.length} of the ${input.affectedCIs.length} given CIs do not exist in this tenant, or are not Configuration Items (${missing.join(', ')})`,
-        { key: 'errors.problem.ciMissing', params: { missing: missing.length, total: input.affectedCIs.length, ids: missing.join(', ') } },
-      )
+        '[problemService] CIs deleted while the problem was being created: not linked')
     }
   }
 

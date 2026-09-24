@@ -124,7 +124,7 @@ export function ModaleProgettoReportAI({ onChiudi, onApplica, descrizioneInizial
         </div>
       ) : (
         <div style={{ display: 'grid', gap: 14 }}>
-          <div style={{ background: 'var(--color-surface-alt)', borderRadius: 8, padding: 10 }}>
+          <div style={{ background: 'var(--color-surface-2)', borderRadius: 8, padding: 10 }}>
             <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{t('reportAI.youAsked')}</div>
             <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{progetto.prompt}</div>
           </div>
@@ -190,7 +190,7 @@ export function ModaleProgettoReportAI({ onChiudi, onApplica, descrizioneInizial
               <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 4 }}>
                 {progetto.discarded.map((s, i) => (
                   <li key={`${s.key}-${String(i)}`} style={{ display: 'flex', gap: 6, fontSize: 'var(--font-size-table)', color: 'var(--color-slate)' }}>
-                    <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 2, color: 'var(--color-amber)' }} />
+                    <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 2, color: 'var(--color-warning-dark)' }} />
                     <span><strong style={{ fontWeight: fontWeight.medium }}>{s.what}</strong>{' — '}{rendi(t, s)}</span>
                   </li>
                 ))}
@@ -278,7 +278,7 @@ function Pillola({ testo }: { testo: string }) {
   return (
     <span style={{
       padding: '1px 6px', borderRadius: 999, fontSize: 'var(--font-size-table)',
-      background: 'var(--color-brand-soft)', color: 'var(--color-brand)',
+      background: 'var(--color-brand-a13)', color: 'var(--color-brand)',
     }}>{testo}</span>
   )
 }

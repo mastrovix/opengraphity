@@ -18,7 +18,7 @@
   /* ── Alias semantici (stessi nomi di apps/web/src/index.css) ───────────
      Il portale condivide il vocabolario dei token con l'app web: i sorgenti
      .ts/.tsx usano SOLO questi nomi (via lib/tokens.ts), mai esadecimali
-     (regola ESLint no-restricted-syntax nel .eslintrc.json di root).
+     (regola ESLint no-restricted-syntax in eslint.config.mjs di root).
      Il brand del portale (#0EA5E9) è diverso da quello del web e resta tale. */
   --color-brand:        var(--brand);
   --color-brand-hover:  var(--brand-hover);

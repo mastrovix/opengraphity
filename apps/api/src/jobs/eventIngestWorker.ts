@@ -177,9 +177,18 @@ export async function enqueueEvents(
     const jobId = seen === 0
       ? eventJobId(tenantId, fingerprint, receivedAt)
       : `${eventJobId(tenantId, fingerprint, receivedAt)}-${String(seen)}`
+    /*
+     * And its own instant (review of 23 Sep 2026): the id alone was not
+     * enough. Both jobs carried the same `receivedAt`, and the ingest reads
+     * «same instant as the last one applied» as a retry — the second alarm
+     * was counted as a duplicate, its severity or status never applied. The
+     * n-th of a batch arrives n milliseconds later; a retry of the SAME job
+     * keeps its instant, and stays a duplicate.
+     */
+    const itsReceivedAt = seen === 0 ? receivedAt : new Date(Date.parse(receivedAt) + seen).toISOString()
     return {
     name: 'ingest',
-    data: { tenantId, sourceId, ev, receivedAt } satisfies EventIngestJobData,
+    data: { tenantId, sourceId, ev, receivedAt: itsReceivedAt } satisfies EventIngestJobData,
     opts: {
       jobId,
       attempts: EVENT_INGEST_ATTEMPTS,

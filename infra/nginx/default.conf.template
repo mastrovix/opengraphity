@@ -400,24 +400,75 @@ server {
         proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header   X-Forwarded-Proto https;
     }
-    # ── Portale self-service (revisione totale · H-33) ───────────────────────
-    # Il front-door Tailscale aveva web, Keycloak e API ma NESSUNA via per il
-    # portale: da remoto un utente finale non poteva aprire un ticket. Il
-    # portale sta sotto /portal/ dello stesso host (un sottodominio vorrebbe un
-    # altro certificato da `tailscale serve`), con lo stesso tenant del blocco.
-    location /portal/ {
-        set $upstream_portal portal:80;
-        proxy_pass         http://$upstream_portal/;
+    # Il portale da remoto NON sta qui sotto /portal/ (review del 23 set 2026,
+    # scelta del proprietario): con `proxy_pass` a variabile ogni /portal/*
+    # arrivava al portale come «/», e il bundle è costruito per la radice. Ha
+    # un front-door suo, sulla porta 8081 qui sotto.
+
+    location / {
+        set $upstream_web web:80;
+        proxy_pass         http://$upstream_web;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Forwarded-Host  $host;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto https;
+    }
+}
+
+# ── Portale self-service da remoto: front-door dedicato (review 23 set 2026) ──
+# Scelta del proprietario: un indirizzo Tailscale suo, non /portal/ dentro
+# quello del web. `tailscale serve --bg --https=8443 http://127.0.0.1:8081`
+# termina TLS e inoltra qui; la porta 8081 è pubblicata solo in loopback
+# (docker-compose.yml). Il bundle del portale è costruito per la radice e porta
+# il suo tenant (VITE_TENANT_SLUG); le API vanno con lo stesso tenant del
+# front-door web. Keycloak resta quello di ${TAILSCALE_HOST} (VITE_KEYCLOAK_URL):
+# il client del portale deve accettare https://${TAILSCALE_HOST}:8443/* come
+# indirizzo di ritorno (docs/DEPLOY.md).
+server {
+    listen 8081 default_server;
+    server_name _;
+
+    resolver 127.0.0.11 ipv6=off valid=30s;
+
+    large_client_header_buffers 4 32k;
+    proxy_buffer_size           128k;
+    proxy_buffers               4 256k;
+    proxy_busy_buffers_size     256k;
+
+    add_header Content-Security-Policy
+        "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://${TAILSCALE_HOST}; img-src 'self' data:; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
+        always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options        "DENY"    always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    location /graphql {
+        client_max_body_size 2m;
+        set $upstream_api api:4000;
+        proxy_pass         http://$upstream_api;
         proxy_http_version 1.1;
         proxy_set_header   Host              ${TAILSCALE_TENANT_HOST};
         proxy_set_header   X-Forwarded-Host  ${TAILSCALE_TENANT_HOST};
         proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header   X-Forwarded-Proto https;
     }
-
+    location /api/ {
+        client_max_body_size ${NGINX_API_MAX_BODY};
+        proxy_read_timeout   600s;
+        proxy_send_timeout   600s;
+        set $upstream_api api:4000;
+        proxy_pass         http://$upstream_api;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              ${TAILSCALE_TENANT_HOST};
+        proxy_set_header   X-Forwarded-Host  ${TAILSCALE_TENANT_HOST};
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto https;
+    }
     location / {
-        set $upstream_web web:80;
-        proxy_pass         http://$upstream_web;
+        set $upstream_portal portal:80;
+        proxy_pass         http://$upstream_portal;
         proxy_http_version 1.1;
         proxy_set_header   Host              $host;
         proxy_set_header   X-Forwarded-Host  $host;

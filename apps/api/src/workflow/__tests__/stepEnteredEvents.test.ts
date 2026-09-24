@@ -44,6 +44,8 @@ vi.mock('../../lib/stepEnteredPublisher.js', () => ({
  * con il database acceso non dice niente su quello che prova davvero.
  */
 const annullaCompitiDelTicketConcluso = vi.fn(async () => 0)
+const publishStepNotifyRules = vi.fn(async (_info: unknown) => 0)
+vi.mock('../../lib/stepNotifyRules.js', () => ({ publishStepNotifyRules: (info: unknown) => publishStepNotifyRules(info) }))
 vi.mock('../../lib/ticketTasks.js', () => ({
   annullaCompitiDelTicketConcluso: (...a: unknown[]) => annullaCompitiDelTicketConcluso(...a),
 }))
@@ -122,5 +124,18 @@ describe('stepEnteredEvents', () => {
     expect(closeIncident).not.toHaveBeenCalled()
     expect(publishIncidentResolved).not.toHaveBeenCalled()
     expect(publishEvent).toHaveBeenCalledTimes(2)
+  })
+})
+
+// Review of 23 Sep 2026: «notify on enter» went out only from the manual transition of an incident or a KB article.
+describe('stepEnteredEvents — the step\'s notify rules', () => {
+  it('go out for every ticket type and every path, with the instance and the step entered', async () => {
+    publishStepNotifyRules.mockClear()
+    for (const entityType of ['service_request', 'problem', 'change']) {
+      await listener!(info({ entityType, entityId: `${entityType}-1`, toStep: 'fulfilment', category: 'active', triggerType: 'automatic' }))
+    }
+    expect(publishStepNotifyRules.mock.calls.map((c) => c[0])).toEqual(['service_request', 'problem', 'change'].map((entityType) => ({
+      tenantId: 'c-test', instanceId: 'wi-1', stepName: 'fulfilment', actorId: expect.any(String), entityType, entityId: `${entityType}-1`,
+    })))
   })
 })

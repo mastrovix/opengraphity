@@ -43,8 +43,8 @@ export const DELETE_ATTACHMENT = gql`
  * seminate. La copia nasce spenta: la si accende dopo averla sistemata.
  */
 export const DUPLICATE_WORKFLOW_DEFINITION = gql`
-  mutation DuplicateWorkflowDefinition($definitionId: ID!, $name: String!, $category: String) {
-    duplicateWorkflowDefinition(definitionId: $definitionId, name: $name, category: $category) {
+  mutation DuplicateWorkflowDefinition($definitionId: ID!, $name: String!, $category: String, $catalogOnly: Boolean) {
+    duplicateWorkflowDefinition(definitionId: $definitionId, name: $name, category: $category, catalogOnly: $catalogOnly) {
       id name entityType category active version
     }
   }

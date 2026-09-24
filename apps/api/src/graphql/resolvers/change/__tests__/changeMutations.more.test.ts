@@ -78,6 +78,7 @@ vi.mock('../../../../services/changeCreationService.js', () => ({
 }))
 vi.mock('../../../../lib/validateRequiredFields.js', () => ({
   validateRequiredFields: vi.fn().mockResolvedValue(undefined),
+  validateStepRequirements: vi.fn().mockResolvedValue(undefined),
   propsToFieldValues: (p: Record<string, unknown>) => ({ ...p }),
 }))
 vi.mock('../../../../lib/workflowTargets.js', () => ({ stepNamesByPurposeOrdered: vi.fn(async () => ['change_requested']) }))
@@ -304,7 +305,7 @@ describe('addCIToChange', () => {
       chiaveOwner: 'chg-1-ci-1-owner', chiaveSupport: 'chg-1-ci-1-support', chiavePiano: 'chg-1-ci-1-deployplan',
       tenantId: 't1',
     })
-    expect(vi.mocked(helpers.chiaviDaCreare).mock.calls[1]).toEqual([session, 'DeployPlanTask', ['chg-1-ci-1-deployplan']])
+    expect(vi.mocked(helpers.chiaviDaCreare).mock.calls[1]).toEqual([session, 'DeployPlanTask', ['chg-1-ci-1-deployplan'], 't1'])
     expect(helpers.writeAudit).toHaveBeenCalledWith(tx, 'chg-1', 't1', 'ci_added', 'u-1', 'CI web-01 added', { key: 'ciAdded', params: { ci: 'web-01' } })
   })
 

@@ -61,12 +61,19 @@ const state = vi.hoisted(() => ({
   defsCategory: [] as Array<string | undefined>,
   sla: vi.fn<(input: unknown) => Promise<SlaCoverageDecision>>(),
   busy: new Set<string>(),
+  rules: {} as Record<string, { visible: boolean; required: boolean }>,
+  rulesError: null as Error | null,
 }))
 
 vi.mock('@/hooks/usePriorityMatrix', () => ({ usePriorityMatrix: () => ({ matrix: state.matrix, loading: false, error: null }) }))
 vi.mock('@/hooks/useEnumValues', () => ({ useEnumValues: () => ({ ...state.categories, error: null }) }))
 vi.mock('@/hooks/useTicketCIExclusions', () => ({ useTicketCIExclusions: () => ({ excluded: state.excluded, error: undefined }) }))
 vi.mock('@/hooks/useSlaCoverageCheck', () => ({ useSlaCoverageCheck: () => state.sla }))
+// The tenant's field rules, as the incident form's tests control them.
+vi.mock('@/hooks/useFormFieldRules', async (orig) => ({
+  ...(await orig<typeof import('@/hooks/useFormFieldRules')>()),
+  useFormFieldRules: () => ({ rules: state.rules, error: state.rulesError }),
+}))
 vi.mock('@/components/ticket/customFields/customFields', async (orig) => ({
   ...(await orig<typeof import('@/components/ticket/customFields/customFields')>()),
   useCreationCustomFieldDefs: (_entity: string, category?: string) => {
@@ -98,6 +105,8 @@ beforeEach(() => {
   state.defs = []
   state.defsCategory = []
   state.busy.clear()
+  state.rules = {}
+  state.rulesError = null
   state.sla.mockReset().mockResolvedValue('covered')
   apolloFinto.risposte['GetTeamChoices'] = { teams: [{ id: 'sup-1', name: 'SUP_Database Platform', type: 'support', isChangeManager: false }] }
   apolloFinto.risposte['GetAllCIs'] = { allCIs: { items: [DB, APP] } }
@@ -391,5 +400,39 @@ describe('CreateProblemPage — the customer fields, failures and leaving', () =
     expect(back.style.color).toBe('var(--color-slate-light)')
     await user.click(back)
     await attendiURL('/problems')
+  })
+})
+
+// Review of 23 Sep 2026: the server enforced the tenant's field rules on create, and this form showed none.
+describe('CreateProblemPage — the tenant\'s field rules', () => {
+  it('a category made required is marked, and the problem is not sent without it', async () => {
+    state.categories = { values: ['database'], loading: false }
+    state.rules = { category: { visible: true, required: true } }
+    const { user } = page()
+    const select = screen.getByLabelText(/^Category/) as HTMLSelectElement
+    expect(select.labels?.[0]?.textContent).toBe('Category *')
+    await fillIn(user)
+    await user.click(submit())
+    expect(await screen.findByRole('alert')).toHaveTextContent('Required field')
+    expect(apolloFinto.chiamata('CreateProblem')).toBeUndefined()
+    await user.selectOptions(select, 'database')
+    await user.click(submit())
+    await waitFor(() => expect(apolloFinto.chiamata('CreateProblem')).toMatchObject({ input: { category: 'database' } }))
+  })
+
+  it('a category hidden by a rule is not shown', () => {
+    state.categories = { values: ['database'], loading: false }
+    state.rules = { category: { visible: false, required: false } }
+    page()
+    expect(screen.queryByRole('combobox', { name: /^Category/ })).not.toBeInTheDocument()
+  })
+
+  it('rules that cannot be read stop the creation, and say why', async () => {
+    state.rulesError = new Error('rules down')
+    const { user } = page()
+    await fillIn(user)
+    await user.click(submit())
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('rules down'))
+    expect(apolloFinto.chiamata('CreateProblem')).toBeUndefined()
   })
 })

@@ -5,7 +5,8 @@
  * operator options and value input based on field type.
  */
 import { useQuery } from '@apollo/client/react'
-import { GET_TEAMS, GET_USERS } from '@/graphql/queries'
+import { GET_TEAMS } from '@/graphql/queries'
+import { UserIdPicker } from '@/components/pickers/UserIdPicker'
 import { useEntityFieldMetas, useFormFieldMetas, type FieldMeta } from '@/hooks/useEntityFields'
 import { fieldTypeKey, operatorsForFieldType, NO_VALUE_OPERATORS, CHANGED_OPERATOR } from '@/lib/automationOperators'
 import { inputS, selectS } from '@/pages/settings/shared/designerStyles'
@@ -52,7 +53,6 @@ export function ConditionRowEditor({ condition, entityType, onChange, onRemove, 
   const formFields = useFormFieldMetas(entityType)
   const allFields = [...metamodelFields, ...formFields.filter((f) => !metamodelFields.some((m) => m.name === f.name))]
   const { data: teamsData } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: METAMODEL_FETCH_POLICY })
-  const { data: usersData } = useQuery<{ users: { id: string; name: string; email: string }[] }>(GET_USERS, { fetchPolicy: METAMODEL_FETCH_POLICY })
   const { labelOf } = useDomainVocabularies()
 
   const selectedField = allFields.find(f => f.name === condition.field)
@@ -94,7 +94,7 @@ export function ConditionRowEditor({ condition, entityType, onChange, onRemove, 
     </Select>
   )
 
-  const valueInput = !hideValue && renderValueInput(condition, selectedField, onChange, usersData?.users ?? [], teamsData?.teams ?? [], labelOf)
+  const valueInput = !hideValue && renderValueInput(condition, selectedField, onChange, teamsData?.teams ?? [], labelOf)
   const removeButton = <button type="button" style={removeBtn} onClick={onRemove} title={t('conditionEditor.remove')} aria-label={t('conditionEditor.remove')}><X size={14} color={colors.danger} /></button>
 
   const errorLine = fieldsError && (
@@ -131,7 +131,6 @@ function renderValueInput(
   condition: Condition,
   field: FieldMeta | undefined,
   onChange: (patch: Partial<Condition>) => void,
-  users: { id: string; name: string; email: string }[],
   teams: { id: string; name: string }[],
   /** L'etichetta di un valore di vocabolario, `null` quando non la conosciamo. */
   labelOf: (vocabolario: string, valore: string) => string | null,
@@ -140,13 +139,12 @@ function renderValueInput(
     return <Input style={{ ...inputS, flex: 1, minWidth: 80 }} placeholder={i18n.t('conditionEditor.value')} value={condition.value} onChange={e => onChange({ value: e.target.value })} />
   }
 
-  // User → dropdown with users
+  // User → a search among the people who can be given tickets (review of 23
+  // Sep 2026: a plain select of the whole directory, end users included).
   if (field.fieldType === 'user') {
     return (
-      <Select style={{ ...selectS, flex: 1 }} value={condition.value} onChange={e => onChange({ value: e.target.value })}>
-        <option value="">{i18n.t('conditionEditor.userPlaceholder')}</option>
-        {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
-      </Select>
+      <UserIdPicker style={{ flex: 1 }} value={condition.value} onChange={(id) => onChange({ value: id })}
+        permission="ticket.assignable" hint={i18n.t('pickers.users.assignable')} label={i18n.t('pickers.users.label')} />
     )
   }
 

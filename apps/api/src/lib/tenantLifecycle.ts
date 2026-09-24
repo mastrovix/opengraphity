@@ -27,8 +27,11 @@
  * si può fare, la riga lo dice con `null` — non con uno zero, che si legge
  * come «è vuoto, procedi».
  */
+import path from 'node:path'
+import fs from 'node:fs/promises'
 import type { Session } from 'neo4j-driver'
 import { runQuery, runQueryOne, toNumber } from '@opengraphity/neo4j'
+import { countTenantNodesByLabel, deleteTenantNodes } from './tenantNodes.js'
 import { ValidationError, NotFoundError } from './errors.js'
 import { logger } from './logger.js'
 import { config } from './config.js'
@@ -70,6 +73,27 @@ export interface TenantRow {
 }
 
 /** `{slug}` sostituito, e nient'altro: un modello non è un linguaggio. */
+/**
+ * The domain the tenants live under, from the installation's
+ * `TENANT_URL_TEMPLATE` (`https://{slug}.example.com` → `example.com`).
+ *
+ * Review of 23 Sep 2026: a tenant created from the console always got
+ * `opengrafo.com`, written in the code, so on any other installation its
+ * sign-in failed (redirect URI mismatch). A template missing, or not of the
+ * form `<scheme>://{slug}.<domain>`, is an error that says so: a guessed
+ * domain would create a realm nobody can sign in to.
+ */
+export function tenantDomainFromTemplate(template: string | undefined): string {
+  const t = template?.trim() ?? ''
+  const m = /^https?:\/\/\{slug\}\.([a-z0-9.-]+?)(?::\d+)?\/?$/i.exec(t)
+  if (!m) {
+    throw new Error(t === ''
+      ? 'TENANT_URL_TEMPLATE is not configured: the domain of a new tenant cannot be known'
+      : `TENANT_URL_TEMPLATE "${t}" is not of the form <scheme>://{slug}.<domain>: the domain of a new tenant cannot be known`)
+  }
+  return m[1]!.toLowerCase()
+}
+
 function daModello(modello: string | undefined, slug: string): string | null {
   if (!modello || modello.trim() === '') return null
   return modello.trim().split('{slug}').join(slug)
@@ -104,6 +128,26 @@ export function configuredReservedSlugs(): string[] {
   return [consoleHost, platformRealm].filter((n): n is string => typeof n === 'string' && n !== '')
 }
 
+/**
+ * Every reserved name, the configured ones included. A tenant row with one of
+ * these ids is not a customer: `system` holds the rows every tenant shares.
+ */
+export function reservedTenantIds(): string[] {
+  return [...SLUG_RISERVATI, ...configuredReservedSlugs()]
+}
+
+/**
+ * The platform console does not suspend, resume or delete a reserved tenant
+ * (review of 23 Sep 2026): purging `system` ran a DETACH DELETE on the shared
+ * metamodel and vocabularies of every customer.
+ */
+function assertNotReserved(id: string): void {
+  if (reservedTenantIds().includes(id)) {
+    throw new ValidationError(`"${id}" is reserved: it is not a customer's tenant and cannot be suspended, resumed or deleted.`,
+      { key: 'errors.tenant.reservedNotManaged', params: { slug: id } })
+  }
+}
+
 export function assertSlugValido(slug: string, slugRiservatiExtra: readonly string[] = []): void {
   if (!SLUG_RE.test(slug)) {
     throw new ValidationError(
@@ -129,11 +173,11 @@ export async function listTenants(session: Session): Promise<TenantRow[]> {
     timezone: string | null; suspendedAt: string | null; createdAt: string | null
   }>(session, `
     MATCH (t:Tenant)
-    WHERE t.id IS NOT NULL
+    WHERE t.id IS NOT NULL AND NOT t.id IN $reserved
     RETURN t.id AS id, t.slug AS slug, t.name AS name, t.plan AS plan,
            t.timezone AS timezone, t.suspended_at AS suspendedAt, t.created_at AS createdAt
     ORDER BY t.id
-  `, {})
+  `, { reserved: reservedTenantIds() })
 
   /*
    * Gli admin in UNA query per tutti i tenant: sono pochi per tenant (uno,
@@ -244,6 +288,7 @@ export async function renameTenant(session: Session, id: string, nome: string): 
  * autenticazione, sempre, per ogni richiesta.
  */
 export async function suspendTenant(session: Session, id: string): Promise<void> {
+  assertNotReserved(id)
   const t = await tenantEsistente(session, id)
   if (t.suspendedAt) return // idempotente: già sospeso
   await runQuery(session, `
@@ -314,6 +359,7 @@ export async function resetAdminPassword(
 
 /** Riattiva un tenant sospeso. */
 export async function resumeTenant(session: Session, id: string): Promise<void> {
+  assertNotReserved(id)
   await tenantEsistente(session, id)
   await runQuery(session, `
     MATCH (t:Tenant {id: $id})
@@ -328,16 +374,9 @@ export async function resumeTenant(session: Session, id: string): Promise<void> 
  * cancella deve leggere i numeri, non fidarsi di una frase.
  */
 export async function tenantFootprint(session: Session, id: string): Promise<Record<string, number>> {
-  const righe = await runQuery<{ etichetta: string; quanti: unknown }>(session, `
-    MATCH (n {tenant_id: $id})
-    WITH labels(n)[0] AS etichetta, count(*) AS quanti
-    WHERE etichetta IS NOT NULL
-    RETURN etichetta, quanti
-    ORDER BY quanti DESC
-  `, { id })
-  const out: Record<string, number> = {}
-  for (const r of righe) out[r.etichetta] = toNumber(r.quanti)
-  return out
+  // Label by label (lib/tenantNodes.ts): the count without a label scanned every customer's nodes.
+  const perLabel = await countTenantNodesByLabel(session, id)
+  return Object.fromEntries(Object.entries(perLabel).sort((a, b) => b[1] - a[1]))
 }
 
 /**
@@ -366,6 +405,22 @@ export async function tenantFootprint(session: Session, id: string): Promise<Rec
 export interface PurgeEsito {
   realmCancellato: boolean
   nodiCancellati:  number
+  /** The tenant's attachment directory was there and was removed. */
+  allegatiCancellati: boolean
+}
+
+/**
+ * The attachment files of the tenant, `<ATTACHMENT_DIR>/<tenant>/…` (review of
+ * 23 Sep 2026: a deleted tenant left them on the disk). True when a directory
+ * was there. The path is checked to stay inside the storage directory.
+ */
+async function deleteTenantAttachments(tenantId: string): Promise<boolean> {
+  const base = path.resolve(config.attachmentDir)
+  const dir = path.resolve(base, tenantId)
+  if (!dir.startsWith(base + path.sep)) throw new Error(`purgeTenant: the attachment directory of "${tenantId}" escapes the storage directory`)
+  const there = await fs.stat(dir).then(() => true, () => false)
+  if (there) await fs.rm(dir, { recursive: true, force: true })
+  return there
 }
 
 export async function purgeTenant(
@@ -374,6 +429,7 @@ export async function purgeTenant(
   conferma: string,
   deleteRealm?: (realm: string) => Promise<void>,
 ): Promise<PurgeEsito> {
+  assertNotReserved(id)
   const t = await tenantEsistente(session, id)
   if (!t.suspendedAt) {
     throw new ValidationError(
@@ -394,22 +450,16 @@ export async function purgeTenant(
     log.warn({ tenantId: id }, 'tenant Keycloak realm deleted')
   }
 
-  const conta = await runQueryOne<{ quanti: unknown }>(session, `
-    MATCH (n {tenant_id: $id}) RETURN count(n) AS quanti
-  `, { id })
-  const nodiCancellati = toNumber(conta?.quanti)
-
-  await runQuery(session, `
-    MATCH (n {tenant_id: $id})
-    CALL (n) {
-      DETACH DELETE n
-    } IN TRANSACTIONS OF 1000 ROWS
-  `, { id })
+  // Label by label, in transactions of a thousand rows (lib/tenantNodes.ts):
+  // the unlabelled delete is the query that made Neo4j fall on the demo.
+  const nodiCancellati = await deleteTenantNodes(session, id)
+  // The files go with the nodes: the attachments were left on the disk.
+  const allegatiCancellati = await deleteTenantAttachments(id)
 
   // Il nodo del tenant per ultimo: finché c'è, la console sa che quel tenant
   // esisteva e che la cancellazione era in corso.
   await runQuery(session, `MATCH (t:Tenant {id: $id}) DETACH DELETE t`, { id })
 
-  log.warn({ tenantId: id, nodiCancellati, realmCancellato }, 'tenant PERMANENTLY DELETED')
-  return { realmCancellato, nodiCancellati }
+  log.warn({ tenantId: id, nodiCancellati, realmCancellato, allegatiCancellati }, 'tenant PERMANENTLY DELETED')
+  return { realmCancellato, nodiCancellati, allegatiCancellati }
 }

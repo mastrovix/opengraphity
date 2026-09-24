@@ -114,6 +114,21 @@ describe('TicketNewPage', () => {
     expect(uploadAttachment).not.toHaveBeenCalled()
   })
 
+  // Review of 23 Sep 2026: a rule «urgency required at creation» is the agent form's; the portal has no urgency to fill.
+  it('a requirement rule on a field the portal does not show does not block the submit; one on a shown field does', async () => {
+    const seen = { visibility: [], requirement: [] }
+    const created: unknown[] = []
+    const { user } = renderWithProviders(<TicketNewPage />, {
+      ...ROUTE,
+      mocks: [...rulesMocks(seen, { required: ['urgency', 'affected_ci'] }), kbMock, categoriesMock, severityMock, createTicketMock({ title: 'Printer broken', description: 'Details here', priority: 'medium', category: 'hardware' }, created)],
+    })
+    await fillForm(user)
+    await user.click(screen.getByRole('button', { name: 'Submit ticket' }))
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/tickets/tk-1'))
+    expect(screen.queryByText(/urgency/)).not.toBeInTheDocument()
+    expect(created).toHaveLength(1)
+  })
+
   // Verifica «Cosa resta cablato», ondata 4: i campi che l'amministratore offre nel portale.
   it('i campi del cliente offerti nel portale: obbligatori controllati, valori mandati con le etichette del Dizionario', async () => {
     const seen = { visibility: [], requirement: [] }

@@ -58,6 +58,19 @@ describe('WorkflowToolbar — header', () => {
     await attendiURL('/workflow')
   })
 
+  // Review of 23 Sep 2026: the back arrow threw every change kept locally away, without a word.
+  it('with changes not saved, going back asks first: stay keeps the page, leave goes', async () => {
+    const { user } = toolbar({ pendingCount: 2 })
+    await user.click(screen.getByRole('button', { name: 'Workflow' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Leave without saving?' })
+    expect(dialog).toHaveTextContent('2 changes are kept only here')
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(screen.getByTestId('location')).toHaveTextContent('/workflow/wf-1')
+    await user.click(screen.getByRole('button', { name: 'Workflow' }))
+    await user.click(within(await screen.findByRole('dialog', { name: 'Leave without saving?' })).getByRole('button', { name: 'Leave' }))
+    await attendiURL('/workflow')
+  })
+
   it('without a workflow there is no name, no way to add a step, and nothing to save', () => {
     toolbar({ def: null, hasChanges: true, pendingCount: 1 })
     expect(screen.getByRole('heading')).toHaveTextContent('')
@@ -134,13 +147,20 @@ describe('WorkflowToolbar — adding a step', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   })
 
-  it('a timer wait without a delay is sent without one', async () => {
+  // Review of 23 Sep 2026: a timed wait with no delay kept its tickets on the step for ever.
+  it('a timer wait needs its delay: Add stays off until it is a whole number above zero', async () => {
     const { user } = toolbar()
     const dlg = await openAddStep(user)
     await user.click(within(dlg).getByRole('button', { name: /Timer wait/ }))
     await user.type(within(dlg).getByRole('textbox', { name: 'E.g. Waiting for the timer' }), '!!!')
+    expect(within(dlg).getByRole('button', { name: 'Add' })).toBeDisabled()
+    const delay = within(dlg).getByRole('spinbutton', { name: 'e.g. 60' })
+    await user.type(delay, '0')
+    expect(within(dlg).getByRole('button', { name: 'Add' })).toBeDisabled()
+    await user.clear(delay)
+    await user.type(delay, '90')
     await user.click(within(dlg).getByRole('button', { name: 'Add' }))
-    expect(apolloFinto.chiamata('AddWorkflowStep')).toEqual(expect.objectContaining({ type: 'timer_wait', timerDelayMinutes: undefined }))
+    expect(apolloFinto.chiamata('AddWorkflowStep')).toEqual(expect.objectContaining({ type: 'timer_wait', timerDelayMinutes: 90 }))
     expect(apolloFinto.chiamata('AddWorkflowStep')!['name']).toMatch(/^timer_wait__[0-9a-z]+$/)
   })
 

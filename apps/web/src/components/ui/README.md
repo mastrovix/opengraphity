@@ -106,7 +106,7 @@ Un solo posto per ogni pattern ricorrente. Le primitive vivono in
 ## Accessibilità — regole del design system
 
 Lint: `jsx-a11y/recommended` + `<button>` senza `type` = errore
-(`apps/web/.eslintrc.cjs`). In pratica:
+(`eslint.config.mjs` di root, blocchi `apps/web/src`). In pratica:
 
 - **Label ↔ controllo**: `<label htmlFor={id}>` + `id` sul controllo (id da
   `useId()`), oppure il controllo annidato nella label. `FieldLabel` accetta

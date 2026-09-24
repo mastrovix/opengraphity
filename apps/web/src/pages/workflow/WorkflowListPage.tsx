@@ -122,7 +122,7 @@ export function WorkflowListPage() {
             <strong>{t('pages.workflow.incompleteTitle')}</strong>
             <div style={{ color: 'var(--color-slate-dark)', marginTop: 2 }}>{gaps.map(gapLine).join('; ')}</div>
           </div>
-          <Button onClick={() => void provision()} disabled={provisioning}>
+          <Button onClick={() => provision()} disabled={provisioning}>
             {t('pages.workflow.provisionButton')}
           </Button>
         </div>

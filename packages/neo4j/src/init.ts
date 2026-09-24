@@ -312,6 +312,23 @@ const CONSTRAINTS: SchemaStatement[] = [
   { label: 'TicketCIExclusion(tenant_id, ticket_type, ci_type) unique', cypher: 'CREATE CONSTRAINT ticket_ci_exclusion_unique IF NOT EXISTS FOR (x:TicketCIExclusion) REQUIRE (x.tenant_id, x.ticket_type, x.ci_type) IS UNIQUE' },
   { label: 'SlackInstallation(tenant_id) unique', cypher: 'CREATE CONSTRAINT slack_installation_tenant_unique IF NOT EXISTS FOR (s:SlackInstallation) REQUIRE s.tenant_id IS UNIQUE' },
   { label: 'SlackInstallation(team_id) unique',   cypher: 'CREATE CONSTRAINT slack_installation_team_unique IF NOT EXISTS FOR (s:SlackInstallation) REQUIRE s.team_id IS UNIQUE' },
+  // Review of 23 Sep 2026: the change tasks are MERGEd on their natural key.
+  // Without an index each MERGE scanned the label across every tenant, and
+  // without the constraint two simultaneous «add CI» could both create the
+  // task — what the key was introduced to prevent (migration 20261002_1010).
+  { label: 'AssessmentTask(tenant_id, change_key) unique', cypher: 'CREATE CONSTRAINT assessment_task_change_key_unique IF NOT EXISTS FOR (t:AssessmentTask) REQUIRE (t.tenant_id, t.change_key) IS UNIQUE' },
+  { label: 'DeployPlanTask(tenant_id, change_key) unique', cypher: 'CREATE CONSTRAINT deploy_plan_task_change_key_unique IF NOT EXISTS FOR (t:DeployPlanTask) REQUIRE (t.tenant_id, t.change_key) IS UNIQUE' },
+  { label: 'ValidationTest(tenant_id, change_key) unique', cypher: 'CREATE CONSTRAINT validation_test_change_key_unique IF NOT EXISTS FOR (t:ValidationTest) REQUIRE (t.tenant_id, t.change_key) IS UNIQUE' },
+  { label: 'DeploymentTask(tenant_id, change_key) unique', cypher: 'CREATE CONSTRAINT deployment_task_change_key_unique IF NOT EXISTS FOR (t:DeploymentTask) REQUIRE (t.tenant_id, t.change_key) IS UNIQUE' },
+  { label: 'ReviewTask(tenant_id, change_key) unique', cypher: 'CREATE CONSTRAINT review_task_change_key_unique IF NOT EXISTS FOR (t:ReviewTask) REQUIRE (t.tenant_id, t.change_key) IS UNIQUE' },
+  // The ticket import finds each row's ticket by (tenant_id, import_external_id),
+  // four times per row: every lookup scanned the tenant's tickets. Unique:
+  // a re-run is idempotent by design, and two runs at once must not double a row.
+  { label: 'Incident(tenant_id, import_external_id) unique', cypher: 'CREATE CONSTRAINT incident_import_external_id_unique IF NOT EXISTS FOR (n:Incident) REQUIRE (n.tenant_id, n.import_external_id) IS UNIQUE' },
+  { label: 'Problem(tenant_id, import_external_id) unique', cypher: 'CREATE CONSTRAINT problem_import_external_id_unique IF NOT EXISTS FOR (n:Problem) REQUIRE (n.tenant_id, n.import_external_id) IS UNIQUE' },
+  { label: 'Change(tenant_id, import_external_id) unique', cypher: 'CREATE CONSTRAINT change_import_external_id_unique IF NOT EXISTS FOR (n:Change) REQUIRE (n.tenant_id, n.import_external_id) IS UNIQUE' },
+  { label: 'ServiceRequest(tenant_id, import_external_id) unique', cypher: 'CREATE CONSTRAINT service_request_import_external_id_unique IF NOT EXISTS FOR (n:ServiceRequest) REQUIRE (n.tenant_id, n.import_external_id) IS UNIQUE' },
+  { label: 'KBArticle(tenant_id, import_external_id) unique', cypher: 'CREATE CONSTRAINT kb_article_import_external_id_unique IF NOT EXISTS FOR (n:KBArticle) REQUIRE (n.tenant_id, n.import_external_id) IS UNIQUE' },
 ]
 
 const INDEXES: SchemaStatement[] = [

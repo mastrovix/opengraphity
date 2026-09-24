@@ -198,7 +198,7 @@ export function ProfilePage() {
                   {t('pages.profile.slackLinkedAs')} <code>{slackId}</code>
                 </span>
               </div>
-              <Button variant="secondary" disabled={unlinking} onClick={() => void unlinkSlack()}>
+              <Button variant="secondary" disabled={unlinking} onClick={() => unlinkSlack()}>
                 {unlinking ? t('pages.profile.slackUnlinking') : t('pages.profile.slackUnlink')}
               </Button>
             </div>
@@ -217,7 +217,7 @@ export function ProfilePage() {
               </p>
               <Button
                 disabled={linking || !slackInput.trim()}
-                onClick={() => void linkSlack({ variables: { slackId: slackInput.trim() } })}
+                onClick={() => linkSlack({ variables: { slackId: slackInput.trim() } })}
               >
                 {linking ? t('pages.profile.slackSaving') : t('common.save')}
               </Button>

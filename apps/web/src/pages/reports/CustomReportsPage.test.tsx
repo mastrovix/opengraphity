@@ -149,6 +149,12 @@ const openSettings = async (user: ReturnType<typeof renderWithProviders>['user']
   await user.click(screen.getByRole('button', { name: '⚙ Settings' }))
 }
 
+/** The signed-in user, with these permissions. */
+const meWith = (permissions: string[]) => ({ me: {
+  id: 'u1', name: 'Ada', email: 'ada@example.com', role: 'operator', roleName: null, permissions,
+  slackId: null, emailNotifications: null, language: null, teams: [],
+} })
+
 /** The open dialog: the new report form, or a confirmation. */
 const dialog = () => screen.getByRole('dialog')
 
@@ -162,10 +168,9 @@ beforeEach(() => {
   rejectsLikeApollo.clear()
   apolloFinto.risposte['GetReportTemplates'] = listOf(template())
   apolloFinto.risposte['GetTeamsSlim'] = { teams: TEAMS }
-  apolloFinto.risposte['GetChannelsSlim'] = { notificationChannels: [
-    { id: 'ch1', name: '#ops', platform: 'slack' },
-    { id: 'ch2', name: 'Ops mailbox', platform: 'email' },
-  ] }
+  // The API gives only what the scheduler delivers to: the active Slack channels.
+  apolloFinto.risposte['GetReportDeliveryChannels'] = { reportDeliveryChannels: [{ id: 'ch1', name: '#ops' }] }
+  apolloFinto.risposte['GetMe'] = meWith(['report.read', 'report.write', 'report.schedule'])
 })
 
 // ── The list ─────────────────────────────────────────────────────────────────
@@ -398,6 +403,7 @@ describe('Report Builder — a report\'s menu', () => {
     await openMenu(user, 'Weekly incidents')
     await user.click(screen.getByRole('button', { name: '⚙ Edit settings' }))
     expect(screen.getByRole('heading', { name: 'Settings — Weekly incidents' })).toBeInTheDocument()
+    await user.click(screen.getByRole('checkbox', { name: 'Enable scheduling' }))
     await user.click(screen.getByRole('button', { name: 'Save settings' }))
     expect(apolloFinto.chiamata('UpdateReportTemplate')).toMatchObject({ id: 'r1', input: { name: 'Weekly incidents' } })
     await waitFor(() => expect(apolloFinto.chiamata('UpdateReportSchedule')).toMatchObject({ templateId: 'r1' }))
@@ -657,7 +663,7 @@ describe('Report Builder — settings', () => {
 
   // The form maps every saved field; that the list query fetches all of them
   // is the last test of this block.
-  it('open filled in with the report as it is saved, offering only the Slack channels', async () => {
+  it('open filled in with the report as it is saved, offering the channels it can be delivered to', async () => {
     apolloFinto.risposte['GetReportTemplates'] = listOf(scheduled())
     const { user } = renderWithProviders(<CustomReportsPage />)
     await openSettings(user)
@@ -797,6 +803,7 @@ describe('Report Builder — settings', () => {
     apolloFinto.esiti['UpdateReportSchedule'] = { error: failure as Error }
     const { user } = renderWithProviders(<CustomReportsPage />)
     await openSettings(user)
+    await user.click(screen.getByRole('checkbox', { name: 'Enable scheduling' }))
     await user.click(screen.getByRole('button', { name: 'Save settings' }))
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(message))
     // G-23: the name was saved, the schedule was not — the form must not close as if all went well.
@@ -828,17 +835,18 @@ describe('Report Builder — settings', () => {
     expect(apolloFinto.chiamata('UpdateReportSchedule')).toBeUndefined()
   })
 
-  it('with no Slack channel configured, no channel is offered', async () => {
-    apolloFinto.risposte['GetChannelsSlim'] = { notificationChannels: [{ id: 'ch2', name: 'Ops mailbox', platform: 'email' }] }
+  it('with no Slack channel configured, no channel is offered, and the form says why', async () => {
+    apolloFinto.risposte['GetReportDeliveryChannels'] = { reportDeliveryChannels: [] }
     const { user } = renderWithProviders(<CustomReportsPage />)
     await openSettings(user)
     await user.click(screen.getByRole('checkbox', { name: 'Enable scheduling' }))
     expect(screen.queryByLabelText('Slack channel')).toBeNull()
+    expect(screen.getByText(/No Slack channel to send it to/)).toBeInTheDocument()
     expect(screen.getByLabelText('Email recipients')).toBeInTheDocument()
   })
 
   it('while the channels are still loading, no channel is offered', async () => {
-    apolloFinto.risposte['GetChannelsSlim'] = undefined
+    apolloFinto.risposte['GetReportDeliveryChannels'] = undefined
     const { user } = renderWithProviders(<CustomReportsPage />)
     await openSettings(user)
     await user.click(screen.getByRole('checkbox', { name: 'Enable scheduling' }))
@@ -856,10 +864,13 @@ describe('Report Builder — settings', () => {
     expect(apolloFinto.chiamata('UpdateReportTemplate')).toBeUndefined()
     expect(apolloFinto.chiamata('UpdateReportSchedule')).toBeUndefined()
     expect(screen.getByRole('heading', { name: 'Settings — Weekly incidents' })).toBeInTheDocument()
-    // Without scheduling the cron is not needed, and the rest is saved.
+    // Without scheduling the cron is not needed, and the rest is saved; the
+    // schedule, as saved (off), is not sent again.
     await user.click(screen.getByRole('checkbox', { name: 'Enable scheduling' }))
     await user.click(screen.getByRole('button', { name: 'Save settings' }))
-    await waitFor(() => expect(apolloFinto.chiamata('UpdateReportSchedule')).toMatchObject({ enabled: false, cron: null }))
+    await waitFor(() => expect(apolloFinto.chiamata('UpdateReportTemplate')).toMatchObject({ id: 'r1' }))
+    expect(apolloFinto.chiamata('UpdateReportTemplate')!['input']).not.toHaveProperty('scheduleEnabled')
+    expect(apolloFinto.chiamata('UpdateReportSchedule')).toBeUndefined()
   })
 
   // Found by this test (tour of 23 Sep 2026), fixed: the settings showed
@@ -888,6 +899,7 @@ describe('Report Builder — settings', () => {
     await user.click(screen.getByRole('button', { name: '⚙ Edit settings' }))
     expect(screen.getByLabelText('Frequency')).toHaveValue('0 9 1 * *')
     expect(screen.queryByLabelText('Cron expression')).toBeNull()
+    await user.click(screen.getByRole('radio', { name: '📊 Excel' }))
     await user.click(screen.getByRole('button', { name: 'Save settings' }))
     await waitFor(() => expect(apolloFinto.chiamata('UpdateReportSchedule')).toMatchObject({ templateId: 'r2', cron: '0 9 1 * *' }))
   })
@@ -918,9 +930,60 @@ describe('Report Builder — settings', () => {
     })
     const { user } = renderWithProviders(<CustomReportsPage />)
     await openSettings(user)
+    await user.click(screen.getByRole('checkbox', { name: 'Enable scheduling' }))
     await user.click(screen.getByRole('button', { name: 'Save settings' }))
     await screen.findByRole('button', { name: '← All reports' })
     expect(sentAtReload).toEqual(['UpdateReportTemplate', 'UpdateReportSchedule'])
     expect(apolloFinto.refetch).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ── What the reader may do ───────────────────────────────────────────────────
+// Review of 23 Sep 2026: every control was offered to whoever could read the
+// reports, and the settings always sent the schedule — the factory operator
+// (report.write, no report.schedule) saw every save fail after the name was saved.
+
+describe('Report Builder — what the reader may do', () => {
+  it('who only reads reports runs them and opens them, and is offered nothing that writes', async () => {
+    apolloFinto.risposte['GetMe'] = meWith(['report.read'])
+    const { user } = renderWithProviders(<CustomReportsPage />)
+    expect(await screen.findByText('Weekly incidents')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'New report' })).toBeNull()
+    expect(within(card('Weekly incidents')).queryByRole('button', { name: '⋮' })).toBeNull()
+    await user.click(within(card('Weekly incidents')).getByRole('button', { name: 'Open' }))
+    expect(screen.getByRole('button', { name: '← All reports' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '▶ Run' })).toBeInTheDocument()
+    for (const name of ['⚙ Settings', '↓ PDF', '↓ Excel', 'Add section', /Edit section/, '🗑']) {
+      expect(screen.queryByRole('button', { name })).toBeNull()
+    }
+    // Nor are the channels asked for: they need report.schedule.
+    expect(apolloFinto.chiamate['GetReportDeliveryChannels']).toBeUndefined()
+  })
+
+  it('who edits reports but does not schedule them saves the report alone, and is told why the schedule is not here', async () => {
+    apolloFinto.risposte['GetMe'] = meWith(['report.read', 'report.write'])
+    apolloFinto.risposte['GetReportTemplates'] = listOf(template({ scheduleEnabled: true, scheduleCron: '0 9 * * 1' }))
+    const { user } = renderWithProviders(<CustomReportsPage />)
+    await openSettings(user)
+    expect(screen.queryByRole('checkbox', { name: 'Enable scheduling' })).toBeNull()
+    expect(screen.getByRole('note')).toHaveTextContent('Only who can schedule reports changes it.')
+    await user.type(screen.getByLabelText('Name'), ' (EU)')
+    await user.click(screen.getByRole('button', { name: 'Save settings' }))
+    expect(await screen.findByRole('button', { name: '← All reports' })).toBeInTheDocument()
+    const input = apolloFinto.chiamata('UpdateReportTemplate')!['input'] as Record<string, unknown>
+    expect(input).toMatchObject({ name: 'Weekly incidents (EU)' })
+    expect(input).not.toHaveProperty('scheduleEnabled')
+    expect(input).not.toHaveProperty('scheduleCron')
+    expect(input).not.toHaveProperty('scheduleChannelId')
+    expect(apolloFinto.chiamata('UpdateReportSchedule')).toBeUndefined()
+    expect(apolloFinto.chiamate['GetReportDeliveryChannels']).toBeUndefined()
+  })
+
+  it('who schedules gets the channels the scheduler delivers to', async () => {
+    const { user } = renderWithProviders(<CustomReportsPage />)
+    await openSettings(user)
+    await user.click(screen.getByRole('checkbox', { name: 'Enable scheduling' }))
+    expect(apolloFinto.chiamate['GetReportDeliveryChannels']).toBeDefined()
+    expect(within(screen.getByLabelText('Slack channel')).getAllByRole('option').map((o) => o.textContent)).toEqual(['No channel', '#ops'])
   })
 })

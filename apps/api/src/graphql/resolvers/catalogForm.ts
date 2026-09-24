@@ -24,7 +24,7 @@ import { loadVocabularyEntries } from '../../lib/vocabularyEntries.js'
 import { assertFormSize, assertLibraryRoom, assertLimitValue, CATALOG_FORM_LIMIT_MAX, CATALOG_FORM_LIMIT_MIN, catalogFormLimits as leggiTetti } from '../../lib/catalogFormLimits.js'
 import { assertFormTable, etichetteDeiValori, parseFormTable } from '../../lib/catalogForm.js'
 import { ticketPropsOf } from '../../lib/ticketProps.js'
-import { toPascalCase } from '@opengraphity/schema-generator'
+import { refCiConditions } from '../../lib/refCiFilter.js'
 import { proponiModulo } from '../../services/formDesignerService.js'
 import { labelFor, type EnumValueLabels } from '../../lib/enumValueLabels.js'
 import { isLingua, languageFor } from '../../lib/tenantLanguage.js'
@@ -213,19 +213,9 @@ async function assertFiltroCI(
   }
   if (!testo) return null
 
-  const { ALL_CIS_ALLOWED_FIELDS, buildAdvancedWhere } = await import('./buildCIQuery.js')
-  // `tenant-ok(condivisi)`: i tipi `base` sono condivisi, quelli del cliente filtrati.
-  const campi = await runQuery<{ name: string }>(session, `
-    MATCH (t:CITypeDefinition)-[:HAS_FIELD]->(f:CIFieldDefinition)
-    WHERE (t.scope = 'base' OR (t.scope = 'tenant' AND t.tenant_id = $tenantId))
-      AND ($tipi = [] OR t.name IN $tipi)
-      AND coalesce(f.is_system, false) = false
-    RETURN DISTINCT f.name AS name
-  `, { tenantId, tipi: [...refTypes] })
-
-  const ammessi = new Set([...ALL_CIS_ALLOWED_FIELDS, ...campi.map((c) => c.name)])
+  // The same builder the portal's choices and the submit check use (lib/refCiFilter.ts).
   try {
-    buildAdvancedWhere(testo, {}, ammessi, 'n')
+    await refCiConditions(session, tenantId, refTypes, testo, {})
   } catch (err) {
     throw new ValidationError(
       `The CMDB filter is not usable: ${err instanceof Error ? err.message : String(err)}`,
@@ -283,19 +273,20 @@ async function vocePerId(tenantId: string, itemId: string): Promise<{ id: string
 const MAX_SCELTE = 50
 
 async function scelteDiRiferimento(
-  session: Session, tenantId: string, tipi: readonly string[], cerca: string | null,
+  session: Session, tenantId: string, tipi: readonly string[], filtro: string | null, cerca: string | null,
 ): Promise<Array<{ id: string; label: string }>> {
-  const etichette = tipi.map((t) => toPascalCase(t))
-  // Le etichette sono nomi di tipo del metamodello: `toPascalCase` le rende
-  // identificatori, e la lista viaggia come PARAMETRO, non interpolata.
+  // The field's types AND its CMDB filter (review of 23 Sep 2026: the filter
+  // was applied by the web client only, the portal offered every CI of the types).
+  const params: Record<string, unknown> = { tenantId, cerca }
+  const condizioni = await refCiConditions(session, tenantId, tipi, filtro, params)
   const righe = await runQuery<{ id: string; label: string }>(session, `
     MATCH (n:ConfigurationItem {tenant_id: $tenantId})
-    WHERE any(l IN labels(n) WHERE l IN $etichette)
+    WHERE ${condizioni || 'true'}
       AND ($cerca IS NULL OR toLower(n.name) CONTAINS toLower($cerca))
     RETURN n.id AS id, coalesce(n.name, n.id) AS label
     ORDER BY label
     LIMIT ${MAX_SCELTE}
-  `, { tenantId, etichette, cerca })
+  `, params)
   return righe
 }
 
@@ -354,7 +345,7 @@ export const catalogFormResolvers = {
             { extensions: { code: 'BAD_USER_INPUT' } },
           )
         }
-        return await scelteDiRiferimento(session, ctx.tenantId, campo.refTypes, args.search ?? null)
+        return await scelteDiRiferimento(session, ctx.tenantId, campo.refTypes, campo.refFilter, args.search ?? null)
       } finally { await session.close() }
     },
 

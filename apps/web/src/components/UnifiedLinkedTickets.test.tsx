@@ -28,7 +28,7 @@ const item = (id: string, number: string, title: string, status = '', over: Part
 
 function types(over: Partial<Record<LinkedKind, Partial<LinkedTypeConfig>>> = {}): LinkedTypeConfig[] {
   const base = (kind: LinkedKind, label: string, routeBase: string): LinkedTypeConfig => ({
-    kind, label, routeBase, items: [], onLink: vi.fn(), onUnlink: vi.fn(), ...over[kind],
+    kind, label, routeBase, items: [], onLink: vi.fn(), onUnlink: vi.fn(), canEdit: true, ...over[kind],
   })
   return [base('INCIDENT', 'Incident', '/incidents'), base('PROBLEM', 'Problem', '/problems'), base('CHANGE', 'Change', '/changes')]
 }
@@ -245,7 +245,8 @@ describe('UnifiedLinkedTickets — linking', () => {
     const { user } = mount([])
     await open(user)
     expect(screen.getByText('No linked ticket.')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Link a ticket' }))
+    // Nothing can be linked: no Link button (review of 23 Sep 2026), so no search either.
+    expect(screen.queryByRole('button', { name: 'Link a ticket' })).toBeNull()
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
     expect(apolloFinto.chiamate['GetIncidents']).toBeUndefined()
   })
@@ -253,11 +254,34 @@ describe('UnifiedLinkedTickets — linking', () => {
   it('a page with a single kind opens the panel on it', async () => {
     const onLink = vi.fn()
     apolloFinto.risposte['GetChanges'] = { changes: { items: [{ id: 'c1', code: 'CHG001', title: 'Only changes here', approvalStatus: null, workflowInstance: null }] } }
-    const only: LinkedTypeConfig[] = [{ kind: 'CHANGE', label: 'Change', routeBase: '/changes', items: [], onLink, onUnlink: vi.fn() }]
+    const only: LinkedTypeConfig[] = [{ kind: 'CHANGE', label: 'Change', routeBase: '/changes', items: [], onLink, onUnlink: vi.fn(), canEdit: true }]
     const { user } = mount(only)
     await open(user)
     await user.click(screen.getByRole('button', { name: 'Link a ticket' }))
     await user.click(screen.getByRole('button', { name: /CHG001/ }))
     expect(onLink).toHaveBeenCalledWith('c1')
+  })
+})
+
+// Review of 23 Sep 2026: each link has its own permission; a kind the reader may not link is not offered.
+describe('UnifiedLinkedTickets — what the reader may link', () => {
+  it('without any linkable kind there is no Link button and no unlink, the links are still listed', async () => {
+    const t = types({
+      INCIDENT: { canEdit: false, items: [item('i1', 'INC001', 'Printer down')] },
+      PROBLEM: { canEdit: false }, CHANGE: { canEdit: false },
+    })
+    const { user } = mount(t)
+    await open(user)
+    expect(screen.getByRole('link', { name: 'INC001' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Link a ticket' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Unlink' })).toBeNull()
+  })
+
+  it('only the linkable kinds are offered in the search', async () => {
+    const { user } = mount(types({ INCIDENT: { canEdit: false }, PROBLEM: { canEdit: true }, CHANGE: { canEdit: false } }))
+    await open(user)
+    await user.click(screen.getByRole('button', { name: 'Link a ticket' }))
+    expect(screen.queryByRole('button', { name: 'Incident' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Problem' })).toBeInTheDocument()
   })
 })

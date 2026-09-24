@@ -276,6 +276,20 @@ export async function creaCompito(task: TaskToCreate): Promise<string> {
           k.due_at      = $dueAt,
           k.created_at  = $now,
           k.created_by  = $createdBy
+        /*
+         * A task CANCELLED because the ticket was concluded comes back when the
+         * reopened ticket re-enters the step (review of 23 Sep 2026): the MERGE
+         * matched it and left it cancelled, so the step's all_tasks_complete
+         * counted nothing to do and let the ticket move on with no work done.
+         * A COMPLETED task stays completed: that is the loop the key is for.
+         */
+        // The state LAST: the other items read the state as it was.
+        ON MATCH SET
+          k.completed_at = CASE WHEN k.state = $annullato THEN null ELSE k.completed_at END,
+          k.completed_by = CASE WHEN k.state = $annullato THEN null ELSE k.completed_by END,
+          k.cancel_reason = CASE WHEN k.state = $annullato THEN null ELSE k.cancel_reason END,
+          k.reopened_at  = CASE WHEN k.state = $annullato THEN $now ELSE k.reopened_at END,
+          k.state        = CASE WHEN k.state = $annullato THEN $statoIniziale ELSE k.state END
       WITH ticket, k, squadra
       FOREACH (__squadra IN CASE WHEN squadra IS NULL THEN [] ELSE [squadra] END |
         ${firstTeamCypher('k', '__squadra', `$${TEAM_NOW_PARAM}`)}
@@ -295,6 +309,7 @@ export async function creaCompito(task: TaskToCreate): Promise<string> {
       title:      task.title,
       description: task.description,
       statoIniziale: task.after ? TASK_STATE.WAITING : TASK_STATE.OPEN,
+      annullato:  TASK_STATE.CANCELLED,
       after:      task.after,
       entityType: task.entityType,
       stepName:   task.stepName,

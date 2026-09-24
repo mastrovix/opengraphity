@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { LayoutGrid } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import { EmptyState } from '@/components/EmptyState'
+import { QueryError, StaleDataBanner } from '@/components/QueryError'
 import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
 import { lookupOrError, colors } from '@/lib/tokens'
@@ -18,7 +19,12 @@ import { getReportIcon } from './reportIcons'
 
 interface ReportListViewProps {
   templates: ReportTemplate[]
+  /** The list is being read / could not be read: not the same as «no reports». */
+  templatesLoading?: boolean
+  templatesError?: { message: string } | null
+  onRetryTemplates?: () => void
   teams: { id: string; name: string }[]
+  teamsError?: { message: string } | null
   menuRef: React.RefObject<HTMLDivElement | null>
   menuOpenId: string | null
   setMenuOpenId: (id: string | null) => void
@@ -30,6 +36,8 @@ interface ReportListViewProps {
   newVis: string; setNewVis: (v: string) => void
   newTeamIds: string[]; setNewTeamIds: (v: string[] | ((prev: string[]) => string[])) => void
   creating: boolean
+  /** report.write: without it the report is read and run, never created, changed or deleted. */
+  canWrite: boolean
   // Handlers
   goToDetail: (tpl: ReportTemplate) => void
   handleExecuteAndGoToDetail: (tpl: ReportTemplate) => void
@@ -51,12 +59,13 @@ export function ReportListView(props: ReportListViewProps) {
   const uid = useId()
   const ids = { name: `${uid}-name`, desc: `${uid}-desc`, vis: `${uid}-vis` }
   const {
-    templates, teams, menuRef, menuOpenId, setMenuOpenId,
+    templates, templatesLoading = false, templatesError = null, onRetryTemplates, teams, teamsError = null, menuRef, menuOpenId, setMenuOpenId,
     showNewDialog, setShowNewDialog,
     newName, setNewName, newDesc, setNewDesc, newVis, setNewVis, newTeamIds, setNewTeamIds,
-    creating,
+    creating, canWrite,
     goToDetail, handleExecuteAndGoToDetail, openSettings, duplicateTemplate, handleDeleteTemplate, handleCreateTemplate, resetNew,
   } = props
+  const listKnown = !templatesLoading && !templatesError
 
   return (
     <>
@@ -68,20 +77,31 @@ export function ReportListView(props: ReportListViewProps) {
               {t('pages.reportBuilder.title')}
             </PageTitle>
             <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
-              {t('pages.reportBuilder.count', { count: templates.length })}
+              {listKnown ? t('pages.reportBuilder.count', { count: templates.length }) : '—'}
             </p>
           </div>
-          <button
+          {canWrite && <button
             type="button"
             onClick={() => setShowNewDialog(true)}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
           >
             {t('pages.reportBuilder.new')}
-          </button>
+          </button>}
         </div>
 
+        {/* Not read yet, or not readable: said as such, never as «no reports» (review of 23 Sep 2026). */}
+        {templatesError && templates.length === 0 && (
+          <QueryError message={templatesError.message} onRetry={onRetryTemplates} />
+        )}
+        {templatesError && templates.length > 0 && (
+          <StaleDataBanner message={templatesError.message} onRetry={onRetryTemplates} />
+        )}
+        {!templatesError && templatesLoading && templates.length === 0 && (
+          <p role="status" style={{ color: 'var(--color-slate-light)' }}>{t('common.loading')}</p>
+        )}
+
         {/* Empty state */}
-        {templates.length === 0 && (
+        {listKnown && templates.length === 0 && (
           <EmptyState
             icon={<LayoutGrid size={32} color="var(--color-slate-light)" />}
             title={t('pages.reports.emptyTitle')}
@@ -105,8 +125,8 @@ export function ReportListView(props: ReportListViewProps) {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                     <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>{getReportIcon(tpl)}</span>
                     <span style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tpl.name}</span>
-                    {/* Menu */}
-                    <div style={{ position: 'relative', flexShrink: 0 }}>
+                    {/* Menu: every entry writes, so without report.write there is none (review of 23 Sep 2026). */}
+                    {canWrite && <div style={{ position: 'relative', flexShrink: 0 }}>
                       <button
                         type="button"
                         aria-haspopup="menu"
@@ -136,7 +156,7 @@ export function ReportListView(props: ReportListViewProps) {
                           ))}
                         </div>
                       )}
-                    </div>
+                    </div>}
                   </div>
 
                   {/* Subtitle row */}
@@ -161,7 +181,7 @@ export function ReportListView(props: ReportListViewProps) {
                     type="button"
                     onClick={() => goToDetail(tpl)}
                     style={{ ...btnPrimary, flex: 1, fontSize: 'var(--font-size-body)', padding: '4px 10px' }}
-                  >&#x270F; {t('pages.reportBuilder.modify')}</button>
+                  >{canWrite ? <>&#x270F; {t('pages.reportBuilder.modify')}</> : t('pages.reportBuilder.open')}</button>
                 </div>
               </div>
             )
@@ -179,7 +199,7 @@ export function ReportListView(props: ReportListViewProps) {
           footer={
             <>
               <Button variant="secondary" onClick={() => { setShowNewDialog(false); resetNew() }} style={btnGhost}>{t('common.cancel')}</Button>
-              <Button disabled={!newName || creating} onClick={() => void handleCreateTemplate()}
+              <Button disabled={!newName || creating} onClick={() => handleCreateTemplate()}
                 style={{ ...btnPrimary, opacity: !newName || creating ? 0.6 : 1 }}>
                 {creating ? t('pages.reports.creating') : t('pages.reports.create')}
               </Button>
@@ -202,6 +222,9 @@ export function ReportListView(props: ReportListViewProps) {
                 <option value="all">{t('common.all')}</option>
               </select>
             </div>
+            {newVis === 'groups' && teamsError && (
+              <p role="alert" style={{ color: 'var(--color-danger)', fontSize: 'var(--font-size-body)' }}>{t('pages.reportSchedule.teamsError', { message: teamsError.message })}</p>
+            )}
             {newVis === 'groups' && teams.length > 0 && (
               <div style={{ marginBottom: 14 }}>
                 <div style={labelStyle}>{t('sidebar.teams')}</div>

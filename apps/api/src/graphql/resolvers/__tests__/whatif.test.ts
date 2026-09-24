@@ -34,7 +34,7 @@ beforeEach(() => {
     return { cnt: 0 }
   }) as never)
   vi.mocked(runQuery).mockImplementation((async (_s: unknown, cypher: string, params: Record<string, unknown>) => {
-    if (cypher.includes('MATCH path =')) {
+    if (cypher.includes('shortestPath(')) {
       expect(cypher).toContain("WHERE l <> 'ConfigurationItem'")
       return [{ id: 'app-1', name: 'crm', lbls: ['Application'], env: 'production', status: 'active', distance: 1, pathNames: ['crm', 'db-01'] }]
     }

@@ -90,8 +90,8 @@ describe('the merged timeline', () => {
 })
 
 describe('filters', () => {
-  const run = (rules: Array<{ field: string; operator: string; value: string }>) =>
-    logs(undefined, { filters: JSON.stringify({ rules }) }, ADMIN)
+  type Rule = { field: string; operator: string; value?: string | string[] | null; value2?: string; logic?: 'AND' | 'OR' }
+  const run = (rules: Rule[]) => logs(undefined, { filters: JSON.stringify({ rules }) }, ADMIN)
 
   it('malformed JSON is an error, never "no filter"', async () => {
     await expect(logs(undefined, { filters: '{broken' }, ADMIN)).rejects.toThrow(/Invalid log filters JSON/)
@@ -102,35 +102,55 @@ describe('filters', () => {
     expect((await run([])).total).toBe(4)
   })
 
-  it('eq / neq compare case-insensitively', async () => {
-    expect(ids(await run([{ field: 'level', operator: 'eq', value: 'ERROR' }]))).toEqual(['m1', 'p2'])
-    expect(ids(await run([{ field: 'module', operator: 'neq', value: 'Frontend' }]))).toEqual(['m2', 'm1'])
+  /*
+   * Review of 23 Sep 2026: the page sends the FilterBuilder's operators
+   * (`equals`, `in`, `after`…) and this knew `eq`/`starts`/`gte` and let the
+   * rest through — «Level equals error» showed every level, and `in` (a list)
+   * crashed on `.toLowerCase()`.
+   */
+  it('equals / not_equals compare case-insensitively', async () => {
+    expect(ids(await run([{ field: 'level', operator: 'equals', value: 'ERROR' }]))).toEqual(['m1', 'p2'])
+    expect(ids(await run([{ field: 'module', operator: 'not_equals', value: 'Frontend' }]))).toEqual(['m2', 'm1'])
   })
 
-  it('contains / starts / ends match on the lowered text', async () => {
+  it('in / not_in take the list the enum fields send', async () => {
+    expect(ids(await run([{ field: 'level', operator: 'in', value: ['warn', 'error'] }]))).toEqual(['m2', 'm1', 'p2'])
+    expect(ids(await run([{ field: 'module', operator: 'not_in', value: ['frontend', 'sla'] }]))).toEqual(['m1'])
+  })
+
+  it('contains / starts_with / ends_with match on the lowered text; is_empty / is_not_empty', async () => {
     expect(ids(await run([{ field: 'message', operator: 'contains', value: 'typeerror' }]))).toEqual(['p1'])
-    expect(ids(await run([{ field: 'message', operator: 'starts', value: 'step' }]))).toEqual(['m1'])
-    expect(ids(await run([{ field: 'message', operator: 'ends', value: 'P2' }]))).toEqual(['p2'])
+    expect(ids(await run([{ field: 'message', operator: 'starts_with', value: 'step' }]))).toEqual(['m1'])
+    expect(ids(await run([{ field: 'message', operator: 'ends_with', value: 'P2' }]))).toEqual(['p2'])
+    expect(ids(await run([{ field: 'message', operator: 'is_not_empty', value: null }]))).toHaveLength(4)
+    expect(ids(await run([{ field: 'message', operator: 'is_empty', value: null }]))).toEqual([])
   })
 
-  it('a null field matches as the empty string, never crashing', async () => {
-    // `data` is null on most lines: "contains x" must simply not match them.
-    expect(ids(await run([{ field: 'data', operator: 'contains', value: 'x' }]))).toEqual(['p2'])
-    expect(ids(await run([{ field: 'data', operator: 'eq', value: '' }]))).toEqual(['m2', 'p1', 'm1'])
+  it('after / before / between compare instants', async () => {
+    expect(ids(await run([{ field: 'timestamp', operator: 'after', value: '2026-09-20T10:30:00.000Z' }]))).toEqual(['m2', 'p1'])
+    expect(ids(await run([{ field: 'timestamp', operator: 'before', value: '2026-09-20' }]))).toEqual(['p2'])
+    expect(ids(await run([{ field: 'timestamp', operator: 'between', value: '2026-09-20T10:00:00.000Z', value2: '2026-09-20T11:00:00.000Z' }]))).toEqual(['p1', 'm1'])
   })
 
-  it('gte / lte bound a date range, lte including the whole end day', async () => {
-    expect(ids(await run([{ field: 'timestamp', operator: 'gte', value: '2026-09-20' }]))).toEqual(['m2', 'p1', 'm1'])
-    // Only a date is typed in the UI: "until 2026-09-19" must include lines from that afternoon.
-    expect(ids(await run([{ field: 'timestamp', operator: 'lte', value: '2026-09-19' }]))).toEqual(['p2'])
-  })
-
-  it('all rules must hold together (AND), and an unknown operator does not exclude', async () => {
+  it('OR keeps a rule with the next one, AND closes the group — as the Cypher filters read it', async () => {
+    // (level = warn OR module = frontend) AND message contains «page»
     expect(ids(await run([
-      { field: 'level', operator: 'eq', value: 'error' },
-      { field: 'module', operator: 'eq', value: 'frontend' },
-      { field: 'level', operator: 'whatever', value: 'x' },
+      { field: 'level', operator: 'equals', value: 'warn', logic: 'OR' },
+      { field: 'module', operator: 'equals', value: 'frontend', logic: 'AND' },
+      { field: 'message', operator: 'contains', value: 'page' },
+    ]))).toEqual(['p1'])
+    // Without a connector the rules are AND-ed.
+    expect(ids(await run([
+      { field: 'level', operator: 'equals', value: 'error' },
+      { field: 'module', operator: 'equals', value: 'frontend' },
     ]))).toEqual(['p2'])
+  })
+
+  it('an unknown operator or field is an error with its key, never a rule that lets everything through', async () => {
+    await expect(run([{ field: 'level', operator: 'eq', value: 'error' }]))
+      .rejects.toMatchObject({ extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.logs.filterOperator' } } })
+    await expect(run([{ field: 'tenantId', operator: 'equals', value: 't2' }]))
+      .rejects.toMatchObject({ extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.logs.filterField' } } })
   })
 })
 

@@ -115,7 +115,10 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
           <Input style={inputS} value={form.label} onChange={(e) => set('label', e.target.value)} />
         </Field>
         <Field label={t('common.type')}>
-          <Select style={selectS} value={form.fieldType} onChange={(e) => {
+          <Select style={selectS} value={form.fieldType}
+            // The type of an existing field does not change (review of 23 Sep 2026).
+            disabled={!!initial} title={initial ? t('citypeDesigner.field.typeFixed') : undefined}
+            onChange={(e) => {
             set('fieldType', e.target.value)
             if (e.target.value !== 'enum') set('enumTypeId', null)
           }}>

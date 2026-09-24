@@ -40,7 +40,7 @@ function TipoPill({ tipo }: { tipo: TipoFinestra }) {
 
 function Riquadro({ label, children, color }: { label: string; children: React.ReactNode; color?: string }) {
   return (
-    <div style={{ background: 'var(--color-surface-alt)', borderRadius: 8, padding: '10px 12px' }}>
+    <div style={{ background: 'var(--color-surface-2)', borderRadius: 8, padding: '10px 12px' }}>
       <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)', marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: color ?? 'var(--color-slate-dark)', fontVariantNumeric: 'tabular-nums' }}>{children}</div>
     </div>
@@ -96,7 +96,7 @@ function GanttDelPiano({ voci }: { voci: readonly VoceDiPiano[] }) {
             }} title={`${b.voce.ciName} · ${b.voce.stepTitle}`}>
               {b.voce.ciName}
             </span>
-            <span style={{ position: 'relative', flex: 1, height: 18, background: 'var(--color-surface-alt)', borderRadius: 4 }}>
+            <span style={{ position: 'relative', flex: 1, height: 18, background: 'var(--color-surface-2)', borderRadius: 4 }}>
               {/* Le tacche continuano dentro la corsia: è la griglia che rende
                   confrontabili due barre lontane. */}
               {tacche.map((tacca) => (
@@ -244,7 +244,7 @@ export function ReleasePlanCard({ affected }: { affected: readonly AffectedCI[] 
                   padding: '3px 10px', borderRadius: 999,
                   fontSize: 'var(--font-size-label)', fontWeight: scelto ? 600 : 400,
                   border: `1px solid ${scelto ? (stile?.border ?? 'var(--color-brand)') : 'var(--color-border-light)'}`,
-                  background: scelto ? (stile?.tint ?? 'var(--color-surface-alt)') : 'transparent',
+                  background: scelto ? (stile?.tint ?? 'var(--color-surface-2)') : 'transparent',
                   color: scelto ? (stile?.text ?? 'var(--color-brand)') : 'var(--color-slate)',
                 }}
               >

@@ -3,6 +3,7 @@ import type { GraphQLContext } from '../../context.js'
 import { getLogs, type LogEntry } from '../../lib/logBuffer.js'
 import { righePersistite, fondi, MAX_RIGHE } from '../../lib/persistedLogs.js'
 import { requirePermission } from '../../lib/permissions.js'
+import { ValidationError } from '../../lib/errors.js'
 
 type LogsArgs = {
   limit?:         number
@@ -15,28 +16,70 @@ type LogsArgs = {
 interface FilterRule {
   field:    string
   operator: string
-  value:    string
+  value:    string | string[] | null
+  value2?:  string | null
+  /** The connector with the NEXT rule, as the web's FilterBuilder writes it. */
+  logic?:   'AND' | 'OR'
 }
 
 interface FilterGroup {
   rules: FilterRule[]
 }
 
-function matchesFilter(entry: LogEntry, rule: FilterRule): boolean {
-  const raw = (entry as unknown as Record<string, string | null>)[rule.field] ?? ''
-  const val = (raw ?? '').toLowerCase()
-  const cmp = rule.value.toLowerCase()
+/** The fields of a log line the page filters on. */
+const LOG_FILTER_FIELDS = new Set(['message', 'level', 'module', 'timestamp'])
 
+/**
+ * One rule on one log line, with the operators of the web's FilterBuilder and
+ * their meaning in the Cypher filters (lib/filterBuilder.ts) — review of
+ * 23 Sep 2026: this knew `eq`/`neq`/`starts`… and let everything else through,
+ * so «Level equals error» showed every level, and `in` (a list) crashed.
+ */
+export function matchesLogRule(entry: LogEntry, rule: FilterRule, now: Date = new Date()): boolean {
+  const raw = (entry as unknown as Record<string, unknown>)[rule.field]
+  const text = raw == null ? '' : String(raw)
+  const val = text.toLowerCase()
+  const one = typeof rule.value === 'string' ? rule.value : ''
+  const cmp = one.toLowerCase()
+  const list = Array.isArray(rule.value) ? rule.value.map((v) => String(v).toLowerCase()) : []
+  const at = Date.parse(text)
+  const day = 24 * 3600 * 1000
   switch (rule.operator) {
-    case 'eq':       return val === cmp
-    case 'neq':      return val !== cmp
-    case 'contains': return val.includes(cmp)
-    case 'starts':   return val.startsWith(cmp)
-    case 'ends':     return val.endsWith(cmp)
-    case 'gte':      return raw != null && raw >= rule.value
-    case 'lte':      return raw != null && raw <= rule.value + 'T23:59:59.999Z'
-    default:         return true
+    case 'contains':     return val.includes(cmp)
+    case 'starts_with':  return val.startsWith(cmp)
+    case 'ends_with':    return val.endsWith(cmp)
+    case 'equals':       return val === cmp
+    case 'not_equals':   return val !== cmp
+    case 'in':           return list.includes(val)
+    case 'not_in':       return !list.includes(val)
+    case 'is_empty':     return text.trim() === ''
+    case 'is_not_empty': return text.trim() !== ''
+    case 'after':        return Number.isFinite(at) && at > Date.parse(one)
+    case 'before':       return Number.isFinite(at) && at < Date.parse(one)
+    case 'between':      return Number.isFinite(at) && at >= Date.parse(one) && at <= Date.parse(rule.value2 ?? '')
+    case 'today':        return Number.isFinite(at) && new Date(at).toISOString().slice(0, 10) === now.toISOString().slice(0, 10)
+    case 'last_7_days':  return Number.isFinite(at) && at > now.getTime() - 7 * day
+    case 'last_30_days': return Number.isFinite(at) && at > now.getTime() - 30 * day
+    default:
+      throw new ValidationError(`Unknown log filter operator ${JSON.stringify(rule.operator)}`,
+        { key: 'errors.logs.filterOperator', params: { operator: String(rule.operator) } })
   }
+}
+
+/**
+ * The whole group, as the Cypher filters read it: `OR` keeps a rule in the
+ * same group as the next one, `AND` closes the group; groups are AND-ed.
+ */
+export function matchesLogFilter(entry: LogEntry, rules: readonly FilterRule[], now: Date = new Date()): boolean {
+  let group: boolean[] = []
+  for (let i = 0; i < rules.length; i++) {
+    group.push(matchesLogRule(entry, rules[i]!, now))
+    if (i === rules.length - 1 || (rules[i]!.logic ?? 'AND') === 'AND') {
+      if (!group.some(Boolean)) return false
+      group = []
+    }
+  }
+  return true
 }
 
 async function logs(
@@ -76,9 +119,14 @@ async function logs(
       throw new GraphQLError(`Invalid log filters JSON: ${e instanceof Error ? e.message : String(e)}`)
     }
     if (group.rules?.length) {
-      entries = entries.filter((e) =>
-        group.rules.every((r) => matchesFilter(e, r)),
-      )
+      // A field the page does not have is a corrupt filter too: said, not ignored.
+      const unknown = group.rules.find((r) => !LOG_FILTER_FIELDS.has(r.field))
+      if (unknown) {
+        throw new ValidationError(`Unknown log filter field ${JSON.stringify(unknown.field)}`,
+          { key: 'errors.logs.filterField', params: { field: String(unknown.field) } })
+      }
+      const now = new Date()
+      entries = entries.filter((e) => matchesLogFilter(e, group.rules, now))
     }
   }
 

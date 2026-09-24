@@ -19,7 +19,7 @@
  *  - deleting an arrow asks first, and only a "yes" deletes it.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, within } from '@testing-library/react'
+import { cleanup, screen, within } from '@testing-library/react'
 import { renderWithProviders } from '@/test/utils'
 import { WorkflowTransitionPanel } from './WorkflowTransitionPanel'
 import type { WFTransition } from './workflow-types'
@@ -102,7 +102,8 @@ describe('WorkflowTransitionPanel', () => {
     expect(screen.queryByRole('combobox', { name: 'Input field' })).toBeNull()
     await user.click(screen.getByRole('checkbox'))
     const field = screen.getByRole('combobox', { name: 'Input field' })
-    expect(within(field).getAllByRole('option').map((o) => o.textContent)).toEqual(['— none —', 'rootCause', 'notes'])
+    // The kinds the shipped workflows use, by name (review of 23 Sep 2026: only rootCause and notes were offered).
+    expect(within(field).getAllByRole('option').map((o) => o.textContent)).toEqual(['— none —', 'Notes', 'Root cause', 'Rejection reason', 'Deferral reason', 'Reopening reason'])
     await user.selectOptions(field, 'rootCause')
     await user.click(screen.getByRole('checkbox'))
     expect(screen.queryByRole('combobox', { name: 'Input field' })).toBeNull()
@@ -111,6 +112,16 @@ describe('WorkflowTransitionPanel', () => {
     await user.selectOptions(screen.getByRole('combobox', { name: 'Input field' }), 'notes')
     await user.click(save())
     expect(onSaveLocally).toHaveBeenCalledWith(expect.objectContaining({ requiresInput: true, inputField: 'notes' }))
+  })
+
+  it('a shipped «Reject» opens with its rejection reason, not «None»; a value outside the list stays, named', () => {
+    panel(transition({ requiresInput: true, inputField: 'rejection_reason' }))
+    expect(screen.getByRole('combobox', { name: 'Input field' })).toHaveValue('rejection_reason')
+    cleanup()
+    panel(transition({ requiresInput: true, inputField: 'budget_code' }))
+    const field = screen.getByRole('combobox', { name: 'Input field' })
+    expect(field).toHaveValue('budget_code')
+    expect(within(field).getByRole('option', { name: 'budget_code (as saved)' })).toBeInTheDocument()
   })
 
   it('an arrow that already requires an input opens with its field', () => {

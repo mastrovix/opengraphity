@@ -98,7 +98,10 @@ beforeEach(() => {
       // chi chiama lo legge — zero righe significa CI non collegato.
       : cypher.includes('MERGE (p)-[r:AFFECTS]->(ci)')
         ? [{ linked: 1 }]
-        : [])
+        // The CIs are checked before the problem is written (review of 23 Sep 2026): here they all exist.
+        : cypher.includes('WHERE ci.id IN $ids')
+          ? (params?.['ids'] as string[]).map((id) => ({ id }))
+          : [])
   vi.mocked(workflowEngine.createInstance).mockResolvedValue({ id: 'wi-1' } as never)
 })
 

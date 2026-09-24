@@ -963,7 +963,7 @@ export function FormBuilderPanel() {
         {voceId !== '' && (
           <div role="tablist" aria-label={t('pages.catalogForms.builder.views')} style={{
             display: 'inline-flex', gap: 2, padding: 3, borderRadius: 999,
-            background: 'var(--color-surface-alt)', alignSelf: 'flex-end', marginBottom: 1,
+            background: 'var(--color-surface-2)', alignSelf: 'flex-end', marginBottom: 1,
           }}>
             {(['canvas', 'preview'] as const).map((v) => (
               <button
@@ -995,7 +995,7 @@ export function FormBuilderPanel() {
           {(voceId === '' || formReady) && (
             <span style={{
               fontSize: 'var(--font-size-table)', padding: '4px 10px', borderRadius: 999,
-              background: storedForm?.revision ? 'var(--color-surface-alt)' : palette.warning.tint,
+              background: storedForm?.revision ? 'var(--color-surface-2)' : palette.warning.tint,
               color: storedForm?.revision ? 'var(--color-slate)' : palette.warning.text,
               whiteSpace: 'nowrap',
             }}>
@@ -1007,7 +1007,7 @@ export function FormBuilderPanel() {
           <button type="button" onClick={() => void salvaModulo()} disabled={salvando || !toccato || !formReady}
             style={{
               padding: '9px 18px', borderRadius: 8, border: 'none',
-              background: toccato && formReady ? 'var(--color-brand)' : 'var(--color-surface-alt)',
+              background: toccato && formReady ? 'var(--color-brand)' : 'var(--color-surface-2)',
               color: toccato && formReady ? colors.white : 'var(--color-slate-light)',
               fontSize: 'var(--font-size-body)', fontWeight: fontWeight.medium,
               cursor: toccato && formReady ? 'pointer' : 'not-allowed',

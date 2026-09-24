@@ -133,7 +133,7 @@ export function ServiceHistorySection({ mapId, entries, total }: Props) {
       {error && (
         <div role="alert" data-testid="history-error" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 10, padding: '8px 12px', borderRadius: 8, background: palette.danger.bg, border: `1px solid ${palette.danger.border}`, color: palette.danger.text, fontSize: 'var(--font-size-body)' }}>
           <span>{t('monitoring.services.history.loadFailed', { error: error.message })}</span>
-          <Button variant="secondary" size="xs" onClick={() => void refetch()}>{t('queryError.retry')}</Button>
+          <Button variant="secondary" size="xs" onClick={() => refetch()}>{t('queryError.retry')}</Button>
         </div>
       )}
 

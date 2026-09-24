@@ -89,6 +89,8 @@ vi.mock('../../lib/mappers.js', () => ({
   })),
 }))
 
+vi.mock('../../lib/validateRequiredFields.js', () => ({ validateStepRequirements: vi.fn(async () => undefined) }))
+vi.mock('../../lib/stepMetadataPreflight.js', () => ({ preflightStepMetadata: vi.fn(async () => undefined) }))
 vi.mock('../../lib/stepEnteredPublisher.js', () => ({ publishStepEnteredForEntity: vi.fn() }))
 
 // ── Import after mocks ────────────────────────────────────────────────────────

@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import * as d3 from 'd3'
 import { ciPath } from '@/lib/ciPath'
-import { useMetamodel } from '@/contexts/MetamodelContext'
+import { useMetamodel, type CITypeDef } from '@/contexts/MetamodelContext'
+import { useCILabels } from '@/hooks/useCILabels'
 import { buildTypeIconMap, iconKeyForType } from '@/lib/ciIconPaths'
 import {
   appendArrowMarker, appendIcon, attachZoom, fitTransform, linkEndpoints, nodeDrag, styleText, truncate,
@@ -72,6 +73,28 @@ interface TooltipState {
   node: GraphNode
 }
 
+/**
+ * The customer's names in the graph (review of 23 Sep 2026): it printed the
+ * raw type («server»), relation («depends on»), state and environment, next
+ * to a CMDB list saying «Server fisico». One rule, useCILabels; relations by
+ * the metamodel's label; a type the metamodel does not know reads without its
+ * underscores, as before. Through a ref, so the drawing is not redone for them.
+ */
+function useGraphLabels(ciTypes: readonly CITypeDef[]) {
+  const ciLabels = useCILabels()
+  const relationLabel = useMemo(() => {
+    const byType = new Map<string, string>()
+    for (const ct of ciTypes) for (const r of ct.relations) {
+      if (!byType.has(r.relationshipType.toLowerCase())) byType.set(r.relationshipType.toLowerCase(), r.label)
+    }
+    return (rel: string) => byType.get(rel.toLowerCase()) ?? rel.replace(/_/g, ' ')
+  }, [ciTypes])
+  const typeLabel = (type: string) => { const l = ciLabels.typeLabel(type); return l === type ? type.replace(/_/g, ' ') : l }
+  const labelsRef = useRef({ typeLabel, relationLabel })
+  labelsRef.current = { typeLabel, relationLabel }
+  return { ciLabels, typeLabel, labelsRef }
+}
+
 export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Props) {
   const svgRef   = useRef<SVGSVGElement>(null)
   const navigate = useNavigate()
@@ -89,6 +112,8 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
   // non previsti.
   const { ciTypes } = useMetamodel()
   const typeIconMap = useMemo(() => buildTypeIconMap(ciTypes), [ciTypes])
+
+  const { ciLabels, typeLabel, labelsRef } = useGraphLabels(ciTypes)
 
   const centerCIRef = useRef(centerCI)
   centerCIRef.current = centerCI
@@ -237,7 +262,7 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
       .attr('y',                 (d) => COLORS[d.role].r + 25)
       .attr('font-size',         10)
       .attr('fill',              'var(--color-slate-light)')
-      .text((d) => d.type.replace(/_/g, ' '))
+      .text((d) => labelsRef.current.typeLabel(d.type))
 
     // Relation type label (row 3 — only for non-center nodes)
     styleText(nodeEl.filter((d) => d.role !== 'center' && d.relationType !== null).append('text'))
@@ -246,7 +271,7 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
       .attr('y',                 (d) => COLORS[d.role].r + 35)
       .attr('font-size',         9)
       .attr('fill',              'var(--color-brand)')
-      .text((d) => (d.relationType ?? '').replace(/_/g, ' '))
+      .text((d) => (d.relationType ? labelsRef.current.relationLabel(d.relationType) : ''))
 
     // ── Drag ────────────────────────────────────────────────────────────────
 
@@ -336,10 +361,10 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
           whiteSpace:   'nowrap',
         }}>
           <div style={{ fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 4 }}>{tooltip.node.name}</div>
-          <div style={{ color: 'var(--color-slate)' }}>{t('pages.cmdb.type')}: <span style={{ color: 'var(--color-slate-dark)' }}>{tooltip.node.type.replace(/_/g, ' ')}</span></div>
-          <div style={{ color: 'var(--color-slate)' }}>{t('pages.cmdb.status')}: <span style={{ color: 'var(--color-slate-dark)' }}>{tooltip.node.status}</span></div>
+          <div style={{ color: 'var(--color-slate)' }}>{t('pages.cmdb.type')}: <span style={{ color: 'var(--color-slate-dark)' }}>{typeLabel(tooltip.node.type)}</span></div>
+          <div style={{ color: 'var(--color-slate)' }}>{t('pages.cmdb.status')}: <span style={{ color: 'var(--color-slate-dark)' }}>{ciLabels.statusLabel(tooltip.node.status)}</span></div>
           {tooltip.node.environment && (
-            <div style={{ color: 'var(--color-slate)' }}>{t('pages.cmdb.environment')}: <span style={{ color: 'var(--color-slate-dark)' }}>{tooltip.node.environment}</span></div>
+            <div style={{ color: 'var(--color-slate)' }}>{t('pages.cmdb.environment')}: <span style={{ color: 'var(--color-slate-dark)' }}>{ciLabels.environmentLabel(tooltip.node.environment)}</span></div>
           )}
         </div>
       )}

@@ -342,6 +342,18 @@ describe('WorkflowDesignerPage — panels and "Save changes"', () => {
 describe('WorkflowDesignerPage — adding and deleting', () => {
   // Tour of 23 Sep 2026: the arrow was created with an empty label — a blank
   // button on every ticket. It starts with the label of the step it leads to.
+  // Review of 23 Sep 2026: an arrow could only be dragged; the keyboard way creates the same transition.
+  it('under the panel of a step, a transition to another step is added without dragging', async () => {
+    const { user } = designer()
+    await user.click(screen.getByText('In progress'))
+    await user.selectOptions(screen.getByLabelText('Add a transition to'), 's-resolved')
+    await user.click(screen.getByRole('button', { name: 'Add' }))
+    expect(apolloFinto.chiamata('AddWorkflowTransition')).toEqual({
+      definitionId: 'wf-1', fromStepName: 'in_progress', toStepName: 'resolved', trigger: 'manual', label: 'Resolved',
+      sourceHandle: null, targetHandle: null,
+    })
+  })
+
   it('an arrow drawn between two steps creates a manual transition from the sides used, named after its target, and reloads', async () => {
     designer()
     await act(async () => { await flow.props!.onConnect!({ source: 's-new', target: 's-resolved', sourceHandle: 'src-top' }) })

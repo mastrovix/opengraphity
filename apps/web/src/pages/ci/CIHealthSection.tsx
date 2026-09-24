@@ -121,7 +121,7 @@ export function CIHealthSection({ ciId, ciName }: { ciId: string; ciName: string
                 {t('common.apply')}
               </Button>
               {isManual && (
-                <Button variant="secondary" size="xs" disabled={overriding} onClick={() => void applyOverride('')}>{t('monitoring.ciHealth.removeOverride')}</Button>
+                <Button variant="secondary" size="xs" disabled={overriding} onClick={() => applyOverride('')}>{t('monitoring.ciHealth.removeOverride')}</Button>
               )}
               <p style={{ ...hint, flexBasis: '100%' }}>{t('monitoring.ciHealth.overrideHint')}</p>
             </div>
@@ -147,7 +147,7 @@ export function CIHealthSection({ ciId, ciName }: { ciId: string; ciName: string
             ))}
           </ul>
         )}
-        {events.length > 0 && <Button variant="ghost" size="xs" onClick={() => void refetchEvents()} style={{ marginTop: 6, color: colors.slateLight, fontSize: 'var(--font-size-table)' }}>{t('monitoring.console.refresh')}</Button>}
+        {events.length > 0 && <Button variant="ghost" size="xs" onClick={() => refetchEvents()} style={{ marginTop: 6, color: colors.slateLight, fontSize: 'var(--font-size-table)' }}>{t('monitoring.console.refresh')}</Button>}
       </div>
     </SectionCard>
   )

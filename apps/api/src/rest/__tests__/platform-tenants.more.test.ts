@@ -48,7 +48,10 @@ const lifecycle = vi.hoisted(() => ({
   configuredReservedSlugs: vi.fn(() => [] as string[]),
   resetAdminPassword: vi.fn(),
 }))
-vi.mock('../../lib/tenantLifecycle.js', () => lifecycle)
+// The domain rule is the real one: it is what the route must apply.
+vi.mock('../../lib/tenantLifecycle.js', async (orig) => ({
+  ...lifecycle, tenantDomainFromTemplate: (await orig<typeof import('../../lib/tenantLifecycle.js')>()).tenantDomainFromTemplate,
+}))
 // The queues follow the tenants (23 Sep 2026): the route announces every change
 // and removes a deleted tenant's queues.
 const queues = vi.hoisted(() => ({
@@ -75,6 +78,7 @@ vi.mock('../../lib/tenantOnboarding.js', () => ({ onboardTenant }))
 
 const { getSession } = await import('@opengraphity/neo4j')
 const { platformTenantsRouter } = await import('../platform-tenants.js')
+const { resetConfigCache } = await import('../../lib/config.js')
 
 let server: Server
 let base: string
@@ -89,6 +93,9 @@ beforeAll(async () => {
 })
 afterAll(async () => { await new Promise<void>((resolve) => server.close(() => resolve())) })
 beforeEach(() => {
+  // The installation's address of a tenant: where a new tenant's domain comes from.
+  vi.stubEnv('TENANT_URL_TEMPLATE', 'https://{slug}.acme-itsm.example')
+  resetConfigCache()
   vi.clearAllMocks()
   vi.mocked(getSession).mockReturnValue(session as never)
 })
@@ -147,7 +154,7 @@ describe('POST /platform/tenants — provisioning', () => {
     expect(spec).toEqual({
       slug: 'acme', tenantName: 'acme', plan: 'starter', timezone: 'UTC',
       email: 'admin@acme.io', firstName: 'Admin', lastName: 'acme', adminRole: 'admin',
-      domain: 'opengrafo.com', production: false, piIp: undefined,
+      domain: 'acme-itsm.example', production: false, piIp: undefined,
     })
     // The password Keycloak receives must be temporary: changed at first login.
     expect(password).toEqual({ value: 'Temp-Pw-1', temporary: true })
@@ -155,16 +162,26 @@ describe('POST /platform/tenants — provisioning', () => {
     expect(queues.announceTenantChange).toHaveBeenCalledWith('acme', 'created')
   })
 
-  it('explicit fields win over the defaults, and production must be literally true', async () => {
+  // Review of 23 Sep 2026: the domain was the literal «opengrafo.com», and production whatever the request said.
+  it('explicit fields win over the defaults; the domain and the environment are the installation\'s, not the request\'s', async () => {
     onboardTenant.mockResolvedValue({ steps: [] })
     await post({
       slug: 'acme', adminEmail: 'a@acme.io', name: 'ACME Corp', plan: 'enterprise', timezone: 'Europe/Rome',
-      adminFirstName: 'Ada', adminLastName: 'Lovelace', domain: 'acme.example', production: 'yes',
+      adminFirstName: 'Ada', adminLastName: 'Lovelace', domain: 'elsewhere.example', production: true,
     })
     expect(onboardTenant.mock.calls[0]![1]).toMatchObject({
       tenantName: 'ACME Corp', plan: 'enterprise', timezone: 'Europe/Rome',
-      firstName: 'Ada', lastName: 'Lovelace', domain: 'acme.example', production: false,
+      firstName: 'Ada', lastName: 'Lovelace', domain: 'acme-itsm.example', production: false,
     })
+  })
+
+  it('without an installation address of the tenants nothing is created, and it says why', async () => {
+    vi.stubEnv('TENANT_URL_TEMPLATE', '')
+    resetConfigCache()
+    const res = await post({ slug: 'acme', adminEmail: 'a@acme.io' })
+    expect(res.status).toBe(500)
+    expect(await res.json()).toEqual({ error: 'TENANT_URL_TEMPLATE is not configured: the domain of a new tenant cannot be known' })
+    expect(onboardTenant).not.toHaveBeenCalled()
   })
 
   it('a collapse AFTER the password was set still hands the password over, marked partial', async () => {

@@ -35,6 +35,11 @@ export interface LinkedTypeConfig {
   items:     LinkedTicketItem[]
   onLink:    (id: string) => void
   onUnlink:  (id: string) => void
+  /**
+   * Whether the reader may link and unlink this kind: each link has its own
+   * permission on the API (review of 23 Sep 2026), so the caller says it.
+   */
+  canEdit:   boolean
 }
 
 const BADGE: Record<LinkedKind, string> = {
@@ -109,12 +114,14 @@ function useLinkSearch(kind: LinkedKind | null, term: string): LinkedTicketItem[
 export function UnifiedLinkedTickets({ title, types, excludeId }: { title: string; types: LinkedTypeConfig[]; excludeId?: string }) {
   const { t } = useTranslation()
   const [showSearch, setShowSearch] = useState(false)
-  const [activeKind, setActiveKind] = useState<LinkedKind>(types[0]?.kind ?? 'INCIDENT')
+  // Only the kinds the reader may link are offered in the search.
+  const linkable = types.filter((t) => t.canEdit)
+  const [activeKind, setActiveKind] = useState<LinkedKind>(linkable[0]?.kind ?? 'INCIDENT')
   const [term, setTerm] = useState('')
 
   const groups = types.map((t) => ({ ...t, rows: t.items })).filter((g) => g.rows.length > 0)
   const total = groups.reduce((n, g) => n + g.rows.length, 0)
-  const active = types.find((t) => t.kind === activeKind) ?? types[0]
+  const active = linkable.find((t) => t.kind === activeKind) ?? linkable[0]
   const linkedIds = new Set(types.flatMap((t) => t.items.map((it) => it.id)))
 
   const raw = useLinkSearch(showSearch && active ? active.kind : null, term)
@@ -126,17 +133,17 @@ export function UnifiedLinkedTickets({ title, types, excludeId }: { title: strin
 
   return (
     <SectionCard title={title} count={total} collapsible>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+      {linkable.length > 0 && <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
         <button type="button" onClick={() => { setShowSearch((s) => !s); setTerm('') }}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--color-brand)', color: 'var(--color-brand)', background: 'transparent', fontSize: 'var(--font-size-label)', fontWeight: 500, cursor: 'pointer' }}>
           <Plus size={12} /> {t(showSearch ? 'common.close' : 'components.linkedTickets.link')}
         </button>
-      </div>
+      </div>}
 
       {showSearch && active && (
         <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 12 }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-            {types.map((t) => (
+            {linkable.map((t) => (
               <button key={t.kind} type="button" onClick={() => { setActiveKind(t.kind); setTerm('') }}
                 style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', cursor: 'pointer', fontSize: 'var(--font-size-label)', fontWeight: 600, background: activeKind === t.kind ? 'var(--color-brand)' : 'transparent', color: activeKind === t.kind ? colors.white : 'var(--color-slate)' }}>
                 {t.label}
@@ -183,12 +190,12 @@ export function UnifiedLinkedTickets({ title, types, excludeId }: { title: strin
                     <span title={t('components.linkedTickets.automatic')} style={{ padding: 2, color: 'var(--color-slate-light)', display: 'inline-flex' }}>
                       <Lock size={12} />
                     </span>
-                  ) : (
+                  ) : g.canEdit ? (
                     <button type="button" title={t('components.linkedTickets.unlink')} onClick={() => g.onUnlink(r.id)}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--color-slate-light)' }}>
                       <X size={14} />
                     </button>
-                  )}
+                  ) : null}
                 </span>
               </div>
             ))}
