@@ -364,7 +364,7 @@
       "searching": "Ricerca…",
       "comboShown": "Mostrati {{shown}} di {{total}} — affina la ricerca per trovare gli altri",
       "highlightHealth": "Evidenzia salute",
-      "chooseCIHint": "Scegli un tipo di CI e un CI nella barra qui sopra per vederne le relazioni.",
+      "chooseCIHint": "Cerca nella barra qui sopra il CI da cui partire per vederne le relazioni. Un tipo restringe la ricerca.",
       "noRelations": "Questo CI non ha relazioni entro la profondità scelta.",
       "openCIForTickets": "Apri il CI: i suoi incident e le sue change sono elencati lì"
     },

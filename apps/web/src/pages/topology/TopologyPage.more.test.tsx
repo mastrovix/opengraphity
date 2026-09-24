@@ -80,6 +80,33 @@ beforeEach(() => {
 })
 
 describe('TopologyPage — the CI search box', () => {
+  // Tour of 24 Sep 2026: the empty map asked for a CI, and the box to pick it
+  // appeared only after choosing a type — the owner could not find it.
+  it('is there before any type is chosen: it searches every type, and each result says its type', async () => {
+    apolloFinto.risposte['GetAllCIs'] = { allCIs: { total: 2, items: [
+      { id: 'ci-1', name: 'db-01', type: 'server', status: 'active', environment: 'production' },
+      { id: 'app-7', name: 'CRM', type: 'application', status: 'active', environment: null },
+    ] } }
+    const { user } = renderWithProviders(<TopologyPage />, { route: '/topology' })
+    expect(screen.getByLabelText('Type')).toHaveValue('')
+    await user.click(screen.getByLabelText('Search CI...'))
+    await waitFor(() => expect(apolloFinto.chiamata('GetAllCIs')).toEqual({ type: undefined, search: undefined, limit: 80 }))
+    expect(await screen.findByRole('button', { name: /CRM/ })).toHaveTextContent('Application')
+    expect(screen.getByRole('button', { name: /db-01/ })).toHaveTextContent(/Server · /)
+    await user.click(screen.getByRole('button', { name: /CRM/ }))
+    await attendiURL('/topology', { ciId: 'app-7' })
+    // Choosing the CI does not touch the type filter.
+    expect(screen.getByLabelText('Type')).toHaveValue('')
+  })
+
+  it('with a type, the results do not repeat it: only the environment', async () => {
+    const { user } = renderWithProviders(<TopologyPage />, { route: '/topology' })
+    await user.selectOptions(screen.getByLabelText('Type'), 'server')
+    await user.click(screen.getByLabelText('Search CI...'))
+    const row = await screen.findByRole('button', { name: /db-01/ })
+    expect(row).not.toHaveTextContent('Server')
+  })
+
   it('choosing a CI from the results starts the map from it; clearing it empties the map', async () => {
     const { user } = renderWithProviders(<TopologyPage />, { route: '/topology' })
     // The internal base type is not a choice.
@@ -101,7 +128,8 @@ describe('TopologyPage — the CI search box', () => {
 
   it('"All" in the list clears the choice too', async () => {
     const { user } = renderWithProviders(<TopologyPage />, { route: '/topology?ciId=ci-1' })
-    await waitFor(() => expect(screen.getByLabelText('Type')).toHaveValue('server'))
+    // The box names the CI at the centre once the map has loaded.
+    expect(await screen.findByDisplayValue('db-01')).toBeInTheDocument()
     await user.click(screen.getByLabelText('Search CI...'))
     await user.click(screen.getByRole('button', { name: '— All —' }))
     await attendiURL('/topology')
@@ -243,7 +271,8 @@ describe('TopologyPage — the node panel', () => {
 
   it('the panel closes, and changing the CI in the box closes it too', async () => {
     const { user } = renderWithProviders(<TopologyPage />, { route: '/topology?ciId=ci-1' })
-    await waitFor(() => expect(screen.getByLabelText('Type')).toHaveValue('server'))
+    // The box names the CI at the centre once the map has loaded.
+    expect(await screen.findByDisplayValue('db-01')).toBeInTheDocument()
     const graph = screen.getByTestId('graph')
     await user.click(within(graph).getByRole('button', { name: 'app-03' }))
     expect(screen.getByRole('button', { name: 'Go to detail →' })).toBeInTheDocument()

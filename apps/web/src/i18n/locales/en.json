@@ -364,7 +364,7 @@
       "searching": "Searching…",
       "comboShown": "Showing {{shown}} of {{total}} — refine the search to find the others",
       "highlightHealth": "Highlight health",
-      "chooseCIHint": "Choose a CI type and a CI in the bar above to see its relationships.",
+      "chooseCIHint": "Search the CI to start from in the bar above to see its relationships. A type narrows the search.",
       "noRelations": "This CI has no relationship within the chosen depth.",
       "openCIForTickets": "Open the CI: its incidents and changes are listed there"
     },

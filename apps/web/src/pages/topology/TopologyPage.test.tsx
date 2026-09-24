@@ -7,7 +7,7 @@
  * che elenca i nodi come pulsanti: qui si verifica la pagina, non il disegno.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { screen, within, waitFor } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import { TopologyPage } from './TopologyPage'
 import { GET_TOPOLOGY, GET_ALL_CIS, GET_CI_TYPES, GET_BASE_CI_TYPE } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
@@ -86,22 +86,23 @@ describe('TopologyPage — salute', () => {
   it('senza ?ciId la query non parte: tela vuota con l\'invito, nessun contatore', async () => {
     const seen: TopoVars[] = []
     renderPage('/topology', seen)
-    expect(await screen.findByText('Choose a CI type and a CI in the bar above to see its relationships.')).toBeInTheDocument()
+    expect(await screen.findByText('Search the CI to start from in the bar above to see its relationships. A type narrows the search.')).toBeInTheDocument()
     expect(screen.queryByTestId('graph')).not.toBeInTheDocument()
     expect(seen).toHaveLength(0)
     expect(healthToggle()).not.toBeChecked()
   })
 
-  it('D·1.3 — ?ciId= è il CI di partenza: la query parte con selectedCiId, il grafo ha quel nodo come radice, il tipo del CI popola il filtro e il combobox mostra il nome', async () => {
+  it('D·1.3 — ?ciId= è il CI di partenza: la query parte con selectedCiId, il grafo ha quel nodo come radice e il campo del CI ne mostra il nome; il tipo resta com\'era', async () => {
     const seen: TopoVars[] = []
     renderPage('/topology?health=1&ciId=ci-1', seen)
     expect(await screen.findByTestId('graph')).toHaveAttribute('data-root', 'ci-1')
     expect(seen[0]).toMatchObject({ selectedCiId: 'ci-1', maxHops: 2 })
     expect(screen.getByTestId('graph')).toHaveAttribute('data-highlight-health', 'true')
     expect(healthToggle()).toBeChecked()
-    // tipo derivato dal nodo radice → combobox visibile con il nome del CI
-    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Type' })).toHaveValue('server'))
+    // The search box is always there and names the CI at the centre; the type
+    // filter is no longer filled from it (tour of 24 Sep 2026): it stays «All types».
     expect(await screen.findByDisplayValue('db-01')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Type' })).toHaveValue('')
     expect(screen.getByText('4 nodes · 1 relationships')).toBeInTheDocument()
   })
 
@@ -143,8 +144,13 @@ describe('TopologyPage — salute', () => {
     const { user } = renderPage('/topology?health=1&ciId=ci-1')
     await screen.findByTestId('graph')
     expect(location()).toBe('/topology?health=1&ciId=ci-1')   // nessun effetto al montaggio lo ha tolto
+    // The CI's own type, or «All types», keeps the map: they only state or widen the search.
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Type' }), 'server')
+    expect(location()).toBe('/topology?health=1&ciId=ci-1')
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Type' }), '')
+    expect(location()).toBe('/topology?health=1&ciId=ci-1')
     await user.selectOptions(screen.getByRole('combobox', { name: 'Type' }), 'application')
     expect(location()).toBe('/topology?health=1')
-    expect(await screen.findByText('Choose a CI type and a CI in the bar above to see its relationships.')).toBeInTheDocument()
+    expect(await screen.findByText('Search the CI to start from in the bar above to see its relationships. A type narrows the search.')).toBeInTheDocument()
   })
 })

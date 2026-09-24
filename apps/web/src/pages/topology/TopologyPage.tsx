@@ -95,8 +95,11 @@ export function TopologyPage() {
 
   // Il cambio di tipo azzera il CI di partenza (nel gestore del select, non in
   // un effetto: un effetto girerebbe anche al montaggio e cancellerebbe `?ciId=`).
+  // Not when the CI still fits (24 Sep 2026): «All types», or the CI's own
+  // type, only widens or states the search — the map stays where it is.
   const changeType = (type: string) => {
     setFilters((f) => ({ ...f, type }))
+    if (type === '' || type === rootNode?.type) return
     setFocusNodeId(null)
     setSelectedNode(null)
   }
@@ -132,13 +135,11 @@ export function TopologyPage() {
     [data?.topology.edges],
   )
 
-  // Arrivati con `?ciId=` e nessun tipo scelto (da Salute CI): il tipo del CI
-  // di partenza popola il filtro, così il combobox mostra QUALE CI è al centro
-  // e permette di cambiarlo. Il tipo non entra nella query: solo nel combobox.
+  // The CI at the centre: its name fills the search box when it came with
+  // `?ciId=` (from CI Health) and is not among the results yet. The type filter
+  // is left as the person set it — it used to be filled from this CI, only so
+  // that the box (then shown only with a type) could appear.
   const rootNode = useMemo(() => (focusNodeId ? data?.topology.nodes.find((n) => n.id === focusNodeId) ?? null : null), [data?.topology.nodes, focusNodeId])
-  useEffect(() => {
-    if (rootNode && !filters.type) setFilters((f) => ({ ...f, type: rootNode.type }))
-  }, [rootNode, filters.type])
 
   // Stats
   const totalIncident = nodes.reduce((s, n) => s + n.incidentCount, 0)
@@ -187,18 +188,19 @@ export function TopologyPage() {
             ))}
           </select>
 
-          {/* CI combobox — visible only when a type is selected */}
-          {filters.type && (
-            <CICombobox
-              ciType={filters.type}
-              value={focusNodeId}
-              valueName={rootNode?.name ?? null}
-              onChange={(id) => {
-                setFocusNodeId(id)
-                setSelectedNode(null)   // reset pannello dettaglio al cambio CI
-              }}
-            />
-          )}
+          {/* The CI to start from — always there (tour of 24 Sep 2026): with «All
+              types» it searches every type; a type only narrows the search. It
+              used to appear only once a type was chosen, while the empty map
+              asked for a CI nobody could see where to pick. */}
+          <CICombobox
+            ciType={filters.type}
+            value={focusNodeId}
+            valueName={rootNode?.name ?? null}
+            onChange={(id) => {
+              setFocusNodeId(id)
+              setSelectedNode(null)   // reset pannello dettaglio al cambio CI
+            }}
+          />
 
           {/* Hop depth selector — visible only when a CI is selected */}
           {focusNodeId && (
@@ -504,6 +506,7 @@ function DetailField({ label, children }: { label: string; children: React.React
 // ── CICombobox ───────────────────────────────────────────────────────────────
 
 interface CIComboboxProps {
+  /** The type the search is narrowed to; '' = every type, and each result then says its own. */
   ciType:   string
   value:    string | null
   /** Nome del CI selezionato quando non è tra i risultati della ricerca (arrivo con `?ciId=`: il nome viene dal grafo caricato). */
@@ -531,7 +534,7 @@ function CICombobox({ ciType, value, valueName = null, onChange }: CIComboboxPro
   }, [search])
 
   const { data, loading, error } = useQuery<CIListData>(GET_ALL_CIS, {
-    variables:   { type: ciType, search: debounced || undefined, limit: COMBOBOX_LIMIT },
+    variables:   { type: ciType || undefined, search: debounced || undefined, limit: COMBOBOX_LIMIT },
     fetchPolicy: 'cache-first',
   })
   const options = useMemo(() => data?.allCIs.items ?? [], [data])
@@ -652,9 +655,10 @@ function CICombobox({ ciType, value, valueName = null, onChange }: CIComboboxPro
               onMouseLeave={(e) => { if (o.id !== value) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
             >
               <span>{o.name}</span>
-              {o.environment && (
+              {/* Across every type, a result says which it is: two CIs may share a name. */}
+              {(!ciType || o.environment) && (
                 <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
-                  {ciLabels.environmentLabel(o.environment)}
+                  {[ciType ? null : ciLabels.typeLabel(o.type), o.environment ? ciLabels.environmentLabel(o.environment) : null].filter(Boolean).join(' · ')}
                 </span>
               )}
             </button>
