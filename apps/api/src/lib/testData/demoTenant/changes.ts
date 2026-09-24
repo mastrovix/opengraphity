@@ -146,7 +146,7 @@ function pickCIs(rng: Rng, w: World, atMs: number, primary?: PlannedCI): Planned
     const related = first.label === 'Application' ? (w.cmdb.appServers.get(first.id) ?? [])
       : first.label === 'Database' ? [w.cmdb.databaseInstance.get(first.id)!].filter(Boolean)
       : first.label === 'Server' ? w.appsOnServer(first.id) : []
-    const candidates = related.map((id) => w.cmdb.byId.get(id)!).filter((c) => c.createdAtMs <= atMs && (c.status === 'active' || c.status === 'maintenance'))
+    const candidates = related.map((id) => w.cmdb.byId.get(id)!).filter((c) => w.usableCI(c, atMs))
     out.push(...rng.sample(candidates, rng.int(1, 2)))
   }
   return [...new Map(out.map((c) => [c.id, c])).values()].slice(0, 3)

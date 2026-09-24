@@ -503,6 +503,8 @@ class MonitoringPlanner {
   certificates(): void {
     const { rng, now } = this
     for (const cert of this.w.cmdb.byLabel.Certificate) {
+      // A certificate planted for CMDB Health (healthFindings.ts) raises no alarm: no ticket is its.
+      if (cert.healthFinding) continue
       const expiresAt = Date.parse(cert.fields['expires_at'] ?? '')
       if (!Number.isFinite(expiresAt)) continue
       const warnAt = expiresAt - CERT_WARNING_DAYS * DAY

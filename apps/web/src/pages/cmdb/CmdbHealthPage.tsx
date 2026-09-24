@@ -36,6 +36,7 @@ import { useMe } from '@/hooks/useMe'
 import { CmdbChainsTab } from './chains/CmdbChainsTab'
 import { linkWords } from './chains/ChainNodePanel'
 import { relationLabel, type ChainCoverage } from './chains/chainModel'
+import { sharePercent } from './sharePercent'
 
 const PAGE_SIZE = 25
 /** The CSV holds every CI of the check, up to the API's ceiling. */
@@ -119,7 +120,7 @@ function CheckCard({ check, active, onClick }: { check: HealthCheck; active: boo
   const num = (n: number) => n.toLocaleString(i18n.language)
   const clean = check.count === 0
   const accent = clean ? colors.success : colors.warning
-  const percent = check.population > 0 ? Math.round((check.count / check.population) * 1000) / 10 : 0
+  const percent = sharePercent(check.count, check.population, i18n.language)
   // This one counts relations, not CIs.
   const unit = check.key === 'relation_not_admitted' ? 'Relations' : ''
   return (
@@ -136,10 +137,15 @@ function CheckCard({ check, active, onClick }: { check: HealthCheck; active: boo
         <span style={{ fontSize: 26, fontWeight: 700, color: accent, lineHeight: 1 }}>
           {clean ? <CheckCircle2 size={24} aria-label={t('pages.cmdbHealth.clean')} /> : num(check.count)}
         </span>
-        <span style={{ fontSize: 'var(--font-size-label)', color: colors.slateLight }}>
+        {/* The phrase in bold, the share in the card's colour (owner, 24 Sep 2026). */}
+        <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)', fontWeight: 600 }}>
           {clean
             ? t(`pages.cmdbHealth.cleanOf${unit}`, { population: num(check.population) })
-            : t(`pages.cmdbHealth.countOf${unit}`, { population: num(check.population), percent: num(percent) })}
+            : <>
+              {t(`pages.cmdbHealth.countOf${unit}`, { population: num(check.population) })}
+              {' · '}
+              <span data-testid="share" style={{ color: accent }}>{t('pages.cmdbHealth.share', { percent })}</span>
+            </>}
         </span>
       </span>
       <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)', lineHeight: 1.45 }}>

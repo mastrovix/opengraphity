@@ -2929,7 +2929,7 @@
       "pickCheck": "Choose a check to see its CIs.",
       "clean": "Nothing to fix",
       "cleanOf": "none of {{population}} CIs checked",
-      "countOf": "of {{population}} CIs checked · {{percent}}%",
+      "countOf": "of {{population}} CIs checked",
       "notChecked": "Not checked: {{types}} (no expiry field).",
       "found_one": "{{count}} CI",
       "found_other": "{{count}} CIs",
@@ -3005,7 +3005,7 @@
       },
       "needsChains": "No chain is drawn yet: draw one in the Chains tab.",
       "cleanOfRelations": "none of {{population}} relations checked",
-      "countOfRelations": "of {{population}} relations checked · {{percent}}%",
+      "countOfRelations": "of {{population}} relations checked",
       "foundRelations_one": "{{count}} relation",
       "foundRelations_other": "{{count}} relations",
       "chains": {
@@ -3048,7 +3048,8 @@
         "types_other": "{{count}} types",
         "readOnly": "Only who can change the metamodel draws chains.",
         "legend": "Every link is required: an alternative is another chain."
-      }
+      },
+      "share": "{{percent}}%"
     }
   },
   "filter": {

@@ -126,8 +126,7 @@ export function planIncidentSkeletons(rng: Rng, w: World, count: number): Incide
       ciIds = [ci.id]
       // Sometimes a second CI is affected: an application running on the failing server.
       if (ci.label === 'Server' && rng.chance(0.15)) {
-        const apps = w.appsOnServer(ci.id).map((id) => w.cmdb.byId.get(id)!)
-          .filter((a) => a.createdAtMs <= createdAtMs && (a.status === 'active' || a.status === 'maintenance'))
+        const apps = w.appsOnServer(ci.id).map((id) => w.cmdb.byId.get(id)!).filter((a) => w.usableCI(a, createdAtMs))
         if (apps.length) ciIds.push(rng.pick(apps).id)
       }
       // The form prefills the CI's support group; now and then the desk picks another team of the same tower.

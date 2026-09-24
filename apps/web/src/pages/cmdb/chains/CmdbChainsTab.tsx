@@ -16,6 +16,7 @@ import { useMetamodel } from '@/contexts/MetamodelContext'
 import { colors } from '@/lib/tokens'
 import { ChainEditor } from './ChainEditor'
 import { type ChainCoverage, type ChainDraft, type CmdbChain } from './chainModel'
+import { sharePercent } from '../sharePercent'
 
 export function CmdbChainsTab({ coverage, canEdit }: { coverage: readonly ChainCoverage[]; canEdit: boolean }) {
   const { t } = useTranslation()
@@ -72,7 +73,7 @@ export function CmdbChainsTab({ coverage, canEdit }: { coverage: readonly ChainC
 function ChainCard({ chain, coverage, active, onClick }: { chain: CmdbChain; coverage: ChainCoverage | undefined; active: boolean; onClick: () => void }) {
   const { t, i18n } = useTranslation()
   const num = (n: number) => n.toLocaleString(i18n.language)
-  const percent = coverage && coverage.roots > 0 ? Math.round((coverage.complete / coverage.roots) * 1000) / 10 : null
+  const whole = coverage !== undefined && coverage.roots > 0 && coverage.complete === coverage.roots
   return (
     <button type="button" onClick={onClick} aria-pressed={active}
       style={{
@@ -84,10 +85,10 @@ function ChainCard({ chain, coverage, active, onClick }: { chain: CmdbChain; cov
       <span style={{ fontSize: 'var(--font-size-label)', color: colors.slate }}>
         {t(`pages.cmdbHealth.chains.kinds.${chain.kind}`)} · {t('pages.cmdbHealth.chains.types', { count: chain.nodes.length })}
       </span>
-      <span style={{ fontSize: 'var(--font-size-label)', color: percent === 100 ? 'var(--color-success)' : colors.slateLight }}>
+      <span style={{ fontSize: 'var(--font-size-label)', color: whole ? 'var(--color-success)' : colors.slateLight }}>
         {!coverage || coverage.roots === 0
           ? t('pages.cmdbHealth.chains.coverageNone')
-          : t('pages.cmdbHealth.chains.coverage', { complete: num(coverage.complete), roots: num(coverage.roots), percent: num(percent ?? 0) })}
+          : t('pages.cmdbHealth.chains.coverage', { complete: num(coverage.complete), roots: num(coverage.roots), percent: sharePercent(coverage.complete, coverage.roots, i18n.language) })}
       </span>
     </button>
   )

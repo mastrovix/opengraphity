@@ -78,6 +78,13 @@ describe('CmdbHealthPage — the cards', () => {
     const orphans = card('Outside every chain')
     expect(orphans).toHaveTextContent('2,307')
     expect(orphans).toHaveTextContent('of 18,736 CIs checked · 12.3%')
+    // Something found that rounds to nothing does not read 0%.
+    expect(card('Required fields empty')).toHaveTextContent('of 2,262 CIs checked · < 0.1%')
+    // The share in the card's colour — the colour of its count — the rest of the phrase in bold.
+    const share = within(orphans).getByTestId('share')
+    expect(share).toHaveTextContent('12.3%')
+    expect(share.style.color).toBe(within(orphans).getByText('2,307').style.color)
+    expect(share.parentElement!.style.fontWeight).toBe('600')
     expect(orphans).toHaveAttribute('aria-pressed', 'false')
     const owner = card('No Owner Group')
     expect(within(owner).getByLabelText('Nothing to fix')).toBeInTheDocument()

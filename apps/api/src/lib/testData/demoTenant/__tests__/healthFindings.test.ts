@@ -27,6 +27,8 @@ import { STARTING_CHAINS as CMDB_STARTING_CHAINS } from '../../../cmdbStartingCh
 import { evaluateChains } from '../../../../services/cmdbChains/evaluate.js'
 import { admittedRelationKeys, type CmdbChain } from '../../../../services/cmdbChains/model.js'
 import { NOW, SMALL, smallWorld } from './fixtures.js'
+import { planChangeSkeletons } from '../changes.js'
+import { planIncidentSkeletons } from '../incidents.js'
 
 const LABEL: Record<string, string> = {
   application: 'Application', business_application: 'BusinessApplication', business_capability: 'BusinessCapability', server: 'Server',
@@ -163,7 +165,19 @@ describe('planted', () => {
   })
 })
 
-describe('no ticket picks a planted CI', () => {
+describe('no ticket names a planted CI', () => {
+  // The run of 24 Sep 2026 stopped on «World.memberOf: unknown team null»: a change took the servers
+  // of its application, one of them planted without its group. Every way a ticket names a CI passes over them.
+  it('changes — with the CIs related to their first — and incidents — with the application on the failing server — never name one', () => {
+    const w = smallWorld('health-tickets-planted', { planted: true })
+    const planted = new Set(w.cmdb.cis.filter((c) => c.healthFinding).map((c) => c.id))
+    expect(planted.size).toBeGreaterThan(0)
+    const changes = planChangeSkeletons(new Rng('planted-changes'), w, { count: 600, linked: [] })
+    const incidents = planIncidentSkeletons(new Rng('planted-incidents'), w, 600)
+    for (const t of [...changes, ...incidents]) for (const id of t.ciIds) expect(planted.has(id), id).toBe(false)
+  })
+
+
   it('World.runningCI passes over them, and finds nothing when only they are left', () => {
     const w = smallWorld('health-tickets')
     const servers = w.cmdb.byLabel.Server.filter((s) => s.status === 'active').slice(0, 5)

@@ -9,6 +9,7 @@ import { DemoClock } from '../clock.js'
 import { DEFAULT_DEMO_COUNTS, type DemoCounts } from '../options.js'
 import { planPeople } from '../people.js'
 import { planCMDB } from '../cmdb.js'
+import { plantHealthFindings } from '../healthFindings.js'
 import { planConfig } from '../config.js'
 import { World, type PriorityRules } from '../world.js'
 import type { LiveDefinition, LiveStep, TicketWorkflows, WorkflowEntity } from '../workflowModel.js'
@@ -127,11 +128,13 @@ export const SMALL: DemoCounts = {
   databaseInstances: 60, databases: 90, certificates: 90, incidents: 1500, problems: 300, changes: 600, serviceRequests: 300,
 }
 
-export function smallWorld(seed = 'demo-test'): World {
+export function smallWorld(seed = 'demo-test', opts: { planted?: boolean } = {}): World {
   const clock = new DemoClock(NOW, 3, 'Europe/Rome')
   const rng = new Rng(seed)
   const people = planPeople(rng.fork('people'), clock, SMALL)
   const cmdb = planCMDB(rng.fork('cmdb'), clock, SMALL, people)
+  // With the CMDB Health findings planted, as generate.ts does.
+  if (opts.planted) plantHealthFindings(rng.fork('health-findings'), clock, cmdb)
   const config = planConfig(rng.fork('config'), clock, people)
   return new World(rng.fork('world'), clock, people, cmdb, config, WORKFLOWS, PRIORITY, trailContext(), 'Europe/Rome')
 }

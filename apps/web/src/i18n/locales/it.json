@@ -2929,7 +2929,7 @@
       "pickCheck": "Scegli un controllo per vederne i CI.",
       "clean": "Niente da sistemare",
       "cleanOf": "nessuno su {{population}} CI controllati",
-      "countOf": "su {{population}} CI controllati · {{percent}}%",
+      "countOf": "su {{population}} CI controllati",
       "notChecked": "Non controllati: {{types}} (senza campo di scadenza).",
       "found_one": "{{count}} CI",
       "found_other": "{{count}} CI",
@@ -3005,7 +3005,7 @@
       },
       "needsChains": "Nessuna catena disegnata: disegnane una nella scheda Catene.",
       "cleanOfRelations": "nessuna su {{population}} relazioni controllate",
-      "countOfRelations": "su {{population}} relazioni controllate · {{percent}}%",
+      "countOfRelations": "su {{population}} relazioni controllate",
       "foundRelations_one": "{{count}} relazione",
       "foundRelations_other": "{{count}} relazioni",
       "chains": {
@@ -3048,7 +3048,8 @@
         "types_other": "{{count}} tipi",
         "readOnly": "Solo chi può modificare il metamodello disegna le catene.",
         "legend": "Ogni collegamento è obbligatorio: un'alternativa è un'altra catena."
-      }
+      },
+      "share": "{{percent}}%"
     }
   },
   "filter": {
