@@ -11,6 +11,7 @@ import { automaticTransitionAllowed } from '../graphql/resolvers/change/windowGa
 import { loadAutomationEntity } from '../lib/automationEntity.js'
 import { runStepDeadlineSweep } from '../lib/stepDeadlines.js'
 import { runOLASweep } from '../lib/olaSweep.js'
+import { runSLASweep } from '@opengraphity/sla'
 import { AUTOMATION_ACTOR, type AutomationEntityType } from '@opengraphity/types'
 
 /*
@@ -35,6 +36,9 @@ export const RIPRESA_JOB = 'ripresa_transizioni'
  */
 export const RIPRESA_EVERY_MS = 5 * 60_000
 export const OLA_SWEEP_EVERY_MS = 60_000
+/** Wave 7 · A1: the SLA timers Redis lost, fired from the graph (packages/sla/src/sweep.ts). */
+export const SLA_SWEEP_JOB = 'sla_sweep'
+export const SLA_SWEEP_EVERY_MS = 60_000
 
 
 // ── Job data shape produced by packages/workflow/src/actions.ts ───────────────
@@ -119,6 +123,11 @@ const PASSATE: Record<string, ((tenantId: string) => Promise<void>) | undefined>
     const summary = await runOLASweep(tenantId)
     if (summary.alerted + summary.failed > 0) logger.info({ tenantId, ...summary }, '[workflow-jobs] OLA sweep')
     if (summary.failed > 0) throw new Error(`OLA sweep: ${summary.failed} contract(s) could not be evaluated (see the log)`)
+  },
+  [SLA_SWEEP_JOB]: async (tenantId) => {
+    const summary = await runSLASweep(tenantId)
+    if (summary.warnings + summary.breaches + summary.responses + summary.failed > 0) logger.info({ tenantId, ...summary }, '[workflow-jobs] SLA sweep: timers recovered from the graph')
+    if (summary.failed > 0) throw new Error(`SLA sweep: ${summary.failed} timer(s) could not fire (see the log)`)
   },
   [RIPRESA_JOB]: async (tenantId) => {
     const { riprendiTransizioniDi } = await import('../lib/riprendiTransizioni.js')
@@ -439,7 +448,7 @@ export async function scheduleEscalationCheck(incidentId: string, tenantId: stri
 // ── Worker ────────────────────────────────────────────────────────────────────
 
 /**
- * Le tre passate di un tenant, nella sua coda: scadenze dei passi e OLA ogni
+ * Le passate di un tenant, nella sua coda: scadenze dei passi, OLA e SLA ogni
  * minuto, ripresa delle transizioni automatiche ogni cinque. Job Scheduler
  * (BullMQ 6) con un'identità esplicita: `upsert` da ogni processo e a ogni
  * avvio non ne crea un secondo. La ripresa: il perché sta in
@@ -451,6 +460,7 @@ export async function scheduleWorkflowSweeps(queue: Queue, tenantId: string): Pr
   const data = (job: string) => ({ instanceId: '', entityId: '', tenantId, job })
   await queue.upsertJobScheduler('workflow-step-deadlines', { every: STEP_DEADLINES_EVERY_MS }, { name: STEP_DEADLINES_JOB, data: data(STEP_DEADLINES_JOB), opts })
   await queue.upsertJobScheduler('workflow-ola-sweep', { every: OLA_SWEEP_EVERY_MS }, { name: OLA_SWEEP_JOB, data: data(OLA_SWEEP_JOB), opts })
+  await queue.upsertJobScheduler('workflow-sla-sweep', { every: SLA_SWEEP_EVERY_MS }, { name: SLA_SWEEP_JOB, data: data(SLA_SWEEP_JOB), opts })
   await queue.upsertJobScheduler('workflow-ripresa-transizioni', { every: RIPRESA_EVERY_MS }, { name: RIPRESA_JOB, data: data(RIPRESA_JOB), opts })
 }
 

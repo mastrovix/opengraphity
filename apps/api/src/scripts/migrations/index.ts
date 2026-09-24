@@ -146,6 +146,7 @@ import { incidentConfirmResolution } from './20261008_1010_incident_confirm_reso
 import { watchesCollapseDuplicates } from './20261008_1020_watches_collapse_duplicates.js'
 import { formTableRowIds } from './20261008_1030_form_table_row_ids.js'
 import { changeTaskAndImportKeys } from './20261008_1040_change_task_and_import_keys.js'
+import { slaSweepIndexes } from './20261009_1010_sla_sweep_indexes.js'
 import { ticketTeamSegments } from './20260930_1030_ticket_team_segments.js'
 import { changeTaskTeamSegments } from './20260930_1040_change_task_team_segments.js'
 
@@ -277,4 +278,5 @@ export const MIGRATIONS: readonly Migration[] = [
   watchesCollapseDuplicates,
   formTableRowIds,
   changeTaskAndImportKeys,
+  slaSweepIndexes,
 ]

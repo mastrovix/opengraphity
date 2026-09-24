@@ -57,6 +57,8 @@ const runStepDeadlineSweep = vi.fn()
 vi.mock('../../lib/stepDeadlines.js', () => ({ runStepDeadlineSweep: (...a: unknown[]) => runStepDeadlineSweep(...a) }))
 const runOLASweep = vi.fn()
 vi.mock('../../lib/olaSweep.js', () => ({ runOLASweep: (...a: unknown[]) => runOLASweep(...a) }))
+const runSLASweep = vi.fn()
+vi.mock('@opengraphity/sla', () => ({ runSLASweep: (...a: unknown[]) => runSLASweep(...a) }))
 const riprendiTransizioniDi = vi.fn()
 vi.mock('../../lib/riprendiTransizioni.js', () => ({ riprendiTransizioniDi: (...a: unknown[]) => riprendiTransizioniDi(...a) }))
 const automaticTransitionAllowed = vi.fn()
@@ -193,6 +195,21 @@ describe('periodic sweeps', () => {
     await expect(workflowProcessor(job(mod.OLA_SWEEP_JOB, { tenantId: 't1' }))).rejects.toThrow('OLA sweep: 3 contract(s) could not be evaluated')
   })
 
+  // Wave 7 · A1: the SLA timers Redis lost, fired from the graph.
+  it('the SLA sweep logs only what it recovered, and FAILS the job when a timer could not fire', async () => {
+    runSLASweep.mockResolvedValueOnce({ warnings: 0, breaches: 0, responses: 0, failed: 0 })
+    await expect(workflowProcessor(job(mod.SLA_SWEEP_JOB, { tenantId: 't1' }))).resolves.toBeUndefined()
+    expect(runSLASweep).toHaveBeenCalledWith('t1')
+    expect(logInfo).not.toHaveBeenCalled()
+
+    runSLASweep.mockResolvedValueOnce({ warnings: 1, breaches: 2, responses: 0, failed: 0 })
+    await workflowProcessor(job(mod.SLA_SWEEP_JOB, { tenantId: 't1' }))
+    expect(logInfo).toHaveBeenCalledWith({ tenantId: 't1', warnings: 1, breaches: 2, responses: 0, failed: 0 }, '[workflow-jobs] SLA sweep: timers recovered from the graph')
+
+    runSLASweep.mockResolvedValueOnce({ warnings: 0, breaches: 0, responses: 0, failed: 2 })
+    await expect(workflowProcessor(job(mod.SLA_SWEEP_JOB, { tenantId: 't1' }))).rejects.toThrow('SLA sweep: 2 timer(s) could not fire')
+  })
+
   it('the resume job runs the automatic-transition resume of the job\'s tenant, and says so only when it moved something', async () => {
     riprendiTransizioniDi.mockResolvedValue({ mosse: 0, candidate: 0, rifiutateDalVarco: 0 })
     await workflowProcessor(job(mod.RIPRESA_JOB, { tenantId: 't1' }))
@@ -207,6 +224,7 @@ describe('periodic sweeps', () => {
     await mod.scheduleWorkflowSweeps({ upsertJobScheduler: upsertScheduler } as never, 't1')
     expect(upsertScheduler).toHaveBeenCalledWith('workflow-ola-sweep', { every: 60_000 }, expect.objectContaining({ name: mod.OLA_SWEEP_JOB, data: expect.objectContaining({ tenantId: 't1' }) }))
     expect(upsertScheduler).toHaveBeenCalledWith('workflow-ripresa-transizioni', { every: 5 * 60_000 }, expect.objectContaining({ name: mod.RIPRESA_JOB }))
+    expect(upsertScheduler).toHaveBeenCalledWith('workflow-sla-sweep', { every: 60_000 }, expect.objectContaining({ name: mod.SLA_SWEEP_JOB, data: expect.objectContaining({ tenantId: 't1' }) }))
   })
 })
 

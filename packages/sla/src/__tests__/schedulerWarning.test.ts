@@ -10,7 +10,7 @@ vi.mock('@opengraphity/events', () => ({
   tenantQueue: () => ({ add, getJob: vi.fn(async () => null) }),
   TenantWorkerPool: class {},
 }))
-vi.mock('../status.js', () => ({ getSLAStatus: vi.fn(), markBreached: vi.fn(), ticketReference: vi.fn() }))
+vi.mock('../status.js', () => ({ getSLAStatus: vi.fn(), markBreached: vi.fn(), markWarningSent: vi.fn(), ticketReference: vi.fn() }))
 vi.mock('../olaBreach.js', () => ({ isEntityResolved: vi.fn() }))
 
 const { scheduleWarning } = await import('../scheduler.js')

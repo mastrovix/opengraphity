@@ -1839,6 +1839,13 @@ valutazioni in attesa, marcatori di idempotenza.
 4. I **marcatori di idempotenza** (`evt:processed:*`, 24 h) persi dopo un crash
    possono far ripetere una notifica in-app già consegnata per un evento
    ancora in coda: innocuo, atteso.
+5. I **timer SLA** (avviso, presa in carico, violazione) sono job ritardati per
+   ticket in `sla-jobs@<tenant>`: se Redis li ha persi, li recupera la passata
+   SLA (`workflow-sla-sweep`, ogni minuto per tenant, dal 24 set 2026 · ondata
+   7). Legge dal grafo gli SLA aperti con un momento già passato da più di 2
+   minuti e li fa scattare con lo stesso gestore dei job; un avviso già
+   mandato per la stessa scadenza non si ripete (`SLAStatus.warning_sent_for`).
+   Il log `SLA sweep: timers recovered from the graph` dice quanti.
 
 ### Neo4j è ripartito
 

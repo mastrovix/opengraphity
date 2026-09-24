@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto'
 import type { Job } from 'bullmq'
 import { publish, tenantQueue, TenantWorkerPool } from '@opengraphity/events'
 import type { DomainEvent, SLAWarningPayload, SLABreachedPayload } from '@opengraphity/types'
-import { markBreached, markResponseBreachNotified, getSLAStatus, ticketReference } from './status.js'
+import { markBreached, markResponseBreachNotified, markWarningSent, getSLAStatus, ticketReference } from './status.js'
 import type { SLAStatus } from './status.js'
 
 /**
@@ -25,7 +25,7 @@ let _pool: TenantWorkerPool<SLAJobData> | null = null
 
 // ── Job data type ─────────────────────────────────────────────────────────────
 
-interface SLAJobData {
+export interface SLAJobData {
   entityId:       string
   entityType:     string
   tenantId:       string
@@ -46,12 +46,13 @@ interface SLAJobData {
  * be skipped, otherwise the current status.
  */
 async function statusIfStillRelevant(
-  job: Job<SLAJobData>,
+  name: string,
+  data: SLAJobData,
   target: 'response' | 'resolve',
 ): Promise<SLAStatus | null> {
-  const { tenantId, entityId, entityType } = job.data
+  const { tenantId, entityId, entityType } = data
   const status = await getSLAStatus(tenantId, entityId)
-  const label = `${job.name} for ${entityType} ${entityId}`
+  const label = `${name} for ${entityType} ${entityId}`
   if (!status) {
     console.log(`[sla:scheduler] ${label} skipped: no SLAStatus (entity deleted or SLA replaced)`)
     return null
@@ -73,7 +74,17 @@ async function statusIfStillRelevant(
 
 /** Exported for unit tests; the BullMQ worker calls it for every sla-jobs job. */
 export async function processSLAJob(job: Job<SLAJobData>): Promise<void> {
-  const { entityId, entityType, tenantId, resolveDeadline } = job.data
+  await fireSLATimer(job.name, job.data)
+}
+
+/**
+ * What a timer does when it fires, whoever fires it: its delayed job, or the
+ * SLA sweep when Redis lost the job (review of 23 Sep 2026). Every branch
+ * re-reads the status first, and the events carry deterministic ids, so a
+ * timer fired twice (job and sweep) is dropped the second time.
+ */
+export async function fireSLATimer(name: string, data: SLAJobData): Promise<void> {
+  const { entityId, entityType, tenantId, resolveDeadline } = data
 
   const baseEvent = {
     tenant_id:      tenantId,
@@ -82,9 +93,9 @@ export async function processSLAJob(job: Job<SLAJobData>): Promise<void> {
     timestamp:      new Date().toISOString(),
   }
 
-  switch (job.name) {
+  switch (name) {
     case 'sla.warning': {
-      const status = await statusIfStillRelevant(job, 'resolve')
+      const status = await statusIfStillRelevant(name, data, 'resolve')
       if (!status) break
       const ref = await ticketReference(tenantId, entityId)
       if (!ref) { console.log(`[sla:scheduler] sla.warning for ${entityType} ${entityId} skipped: ticket gone`); break }
@@ -103,12 +114,14 @@ export async function processSLAJob(job: Job<SLAJobData>): Promise<void> {
         payload: { entity_id: entityId, entity_type: entityType, minutes_remaining: minutesRemaining, target: 'resolve', ...ref },
       }
       await publish(event)
+      // For THIS deadline: the sweep does not send it again (see markWarningSent).
+      await markWarningSent(tenantId, entityId, status.resolve_deadline)
       console.log(`[sla:scheduler] Warning fired for ${entityType} ${entityId} (${minutesRemaining}min remaining)`)
       break
     }
 
     case 'sla.breach': {
-      const status = await statusIfStillRelevant(job, 'resolve')
+      const status = await statusIfStillRelevant(name, data, 'resolve')
       if (!status) break
       // State first, event second: if the publish fails and the job is
       // retried, the status is already consistent. The event id is
@@ -130,7 +143,7 @@ export async function processSLAJob(job: Job<SLAJobData>): Promise<void> {
     }
 
     case 'sla.response_breach': {
-      const status = await statusIfStillRelevant(job, 'response')
+      const status = await statusIfStillRelevant(name, data, 'response')
       if (!status) break
       const ref = await ticketReference(tenantId, entityId)
       if (!ref) { console.log(`[sla:scheduler] sla.response_breach for ${entityType} ${entityId} skipped: ticket gone`); break }
@@ -157,7 +170,7 @@ export async function processSLAJob(job: Job<SLAJobData>): Promise<void> {
     }
 
     default:
-      throw new Error(`[sla:scheduler] Unknown job type: ${job.name}`)
+      throw new Error(`[sla:scheduler] Unknown job type: ${name}`)
   }
 }
 

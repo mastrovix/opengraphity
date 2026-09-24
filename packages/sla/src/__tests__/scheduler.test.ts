@@ -7,6 +7,7 @@ const publish     = vi.fn(async () => {})
 const getSLAStatus = vi.fn()
 const markBreached = vi.fn(async () => {})
 const markResponseBreachNotified = vi.fn(async () => {})
+const markWarningSent = vi.fn(async () => {})
 const callOrder: string[] = []
 
 vi.mock('@opengraphity/events', () => ({
@@ -21,6 +22,8 @@ vi.mock('../status.js', () => ({
   // E-12: l'avviso della presa in carico viene registrato, così la ripresa di
   // una pausa non ne manda un secondo.
   markResponseBreachNotified: (...args: unknown[]) => { callOrder.push('markResponseBreachNotified'); return markResponseBreachNotified(...(args as [])) },
+  // Wave 7 · A1: the warning is recorded for its deadline, so the SLA sweep does not send it again.
+  markWarningSent: (...args: unknown[]) => { callOrder.push('markWarningSent'); return markWarningSent(...(args as [])) },
 }))
 vi.mock('../olaBreach.js', () => ({ isEntityResolved: vi.fn(async () => false) }))
 
@@ -76,6 +79,9 @@ describe('processSLAJob — defense in depth against met targets (D-01)', () => 
     await processSLAJob(job('sla.warning'))
     const event = publish.mock.calls[0]![0] as unknown as { payload: Record<string, unknown> }
     expect(event.payload).toMatchObject({ target: 'resolve', number: 'INC00000012', title: 'Rete giù', entity_id: 'inc-1' })
+    // Sent first, recorded second (a failed publish is retried and marks nothing), for the status's deadline.
+    expect(callOrder.slice(-2)).toEqual(['publish', 'markWarningSent'])
+    expect(markWarningSent).toHaveBeenCalledWith('t1', 'inc-1', status().resolve_deadline)
   })
 
   it('sla.warning: skipped when resolve_met', async () => {

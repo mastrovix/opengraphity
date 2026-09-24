@@ -378,6 +378,16 @@ const INDEXES: SchemaStatement[] = [
     label: 'SLAStatus(tenant_id, started_at)',
     cypher: 'CREATE INDEX sla_status_tenant_started IF NOT EXISTS FOR (n:SLAStatus) ON (n.tenant_id, n.started_at)',
   },
+  // Wave 7 · A1: the SLA sweep's candidates (packages/sla/src/sweep.ts) — the
+  // open SLAs not yet breached, and the responses still owed.
+  {
+    label: 'SLAStatus(tenant_id, breached, resolve_met)',
+    cypher: 'CREATE INDEX sla_status_tenant_open IF NOT EXISTS FOR (n:SLAStatus) ON (n.tenant_id, n.breached, n.resolve_met)',
+  },
+  {
+    label: 'SLAStatus(tenant_id, response_met)',
+    cypher: 'CREATE INDEX sla_status_tenant_response IF NOT EXISTS FOR (n:SLAStatus) ON (n.tenant_id, n.response_met)',
+  },
   {
     label: 'Problem(tenant_id)',
     cypher: 'CREATE INDEX problem_tenant_id IF NOT EXISTS FOR (n:Problem) ON (n.tenant_id)',

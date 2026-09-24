@@ -374,6 +374,24 @@ export async function markResponseBreachNotified(tenantId: string, entityId: str
   }
 }
 
+/**
+ * Records that the resolve-deadline warning went out, FOR WHICH deadline
+ * (review of 23 Sep 2026). The SLA sweep reads it: a warning already sent for
+ * this deadline is not sent again, while a new deadline (a policy or a rule
+ * changed it) gets its own warning.
+ */
+export async function markWarningSent(tenantId: string, entityId: string, resolveDeadline: string): Promise<void> {
+  const session = writeSession()
+  try {
+    await runQuery(session, `
+      MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
+      SET s.warning_sent_for = $resolveDeadline
+    `, { tenantId, entityId, resolveDeadline })
+  } finally {
+    await session.close()
+  }
+}
+
 export async function markResponseMet(tenantId: string, entityId: string): Promise<void> {
   const cypher = `
     MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
