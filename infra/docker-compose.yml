@@ -69,7 +69,8 @@ services:
       - neo4j_data:/data
       - neo4j_logs:/logs
     networks:
-      - opengrafo-network
+      opengrafo-network:
+        ipv4_address: 172.19.0.10
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:7474"]
       interval: 10s
@@ -102,7 +103,8 @@ services:
     volumes:
       - redis_data:/data
     networks:
-      - opengrafo-network
+      opengrafo-network:
+        ipv4_address: 172.19.0.11
     healthcheck:
       test: ["CMD", "redis-cli", "--no-auth-warning", "ping"]
       interval: 5s
@@ -164,7 +166,8 @@ services:
     volumes:
       - keycloak_data:/opt/keycloak/data
     networks:
-      - opengrafo-network
+      opengrafo-network:
+        ipv4_address: 172.19.0.12
     healthcheck:
       # The Keycloak image has no curl/wget — probe /health/ready via bash /dev/tcp.
       # PORTA 9000, non 8080: da Keycloak 25 health e metrics stanno su una
@@ -210,7 +213,8 @@ services:
       - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus_data:/prometheus
     networks:
-      - opengrafo-network
+      opengrafo-network:
+        ipv4_address: 172.19.0.13
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9090/-/ready"]
       interval: 15s
@@ -238,10 +242,11 @@ services:
       # Provisioned dashboards (JSON) — read by the provider above
       - ./grafana/dashboards:/etc/grafana/dashboards:ro
     networks:
-      - opengrafo-network
+      opengrafo-network:
+        ipv4_address: 172.19.0.14
     depends_on:
       loki:
-        condition: service_healthy
+        condition: service_started
       prometheus:
         condition: service_healthy
     healthcheck:
@@ -277,7 +282,8 @@ services:
       start_period: 20s
     restart: unless-stopped
     networks:
-      - opengrafo-network
+      opengrafo-network:
+        ipv4_address: 172.19.0.15
 
   loki:
     image: grafana/loki:3.7.8@sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193
@@ -293,13 +299,14 @@ services:
       # OPERATIONS §6 manda a quei log per gli incidenti operativi.
       - loki_data:/loki
     networks:
-      - opengrafo-network
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+      opengrafo-network:
+        ipv4_address: 172.19.0.16
+    # No healthcheck: since 3.7.8 the image is distroless — no shell, no wget,
+    # and Loki has no health subcommand — so the old `CMD-SHELL wget …/ready`
+    # could never pass. It went unnoticed until the stack was recreated on
+    # 24 Sep 2026: the container still ran on an older image, and Grafana and
+    # promtail, waiting for «healthy», never started. They wait for «started»;
+    # promtail retries its pushes until Loki is ready (`/ready` from the host).
     restart: unless-stopped
 
   # Ships the stdout/stderr of every compose container to Loki, discovered
@@ -315,10 +322,11 @@ services:
       - promtail_data:/var/lib/promtail
     command: -config.file=/etc/promtail/config.yml
     networks:
-      - opengrafo-network
+      opengrafo-network:
+        ipv4_address: 172.19.0.17
     depends_on:
       loki:
-        condition: service_healthy
+        condition: service_started
     restart: unless-stopped
 
   # ── Front door ─────────────────────────────────────────────────────────────
@@ -360,7 +368,8 @@ services:
     volumes:
       - ./nginx:/etc/nginx/templates:ro
     networks:
-      - opengrafo-network
+      opengrafo-network:
+        ipv4_address: 172.19.0.20
     healthcheck:
       # TCP-only: an HTTP probe would proxy to upstreams and report THEIR health
       test: ["CMD-SHELL", "nc -z 127.0.0.1 80"]
@@ -525,7 +534,8 @@ services:
       keycloak:
         condition: service_started
     networks:
-      - opengrafo-network
+      opengrafo-network:
+        ipv4_address: 172.19.0.30
     healthcheck:
       # The api image has no wget/curl — probe with node's built-in fetch.
       # /health/live, not /health (revisione totale · H-48): /health answers 503
@@ -540,6 +550,25 @@ services:
       retries: 5
       start_period: 30s
     restart: unless-stopped
+
+  # One-off commands with the api image — migrations, restores, the chown of
+  # a volume — run HERE, not with `run api`: `api` has a fixed address (see
+  # `networks` at the end), and a second container asking for it while the API
+  # runs is refused («Address already in use»). Same image, environment and
+  # volumes as `api`; an automatic address from `ip_range`; the `tools`
+  # profile keeps it out of `up`, and `run api-tools` enables it by itself:
+  #   docker compose -f infra/docker-compose.yml run --rm --no-deps api-tools node --no-node-snapshot dist/scripts/migrate.js
+  api-tools:
+    extends:
+      service: api
+    profiles: ["tools"]
+    build: !reset null
+    ports: !reset []
+    depends_on: !reset []
+    healthcheck: !reset null
+    restart: !reset null
+    networks: !override
+      - opengrafo-network
 
   # Dedicated worker process: runs the CPU-bound embedding worker off the API
   # event loop. Same image as api, different entrypoint (WORKER_PROFILE=all →
@@ -590,7 +619,8 @@ services:
       keycloak:
         condition: service_started
     networks:
-      - opengrafo-network
+      opengrafo-network:
+        ipv4_address: 172.19.0.31
     healthcheck:
       # No HTTP API in this process: the probe (src/workerHealthcheck.ts, see
       # apps/api/Dockerfile) asks Redis for THIS container's heartbeat and,
@@ -652,7 +682,8 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - opengrafo-network
+      opengrafo-network:
+        ipv4_address: 172.19.0.32
     healthcheck:
       test: ["CMD", "node", "worker-healthcheck.mjs"]
       interval: 30s
@@ -675,7 +706,8 @@ services:
     depends_on:
       - api
     networks:
-      - opengrafo-network
+      opengrafo-network:
+        ipv4_address: 172.19.0.40
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/ >/dev/null || exit 1"]
       interval: 15s
@@ -705,7 +737,8 @@ services:
     depends_on:
       - api
     networks:
-      - opengrafo-network
+      opengrafo-network:
+        ipv4_address: 172.19.0.41
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/ >/dev/null || exit 1"]
       interval: 15s
@@ -729,7 +762,8 @@ services:
     depends_on:
       - api
     networks:
-      - opengrafo-network
+      opengrafo-network:
+        ipv4_address: 172.19.0.42
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/ >/dev/null || exit 1"]
       interval: 15s
@@ -739,8 +773,22 @@ services:
     restart: unless-stopped
 
 networks:
+  # FIXED ADDRESSES (24 Sep 2026). nginx resolves its upstreams through
+  # Docker's DNS and keeps the answer for a while (`resolver … valid=`). When a
+  # deploy recreates several containers at once Docker hands their addresses
+  # around, and for that while nginx sent /graphql to the old address of `api`
+  # — then a worker, whose metrics server answered 404: «Cannot reach the
+  # server» after every deploy. With a fixed address per service a cached
+  # answer is always right. Each service has its `ipv4_address`; the automatic
+  # ones (one-off `docker compose run`, a service added without one) come from
+  # `ip_range`, which never overlaps them.
   opengrafo-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.19.0.0/16
+          gateway: 172.19.0.1
+          ip_range: 172.19.128.0/17
 
 volumes:
   neo4j_data:

@@ -1789,8 +1789,12 @@ docker compose -f infra/docker-compose.yml ps        # api, worker, events-worke
 ```
 
 Se `migrate --init-schema` deve girare con l'immagine **nuova** (indici o
-migrazioni introdotti da questa versione): `up -d api` prima, poi il comando,
-poi `up -d worker events-worker web`. Gli indici di questa ondata
+migrazioni introdotti da questa versione), dopo il `build` e PRIMA di ricreare
+i container: `docker compose -f infra/docker-compose.yml run --rm --no-deps
+api-tools node --no-node-snapshot dist/scripts/migrate.js --init-schema`
+(`api-tools`, non `api`: l'api ha un indirizzo fisso e un secondo container
+che lo chiede viene rifiutato — `DEPLOY.md` §8), poi `up -d api worker
+events-worker web`. Gli indici di questa ondata
 (`event_status_id`, `event_status_correlation` in `packages/neo4j/src/init.ts`)
 sono `IF NOT EXISTS`: il comando è idempotente.
 

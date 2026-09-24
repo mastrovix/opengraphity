@@ -343,11 +343,22 @@ modelli e report. Prima del `up -d` dell'api:
 ```bash
 docker compose -f infra/docker-compose.yml build api
 docker compose -f infra/docker-compose.yml run --rm --no-deps --user root \
-  --entrypoint sh api -c 'chown -R node:node /data'
+  --entrypoint sh api-tools -c 'chown -R node:node /data'
 ```
 
-(`run` monta gli stessi volumi del servizio `api`: `api_data` e il nuovo
-`api_backups`.) Altri cambi di questa tranche da conoscere:
+(`api-tools` monta gli stessi volumi del servizio `api`: `api_data` e il nuovo
+`api_backups`.)
+
+**I comandi una tantum con l'immagine dell'api si lanciano con `api-tools`, non
+con `run api`** (24 set 2026). Ogni servizio ha un indirizzo fisso nella rete
+del compose (il commento su `networks` in `infra/docker-compose.yml` spiega
+perché: senza, dopo ogni deploy nginx mandava `/graphql` per qualche secondo al
+vecchio indirizzo dell'api, finito a un worker che rispondeva 404). Un secondo
+container che chiede l'indirizzo di `api` mentre l'api gira viene rifiutato
+(«Address already in use»); `api-tools` ha la stessa immagine, lo stesso
+ambiente e gli stessi volumi, ma un indirizzo automatico, e `up` non lo avvia
+mai (profilo `tools`). Un servizio FERMO libera il suo indirizzo: `run` su un
+servizio fermato prima (l'export di Keycloak qui sotto) funziona come prima. Altri cambi di questa tranche da conoscere:
 
 - il comando del `worker` è `node --no-node-snapshot dist/worker.js` (prima
   `apps/api/dist/worker.js`): il compose è già aggiornato;
@@ -438,10 +449,10 @@ al posto dello schema lo rompeva a metà):
 ```bash
 docker compose -f infra/docker-compose.yml stop api worker events-worker
 docker compose -f infra/docker-compose.yml cp offsite/neo4j/backup_<stamp>.tar.gz api:/data/backups/
-docker compose -f infra/docker-compose.yml run --rm --no-deps api node --no-node-snapshot dist/scripts/migrate.js --schema-only
-docker compose -f infra/docker-compose.yml run --rm --no-deps api node --no-node-snapshot dist/scripts/restore-neo4j.js --input /data/backups/backup_<stamp>.tar.gz --dry-run
-docker compose -f infra/docker-compose.yml run --rm --no-deps api node --no-node-snapshot dist/scripts/restore-neo4j.js --input /data/backups/backup_<stamp>.tar.gz --yes-restore
-docker compose -f infra/docker-compose.yml run --rm --no-deps api node --no-node-snapshot dist/scripts/migrate.js
+docker compose -f infra/docker-compose.yml run --rm --no-deps api-tools node --no-node-snapshot dist/scripts/migrate.js --schema-only
+docker compose -f infra/docker-compose.yml run --rm --no-deps api-tools node --no-node-snapshot dist/scripts/restore-neo4j.js --input /data/backups/backup_<stamp>.tar.gz --dry-run
+docker compose -f infra/docker-compose.yml run --rm --no-deps api-tools node --no-node-snapshot dist/scripts/restore-neo4j.js --input /data/backups/backup_<stamp>.tar.gz --yes-restore
+docker compose -f infra/docker-compose.yml run --rm --no-deps api-tools node --no-node-snapshot dist/scripts/migrate.js
 docker compose -f infra/docker-compose.yml start api worker events-worker
 ```
 
