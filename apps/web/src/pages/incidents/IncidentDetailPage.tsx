@@ -49,6 +49,8 @@ import { Select, Textarea } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
 import { formatDate, timeAgo } from './IncidentCard'
 import { SimilarIncidentsPanel } from '@/components/SimilarIncidentsPanel'
+import { ProblemSuggestionsCard } from './ProblemSuggestionsCard'
+import { ChangeSuspectsCard } from './ChangeSuspectsCard'
 import { MonitoringAlarmsSection } from '@/pages/events/CorrelatedEventsSection'
 import { ImpactedServicesSection } from './ImpactedServicesSection'
 import { FiringAlarmsWarning } from './FiringAlarmsWarning'
@@ -659,6 +661,11 @@ export function IncidentDetailPage() {
               },
             ]}
           />
+
+          {/* The problems still open on the incident's CIs: proposed here, linked only by whoever decides (25 Sep 2026). */}
+          {can('problem.read') && <ProblemSuggestionsCard incidentId={incident.id} canLink={canLinkProblem} />}
+          {/* The changes released on those CIs around the opening: the first suspects, shown and never linked. */}
+          {can('change.read') && <ChangeSuspectsCard incidentId={incident.id} />}
 
           {/* Allarmi di monitoraggio correlati (aperti/agganciati dalla policy eventi) */}
           <MonitoringAlarmsSection events={incident.correlatedEvents} total={incident.correlatedEventCount} purged={incident.correlatedEventsPurged} incidentId={incident.id} />

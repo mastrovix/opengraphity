@@ -102,5 +102,39 @@ export function problemSDL(): string {
     workaround: String
     affectedUsers: Int
   }
+
+  """A problem still open on some of an incident's CIs: the known error matching of ITIL, proposed and never applied on its own."""
+  type ProblemSuggestion {
+    id: ID!
+    number: String!
+    title: String!
+    """The step of the problem's workflow."""
+    status: String!
+    """In a step whose purpose is «known_error»: cause and workaround documented."""
+    knownError: Boolean!
+    workaround: String
+    """The incident's CIs this problem affects: why it is proposed."""
+    cis: [ProblemSuggestionCI!]!
+  }
+
+  type ProblemSuggestionCI {
+    id: ID!
+    name: String!
+  }
+
+  """A change on some of an incident's CIs, released around the time it opened: a suspect, shown and never linked."""
+  type ChangeSuspect {
+    id: ID!
+    code: String!
+    title: String!
+    """The step of the change's workflow now."""
+    status: String!
+    """Being released when the incident opened: the first suspect."""
+    runningAtOpening: Boolean!
+    """When its release ended, before the incident opened; null when it was still running then."""
+    releasedAt: String
+    """The incident's CIs this change affects."""
+    cis: [ProblemSuggestionCI!]!
+  }
   `
 }

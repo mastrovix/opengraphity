@@ -102,6 +102,8 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   { anyOf: ['incident.ai'], query: ['triageSuggestion', 'resolutionDraft'] },
   { anyOf: ['incident.write', 'problem.write'], mutation: ['linkIncidentToProblem', 'unlinkIncidentFromProblem'] },
   { anyOf: ['incident.read', 'problem.read'], query: ['knownErrors'] },
+  { anyOf: ['problem.read'], query: ['incidentProblemSuggestions'] },
+  { anyOf: ['change.read'], query: ['incidentChangeSuspects'] },
   { anyOf: ['problem.read'], query: ['problems', 'problem', 'problemCandidates', 'ciProblems'] },
   {
     anyOf: ['problem.write'],

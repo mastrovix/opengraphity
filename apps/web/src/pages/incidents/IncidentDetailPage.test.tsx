@@ -73,6 +73,9 @@ vi.mock('@/components/ticket/TicketTasksSection', () => ({ TicketTasksSection: (
 vi.mock('@/components/AttachmentsSection', () => ({ AttachmentsSection: () => null }))
 vi.mock('@/components/InternalChatPanel', () => ({ InternalChatPanel: () => null }))
 vi.mock('@/components/SimilarIncidentsPanel', () => ({ SimilarIncidentsPanel: () => null }))
+// The suggested problems and the suspect changes have their own tests (ProblemSuggestionsCard, ChangeSuspectsCard).
+vi.mock('./ProblemSuggestionsCard', () => ({ ProblemSuggestionsCard: () => null }))
+vi.mock('./ChangeSuspectsCard', () => ({ ChangeSuspectsCard: () => null }))
 vi.mock('@/components/WatcherBar', () => ({ WatcherBar: () => null }))
 vi.mock('@/pages/events/CorrelatedEventsSection', () => ({ MonitoringAlarmsSection: () => null }))
 vi.mock('@/pages/incidents/ImpactedServicesSection', () => ({ ImpactedServicesSection: () => null }))

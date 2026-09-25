@@ -15,6 +15,7 @@ import { ticketCustomFieldResolvers } from './ticketCustomFields.js'
 import type { IResolvers } from '@graphql-tools/utils'
 import { incidentResolvers } from './incident.js'
 import { problemResolvers } from './problem.js'
+import { changeSuspectResolvers } from './changeSuspects.js'
 import { orderByOrThrow } from '../../lib/sortField.js'
 import {
   linkRelatedTicket, unlinkRelatedTicket,
@@ -326,6 +327,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
     Query: {
       ...incidentResolvers.Query,
       ...problemResolvers.Query,
+      ...changeSuspectResolvers.Query,
       ...changeResolvers.Query,
       ...serviceRequestResolvers.Query,
       ...teamResolvers.Query,

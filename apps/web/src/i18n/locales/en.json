@@ -4304,7 +4304,8 @@
       "rejectViaApproval": "To reject the change, use «Reject» in the Approval section: it reopens the assessments.",
       "typeRequired": "The change type is required: choose a value of the change_type vocabulary.",
       "noChangeType": "The change {{change}} has no change type: the approval gate cannot be evaluated. Set the type on the change.",
-      "calendarRange": "The calendar range is empty or reversed: from {{from}} to {{to}}."
+      "calendarRange": "The calendar range is empty or reversed: from {{from}} to {{to}}.",
+      "noImplementationStep": "No step of the change workflow has the purpose «Release under way (open window)»: nothing says when a change was being released, so no change can be matched to an incident. Give that purpose to the release step, in the workflow designer."
     },
     "import": {
       "stepNotInWorkflow": "The status «{{step}}» is not a step of this ticket's workflow.",
@@ -5537,6 +5538,26 @@
     },
     "ciChangeList": {
       "title": "Changes"
+    },
+    "problemSuggestions": {
+      "title": "Known problems on the affected CIs",
+      "intro": "Problems still open on this incident's CIs. OpenGrafo proposes them: link one only if the cause is the same.",
+      "empty": "No problem is open on this incident's CIs.",
+      "knownError": "Known error",
+      "on": "On {{cis}}",
+      "workaround": "Workaround:",
+      "link": "Link",
+      "linkFailed": "Linking the problem failed: {{error}}",
+      "failed": "The problems open on this incident's CIs could not be read: {{reason}}"
+    },
+    "changeSuspects": {
+      "title": "Changes on the affected CIs",
+      "intro": "The changes being released when the incident opened are the first suspects; below them, those released in the days before. OpenGrafo shows them, it does not link them.",
+      "empty": "No change was being released on this incident's CIs, at the opening or in the days before.",
+      "running": "Being released at the opening",
+      "releasedAt": "Release ended {{when}}",
+      "on": "On {{cis}}",
+      "failed": "The changes on this incident's CIs could not be read: {{reason}}"
     }
   },
   "events": {

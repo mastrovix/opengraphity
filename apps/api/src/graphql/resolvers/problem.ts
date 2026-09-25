@@ -11,7 +11,7 @@ import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { getScalarFields } from '../../lib/schemaFields.js'
 import { assertDomainValue } from '../../lib/domainMatrix.js'
 import { audit } from '../../lib/audit.js'
-import { ValidationError } from '../../lib/errors.js'
+import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import {} from '../../lib/stepEvent.js'
 import { logger } from '../../lib/logger.js'
 import { hasPermission, requirePermission } from '../../lib/permissions.js'
@@ -28,7 +28,7 @@ import { assertMayAcknowledgeNoSla } from '../../lib/slaAcknowledgement.js'
 import { ticketSlaStatusResolver } from './ticketSlaStatus.js'
 import { commentAuthorKind, commentAuthorLabel, commentTrace } from '../../lib/commentAuthor.js'
 import { personActor, refusalError, transitionTicket } from '../../services/ticketTransition.js'
-import { getStepNamesByPurpose } from '../../lib/workflowHelpers.js'
+import { getStepNamesByClass, getStepNamesByPurpose } from '../../lib/workflowHelpers.js'
 import { writeTicketComment } from '../../lib/ticketComments.js'
 import { notifyCommentAudience } from './comments.js'
 import { publishTicketUpdated } from '../../lib/ticketUpdated.js'
@@ -772,8 +772,51 @@ async function knownErrors(_: unknown, args: { search?: string }, ctx: GraphQLCo
   })
 }
 
+/**
+ * The problems still open on the CIs an incident affects, not linked to it yet
+ * (owner, 25 Sep 2026): the known error matching of ITIL, a known problem and its
+ * workaround in front of whoever works the incident.
+ *
+ * OpenGrafo proposes and never links on its own: the same CI is not the same
+ * cause — a known problem of CPU spikes on a server has nothing to do with an
+ * incident on that server for a full disk. The operator decides.
+ *
+ * «Open» and «known error» come from the steps of the tenant's problem workflow
+ * (their class and their purpose), never from their names. Known errors first,
+ * then the most recently updated, twenty at most (a literal in the query, so
+ * check-cypher verifies it): beyond these the problems of those CIs are for
+ * their own pages. An incident that does not exist is an error, not an empty list.
+ */
+async function incidentProblemSuggestions(_: unknown, args: { incidentId: string }, ctx: GraphQLContext) {
+  return withSession(async (session) => {
+    const incident = await runQueryOne<{ id: string }>(session,
+      'MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId}) RETURN i.id AS id',
+      { incidentId: args.incidentId, tenantId: ctx.tenantId })
+    if (!incident) throw new NotFoundError('Incident', args.incidentId)
+    const { open } = await getStepNamesByClass(session, ctx.tenantId, 'problem')
+    const known = await getStepNamesByPurpose(session, ctx.tenantId, 'problem', ['known_error'])
+    const rows = await runQuery<{ props: Props; cis: Array<{ id: string; name: string }> }>(session, `
+      MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})-[:AFFECTED_BY]->(ci:ConfigurationItem {tenant_id: $tenantId})<-[:AFFECTS]-(p:Problem {tenant_id: $tenantId})
+      WHERE p.status IN $open AND NOT (p)-[:CAUSED_BY]->(i)
+      WITH p, collect(DISTINCT {id: ci.id, name: ci.name}) AS cis
+      RETURN properties(p) AS props, cis
+      ORDER BY CASE WHEN p.status IN $known THEN 0 ELSE 1 END, p.updated_at DESC
+      LIMIT 20`,
+    { incidentId: args.incidentId, tenantId: ctx.tenantId, open, known })
+    return rows.map((r) => ({
+      id:         r.props['id'] as string,
+      number:     (r.props['number'] ?? '') as string,
+      title:      r.props['title'] as string,
+      status:     r.props['status'] as string,
+      knownError: known.includes(r.props['status'] as string),
+      workaround: (r.props['workaround'] ?? null) as string | null,
+      cis:        [...r.cis].sort((a, b) => a.name.localeCompare(b.name)),
+    }))
+  })
+}
+
 export const problemResolvers = {
-  Query: { problems, problem, knownErrors },
+  Query: { problems, problem, knownErrors, incidentProblemSuggestions },
   Mutation: {
     createProblem,
     updateProblem,

@@ -54,6 +54,10 @@ export function buildBaseSDL(): string {
     problems(limit: Int, offset: Int, status: String, priority: String, search: String, filters: String, sortField: String, sortDirection: String): ProblemsResult!
     problem(id: ID!): Problem
     knownErrors(search: String): [Problem!]!
+    """The problems still open on the CIs this incident affects and not linked to it: OpenGrafo proposes them, the operator decides whether to link. Known errors first."""
+    incidentProblemSuggestions(incidentId: ID!): [ProblemSuggestion!]!
+    """The changes on the CIs this incident affects that were being released when it opened, or whose release ended in the tenant's recent-changes window before: the first suspects. Shown, never linked."""
+    incidentChangeSuspects(incidentId: ID!): [ChangeSuspect!]!
 
     # Service Requests
     serviceRequests(status: String, priority: String, limit: Int, offset: Int, filters: String, sortField: String, sortDirection: String): ServiceRequestsResult!

@@ -4304,7 +4304,8 @@
       "rejectViaApproval": "Per rigettare la change usa «Rigetta» nella sezione Approvazione: riapre gli assessment.",
       "typeRequired": "Il tipo di change è obbligatorio: scegli un valore del vocabolario change_type.",
       "noChangeType": "La change {{change}} non ha un tipo: il varco delle approvazioni non si può valutare. Imposta il tipo sulla change.",
-      "calendarRange": "L'intervallo del calendario è vuoto o al rovescio: da {{from}} a {{to}}."
+      "calendarRange": "L'intervallo del calendario è vuoto o al rovescio: da {{from}} a {{to}}.",
+      "noImplementationStep": "Nessun passo del workflow delle change ha lo scopo «Rilascio in corso (finestra aperta)»: niente dice quando una change era in rilascio, quindi nessuna change si può accostare a un incident. Assegna quello scopo al passo del rilascio, nel disegnatore del workflow."
     },
     "import": {
       "stepNotInWorkflow": "Lo stato «{{step}}» non è un passo del workflow di questo ticket.",
@@ -5537,6 +5538,26 @@
     },
     "ciChangeList": {
       "title": "Change"
+    },
+    "problemSuggestions": {
+      "title": "Problem noti sui CI colpiti",
+      "intro": "I problem ancora aperti sui CI di questo incident. OpenGrafo li propone: collegane uno solo se la causa è la stessa.",
+      "empty": "Nessun problem aperto sui CI di questo incident.",
+      "knownError": "Errore noto",
+      "on": "Su {{cis}}",
+      "workaround": "Soluzione temporanea:",
+      "link": "Collega",
+      "linkFailed": "Il collegamento del problem non è riuscito: {{error}}",
+      "failed": "Non è stato possibile leggere i problem aperti sui CI di questo incident: {{reason}}"
+    },
+    "changeSuspects": {
+      "title": "Change sui CI colpiti",
+      "intro": "Le change in rilascio quando l'incident si è aperto sono le prime indiziate; sotto, quelle rilasciate nei giorni prima. OpenGrafo le mostra, non le collega.",
+      "empty": "Nessuna change in rilascio sui CI di questo incident, né all'apertura né nei giorni prima.",
+      "running": "In rilascio all'apertura",
+      "releasedAt": "Rilascio chiuso il {{when}}",
+      "on": "Su {{cis}}",
+      "failed": "Non è stato possibile leggere le change sui CI di questo incident: {{reason}}"
     }
   },
   "events": {
