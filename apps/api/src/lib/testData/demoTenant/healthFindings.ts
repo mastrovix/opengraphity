@@ -26,9 +26,23 @@ import type { DemoClock } from './clock.js'
 import { DAY } from './clock.js'
 import type { CMDBPlan, PlannedCI, PlannedCIRelation } from './cmdb.js'
 import { SERVER_ROLE_MIX } from './names.js'
-import { DEMO_RATIOS } from './options.js'
+import { DEFAULT_DEMO_COUNTS, DEMO_RATIOS, type DemoCounts } from './options.js'
 
 export type HealthFindingCounts = { readonly [K in keyof typeof DEMO_RATIOS.healthFindings]: number }
+
+/**
+ * How many to plant in a tenant of these counts. The full demo plants exactly
+ * `DEMO_RATIOS.healthFindings`; a smaller one (`--scale`, the integration suite)
+ * plants in proportion to its applications, never fewer than one per check.
+ * The full set does not fit a small estate: at the integration scale (0.02)
+ * three applications without CIs were asked and two could be planted, on
+ * every seed and every day — the CI of 24 Sep 2026 stopped there.
+ */
+export function healthFindingsFor(counts: DemoCounts): HealthFindingCounts {
+  const ratio = Math.min(1, counts.applications / DEFAULT_DEMO_COUNTS.applications)
+  return Object.fromEntries(Object.entries(DEMO_RATIOS.healthFindings)
+    .map(([k, n]) => [k, Math.max(1, Math.round(n * ratio))])) as unknown as HealthFindingCounts
+}
 
 /** What each card of CMDB Health reads when these are planted and nothing else is wrong. */
 export function expectedHealthCards(f: HealthFindingCounts): Record<string, number> {

@@ -23,7 +23,7 @@ import { DAY, DemoClock, HOUR, MINUTE } from './clock.js'
 import { assertDemoCounts, DEFAULT_DEMO_COUNTS, DEMO_RATIOS, type DemoOptions } from './options.js'
 import { planPeople, type PlannedUser } from './people.js'
 import { monitoredServiceCandidates, planCMDB, type CMDBPlan, type PlannedCI } from './cmdb.js'
-import { plantHealthFindings } from './healthFindings.js'
+import { healthFindingsFor, plantHealthFindings } from './healthFindings.js'
 import { planConfig, type ConfigPlan, type PlannedOla } from './config.js'
 import { DemoWriter, ensureIdIndexes, int } from './writer.js'
 import { planClientLogs } from './clientLogs.js'
@@ -377,7 +377,7 @@ async function writeReference(run: Run): Promise<Reference> {
 
   const cmdb = planCMDB(rng.fork('cmdb'), clock, opts.counts, people)
   // A few CIs feed CMDB Health on purpose, before anything uses the plan (owner, 24 Sep 2026).
-  plantHealthFindings(rng.fork('health-findings'), clock, cmdb)
+  plantHealthFindings(rng.fork('health-findings'), clock, cmdb, healthFindingsFor(opts.counts))
   const config = planConfig(rng.fork('config'), clock, people)
   const ciTypes = await runQuery<{ id: string }>(session, `
     MATCH (ct:CITypeDefinition) WHERE (ct.scope = 'base' OR (ct.scope = 'tenant' AND ct.tenant_id = $tenantId))

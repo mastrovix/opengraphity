@@ -190,8 +190,10 @@ describe('CIHealthPage', () => {
     // La query parte già in fase di render (variabili viste dal mock prima del commit): la posizione va attesa, non letta al volo.
     await attendiURL('/monitoring/health', { env: 'staging', team: 't1' })
     await user.type(screen.getByRole('textbox', { name: 'Search a CI by name' }), 'db')
-    await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ environment: 'staging', team: 't1', search: 'db' }))
-    await attendiURL('/monitoring/health', { env: 'staging', team: 't1', q: 'db' })
+    // The search waits its 300 ms debounce before the query: under the CI's load, with coverage on, the
+    // default second of waitFor was not enough (main, 24 Sep 2026). The wait is declared, not guessed.
+    await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ environment: 'staging', team: 't1', search: 'db' }), { timeout: 5_000 })
+    await attendiURL('/monitoring/health', { env: 'staging', team: 't1', q: 'db' }, { timeout: 5_000 })
   // Tre interazioni con 300 ms di debounce in mezzo: il tempo si dichiara.
   }, 30_000)
 

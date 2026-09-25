@@ -10,7 +10,10 @@
  *  - each defect has its shape and breaks nothing else, each planted CI is
  *    marked once and no ticket picks it;
  *  - with too few candidates the plan stops and says which, rather than
- *    planting fewer than asked.
+ *    planting fewer than asked;
+ *  - how many is the tenant's size: the full demo plants the owner's numbers,
+ *    a smaller one in proportion and at least one per check, and the two
+ *    integration tenants take theirs (the CI of 24 Sep 2026 stopped there).
  * «Outside every chain» and «incomplete» come from the product's own walk of
  * the chains (cmdbChains/evaluate.ts), run over the plan; the other cards are
  * computed here as services/cmdbHealth.ts computes them.
@@ -18,15 +21,16 @@
 import { describe, it, expect } from 'vitest'
 import { Rng } from '../random.js'
 import { DemoClock, DAY } from '../clock.js'
-import { DEMO_RATIOS } from '../options.js'
+import { DEFAULT_DEMO_COUNTS, DEMO_RATIOS, scaledDemoCounts } from '../options.js'
 import { planPeople } from '../people.js'
 import { planCMDB, type CMDBPlan, type PlannedCI, type PlannedCIRelation } from '../cmdb.js'
-import { expectedHealthCards, plantHealthFindings } from '../healthFindings.js'
+import { expectedHealthCards, healthFindingsFor, plantHealthFindings } from '../healthFindings.js'
 import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
 import { STARTING_CHAINS as CMDB_STARTING_CHAINS } from '../../../cmdbStartingChains.js'
 import { evaluateChains } from '../../../../services/cmdbChains/evaluate.js'
 import { admittedRelationKeys, type CmdbChain } from '../../../../services/cmdbChains/model.js'
 import { NOW, SMALL, smallWorld } from './fixtures.js'
+import { INTEGRATION_SCALE, TENANT_A, TENANT_B } from '../../../../__integration__/tenants.js'
 import { planChangeSkeletons } from '../changes.js'
 import { planIncidentSkeletons } from '../incidents.js'
 
@@ -162,6 +166,27 @@ describe('planted', () => {
   it('with too few candidates the plan stops and says which, rather than planting fewer', () => {
     expect(() => plantHealthFindings(new Rng('x'), clock, planned('health-b'), { ...f, applicationsWithoutCis: 10_000 }))
       .toThrow(/healthFindings: 10000 applications sharing all they stand on asked, \d+ can be planted/)
+  })
+})
+
+describe('how many, for the size of the tenant', () => {
+  it('the full demo plants exactly the owner\'s numbers; a smaller one in proportion, never fewer than one per check', () => {
+    expect(healthFindingsFor(DEFAULT_DEMO_COUNTS)).toEqual(DEMO_RATIOS.healthFindings)
+    expect(Object.values(healthFindingsFor(scaledDemoCounts(0.5))).every((n) => n >= 1)).toBe(true)
+    expect(Object.values(healthFindingsFor(scaledDemoCounts(INTEGRATION_SCALE)))).toEqual(Object.values(DEMO_RATIOS.healthFindings).map(() => 1))
+  })
+
+  it('the two integration tenants take theirs (the CI of 24 Sep 2026: 3 applications without CIs asked, 2 possible)', () => {
+    const counts = scaledDemoCounts(INTEGRATION_SCALE)
+    // A plan per attempt: a refused planting leaves the CIs it had marked.
+    const plan = (seed: string): CMDBPlan => {
+      const rng = new Rng(seed)
+      return planCMDB(rng.fork('cmdb'), clock, counts, planPeople(rng.fork('people'), clock, counts))
+    }
+    for (const t of [TENANT_A, TENANT_B]) {
+      expect(() => plantHealthFindings(new Rng(t.seed).fork('health-findings'), clock, plan(t.seed), DEMO_RATIOS.healthFindings), t.id).toThrow(/can be planted/)
+      expect(() => plantHealthFindings(new Rng(t.seed).fork('health-findings'), clock, plan(t.seed), healthFindingsFor(counts)), t.id).not.toThrow()
+    }
   })
 })
 

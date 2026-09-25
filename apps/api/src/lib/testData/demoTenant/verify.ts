@@ -49,7 +49,7 @@ import { configurationIssues, invalidateConfigurationIssues } from '../../config
 import { AI_AUDIT_ACTIONS } from '../../dailyWorkAggregates.js'
 import { DEMO_NOTIFICATION_TARGETS } from './organization.js'
 import { cmdbHealthSummary } from '../../../services/cmdbHealth.js'
-import { expectedHealthCards } from './healthFindings.js'
+import { expectedHealthCards, healthFindingsFor } from './healthFindings.js'
 
 export interface VerifyReport { checks: number; failures: string[]; facts: string[] }
 
@@ -74,7 +74,7 @@ export async function verifyDemoTenant(session: Session, tenantId: string, count
   const v = new Verifier(session, tenantId)
   await countsAndShares(v, counts)
   await openAndDuplicates(v, counts)
-  await cmdbRules(v)
+  await cmdbRules(v, counts)
   await workflowHistories(v)
   await changeRules(v)
   await monitoringSources(v)
@@ -165,7 +165,8 @@ async function openAndDuplicates(v: Verifier, counts: DemoCounts): Promise<void>
 }
 
 // ── CMDB rules ───────────────────────────────────────────────────────────────
-async function cmdbRules(v: Verifier): Promise<void> {
+async function cmdbRules(v: Verifier, counts: DemoCounts): Promise<void> {
+  const planted = healthFindingsFor(counts)
   const edges = await v.rows<{ a: string; r: string; b: string; n: unknown }>(`
     MATCH (a:ConfigurationItem {tenant_id: $tenantId})-[r]->(b:ConfigurationItem {tenant_id: $tenantId})
     RETURN head([l IN labels(a) WHERE l <> 'ConfigurationItem']) AS a, type(r) AS r, head([l IN labels(b) WHERE l <> 'ConfigurationItem']) AS b, count(*) AS n`)
@@ -183,8 +184,8 @@ async function cmdbRules(v: Verifier): Promise<void> {
   // The owner's certificate shapes (24 Sep 2026): never a database's — but for the few planted
   // on purpose as relations no chain admits (healthFindings.ts).
   const databaseCertificates = await v.one(`MATCH (:Database {tenant_id: $tenantId})-[:USES_CERTIFICATE]->(c:Certificate) RETURN count(c) AS n`)
-  v.check(databaseCertificates === DEMO_RATIOS.healthFindings.relationsNotAdmitted,
-    `a certificate is a database's only where planted (${String(databaseCertificates)}, ${String(DEMO_RATIOS.healthFindings.relationsNotAdmitted)} planted)`)
+  v.check(databaseCertificates === planted.relationsNotAdmitted,
+    `a certificate is a database's only where planted (${String(databaseCertificates)}, ${String(planted.relationsNotAdmitted)} planted)`)
   // The infrastructure flag: what serves the whole company is never in an application chain.
   v.check(await v.one(`MATCH (c:ConfigurationItem {tenant_id: $tenantId}) WHERE c.is_infrastructure = true AND c.chain = 'Application' RETURN count(c) AS n`) === 0,
     'no CI flagged as infrastructure is in an application chain')
@@ -192,7 +193,7 @@ async function cmdbRules(v: Verifier): Promise<void> {
   // CMDB Health as the owner reads it (24 Sep 2026): each card shows exactly what was planted
   // (healthFindings.ts) — the rest of the demo breaks none of its rules — and all of them
   // together no more than 50 («non più di 50 tra tutte le casistiche»).
-  const expected = expectedHealthCards(DEMO_RATIOS.healthFindings)
+  const expected = expectedHealthCards(planted)
   const health = await cmdbHealthSummary(v.tenantId)
   for (const c of health.checks) {
     v.check(c.count === expected[c.key], `CMDB Health: "${c.key}" finds ${String(c.count)} of ${String(c.population)}, ${String(expected[c.key])} planted`)
