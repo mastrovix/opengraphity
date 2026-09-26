@@ -38,10 +38,10 @@ import {
   puoPrendereAtto, puoAprireUnProblem, titoloDelProblem, descrizioneDelProblem,
 } from '../../lib/proposalAgreement.js'
 import { createProblem } from '../../services/problemService.js'
-import { legaAllaProposta, fascicoloDelProblem } from '../../lib/problemDossier.js'
+import { legaAllaProposta, fascicoloDelProblem, fascicoloPossibile } from '../../lib/problemDossier.js'
 import { avviaIndagine } from '../../lib/indagineAutomatica.js'
 import { enqueuePortaIlFascicolo } from '../../jobs/autoanalisiWorker.js'
-import { analizzaCliente, conIlLucchetto } from '../../jobs/proposalScanner.js'
+import { analizzaCliente, conIlLucchetto, scheduleRemedyVerification } from '../../jobs/proposalScanner.js'
 import { PERMESSO_LETTURA } from './ticketTasks.js'
 import { getSession } from '@opengraphity/neo4j'
 import { runQueryOne } from './ci-utils.js'
@@ -106,6 +106,9 @@ function mappaGql(row: ProposalRow, ctx: GraphQLContext) {
     notNowUntil: row.notNowUntil,
     auditEntryId: row.auditEntryId,
     executionError: row.executionError,
+    verification: row.verification,
+    verifiedAt: row.verifiedAt,
+    verificationDetail: paramList((row.verificationDetail ?? undefined) as Record<string, string | number> | undefined),
     /** Serve alla pagina per decidere se offrire «disfa»: non si offre un bottone che fallirà. */
     undoable: row.status === 'accepted' && !row.undone && row.undoState != null
       && row.action != null && azioneDisfabile(row.action.type),
@@ -227,7 +230,16 @@ async function acceptProposal(_: unknown, args: { id: string }, ctx: GraphQLCont
     const aggiornata = await segnaDecisa(ctx.tenantId, row.id, {
       status: 'accepted', decidedBy: ctx.userId,
       undoState: esito.undoState, undone: false,
+      // What the action did, for the verification of an operational remedy (26 Sep 2026).
+      executionDetails: esito.details,
     })
+    // An operational remedy is checked some minutes later; if the queue is down, the nightly run does it.
+    if (row.area === 'operations') {
+      await scheduleRemedyVerification(ctx.tenantId, row.id).catch((err: unknown) => {
+        logger.warn({ module: 'proposals', tenantId: ctx.tenantId, id: row.id, err: err instanceof Error ? err.message : String(err) },
+          'proposals: remedy verification not queued, the nightly run will verify')
+      })
+    }
     return mappaGql(aggiornata ?? row, ctx)
   } catch (err) {
     const messaggio = err instanceof Error ? err.message : String(err)
@@ -405,7 +417,7 @@ async function openProblemFromProposal(
    * decisione che è del cliente.
    */
   const problem = await createProblem({
-    title:       titoloDelProblem(row.params),
+    title:       titoloDelProblem(row.params, row.kind),
     description: descrizioneDelProblem(row),
     impact:      args.impact,
     urgency:     args.urgency,
@@ -449,18 +461,21 @@ async function openProblemFromProposal(
    * Problem resta valido e il suo fascicolo si legge dal prodotto, che è
    * esattamente com'era prima che questo pezzo esistesse.
    */
-  try {
-    await enqueuePortaIlFascicolo({
-      tenantId:      ctx.tenantId,
-      problemId:     problem.id as string,
-      problemNumber: problem.number as string,
-      titolo:        titoloDelProblem(row.params),
-    })
-  } catch (err) {
-    logger.error(
-      { err, module: 'proposals', tenantId: ctx.tenantId, problem: problem.number },
-      'proposals: the dossier was not queued for GitHub, the problem stays in the product only',
-    )
+  // Only the platform's faults carry a dossier to GitHub: a customer's running never leaves the product (26 Sep 2026).
+  if (fascicoloPossibile(ctx.tenantId, row)) {
+    try {
+      await enqueuePortaIlFascicolo({
+        tenantId:      ctx.tenantId,
+        problemId:     problem.id as string,
+        problemNumber: problem.number as string,
+        titolo:        titoloDelProblem(row.params, row.kind),
+      })
+    } catch (err) {
+      logger.error(
+        { err, module: 'proposals', tenantId: ctx.tenantId, problem: problem.number },
+        'proposals: the dossier was not queued for GitHub, the problem stays in the product only',
+      )
+    }
   }
 
   const aggiornata = await segnaDecisa(ctx.tenantId, row.id, {

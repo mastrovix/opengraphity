@@ -91,6 +91,9 @@ const COMPOSITORI: Compositore[] = [
     chiama: async () => (await import('../ticketTeamHistory.js')).firstTeamCypher('e', 't', '$now') },
   { nome: 'ciHealthCaseCypher', categoria: 'nonTaglia',
     chiama: async () => (await import('../../services/events/ciHealth.js')).ciHealthCaseCypher('sevs', 'flap') },
+  // A WHERE predicate, no WITH: the stuck alarms, shared by the pass and the operational remedies (26 Sep 2026).
+  { nome: 'stuckFiringWhereCypher', categoria: 'nonTaglia',
+    chiama: async () => (await import('../../services/events/stuck.js')).stuckFiringWhereCypher() },
   { nome: 'createCICypher', categoria: 'nonTaglia',
     chiama: async () => (await import('../../discovery/reconciliationEngine.js')).createCICypher('Server') },
   { nome: 'entityExistsCypher', categoria: 'nonTaglia',

@@ -46,9 +46,11 @@ vi.mock('../../../services/problemService.js', () => ({ createProblem: (...a: un
 
 const legaAllaProposta = vi.fn().mockResolvedValue(undefined)
 const fascicoloDelProblem = vi.fn()
+const fascicoloPossibile = vi.fn().mockReturnValue(true)
 vi.mock('../../../lib/problemDossier.js', () => ({
   legaAllaProposta: (...a: unknown[]) => legaAllaProposta(...a),
   fascicoloDelProblem: (...a: unknown[]) => fascicoloDelProblem(...a),
+  fascicoloPossibile: (...a: unknown[]) => fascicoloPossibile(...a),
 }))
 
 const avviaIndagine = vi.fn().mockResolvedValue({ fatto: true, passo: 'under_investigation', percorsi: ['new', 'under_investigation'], motivo: 'fatto' })
@@ -64,9 +66,11 @@ vi.mock('../../../jobs/autoanalisiWorker.js', () => ({
 
 const analizzaCliente = vi.fn()
 const conIlLucchetto = vi.fn()
+const scheduleRemedyVerification = vi.fn().mockResolvedValue(undefined)
 vi.mock('../../../jobs/proposalScanner.js', () => ({
   analizzaCliente: (...a: unknown[]) => analizzaCliente(...a),
   conIlLucchetto: (...a: unknown[]) => conIlLucchetto(...a),
+  scheduleRemedyVerification: (...a: unknown[]) => scheduleRemedyVerification(...a),
 }))
 
 const runQueryOne = vi.fn()
@@ -209,6 +213,29 @@ describe('acceptProposal', () => {
     expect(segnaDecisa.mock.calls[0]![2]).toMatchObject({ status: 'accepted', decidedBy: 'u1', undone: false })
   })
 
+  // 26 Sep 2026: an operational remedy is verified some minutes after it ran, not the next morning.
+  it('an operational remedy keeps what it did and queues its verification; other proposals queue nothing', async () => {
+    proposta.mockResolvedValue(riga({ area: 'operations', action: { type: 'queue.retry_failed', params: { queue: 'notifications', max: 5 } } }))
+    eseguiAzione.mockResolvedValue({ details: { queue: 'notifications', retried: 5, jobIds: ['1'] }, undoState: null })
+    await proposalResolvers.Mutation.acceptProposal!(null, { id: 'p1' } as never, ctx())
+    expect(segnaDecisa.mock.calls[0]![2]).toMatchObject({ status: 'accepted', executionDetails: { queue: 'notifications', retried: 5 } })
+    expect(scheduleRemedyVerification).toHaveBeenCalledWith('t1', 'p1')
+
+    vi.clearAllMocks()
+    proposta.mockResolvedValue(riga({}))
+    eseguiAzione.mockResolvedValue({ details: {}, undoState: null })
+    await proposalResolvers.Mutation.acceptProposal!(null, { id: 'p1' } as never, ctx())
+    expect(scheduleRemedyVerification).not.toHaveBeenCalled()
+  })
+
+  it('a verification that cannot be queued does not undo the acceptance: it is said, and the nightly run verifies', async () => {
+    proposta.mockResolvedValue(riga({ area: 'operations', action: { type: 'queue.retry_failed', params: {} } }))
+    eseguiAzione.mockResolvedValue({ details: { queue: 'q', jobIds: ['1'] }, undoState: null })
+    scheduleRemedyVerification.mockRejectedValueOnce(new Error('redis down'))
+    await expect(proposalResolvers.Mutation.acceptProposal!(null, { id: 'p1' } as never, ctx())).resolves.toBeDefined()
+    expect(segnaDecisa.mock.calls[0]![2]).toMatchObject({ status: 'accepted' })
+  })
+
   it('se l\'azione FALLISCE la proposta resta aperta con l\'errore scritto, e il fallimento è nel registro', async () => {
     eseguiAzione.mockRejectedValue(new Error('la policy esiste già'))
     const r = await esito(() => proposalResolvers.Mutation.acceptProposal!(null, { id: 'p1' } as never, ctx()))
@@ -333,6 +360,15 @@ describe('openProblemFromProposal', () => {
     const r = await esito(() => proposalResolvers.Mutation.openProblemFromProposal!(
       null, { id: 'p1', impact: 'high', urgency: 'low' } as never, ctx()))
     expect(r.code).toBe('NESSUN RIFIUTO')
+  })
+
+  it('a remedy that did not hold opens a Problem in the tenant, and nothing of the customer goes to GitHub (26 Sep 2026)', async () => {
+    proposta.mockResolvedValue(riga({ action: null, area: 'operations', kind: 'proposal.operationsFailedJobsNotHeld', params: { queue: 'sla-jobs', count: '4' } }))
+    fascicoloPossibile.mockReturnValueOnce(false)
+    await proposalResolvers.Mutation.openProblemFromProposal!(null, { id: 'p1', impact: 'high', urgency: 'low' } as never, ctx())
+    expect(createProblem.mock.calls[0]![0]).toMatchObject({ title: 'Jobs keep failing in queue sla-jobs after a retry' })
+    expect(fascicoloPossibile).toHaveBeenCalledWith('t1', expect.objectContaining({ kind: 'proposal.operationsFailedJobsNotHeld' }))
+    expect(enqueuePortaIlFascicolo).not.toHaveBeenCalled()
   })
 })
 

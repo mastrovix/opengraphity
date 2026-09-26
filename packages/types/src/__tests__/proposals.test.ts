@@ -74,7 +74,7 @@ describe('il catalogo chiuso', () => {
    * modo perché «una proposta può fare questa cosa nuova» sia una decisione e
    * non una riga scivolata dentro.
    */
-  it('porta TRE voci, e ognuna è stata una decisione', () => {
+  it('porta QUATTRO voci, e ognuna è stata una decisione', () => {
     expect(PROPOSAL_ACTION_TYPES).toEqual([
       // Ondata 1: toglie le severità del portale che non si usano più.
       'portal_severities.remove_stale',
@@ -82,6 +82,13 @@ describe('il catalogo chiuso', () => {
       'automation.create_disabled',
       // Ondata 6: l'unica in cui il modello scrive testo che le persone leggono.
       'enum_value_labels.fill',
+      // 26 Sep 2026, the running of a tenant: retries failed jobs; verified, not undone.
+      'queue.retry_failed',
+      // 26 Sep 2026: the four remedies of the graph (lib/operationsGraphRemedies.ts); ticket ids, never a target step.
+      'events.reevaluate_stuck',
+      'service_map.sync',
+      'ci.recompute_health',
+      'workflow.resume_automatic',
     ])
   })
 

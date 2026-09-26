@@ -58,6 +58,24 @@ export const GENERI_DA_PROBLEM: ReadonlySet<string> = new Set([
   'proposal.platformSharedFault',
 ])
 
+/**
+ * THE REMEDIES THAT DID NOT HOLD (26 Sep 2026, area `operations`).
+ *
+ * Here a Problem IS the right object: the product tried its remedy, the
+ * verification says it did not hold, and the same thing keeps breaking — a
+ * cause to find, in the customer's own list of problems. A set of its own and
+ * not `GENERI_DA_PROBLEM`: that one also says which Problems carry a dossier
+ * to GitHub (`problemDossier.ts`), and a customer's running never leaves the
+ * product.
+ */
+export const GENERI_OPERATIVI_DA_PROBLEM: ReadonlySet<string> = new Set([
+  'proposal.operationsFailedJobsNotHeld',
+  'proposal.operationsStuckAlarmsNotHeld',
+  'proposal.operationsStaleServiceMapNotHeld',
+  'proposal.operationsCIHealthOutOfStepNotHeld',
+  'proposal.operationsStuckWorkflowsNotHeld',
+])
+
 /** Gli stati in cui una proposta è ancora da decidere. */
 const DA_DECIDERE: ReadonlySet<string> = new Set(['open', 'not_now'])
 
@@ -75,7 +93,7 @@ export function puoPrendereAtto(row: Pick<ProposalRow, 'status' | 'action'>): bo
 
 /** Si può aprire un Problem da qui? */
 export function puoAprireUnProblem(row: Pick<ProposalRow, 'status' | 'action' | 'kind'>): boolean {
-  return puoPrendereAtto(row) && GENERI_DA_PROBLEM.has(row.kind)
+  return puoPrendereAtto(row) && (GENERI_DA_PROBLEM.has(row.kind) || GENERI_OPERATIVI_DA_PROBLEM.has(row.kind))
 }
 
 /** Quanto del rationale entra nella descrizione del Problem. */
@@ -92,12 +110,23 @@ export const MAX_DESCRIZIONE = 4_000
  * `template` è già il template SCRUBBATO (`serverLogScrub.ts`): nel titolo di
  * un Problem non entra un messaggio grezzo, come non entra nell'archivio.
  */
-export function titoloDelProblem(params: Record<string, string> | undefined): string {
+export function titoloDelProblem(params: Record<string, string> | undefined, kind?: string): string {
   const p = params ?? {}
+  const operativo = kind ? TITOLI_OPERATIVI[kind]?.(p) : undefined
+  if (operativo) return operativo.slice(0, 500)
   const pezzi = [p['service'], p['module']].filter((x) => x != null && x !== '').join(' · ')
   const testa = p['template'] ?? p['step'] ?? ''
   const titolo = [testa, pezzi].filter((x) => x !== '').join(' — ')
   return (titolo === '' ? 'Recurring fault reported by the platform analyst' : titolo).slice(0, 500)
+}
+
+/** The title of a Problem opened on a remedy that did not hold: from the data, like the others. */
+const TITOLI_OPERATIVI: Readonly<Record<string, (p: Record<string, string>) => string>> = {
+  'proposal.operationsFailedJobsNotHeld':        (p) => `Jobs keep failing in queue ${p['queue'] ?? '?'} after a retry`,
+  'proposal.operationsStuckAlarmsNotHeld':       (p) => `Alarms stay stuck after a re-evaluation (${p['count'] ?? '?'})`,
+  'proposal.operationsStaleServiceMapNotHeld':   (p) => `Service map "${p['map'] ?? '?'}" stays behind the CMDB after a synchronization`,
+  'proposal.operationsCIHealthOutOfStepNotHeld': (p) => `CI health stays out of step with the alarms after a recompute (${p['count'] ?? '?'} CIs)`,
+  'proposal.operationsStuckWorkflowsNotHeld':    (p) => `Tickets stay in a wait whose timer ran out (${p['count'] ?? '?'})`,
 }
 
 /**
@@ -115,7 +144,10 @@ export function descrizioneDelProblem(
     '',
     `Occurrences: ${String(row.occurrences)} over ${String(row.windowDays)} day(s).`,
     `Proposal fingerprint: ${row.fingerprint}`,
-    'Opened from an improvement proposal. The analysis above was written by a model and agreed by a person.',
+    // No rationale, no model: the operational detectors read counters and the graph (26 Sep 2026).
+    row.rationale
+      ? 'Opened from an improvement proposal. The analysis above was written by a model and agreed by a person.'
+      : 'Opened from an improvement proposal: a remedy of the product did not hold, and a person agreed to look for the cause.',
   ]
   return righe.join('\n').trim().slice(0, MAX_DESCRIZIONE)
 }

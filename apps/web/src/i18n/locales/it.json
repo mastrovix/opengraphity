@@ -2873,7 +2873,14 @@
       "urgency": "Urgenza",
       "pickOne": "Scegli…",
       "lastRunNow": "Analisi eseguita alle {{time}}: {{outcome}}",
-      "runningHint": "Analisi dei ticket e della configurazione in corso: può volerci un minuto."
+      "runningHint": "Analisi dei ticket e della configurazione in corso: può volerci un minuto.",
+      "verificationPending": "Rimedio applicato: si ricontrolla qualche minuto dopo.",
+      "verificationResolved": "Ricontrollato il {{date}}: il rimedio ha tenuto.",
+      "verificationUnresolved": "Ricontrollato il {{date}}: il rimedio non ha tenuto. Per questa causa non si ripropone per una settimana — serve una persona.",
+      "verificationRetry": "{{retried}} job rilanciati, {{failedAgain}} falliti di nuovo.",
+      "verificationAlarms": "{{alarms}} allarmi rivalutati, {{stillStuck}} ancora bloccati.",
+      "verificationCIHealth": "{{cis}} CI ricalcolati, {{stillOutOfStep}} ancora non allineati ai loro allarmi.",
+      "verificationWorkflows": "{{tickets}} ticket ripresi, {{stillStuck}} ancora fermi sul passo dove erano bloccati."
     },
     "dailyWork": {
       "title": "Lavoro quotidiano",
@@ -5050,7 +5057,13 @@
       "labelsUnreadable": "Le etichette del Dizionario «{{vocabulary}}» non si riescono a leggere: vanno riparate a mano prima che qualcosa ci scriva sopra.",
       "analysisAlreadyRunning": "Un'analisi è già in corso per questa organizzazione. Riprova fra un momento.",
       "acknowledgeHasAction": "Questa proposta porta un’azione: per essere d’accordo, accettala e falla eseguire.",
-      "notProblemMaterial": "Da questa proposta non si apre un Problem: un Problem è la causa di guasti, e questa non lo è."
+      "notProblemMaterial": "Da questa proposta non si apre un Problem: un Problem è la causa di guasti, e questa non lo è.",
+      "queueUnknown": "«{{queue}}» non è una coda di questa organizzazione.",
+      "queueNotRetryable": "I job della coda {{queue}} non si possono rilanciare.",
+      "noFailedJobs": "La coda {{queue}} non ha più job falliti: qualcuno li ha già rilanciati, oppure sono passati.",
+      "nothingStuck": "Nessuno degli elementi di questa proposta è ancora bloccato: la passata periodica o qualcun altro li ha già sistemati.",
+      "mapGone": "Questa mappa di servizio non esiste più.",
+      "mapNotLive": "Dopo la proposta questa mappa di servizio è stata congelata o messa in pausa: non la si sincronizza alle spalle dell'amministratore."
     },
     "rest": {
       "repeatedRouteParam": "Il parametro «{{name}}» della rotta è arrivato come elenco: questa rotta dichiara un parametro ripetuto, e chi la usa non se lo aspetta.",
@@ -8047,7 +8060,8 @@
       "configuration": "Configurazione",
       "daily_work": "Lavoro quotidiano",
       "operator": "Operatore",
-      "platform": "Piattaforma"
+      "platform": "Piattaforma",
+      "operations": "Funzionamento"
     },
     "kind": {
       "proposal.portalSeveritiesStale": "Togli dal portale {{count}} severità che il Dizionario non ha più: «{{values}}»",
@@ -8057,7 +8071,17 @@
       "proposal.dailyWorkPairToAutomation": "Dopo «{{first}}» arriva quasi sempre «{{then}}»: {{count}} volte, per mano di {{actors}} persone",
       "proposal.dailyWorkSlowStep": "Nel passo «{{step}}» i ticket stanno fermi {{median, number}} h (p90 {{p90, number}} h) su {{count}} passaggi",
       "proposal.dailyWorkInstantStep": "Il passo «{{step}}» viene attraversato in {{median, number}} h su {{count}} passaggi: è un passo o una formalità?",
-      "proposal.configMissingLabels": "Scrivi le {{count}} etichette che mancano al Dizionario «{{vocabulary}}» ({{values}})"
+      "proposal.configMissingLabels": "Scrivi le {{count}} etichette che mancano al Dizionario «{{vocabulary}}» ({{values}})",
+      "proposal.operationsFailedJobs": "{{count}} job falliti nella coda {{queue}}: rilanciarli (al massimo venti)",
+      "proposal.operationsFailedJobsNotHeld": "Di nuovo {{count}} job falliti nella coda {{queue}}, e l'ultimo rilancio non ha tenuto: serve una persona",
+      "proposal.operationsStuckAlarms": "{{count}} allarmi accesi rimasti senza decisione, che la passata automatica non è riuscita a riprendere: rivalutarli (al massimo venti)",
+      "proposal.operationsStuckAlarmsNotHeld": "{{count}} allarmi ancora bloccati, e l'ultima rivalutazione non ha tenuto: serve una persona",
+      "proposal.operationsStaleServiceMap": "La mappa di servizio «{{map}}» è indietro rispetto alla CMDB: sincronizzarla adesso",
+      "proposal.operationsStaleServiceMapNotHeld": "La mappa di servizio «{{map}}» è ancora indietro rispetto alla CMDB dopo una sincronizzazione: serve una persona",
+      "proposal.operationsCIHealthOutOfStep": "{{count}} CI hanno una salute diversa da quella che dicono i loro allarmi: ricalcolarla (al massimo venti)",
+      "proposal.operationsCIHealthOutOfStepNotHeld": "{{count}} CI hanno ancora una salute non allineata ai loro allarmi dopo un ricalcolo: serve una persona",
+      "proposal.operationsStuckWorkflows": "{{count}} ticket sono ancora in un'attesa il cui timer è scaduto da tempo: farli uscire come dice il workflow (al massimo venti)",
+      "proposal.operationsStuckWorkflowsNotHeld": "{{count}} ticket sono ancora in un'attesa col timer scaduto, dopo una ripresa: serve una persona"
     },
     "rejection": {
       "wrong_analysis": "L'analisi è sbagliata",

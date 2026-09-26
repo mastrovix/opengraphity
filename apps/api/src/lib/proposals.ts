@@ -27,9 +27,9 @@ import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
 import {
   PROPOSAL_OPEN_STATUSES, PROPOSAL_EXPIRY_DAYS, PROPOSAL_LIMIT_DEFAULTS, PROPOSAL_RETENTION_MONTHS,
-  evidenceGrade, proposalMayReturn,
+  evidenceGrade, proposalMayReturn, isProposalVerification,
   type ProposalArea, type ProposalStatus, type ProposalEvidence,
-  type ProposalRejectionKind,
+  type ProposalRejectionKind, type ProposalVerification,
 } from '@opengraphity/types'
 import { runQuery, runQueryOne } from './db.js'
 import { logger } from './logger.js'
@@ -50,6 +50,12 @@ export interface ProposalToWrite {
   /** Prosa del modello, solo per gli analisti AI. Con la lingua in cui è scritta. */
   rationale?:       string | null
   rationaleLanguage?: string | null
+  /**
+   * The CAUSE of an operational remedy, without the day of its episode (26 Sep
+   * 2026): `queue:notifications`. The rule «never twice on the same cause
+   * without a person» reads it; other areas leave it out.
+   */
+  cause?:           string | null
 }
 
 export interface ProposalRow {
@@ -93,6 +99,14 @@ export interface ProposalRow {
   openedProblem: { id: string; number: string } | null
   /** True quando l'azione è stata disfatta: non si disfa due volte. */
   undone: boolean
+  /** The cause of an operational remedy (see `ProposalToWrite.cause`). */
+  cause: string | null
+  /** What the executed action did, kept for its verification (operational remedies). */
+  executionDetails: Record<string, unknown> | null
+  /** Whether an operational remedy held, checked some minutes after it ran. */
+  verification: ProposalVerification | null
+  verifiedAt: string | null
+  verificationDetail: Record<string, unknown> | null
 }
 
 /**
@@ -153,6 +167,11 @@ function mappa(r: Record<string, unknown>): ProposalRow {
     undoState: leggiJson<Record<string, unknown>>(r['undoState'], 'undoState'),
     openedProblem: leggiJson<{ id: string; number: string }>(r['openedProblem'], 'openedProblem'),
     undone: r['undone'] === true,
+    cause: r['cause'] == null ? null : String(r['cause']),
+    executionDetails: leggiJson<Record<string, unknown>>(r['executionDetails'], 'executionDetails'),
+    verification: isProposalVerification(r['verification']) ? r['verification'] : null,
+    verifiedAt: r['verifiedAt'] == null ? null : String(r['verifiedAt']),
+    verificationDetail: leggiJson<Record<string, unknown>>(r['verificationDetail'], 'verificationDetail'),
   }
 }
 
@@ -167,7 +186,10 @@ const CAMPI = `
   p.rejected_kind AS rejectedKind, p.rejected_note AS rejectedNote,
   p.not_now_until AS notNowUntil, p.audit_entry_id AS auditEntryId,
   p.execution_error AS executionError, p.undo_state AS undoState,
-  coalesce(p.undone, false) AS undone, p.opened_problem AS openedProblem
+  coalesce(p.undone, false) AS undone, p.opened_problem AS openedProblem,
+  p.cause AS cause, p.execution_details AS executionDetails,
+  p.verification AS verification, p.verified_at AS verifiedAt,
+  p.verification_detail AS verificationDetail
 `
 
 /** Perché una proposta non è stata scritta: si dice, non si tace. */
@@ -252,7 +274,9 @@ export async function scriviProposta(
         decided_at: null, decided_by: null,
         rejected_kind: null, rejected_note: null, not_now_until: null,
         audit_entry_id: null, execution_error: null,
-        undo_state: null, undone: false
+        undo_state: null, undone: false,
+        cause: $cause, execution_details: null,
+        verification: null, verified_at: null, verification_detail: null
       })
       RETURN ${CAMPI}
     `, {
@@ -264,6 +288,7 @@ export async function scriviProposta(
       action: p.action ? JSON.stringify(p.action) : null,
       rationale: p.rationale ?? null,
       rationaleLanguage: p.rationaleLanguage ?? null,
+      cause: p.cause ?? null,
       now: adesso.toISOString(),
     })
     const riga = righe[0]
@@ -370,6 +395,8 @@ export async function segnaDecisa(
     undoState?: Record<string, unknown> | null
     undone?: boolean
     openedProblem?: { id: string; number: string } | null
+    /** Written only when given: a later decision does not erase what an execution did. */
+    executionDetails?: Record<string, unknown> | null
   },
   adesso: Date = new Date(),
 ): Promise<ProposalRow | null> {
@@ -387,7 +414,8 @@ export async function segnaDecisa(
           p.execution_error = $executionError,
           p.undo_state = $undoState,
           p.undone = $undone,
-          p.opened_problem = $openedProblem
+          p.opened_problem = $openedProblem,
+          p.execution_details = coalesce($executionDetails, p.execution_details)
       RETURN ${CAMPI}
     `, {
       tenantId, id, status: campi.status, now: adesso.toISOString(),
@@ -400,6 +428,7 @@ export async function segnaDecisa(
       undoState: campi.undoState ? JSON.stringify(campi.undoState) : null,
       undone: campi.undone ?? false,
       openedProblem: campi.openedProblem ? JSON.stringify(campi.openedProblem) : null,
+      executionDetails: campi.executionDetails ? JSON.stringify(campi.executionDetails) : null,
     })
     return righe[0] ? mappa(righe[0]) : null
   } finally {

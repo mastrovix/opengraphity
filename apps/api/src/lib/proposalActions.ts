@@ -310,6 +310,29 @@ const CATALOGO: Readonly<Record<ProposalActionType, { esegui: Esecutore; disfa: 
     esegui: riempiEtichette,
     disfa:  ripristinaEtichette,
   },
+  // Operational remedy (26 Sep 2026): not undone, VERIFIED (lib/operationsRemedies.ts).
+  // Loaded when used: the module brings BullMQ along, which the other actions never need.
+  'queue.retry_failed': {
+    esegui: async (tenantId, params) => (await import('./operationsRemedies.js')).retryFailedJobs(tenantId, params),
+    disfa:  null,
+  },
+  // The four remedies of the graph (lib/operationsGraphRemedies.ts), verified the same way.
+  'events.reevaluate_stuck': {
+    esegui: async (tenantId, params) => (await import('./operationsGraphRemedies.js')).reevaluateStuckAlarms(tenantId, params),
+    disfa:  null,
+  },
+  'service_map.sync': {
+    esegui: async (tenantId, params) => (await import('./operationsGraphRemedies.js')).syncServiceMapRemedy(tenantId, params),
+    disfa:  null,
+  },
+  'ci.recompute_health': {
+    esegui: async (tenantId, params) => (await import('./operationsGraphRemedies.js')).recomputeCIHealthRemedy(tenantId, params),
+    disfa:  null,
+  },
+  'workflow.resume_automatic': {
+    esegui: async (tenantId, params) => (await import('./operationsGraphRemedies.js')).resumeStuckWorkflows(tenantId, params),
+    disfa:  null,
+  },
 }
 
 /** Se questa azione si può disfare. La pagina lo chiede prima di offrire il bottone. */

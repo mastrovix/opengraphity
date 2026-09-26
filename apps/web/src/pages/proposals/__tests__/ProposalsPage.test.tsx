@@ -44,7 +44,8 @@ const proposal = (over: Record<string, unknown> = {}) => ({
   status: 'open', createdAt: '2026-09-20T10:00:00Z',
   decidedAt: null, decidedBy: null, decidedByName: null, rejectedKind: null, rejectedNote: null, notNowUntil: null,
   auditEntryId: null, executionError: null, undoable: false, acknowledgeable: false, problemOpenable: false,
-  openedProblemId: null, openedProblemNumber: null, ...over,
+  openedProblemId: null, openedProblemNumber: null,
+  verification: null, verifiedAt: null, verificationDetail: [], ...over,
 })
 
 const page = (items: unknown[], over: Record<string, unknown> = {}) => ({ proposals: {
@@ -335,5 +336,56 @@ describe('ProposalsPage: the dialogs close from their header too', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(apolloFinto.chiamate['RejectProposal']).toBeUndefined()
     expect(apolloFinto.chiamate['OpenProblemFromProposal']).toBeUndefined()
+  })
+})
+
+// ── The running of a tenant: a remedy is checked after it ran (26 Sep 2026) ──
+
+describe('ProposalsPage — operational remedies', () => {
+  const remedy = (over: Record<string, unknown>) => proposal({
+    area: 'operations', kind: 'proposal.operationsFailedJobs',
+    params: [param('queue', 'notifications'), param('count', '37')],
+    actionType: 'queue.retry_failed', status: 'accepted', decidedAt: '2026-09-26T08:00:00Z', ...over,
+  })
+
+  it('the area is named, and the remedy says what it will do', async () => {
+    apolloFinto.risposte['GetProposals'] = page([remedy({ status: 'open', decidedAt: null })])
+    mount()
+    expect(await screen.findByText('37 failed jobs in the notifications queue: retry them (twenty at most)')).toBeInTheDocument()
+    expect(screen.getByText(/^Running ·/)).toBeInTheDocument()
+    // Not accepted yet: no verification line.
+    expect(screen.queryByText(/Remedy applied/)).toBeNull()
+  })
+
+  it('accepted and not checked yet: it says it will be checked', async () => {
+    apolloFinto.risposte['GetProposals'] = page([remedy({})])
+    mount()
+    expect(await screen.findByText('Remedy applied: it is checked again a few minutes after running.')).toBeInTheDocument()
+  })
+
+  it('checked: held, with what was seen; or not held, and a person has to look', async () => {
+    apolloFinto.risposte['GetProposals'] = page([
+      remedy({ id: 'p-ok', verification: 'resolved', verifiedAt: '2026-09-26T08:05:00Z', verificationDetail: [param('retried', '20'), param('failedAgain', '0')] }),
+      remedy({ id: 'p-ko', verification: 'unresolved', verifiedAt: '2026-09-26T08:05:00Z', verificationDetail: [param('retried', '20'), param('failedAgain', '3')] }),
+    ])
+    mount()
+    expect(await screen.findByText(/the remedy held\. 20 jobs retried, 0 failed again\./)).toBeInTheDocument()
+    expect(screen.getByText(/the remedy did not hold\. .*a person has to look\. 20 jobs retried, 3 failed again\./)).toBeInTheDocument()
+  })
+
+  it('each remedy of the graph says what the check found; the map\'s says only whether it held', async () => {
+    apolloFinto.risposte['GetProposals'] = page([
+      remedy({ id: 'p-a', kind: 'proposal.operationsStuckAlarms', params: [param('count', '3')], actionType: 'events.reevaluate_stuck',
+        verification: 'unresolved', verifiedAt: '2026-09-26T08:05:00Z', verificationDetail: [param('alarms', '3'), param('stillStuck', '1')] }),
+      remedy({ id: 'p-w', kind: 'proposal.operationsStuckWorkflows', params: [param('count', '2')], actionType: 'workflow.resume_automatic',
+        verification: 'resolved', verifiedAt: '2026-09-26T08:05:00Z', verificationDetail: [param('tickets', '2'), param('stillStuck', '0')] }),
+      remedy({ id: 'p-m', kind: 'proposal.operationsStaleServiceMap', params: [param('map', 'Billing')], actionType: 'service_map.sync',
+        verification: 'resolved', verifiedAt: '2026-09-26T08:05:00Z', verificationDetail: [param('stale', 'false'), param('reason', '')] }),
+    ])
+    mount()
+    expect(await screen.findByText(/did not hold\. .* 3 alarms re-evaluated, 1 still stuck\./)).toBeInTheDocument()
+    expect(screen.getByText(/the remedy held\. 2 tickets resumed, 0 still on the step they were stuck on\./)).toBeInTheDocument()
+    expect(screen.getByText('The service map “Billing” is behind the CMDB: synchronize it now')).toBeInTheDocument()
+    expect(screen.getAllByText(/^Checked on .*: the remedy held\.$/)).toHaveLength(1)
   })
 })

@@ -54,6 +54,14 @@ import { colors, palette } from '@/lib/tokens'
 import { reloadQueries } from '@/lib/reloadQueries'
 
 interface Param { name: string; value: string }
+/** What the verification found, by remedy: the counts it wrote (lib/operationsRemedies.ts and operationsGraphRemedies.ts). */
+const VERIFICATION_DETAIL: Readonly<Record<string, string | undefined>> = {
+  'queue.retry_failed':        'pages.proposals.verificationRetry',
+  'events.reevaluate_stuck':   'pages.proposals.verificationAlarms',
+  'ci.recompute_health':       'pages.proposals.verificationCIHealth',
+  'workflow.resume_automatic': 'pages.proposals.verificationWorkflows',
+}
+
 interface Ref { entityType: string; id: string; label: string | null; visible: boolean }
 interface Proposal {
   id: string; area: string; kind: string; params: Param[]
@@ -64,6 +72,7 @@ interface Proposal {
   decidedAt: string | null; decidedBy: string | null; decidedByName: string | null
   rejectedKind: string | null; rejectedNote: string | null; notNowUntil: string | null
   auditEntryId: string | null; executionError: string | null; undoable: boolean
+  verification: 'resolved' | 'unresolved' | null; verifiedAt: string | null; verificationDetail: Param[]
   acknowledgeable: boolean; problemOpenable: boolean
   openedProblemId: string | null; openedProblemNumber: string | null
 }
@@ -377,6 +386,21 @@ export function ProposalsPage() {
                   <Link to={`/problems/${p.openedProblemId ?? ''}`} style={{ color: 'var(--color-brand)', fontWeight: 600 }}>
                     {t('pages.proposals.openedProblem', { number: p.openedProblemNumber })}
                   </Link>
+                </div>
+              )}
+
+              {/* An operational remedy is checked after it ran (26 Sep 2026): pending, held, or not. */}
+              {p.area === 'operations' && p.status === 'accepted' && p.actionType && (
+                <div role="status" style={{ marginTop: 10, padding: '8px 12px', borderRadius: 6, fontSize: 'var(--font-size-body)',
+                  background: p.verification === 'resolved' ? palette.success.tint : p.verification === 'unresolved' ? palette.warning.tint : colors.slateBg,
+                  color: p.verification === 'resolved' ? palette.success.strong : p.verification === 'unresolved' ? palette.warning.text : 'var(--color-slate)' }}>
+                  {p.verification === null
+                    ? t('pages.proposals.verificationPending')
+                    : t(p.verification === 'resolved' ? 'pages.proposals.verificationResolved' : 'pages.proposals.verificationUnresolved',
+                      { date: dataBreve(p.verifiedAt ?? p.decidedAt ?? p.createdAt, i18n.language) })}
+                  {p.verification !== null && VERIFICATION_DETAIL[p.actionType] && (
+                    <> {t(VERIFICATION_DETAIL[p.actionType]!, Object.fromEntries(p.verificationDetail.map((d) => [d.name, d.value])))}</>
+                  )}
                 </div>
               )}
 

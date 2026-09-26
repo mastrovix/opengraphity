@@ -68,6 +68,11 @@ export function proposalsSDL(): string {
     executionError: String
     """Se «Disfa» ha senso adesso: accettata, non già disfatta, con lo stato precedente salvato e un'azione che sa disfarsi. Un bottone che fallirà non si offre."""
     undoable: Boolean!
+    """An operational remedy is verified, not undone: resolved, unresolved, or null while not checked yet (26 Sep 2026)."""
+    verification: String
+    verifiedAt:   String
+    """What the verification saw, as data for the sentence (e.g. retried, failedAgain)."""
+    verificationDetail: [ProposalParam!]!
     """Se si può dire «preso atto»: sei generi su otto non hanno niente da eseguire, e senza questo chi è d'accordo dovrebbe rifiutare per dirlo."""
     acknowledgeable: Boolean!
     """Se da qui si può aprire un Problem. Solo i guasti ricorrenti: un passo lento non è un Problem, e sporcare quella lista la rende inutile."""

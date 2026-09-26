@@ -2873,7 +2873,14 @@
       "urgency": "Urgency",
       "pickOne": "Pick one…",
       "lastRunNow": "Analysis run at {{time}}: {{outcome}}",
-      "runningHint": "Analysing the tickets and the configuration: it can take a minute."
+      "runningHint": "Analysing the tickets and the configuration: it can take a minute.",
+      "verificationPending": "Remedy applied: it is checked again a few minutes after running.",
+      "verificationResolved": "Checked on {{date}}: the remedy held.",
+      "verificationUnresolved": "Checked on {{date}}: the remedy did not hold. It is not proposed again for this cause this week — a person has to look.",
+      "verificationRetry": "{{retried}} jobs retried, {{failedAgain}} failed again.",
+      "verificationAlarms": "{{alarms}} alarms re-evaluated, {{stillStuck}} still stuck.",
+      "verificationCIHealth": "{{cis}} CIs recomputed, {{stillOutOfStep}} still out of step with their alarms.",
+      "verificationWorkflows": "{{tickets}} tickets resumed, {{stillStuck}} still on the step they were stuck on."
     },
     "dailyWork": {
       "title": "Daily work",
@@ -5050,7 +5057,13 @@
       "labelsUnreadable": "The labels of the “{{vocabulary}}” dictionary cannot be read: they must be fixed by hand before anything writes to them.",
       "analysisAlreadyRunning": "An analysis is already running for this organization. Try again in a moment.",
       "acknowledgeHasAction": "This proposal carries an action: accept it to run it.",
-      "notProblemMaterial": "A Problem cannot be opened from this proposal: a Problem is the cause of faults, and this is not one."
+      "notProblemMaterial": "A Problem cannot be opened from this proposal: a Problem is the cause of faults, and this is not one.",
+      "queueUnknown": "\"{{queue}}\" is not a queue of this organization.",
+      "queueNotRetryable": "The jobs of the {{queue}} queue cannot be retried.",
+      "noFailedJobs": "The {{queue}} queue has no failed job any more: someone already retried them, or they went through.",
+      "nothingStuck": "None of the items of this proposal is stuck any more: the periodic pass or someone else has already put them right.",
+      "mapGone": "This service map no longer exists.",
+      "mapNotLive": "This service map has been frozen or paused since the proposal: it is not synchronized behind the admin's back."
     },
     "rest": {
       "repeatedRouteParam": "Route parameter “{{name}}” arrived as a list: this route declares a repeated parameter, which its callers do not expect.",
@@ -8047,7 +8060,8 @@
       "configuration": "Configuration",
       "daily_work": "Daily work",
       "operator": "Operator",
-      "platform": "Platform"
+      "platform": "Platform",
+      "operations": "Running"
     },
     "kind": {
       "proposal.portalSeveritiesStale": "Remove {{count}} portal severities the dictionary no longer has: \"{{values}}\"",
@@ -8057,7 +8071,17 @@
       "proposal.dailyWorkPairToAutomation": "“{{then}}” almost always follows “{{first}}”: {{count}} times, by {{actors}} people",
       "proposal.dailyWorkSlowStep": "In step “{{step}}” tickets sit for {{median, number}} h (p90 {{p90, number}} h) over {{count}} runs",
       "proposal.dailyWorkInstantStep": "Step “{{step}}” is crossed in {{median, number}} h over {{count}} runs: is it a step or a formality?",
-      "proposal.configMissingLabels": "Write the {{count}} labels missing from the “{{vocabulary}}” dictionary ({{values}})"
+      "proposal.configMissingLabels": "Write the {{count}} labels missing from the “{{vocabulary}}” dictionary ({{values}})",
+      "proposal.operationsFailedJobs": "{{count}} failed jobs in the {{queue}} queue: retry them (twenty at most)",
+      "proposal.operationsFailedJobsNotHeld": "Again {{count}} failed jobs in the {{queue}} queue, and the last retry did not hold: a person has to look",
+      "proposal.operationsStuckAlarms": "{{count}} firing alarms left without a decision, which the automatic pass could not pick up: re-evaluate them (twenty at most)",
+      "proposal.operationsStuckAlarmsNotHeld": "{{count}} alarms still stuck, and the last re-evaluation did not hold: a person has to look",
+      "proposal.operationsStaleServiceMap": "The service map “{{map}}” is behind the CMDB: synchronize it now",
+      "proposal.operationsStaleServiceMapNotHeld": "The service map “{{map}}” is still behind the CMDB after a synchronization: a person has to look",
+      "proposal.operationsCIHealthOutOfStep": "{{count}} CIs have a health that is not what their alarms say: recompute it (twenty at most)",
+      "proposal.operationsCIHealthOutOfStepNotHeld": "{{count}} CIs still have a health out of step with their alarms after a recompute: a person has to look",
+      "proposal.operationsStuckWorkflows": "{{count}} tickets are still in a wait whose timer ran out long ago: take them out of it the way the workflow says (twenty at most)",
+      "proposal.operationsStuckWorkflowsNotHeld": "{{count}} tickets are still in a wait whose timer ran out, after a resume: a person has to look"
     },
     "rejection": {
       "wrong_analysis": "The analysis is wrong",

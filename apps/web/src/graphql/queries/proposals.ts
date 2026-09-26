@@ -30,6 +30,7 @@ export const GET_PROPOSALS = gql`
       status createdAt decidedAt decidedBy decidedByName
       rejectedKind rejectedNote notNowUntil
       auditEntryId executionError undoable
+      verification verifiedAt verificationDetail { name value }
       acknowledgeable problemOpenable openedProblemId openedProblemNumber
       }
     }
@@ -50,6 +51,7 @@ export const ACCEPT_PROPOSAL = gql`
       status createdAt decidedAt decidedBy decidedByName
       rejectedKind rejectedNote notNowUntil
       auditEntryId executionError undoable
+      verification verifiedAt verificationDetail { name value }
       acknowledgeable problemOpenable openedProblemId openedProblemNumber
     }
   }
@@ -69,6 +71,7 @@ export const REJECT_PROPOSAL = gql`
       status createdAt decidedAt decidedBy decidedByName
       rejectedKind rejectedNote notNowUntil
       auditEntryId executionError undoable
+      verification verifiedAt verificationDetail { name value }
       acknowledgeable problemOpenable openedProblemId openedProblemNumber
     }
   }
@@ -88,6 +91,7 @@ export const POSTPONE_PROPOSAL = gql`
       status createdAt decidedAt decidedBy decidedByName
       rejectedKind rejectedNote notNowUntil
       auditEntryId executionError undoable
+      verification verifiedAt verificationDetail { name value }
       acknowledgeable problemOpenable openedProblemId openedProblemNumber
     }
   }
@@ -107,6 +111,7 @@ export const UNDO_PROPOSAL = gql`
       status createdAt decidedAt decidedBy decidedByName
       rejectedKind rejectedNote notNowUntil
       auditEntryId executionError undoable
+      verification verifiedAt verificationDetail { name value }
       acknowledgeable problemOpenable openedProblemId openedProblemNumber
     }
   }

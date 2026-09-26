@@ -46,6 +46,15 @@ export const OVERDUE_DELAYED_WHERE = "e.correlation = 'delayed' AND e.correlatio
 /** Unione dei tre casi: il predicato della passata `reevaluatePendingEvents`. */
 export const STUCK_FIRING_WHERE = `(${DUE_CORRELATION_WHERE}) OR (${UNCORRELATED_WHERE}) OR (${OVERDUE_DELAYED_WHERE})`
 
+/**
+ * The same union, as a composer: a query that interpolates it through a call
+ * is resolved and checked by `scripts/check-cypher.mjs`; a bare constant is
+ * not (the operational remedies, 26 Sep 2026).
+ */
+export function stuckFiringWhereCypher(): string {
+  return STUCK_FIRING_WHERE
+}
+
 /** Parametri dei predicati: gli stessi per il gauge e per la passata (nessuna soglia duplicata a mano). */
 export interface StuckEventParams {
   correlations: readonly string[]

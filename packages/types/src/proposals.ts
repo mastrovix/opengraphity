@@ -23,8 +23,15 @@
  * stesso numero, e ci si inciampava. Le aree hanno un nome.
  */
 
-/** Chi ha scritto la proposta. Non è una categoria che l'admin debba capire: è un filtro. */
-export const PROPOSAL_AREAS = ['configuration', 'daily_work', 'operator', 'platform'] as const
+/**
+ * Chi ha scritto la proposta. Non è una categoria che l'admin debba capire: è un filtro.
+ *
+ * `operations` (26 Sep 2026, the owner: «completiamo» the self-analysis): the
+ * running of the tenant — failed jobs, alarms, service maps, CI health, stuck
+ * workflows. Remedies live IN EACH TENANT and its admin accepts them; they
+ * touch that tenant only (the platform tenant stays hands-off on customers).
+ */
+export const PROPOSAL_AREAS = ['configuration', 'daily_work', 'operator', 'platform', 'operations'] as const
 export type ProposalArea = (typeof PROPOSAL_AREAS)[number]
 
 export function isProposalArea(v: unknown): v is ProposalArea {
@@ -109,6 +116,26 @@ export const PROPOSAL_ACTION_TYPES = [
    * disfa per intero rimettendo il documento di prima.
    */
   'enum_value_labels.fill',
+  /*
+   * `queue.retry_failed` (26 Sep 2026, area `operations`). Retries the failed
+   * jobs of ONE retryable queue of the tenant, twenty at most. It cannot be
+   * undone — a job that ran has run — so what closes the loop is the
+   * VERIFICATION: after a while the same jobs are looked at again, and the
+   * proposal says whether the remedy held.
+   */
+  'queue.retry_failed',
+  /*
+   * The four remedies of the graph (26 Sep 2026, area `operations`), verified
+   * like the retry: re-evaluate the alarms the periodic pass left stuck;
+   * synchronize a live service map left behind the CMDB; recompute the health
+   * of CIs out of step with their alarms; take tickets out of a wait whose
+   * timer was lost, by the wait's own exit. The last carries ticket ids,
+   * never a target step — it is not `transition_workflow`, which stays forbidden.
+   */
+  'events.reevaluate_stuck',
+  'service_map.sync',
+  'ci.recompute_health',
+  'workflow.resume_automatic',
 ] as const
 export type ProposalActionType = (typeof PROPOSAL_ACTION_TYPES)[number]
 
@@ -214,3 +241,18 @@ export const PROPOSAL_LIMIT_RANGES = {
   maxOpen:   { min: 1, max: 50 },
   maxPerDay: { min: 1, max: 20 },
 } as const
+
+/**
+ * THE VERIFICATION OF A REMEDY (26 Sep 2026, area `operations`).
+ *
+ * An operational remedy is not undone, it is CHECKED: some minutes after it
+ * ran, the condition that opened the proposal is looked at again. `resolved`
+ * closes the loop; `unresolved` stops the same remedy for that cause — the
+ * product never tries twice without a person (a read-only proposal says so).
+ */
+export const PROPOSAL_VERIFICATIONS = ['resolved', 'unresolved'] as const
+export type ProposalVerification = (typeof PROPOSAL_VERIFICATIONS)[number]
+
+export function isProposalVerification(v: unknown): v is ProposalVerification {
+  return typeof v === 'string' && (PROPOSAL_VERIFICATIONS as readonly string[]).includes(v)
+}

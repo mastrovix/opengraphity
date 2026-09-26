@@ -31,19 +31,28 @@
 import type { Job, Queue } from 'bullmq'
 import type { TenantWorkerPool } from '@opengraphity/events'
 import { randomUUID } from 'node:crypto'
-import { createTenantWorkers, getSharedRedis } from '../lib/bullmq.js'
+import { createTenantWorkers, getSharedRedis, getTenantQueue } from '../lib/bullmq.js'
 import { logger } from '../lib/logger.js'
 import { audit } from '../lib/audit.js'
 import { analizzaConfigurazione } from '../lib/proposalAnalysts.js'
 import { analizzaPiattaforma } from '../lib/platformAnalyst.js'
 import { analizzaLavoroQuotidiano } from '../lib/dailyWorkAnalyst.js'
 import { analizzaConfigurazioneConIlModello } from '../lib/configurationAnalyst.js'
+import { analizzaFunzionamento, verifyRemedies, OPERATIONS_LIMITS } from '../lib/operationsRemedies.js'
 import { scriviProposta, scadiLeVecchie, risvegliaLeRimandate, purgaLeChiuse, type ProposalToWrite } from '../lib/proposals.js'
 
 export const PROPOSAL_SCANNER_QUEUE = 'proposal-scanner'
 
 /** The nightly job of a tenant, in its queue `proposal-scanner@<tenant>` (23 Sep 2026). */
-export interface ProposalScanJobData { tenantId: string }
+export interface ProposalScanJobData {
+  tenantId: string
+  /**
+   * Only the verification of the remedies (26 Sep 2026): queued some minutes
+   * after an operational remedy is accepted, so its outcome is known then and
+   * not the next morning. It runs no analyst — no model, no cost.
+   */
+  verifyOnly?: boolean
+}
 
 /** Il giro di un cliente solo. Restituisce quante proposte sono nate. */
 /**
@@ -61,9 +70,20 @@ const ANALISTI: ReadonlyArray<(tenantId: string) => Promise<ProposalToWrite[]>> 
   analizzaPiattaforma,
   analizzaLavoroQuotidiano,
   analizzaConfigurazioneConIlModello,
+  analizzaFunzionamento,
 ]
 
 export async function analizzaCliente(tenantId: string): Promise<{ create: number; saltate: Record<string, number> }> {
+  // The remedies accepted since the last pass are checked first: whether they held
+  // decides what the operations analyst proposes next (26 Sep 2026).
+  try {
+    await verifyRemedies(tenantId)
+  } catch (err) {
+    logger.error(
+      { module: 'proposals', tenantId, err: err instanceof Error ? err.message : String(err) },
+      'proposal-scanner: remedy verification failed',
+    )
+  }
   const proposte: ProposalToWrite[] = []
   for (const analista of ANALISTI) {
     try {
@@ -95,6 +115,12 @@ export async function analizzaCliente(tenantId: string): Promise<{ create: numbe
  */
 export async function proposalScannerProcessor(job: Job<ProposalScanJobData>): Promise<void> {
   const { tenantId } = job.data
+
+  if (job.data.verifyOnly) {
+    const { verified } = await verifyRemedies(tenantId)
+    logger.info({ module: 'proposals', tenantId, verified }, 'proposal-scanner: remedies verified')
+    return
+  }
 
   /*
    * La manutenzione del ciclo di vita gira PRIMA dell'analisi: scadere le
@@ -226,4 +252,20 @@ export async function scheduleProposalScan(queue: Queue, tenantId: string): Prom
  */
 export function startProposalScanner(): TenantWorkerPool<ProposalScanJobData> {
   return createTenantWorkers<ProposalScanJobData>(PROPOSAL_SCANNER_QUEUE, proposalScannerProcessor, { schedule: scheduleProposalScan, processLimit: 1 })
+}
+
+/**
+ * THE CHECK OF A REMEDY, SOME MINUTES AFTER IT (26 Sep 2026).
+ *
+ * Queued in the tenant's own scanner queue when an operational remedy is
+ * accepted, with an id per proposal (accepting twice does not queue twice).
+ * If it never runs — Redis down at the click — the nightly run verifies
+ * anyway: this only brings the answer forward.
+ */
+export async function scheduleRemedyVerification(tenantId: string, proposalId: string): Promise<void> {
+  await getTenantQueue<ProposalScanJobData>(PROPOSAL_SCANNER_QUEUE, tenantId).add(
+    'verify',
+    { tenantId, verifyOnly: true },
+    { delay: OPERATIONS_LIMITS.verifyAfterMs + 30_000, jobId: `verify-${proposalId}`, removeOnComplete: true, removeOnFail: 50 },
+  )
 }

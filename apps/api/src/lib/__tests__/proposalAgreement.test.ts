@@ -14,7 +14,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import {
-  puoPrendereAtto, puoAprireUnProblem, GENERI_DA_PROBLEM,
+  puoPrendereAtto, puoAprireUnProblem, GENERI_DA_PROBLEM, GENERI_OPERATIVI_DA_PROBLEM,
   titoloDelProblem, descrizioneDelProblem, MAX_DESCRIZIONE,
 } from '../proposalAgreement.js'
 
@@ -66,6 +66,25 @@ describe('un Problem si apre solo dove un Problem è la cosa giusta', () => {
     ])
   })
 
+  it('a remedy that did not hold (26 Sep 2026): yes — the product tried, and the same thing keeps breaking', () => {
+    for (const kind of GENERI_OPERATIVI_DA_PROBLEM) {
+      expect(puoAprireUnProblem(riga({ kind })), kind).toBe(true)
+    }
+    // The remedy itself is not a fault: it is accepted by running it.
+    expect(puoAprireUnProblem(riga({ kind: 'proposal.operationsFailedJobs', action: { type: 'queue.retry_failed', params: {} } }))).toBe(false)
+  })
+
+  it('and the remedies that did not hold are a set of their own: the platform one also says which Problems go to GitHub', () => {
+    expect([...GENERI_OPERATIVI_DA_PROBLEM].sort()).toEqual([
+      'proposal.operationsCIHealthOutOfStepNotHeld',
+      'proposal.operationsFailedJobsNotHeld',
+      'proposal.operationsStaleServiceMapNotHeld',
+      'proposal.operationsStuckAlarmsNotHeld',
+      'proposal.operationsStuckWorkflowsNotHeld',
+    ])
+    for (const kind of GENERI_OPERATIVI_DA_PROBLEM) expect(GENERI_DA_PROBLEM.has(kind), kind).toBe(false)
+  })
+
   it('e non si apre su una già decisa', () => {
     expect(puoAprireUnProblem(riga({ status: 'accepted' }))).toBe(false)
   })
@@ -77,6 +96,19 @@ describe('che cosa finisce nel Problem', () => {
     // non sa in che lingua leggerà chi aprirà il Problem domani.
     expect(titoloDelProblem({ template: '[bullmq] queue connection error', service: 'opengrafo-api', module: 'bullmq' }))
       .toBe('[bullmq] queue connection error — opengrafo-api · bullmq')
+  })
+
+  it('a remedy that did not hold names what keeps breaking, from the data', () => {
+    expect(titoloDelProblem({ queue: 'sla-jobs', count: '4' }, 'proposal.operationsFailedJobsNotHeld'))
+      .toBe('Jobs keep failing in queue sla-jobs after a retry')
+    expect(titoloDelProblem({ map: 'Billing' }, 'proposal.operationsStaleServiceMapNotHeld'))
+      .toBe('Service map "Billing" stays behind the CMDB after a synchronization')
+  })
+
+  it('no rationale, no model: an operational Problem does not claim a model wrote it', () => {
+    const d = descrizioneDelProblem({ rationale: null, occurrences: 4, windowDays: 1, fingerprint: 'f' } as never)
+    expect(d).not.toContain('model')
+    expect(d).toContain('a remedy of the product did not hold')
   })
 
   it('senza dati utili non resta un titolo vuoto', () => {

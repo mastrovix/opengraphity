@@ -71,6 +71,7 @@ export type SystemPath =
   | 'event_auto_resolve'  // the alarm cleared resolving its incident
   | 'event_reopen'        // an alarm back, or a storm still running, reopening its incident
   | 'script'              // an operator's script
+  | 'operations_remedy'   // a remedy an admin accepted: a stuck ticket follows its open automatic arc
 
 export type TransitionActor =
   /**
@@ -454,6 +455,7 @@ const MOVED_BY: Readonly<Record<SystemPath, SystemTextKey>> = {
   event_auto_resolve: 'workflow.moveBy.event_auto_resolve',
   event_reopen:       'workflow.moveBy.event_reopen',
   script:             'workflow.moveBy.script',
+  operations_remedy:  'workflow.moveBy.operations_remedy',
 }
 
 /** The note of a refusal, in the tenant's language: who asked, where to, and which guard held the ticket. */

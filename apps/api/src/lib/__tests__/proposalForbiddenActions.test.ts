@@ -36,6 +36,13 @@ describe('il catalogo è chiuso', () => {
       'portal_severities.remove_stale',
       'automation.create_disabled',
       'enum_value_labels.fill',
+      // 26 Sep 2026: the first operational remedy — verified, not undone (lib/operationsRemedies.ts).
+      'queue.retry_failed',
+      // 26 Sep 2026: the four remedies of the graph (lib/operationsGraphRemedies.ts); ticket ids, never a target step.
+      'events.reevaluate_stuck',
+      'service_map.sync',
+      'ci.recompute_health',
+      'workflow.resume_automatic',
     ])
   })
 })

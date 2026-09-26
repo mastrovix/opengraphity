@@ -70,6 +70,7 @@ export const SYSTEM_TEXTS = {
   'workflow.moveBy.event_auto_resolve': { en: 'The cleared alarm',              it: 'L\'allarme rientrato' },
   'workflow.moveBy.event_reopen':    { en: 'The returned alarm',                it: 'L\'allarme ricomparso' },
   'workflow.moveBy.script':          { en: 'An operator\'s script',            it: 'Uno script di un operatore' },
+  'workflow.moveBy.operations_remedy': { en: 'A remedy accepted by an administrator', it: 'Un rimedio accettato da un amministratore' },
   'workflow.refusedBy.change_window':    { en: 'the change is not approved for the release window', it: 'la change non è approvata per la finestra di rilascio' },
   'workflow.refusedBy.assessments':      { en: 'the assessment tasks or the deploy plan are not complete', it: 'le valutazioni o il piano di deploy non sono completi' },
   'workflow.refusedBy.request_approval': { en: 'the request needs its approval first', it: 'la richiesta deve prima essere approvata' },

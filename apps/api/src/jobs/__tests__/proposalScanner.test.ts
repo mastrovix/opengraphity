@@ -70,6 +70,10 @@ vi.mock('../../lib/dailyWorkAnalyst.js', () => ({
 vi.mock('../../lib/configurationAnalyst.js', () => ({
   analizzaConfigurazioneConIlModello: (t: string) => (fake.analysts['model'] ?? (async () => []))(t),
 }))
+vi.mock('../../lib/operationsRemedies.js', () => ({
+  analizzaFunzionamento: (t: string) => (fake.analysts['operations'] ?? (async () => []))(t),
+  verifyRemedies: async (t: string) => { fake.sweeps.push(`verify:${t}`); return { verified: 0 } },
+}))
 vi.mock('../../lib/proposals.js', () => ({
   scriviProposta: async (p: Record<string, unknown>) => { fake.written.push(p); return fake.writeResult(p) },
   scadiLeVecchie: async (t: string) => { fake.sweeps.push(`expire:${t}`); return fake.expired },
@@ -126,10 +130,18 @@ describe('proposalScannerProcessor', () => {
     fake.expired = 2
     fake.analysts = { config: async (t) => { fake.sweeps.push(`analyse:${t}`); return [] } }
     await proposalScannerProcessor(job('t-a'))
-    expect(fake.sweeps).toEqual(['expire:t-a', 'wake:t-a', 'purge:t-a', 'analyse:t-a'])
+    // The remedies accepted since the last run are verified before the analysis: whether they held decides what comes next.
+    expect(fake.sweeps).toEqual(['expire:t-a', 'wake:t-a', 'purge:t-a', 'verify:t-a', 'analyse:t-a'])
     // The queue says which tenant: the list of tenants is not read any more.
     expect(fake.tenantQueries).toEqual([])
     expect(vi.mocked(logger.info)).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't-a', scadute: 2, risvegliate: 0 }), expect.any(String))
+  })
+
+  // 26 Sep 2026: queued some minutes after an operational remedy — it verifies, and runs nothing else.
+  it('a verify-only job checks the remedies and nothing else: no sweep, no analyst, no model', async () => {
+    fake.analysts = { config: async (t) => { fake.sweeps.push(`analyse:${t}`); return [] } }
+    await proposalScannerProcessor({ data: { tenantId: 't-a', verifyOnly: true } } as never)
+    expect(fake.sweeps).toEqual(['verify:t-a'])
   })
 
   it('nothing swept: no sweep log line', async () => {
