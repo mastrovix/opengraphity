@@ -141,3 +141,18 @@ describe('ServiceRequestDetailPage with the real Apollo client', () => {
     expect(screen.queryByText('No SLA')).not.toBeInTheDocument()
   })
 })
+
+// ── The two tabs (26 Sep 2026, review of the pages) ───────────────────────────
+
+describe('ServiceRequestDetailPage — tabs', () => {
+  it('opens on the overview; tasks and attachments are one tab away; actions and details stay on the right', async () => {
+    const { user } = mount([requestMock()])
+    expect(await screen.findByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Overview', 'Tasks & attachments'])
+    expect(screen.getByText('Description')).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'Tasks & attachments' }))
+    expect(screen.getByRole('tab', { name: 'Tasks & attachments' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByText('Description')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument()
+  })
+})

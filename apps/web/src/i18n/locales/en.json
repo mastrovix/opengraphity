@@ -3654,7 +3654,21 @@
     "removeAssignment": "Remove the assignment",
     "formAnswerEmpty": "not answered",
     "formAnswerEdit": "Correct \"{{field}}\"",
-    "formAnswerSaved": "\"{{field}}\" corrected"
+    "formAnswerSaved": "\"{{field}}\" corrected",
+    "tabs": {
+      "label": "Ticket sections",
+      "ciLabel": "CI sections",
+      "overview": "Overview",
+      "diagnosis": "Diagnosis",
+      "links": "Linked tickets",
+      "work": "Tasks & attachments",
+      "ciRelease": "CIs & release",
+      "history": "History",
+      "information": "Information",
+      "relations": "Relations & map",
+      "tickets": "Tickets",
+      "attachments": "Attachments"
+    }
   },
   "search": {
     "placeholder": "Search everywhere... (Ctrl+K)",

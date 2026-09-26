@@ -241,16 +241,17 @@ beforeEach(() => {
   ] }
 })
 
-function mount() {
+/** The page, on a tab when given (it is in the address: ?tab=). */
+function mount(tab?: string) {
   return renderWithProviders(
     <DomainVocabularyContext.Provider value={VOCABULARIES}><IncidentDetailPage /></DomainVocabularyContext.Provider>,
-    { route: '/incidents/inc-1', path: '/incidents/:id' },
+    { route: tab ? `/incidents/inc-1?tab=${tab}` : '/incidents/inc-1', path: '/incidents/:id' },
   )
 }
 
-function show(over: Record<string, unknown>) {
+function show(over: Record<string, unknown>, tab?: string) {
   apolloFinto.risposte['GetIncident'] = { incident: incident(over) }
-  return mount()
+  return mount(tab)
 }
 
 /** Runs `body` while collecting the promise rejections nobody handled. */
@@ -321,8 +322,8 @@ describe('IncidentDetailPage: the details', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  it('what is missing is said, not left blank', () => {
-    show({
+  it('what is missing is said, not left blank', async () => {
+    const { user } = show({
       description: null, impact: null, urgency: null, assignee: null, workflowInstance: null, priority: 'unknown',
       // Lists the API did not send are empty lists, not a crash.
       linkedIncidents: undefined, linkedProblems: undefined, linkedChanges: undefined, customFields: undefined,
@@ -334,6 +335,7 @@ describe('IncidentDetailPage: the details', () => {
     expect(field('Workflow step')).toHaveTextContent('No workflow')
     // A priority outside the tenant's scale has no code.
     expect(within(field('Priority')).getByText('P?')).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'Linked tickets' }))
     expect(screen.getByText('Disruption at /incidents: none')).toBeInTheDocument()
     expect(screen.getByText('Known issue at /problems: none')).toBeInTheDocument()
     expect(screen.getByText('Change at /changes: none')).toBeInTheDocument()
@@ -1053,7 +1055,7 @@ describe('IncidentDetailPage: PDF export', () => {
 
 describe('IncidentDetailPage: linked tickets', () => {
   it('each kind is named as the tenant calls it, excludes this incident, and sends its own link', async () => {
-    const { user } = mount()
+    const { user } = mount('links')
     const section = screen.getByRole('region', { name: 'Linked tickets' })
     expect(section).toHaveAttribute('data-exclude', 'inc-1')
     expect(within(section).getByText('Disruption at /incidents: INC00000007')).toBeInTheDocument()
@@ -1078,7 +1080,7 @@ describe('IncidentDetailPage: linked tickets', () => {
 
   it('a refused link is shown', async () => {
     apolloFinto.esiti['LinkIncidentToProblem'] = { error: new Error('already linked') }
-    const { user } = mount()
+    const { user } = mount('links')
     await user.click(screen.getByRole('button', { name: 'link PROBLEM' }))
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('already linked'))
     expect(apolloFinto.refetch).not.toHaveBeenCalled()
@@ -1086,7 +1088,7 @@ describe('IncidentDetailPage: linked tickets', () => {
 
   it('without the tenant\'s names, the kinds keep their technical name', () => {
     delete apolloFinto.risposte['GetITILTypes']
-    mount()
+    mount('links')
     expect(screen.getByText('incident at /incidents: INC00000007')).toBeInTheDocument()
   })
 })
@@ -1186,13 +1188,13 @@ describe('IncidentDetailPage: impacted applications', () => {
   ]
 
   it('none: the folded card says there is nothing depending on the hit CIs', async () => {
-    const { user } = mount()
+    const { user } = mount('diagnosis')
     await user.click(screen.getByRole('button', { name: /Impacted applications/ }))
     expect(screen.getByText('No application depends on the CIs hit by this incident.')).toBeInTheDocument()
   })
 
   it('each application says how it is hit, with the tenant\'s labels', async () => {
-    const { user } = show({ impactedApplications: APPS })
+    const { user } = show({ impactedApplications: APPS }, 'diagnosis')
     await user.click(screen.getByRole('button', { name: /Impacted applications/ }))
     expect(screen.getByRole('link', { name: 'Billing' })).toHaveAttribute('href', '/ci/application/app-bill')
     expect(screen.getByText('Depends on mail-relay-01 · 2 hops')).toBeInTheDocument()
@@ -1206,7 +1208,7 @@ describe('IncidentDetailPage: impacted applications', () => {
   })
 
   it('the path shows how the impact travels, from the hit CI to the application', async () => {
-    const { user } = show({ impactedApplications: APPS })
+    const { user } = show({ impactedApplications: APPS }, 'diagnosis')
     await user.click(screen.getByRole('button', { name: /Impacted applications/ }))
     await user.click(screen.getAllByRole('button', { name: /Path/ })[0]!)
     const d = dialog('Impact path → Billing')
@@ -1234,5 +1236,34 @@ describe('IncidentDetailPage — who only reads incidents', () => {
       expect(screen.queryByRole('button', { name })).toBeNull()
     }
     expect(screen.queryByRole('button', { name: /Add CI/ })).toBeNull()
+  })
+})
+
+// ── The four tabs (26 Sep 2026, review of the pages) ──────────────────────────
+
+describe('IncidentDetailPage: tabs', () => {
+  it('opens on the overview: what whoever works the incident needs, the diagnosis one tab away', () => {
+    mount()
+    const tabs = screen.getAllByRole('tab').map((t) => t.textContent)
+    expect(tabs).toEqual(['Overview', 'Diagnosis', 'Linked tickets1', 'Tasks & attachments'])
+    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tabpanel')).toHaveAccessibleName('Overview')
+    expect(screen.getByRole('button', { name: /Incident Information/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Impacted applications/ })).not.toBeInTheDocument()
+  })
+
+  it('another tab shows its cards only; the timeline stays on the right on every tab', async () => {
+    const { user } = mount()
+    await user.click(screen.getByRole('tab', { name: 'Diagnosis' }))
+    expect(screen.getByRole('tab', { name: 'Diagnosis' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('button', { name: /Impacted applications/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Incident Information/ })).not.toBeInTheDocument()
+    expect(screen.getByText('Workflow history')).toBeInTheDocument()
+  })
+
+  it('a link to a tab opens it (the tab is in the address)', () => {
+    mount('links')
+    expect(screen.getByRole('tab', { name: /^Linked tickets/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('region', { name: 'Linked tickets' })).toBeInTheDocument()
   })
 })

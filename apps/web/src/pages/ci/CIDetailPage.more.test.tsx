@@ -177,7 +177,7 @@ describe('page states', () => {
 
   it('a CI with no relations says so, and its dependency map draws its blast radius', async () => {
     apolloFinto.risposte['DynamicDetail_Server'] = { server: { ...SRV, dependencies: [], dependents: [], status: null, environment: null, updatedAt: null } }
-    const { user } = show()
+    const { user } = show('/ci/server/srv-1?tab=relations')
     await openCard(user, /^Relationships \(0\)/)
     expect(screen.getByText('No relationships.')).toBeInTheDocument()
     await openCard(user, /^Dependency Map/)
@@ -319,7 +319,7 @@ describe('owner and support groups', () => {
 describe('relations', () => {
   it('an outgoing relation has this CI as source; the search needs two letters and hides this CI', async () => {
     apolloFinto.risposte['GetAllCIs'] = { allCIs: { items: [ref('srv-1', 'web-01'), ref('db-9', 'db-new')] } }
-    const { user } = show()
+    const { user } = show('/ci/server/srv-1?tab=relations')
     await user.click(screen.getByRole('button', { name: 'Add relation' }))
     const d = screen.getByRole('dialog', { name: 'Add relation — web-01' })
     const type = within(d).getByLabelText('Relation type')
@@ -349,7 +349,7 @@ describe('relations', () => {
   it('an incoming relation has this CI as target; clearing the target disables Add; a refusal keeps the dialog', async () => {
     apolloFinto.risposte['GetAllCIs'] = { allCIs: { items: [ref('app-7', 'billing', 'application')] } }
     apolloFinto.esiti['AddCIRelationship'] = { error: new Error('cardinality exceeded') }
-    const { user } = show()
+    const { user } = show('/ci/server/srv-1?tab=relations')
     await user.click(screen.getByRole('button', { name: 'Add relation' }))
     const d = screen.getByRole('dialog')
     await user.selectOptions(within(d).getByLabelText('Relation type'), 'incoming:USES')
@@ -374,21 +374,21 @@ describe('relations', () => {
 
   it('a type without declared relations says so instead of offering a hard-coded one', async () => {
     apolloFinto.risposte['DynamicDetail_Rack'] = { rack: { ...SRV, id: 'rk-1', name: 'rack-A', type: 'rack', dependencies: [], dependents: [] } }
-    const { user } = show('/ci/rack/rk-1')
+    const { user } = show('/ci/rack/rk-1?tab=relations')
     await user.click(screen.getByRole('button', { name: 'Add relation' }))
     expect(screen.getByText('This CI type declares no relation in the metamodel.')).toBeInTheDocument()
     expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Add relation' })).toBeDisabled()
   })
 
   it('removing asks first and removes the stored edge in its own direction', async () => {
-    const { user } = show()
+    const { user } = show('/ci/server/srv-1?tab=relations')
     await openCard(user, /^Relationships \(2\)/)
     await user.click(screen.getByRole('button', { name: /DEPENDS ON/ }))
     await user.click(screen.getByRole('button', { name: /USES/ }))
 
     await user.click(within(screen.getByRole('button', { name: /db-prod/ })).getByRole('button', { name: 'Delete' }))
     expect(screen.getByText('Remove DEPENDS_ON relation with db-prod?')).toBeInTheDocument()
-    expect(location()).toBe('/ci/server/srv-1') // the delete button does not open the related CI
+    expect(location()).toBe('/ci/server/srv-1?tab=relations') // the delete button does not open the related CI
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByText(/Remove DEPENDS_ON/)).not.toBeInTheDocument()
 
@@ -411,7 +411,7 @@ describe('relations', () => {
 
   it('only dependents: no separator, the list still shows', async () => {
     apolloFinto.risposte['DynamicDetail_Server'] = { server: { ...SRV, dependencies: [] } }
-    const { user } = show()
+    const { user } = show('/ci/server/srv-1?tab=relations')
     await openCard(user, /^Relationships \(1\)/)
     expect(screen.getByText('Dependents')).toBeInTheDocument()
     expect(screen.queryByText('Dependencies')).not.toBeInTheDocument()
@@ -440,9 +440,11 @@ describe('dynamic CI group', () => {
     await user.click(screen.getByRole('button', { name: '← Prev' }))
     expect(screen.getByText('member-000')).toBeInTheDocument()
 
-    // The map is about the members: open by default, drawn from them, no blast radius.
+    // The map is about the members, on its own tab: open by default, drawn from them, no blast radius.
+    await user.click(screen.getByRole('tab', { name: 'Relations & map' }))
     expect(screen.getByTestId('ci-graph')).toHaveTextContent('deps:30 dependents:0 blast:0')
     expect(screen.queryByLabelText('Nodes:')).not.toBeInTheDocument() // under the cap nothing to choose
+    await user.click(screen.getByRole('tab', { name: 'Information' }))
 
     const before = apolloFinto.refetch.mock.calls.length
     await user.click(screen.getByRole('button', { name: 'save criteria' }))
@@ -461,6 +463,7 @@ describe('dynamic CI group', () => {
     expect(screen.getByText(/List truncated: the server returns at most 120 of 900 members/)).toBeInTheDocument()
     expect(screen.queryByTestId('criteria')).not.toBeInTheDocument() // manual group: no criteria
 
+    await user.click(screen.getByRole('tab', { name: 'Relations & map' }))
     expect(screen.getByTestId('ci-graph')).toHaveTextContent('deps:50')
     expect(screen.getByText(/Showing the first 50 of 120 members/)).toBeInTheDocument()
     const cap = screen.getByLabelText('Nodes:')

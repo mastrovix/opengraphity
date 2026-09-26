@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
-import { Tabs, type TabItem } from './Tabs'
+import { Tabs, TabPanel, type TabItem } from './Tabs'
 /*
  * IL NOME ACCESSIBILE HA PERSO UNO SPAZIO (21 set 2026, jsdom 30).
  *
@@ -38,6 +38,22 @@ describe('Tabs', () => {
     expect(tabs[0]).toHaveAttribute('tabindex', '0')
     expect(tabs[1]).toHaveAttribute('aria-selected', 'false')
     expect(tabs[1]).toHaveAttribute('tabindex', '-1')
+  })
+
+  // 26 Sep 2026: in a narrow column the last tabs went out of sight, and «Ticket collegati» broke in two;
+  // wrapped onto three rows it looked broken. One row, never a label in two, and it scrolls when too narrow.
+  it('the tabs stay on one row, never a label in two; a row too narrow scrolls sideways', () => {
+    render(<Controlled />)
+    const list = screen.getByRole('tablist')
+    expect(list).toHaveStyle({ overflowX: 'auto' })
+    expect(list.style.flexWrap).toBe('')
+    for (const tab of screen.getAllByRole('tab')) expect(tab).toHaveStyle({ whiteSpace: 'nowrap', flexShrink: '0' })
+  })
+
+  it('with an id prefix, each tab names its panel and the panel is named by its tab', () => {
+    render(<><Tabs items={ITEMS} value="a" onChange={() => {}} ariaLabel="Sezioni" idPrefix="p" /><TabPanel idPrefix="p" tabKey="a">content</TabPanel></>)
+    expect(screen.getAllByRole('tab')[0]).toHaveAttribute('aria-controls', 'p-panel-a')
+    expect(screen.getByRole('tabpanel')).toHaveAccessibleName('Alpha')
   })
 
   it('il badge compare solo se > 0', () => {

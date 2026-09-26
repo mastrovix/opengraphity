@@ -31,6 +31,8 @@ test('manual group: criteria hidden, creation works, member addable', async ({ p
   await page.waitForTimeout(2500)
 
   await page.getByText(groupName).first().click()
+  // The relations are on their own tab (26 Sep 2026: the CI page in tabs); the reload below keeps it (?tab=relations)
+  await page.getByRole('tab', { name: /relazioni e mappa|relations & map/i }).click()
   await expect(page.getByText(/^Relazioni \(/)).toBeVisible({ timeout: 15_000 })
 
   await page.getByRole('button', { name: /add relation|aggiungi relazione/i }).first().click()

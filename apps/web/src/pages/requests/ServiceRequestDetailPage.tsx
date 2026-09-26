@@ -14,6 +14,8 @@ import { QueryError } from '@/components/QueryError'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { DetailField } from '@/components/ui/DetailField'
 import { DetailLayout } from '@/components/ui/DetailLayout'
+import { Tabs, TabPanel } from '@/components/ui/Tabs'
+import { useTabParam } from '@/hooks/useTabParam'
 import { Pill } from '@/components/ui/Pill'
 import { Skeleton } from '@/components/ui/skeleton'
 import { WatcherBar } from '@/components/WatcherBar'
@@ -66,6 +68,13 @@ interface ServiceRequest {
   formAnswers: FormAnswer[]
 }
 
+/**
+ * THE REQUEST IN TWO TABS (26 Sep 2026, review of the pages), as the other
+ * tickets: what it asks and the conversation, then its tasks and attachments.
+ * The actions and the details stay on the right.
+ */
+const REQUEST_TABS = ['overview', 'work'] as const
+
 export function ServiceRequestDetailPage() {
   const { t } = useTranslation()
   // F9: il colore della priorità dal Dizionario del cliente.
@@ -110,6 +119,8 @@ export function ServiceRequestDetailPage() {
   // non poteva dire di quale CI parlava; i tipi esclusi per le richieste non si
   // propongono (e l'API li rifiuta comunque).
   const [ciSearch, setCiSearch] = useState('')
+  const [tab, setTab] = useTabParam(REQUEST_TABS, 'overview')
+  const tabsId = useId()
   const { excluded: excludedCITypes } = useTicketCIExclusions('service_request')
   const { data: ciSearchData } = useQuery<{ allCIs: { items: AffectedCIRef[] } }>(GET_ALL_CIS, {
     variables: { search: ciSearch, limit: 20, excludeCiTypes: excludedCITypes },
@@ -208,45 +219,71 @@ export function ServiceRequestDetailPage() {
       </div>
 
       {/* Body: the main column shrinks, the side one keeps its width (D9) */}
-      <DetailLayout sideWidth={300}>
+      {/* The tabs head the main column only: both columns start level (26 Sep 2026). */}
+      <DetailLayout
+        sideWidth={300}
+        head={
+          <Tabs
+            idPrefix={tabsId}
+            ariaLabel={t('detail.tabs.label')}
+            value={tab}
+            onChange={setTab}
+            items={[
+              { key: 'overview', label: t('detail.tabs.overview') },
+              { key: 'work', label: t('detail.tabs.work') },
+            ]}
+          />
+        }
+      >
         <div>
-          {/* Description */}
-          <div style={{ marginBottom: 16 }}>
-            <SectionCard collapsible={false} defaultOpen title={t('detail.sections.description')}>
-              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', lineHeight: 1.6, margin: 0 }}>{sr.description || t('detail.noDescription')}</p>
-            </SectionCard>
-          </div>
+          {/* The open tab (in the address, ?tab=) */}
+          <TabPanel idPrefix={tabsId} tabKey={tab}>
+            {tab === 'overview' && (
+              <>
+                  {/* Description */}
+                  <div style={{ marginBottom: 16 }}>
+                    <SectionCard collapsible={false} defaultOpen title={t('detail.sections.description')}>
+                      <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', lineHeight: 1.6, margin: 0 }}>{sr.description || t('detail.noDescription')}</p>
+                    </SectionCard>
+                  </div>
 
-          {/* Campi del cliente (verifica «Cosa resta cablato», ondata 4) */}
-          <div style={{ marginBottom: 16 }}>
-            <TicketOLACard entityType="service_request" entityId={sr.id} />
-            <CustomFieldsCard entityType="service_request" ticketId={sr.id} fields={sr.customFields ?? []} canEdit={canEditCustomFields} onSaved={() => void refetch()} />
-            {/* Le risposte al modulo della voce di catalogo (moduli del catalogo, ondata 1) */}
-            <FormAnswersCard answers={sr.formAnswers ?? []} revision={sr.formRevision ?? null} requestId={sr.id} />
-          </div>
+                  {/* Campi del cliente (verifica «Cosa resta cablato», ondata 4) */}
+                  <div style={{ marginBottom: 16 }}>
+                    <TicketOLACard entityType="service_request" entityId={sr.id} />
+                    <CustomFieldsCard entityType="service_request" ticketId={sr.id} fields={sr.customFields ?? []} canEdit={canEditCustomFields} onSaved={() => void refetch()} />
+                    {/* Le risposte al modulo della voce di catalogo (moduli del catalogo, ondata 1) */}
+                    <FormAnswersCard answers={sr.formAnswers ?? []} revision={sr.formRevision ?? null} requestId={sr.id} />
+                  </div>
 
-          {/* CI della richiesta (CM-8) */}
-          <div style={{ marginBottom: 16 }}>
-            <AffectedCIList
-              affectedCIs={sr.affectedCIs ?? []}
-              ciResults={ciSearchData?.allCIs?.items ?? []}
-              excludedTypes={excludedCITypes ?? []}
-              onSearchChange={setCiSearch}
-              onAddCI={(ciId) => void addCI({ variables: { requestId: sr.id, ciId } })}
-              onRemoveCI={(ciId) => void removeCI({ variables: { requestId: sr.id, ciId } })}
-              canEdit={canWrite}
-            />
-          </div>
+                  {/* CI della richiesta (CM-8) */}
+                  <div style={{ marginBottom: 16 }}>
+                    <AffectedCIList
+                      affectedCIs={sr.affectedCIs ?? []}
+                      ciResults={ciSearchData?.allCIs?.items ?? []}
+                      excludedTypes={excludedCITypes ?? []}
+                      onSearchChange={setCiSearch}
+                      onAddCI={(ciId) => void addCI({ variables: { requestId: sr.id, ciId } })}
+                      onRemoveCI={(ciId) => void removeCI({ variables: { requestId: sr.id, ciId } })}
+                      canEdit={canWrite}
+                    />
+                  </div>
 
-          {/* Allegati */}
-          <TicketTasksSection entityId={sr.id} />
-          <AttachmentsSection entityType="service_request" entityId={sr.id} />
+                  {/* F13: le richieste non avevano commenti. */}
+                  <EntityCommentsSection entityType="service_request" entityId={sr.id} />
 
-          {/* F13: le richieste non avevano commenti. */}
-          <EntityCommentsSection entityType="service_request" entityId={sr.id} />
+              </>
+            )}
+            {tab === 'work' && (
+              <>
+                  {/* Allegati */}
+                  <TicketTasksSection entityId={sr.id} />
+                  <AttachmentsSection entityType="service_request" entityId={sr.id} />
 
-          {/* Internal Chat */}
-          <InternalChatPanel entityType="service_request" entityId={sr.id} currentUserId={keycloak.subject ?? ''} />
+                  {/* Internal Chat */}
+                  <InternalChatPanel entityType="service_request" entityId={sr.id} currentUserId={keycloak.subject ?? ''} />
+              </>
+            )}
+          </TabPanel>
         </div>
 
         {/* Sidebar */}

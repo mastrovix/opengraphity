@@ -281,6 +281,18 @@
     font-family: var(--font-family);
     font-size: var(--font-size-body);
   }
+  /*
+   * I BOTTONI NON PRENDONO L'INTERLINEA DEL TESTO (26 set 2026).
+   *
+   * Tailwind fa ereditare ai bottoni l'interlinea della pagina, 1,5: su un
+   * testo di 12-13 px sono 6 px vuoti in più, e ogni bottone era alto 36-38 px
+   * — «troppo grandi», col testo piccolo dentro. 1,25 li porta a 29-30 px con
+   * lo stesso testo. Chi dichiara `font: inherit` (i gruppi del menu, le righe
+   * cliccabili) tiene la sua interlinea: la regola vale per i bottoni veri.
+   */
+  button {
+    line-height: 1.25;
+  }
 }
 
 /* ── SortableFilterTable: font-size canonical source ───── */
@@ -700,6 +712,24 @@ code, kbd, samp, pre {
 @media (max-width: 900px) {
   .og-detail,
   .og-detail.og-detail-side-first { grid-template-columns: minmax(0, 1fr); }
+}
+/*
+  The frame of a DetailLayout is a size container: the columns decide on the
+  room they really have, not on the window (which does not know the menu).
+  Under 800px of room a side column on the right goes below the main one; the
+  side-first layouts (a list, then what it opens) keep the window rule.
+*/
+.og-detail-frame { container: og-detail / inline-size; }
+@container og-detail (max-width: 800px) {
+  .og-detail:not(.og-detail-side-first) { grid-template-columns: minmax(0, 1fr); }
+  .og-detail-head:not(.og-detail-head-side-first) { margin-right: 0; }
+}
+/* The head of the main column (DetailLayout `head`): as wide as that column, so both columns start level. */
+.og-detail-head { margin-right: calc(var(--og-detail-side, 340px) + var(--og-detail-gap, 24px)); }
+.og-detail-head.og-detail-head-side-first { margin-right: 0; margin-left: calc(var(--og-detail-side, 340px) + var(--og-detail-gap, 24px)); }
+@media (max-width: 900px) {
+  .og-detail-head,
+  .og-detail-head.og-detail-head-side-first { margin: 0; }
 }
 
 /*

@@ -199,7 +199,8 @@ afterEach(() => { vi.useRealTimers() })
 
 const LABELS = { priority: { critical: 'Critical' }, category: { database: 'Database' } }
 
-const mount = () => renderWithProviders(withVocabularyLabels(<ProblemDetailPage />, LABELS), { route: '/problems/prb-1', path: '/problems/:id' })
+/** The page, on a tab when given (it is in the address: ?tab=). */
+const mount = (tab?: string) => renderWithProviders(withVocabularyLabels(<ProblemDetailPage />, LABELS), { route: tab ? `/problems/prb-1?tab=${tab}` : '/problems/prb-1', path: '/problems/:id' })
 
 const setProblem = (over: Record<string, unknown>) => { apolloFinto.risposte['GetProblem'] = { problem: problem(over) } }
 
@@ -339,10 +340,9 @@ describe('ProblemDetailPage — the information card', () => {
     expect(toast.error).toHaveBeenCalledWith('The number of affected users is not a number: it was not saved.')
   })
 
-  it('a problem with no workaround yet starts with an empty workaround', async () => {
+  it('a problem with no workaround yet starts with an empty workaround', () => {
     setProblem({ workaround: null })
-    const { user } = mount()
-    await user.click(screen.getByRole('button', { name: /^Workaround/ }))
+    mount('diagnosis')
     expect(screen.getByPlaceholderText('Describe the temporary workaround...')).toHaveValue('')
   })
 
@@ -354,8 +354,8 @@ describe('ProblemDetailPage — the information card', () => {
 
   it('root cause and workaround are saved when left, only if they changed; a refused save is reported', async () => {
     apolloFinto.esiti['UpdateProblem'] = { error: new Error('field locked') }
-    const { user } = mount()
-    await user.click(screen.getByRole('button', { name: /^Root cause/ }))
+    // On the diagnosis tab both are open: no folded card to unfold first.
+    const { user } = mount('diagnosis')
     const rootCause = screen.getByPlaceholderText('Describe the root cause of the problem...')
     expect(rootCause).toHaveValue('')
     await user.click(rootCause)
@@ -368,7 +368,6 @@ describe('ProblemDetailPage — the information card', () => {
     expect(screen.queryByText('Not saved yet: it is saved when you leave the field.')).toBeNull()
     expect(apolloFinto.chiamata('UpdateProblem')).toEqual({ id: 'prb-1', input: { rootCause: 'Pool too small' } })
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('field locked'))
-    await user.click(screen.getByRole('button', { name: /^Workaround/ }))
     const workaround = screen.getByPlaceholderText('Describe the temporary workaround...')
     expect(workaround).toHaveValue('Restart the pool')
     await user.click(workaround)
@@ -775,7 +774,7 @@ describe('ProblemDetailPage — CIs, linked tickets, comments and chat', () => {
   })
 
   it('shows the linked incidents, problems and changes under the customer names, never itself', () => {
-    mount()
+    mount('links')
     const linked = screen.getByRole('region', { name: 'linked tickets without prb-1' })
     expect(within(linked).getByText('Disruption: INC00000011')).toBeInTheDocument()
     expect(within(linked).getByText('Problem:')).toBeInTheDocument()
@@ -784,13 +783,13 @@ describe('ProblemDetailPage — CIs, linked tickets, comments and chat', () => {
 
   it('a problem without link lists gives the section empty lists', () => {
     setProblem({ linkedIncidents: undefined, linkedProblems: undefined, linkedChanges: undefined, customFields: undefined })
-    mount()
+    mount('links')
     expect(screen.getByText('Disruption:')).toBeInTheDocument()
     expect(screen.getByText('Change:')).toBeInTheDocument()
   })
 
   it('links and unlinks incidents, related problems and resolving changes, each the right way', async () => {
-    const { user } = mount()
+    const { user } = mount('links')
     await user.click(screen.getByRole('button', { name: 'link INCIDENT' }))
     expect(apolloFinto.chiamata('LinkIncidentToProblem')).toEqual({ problemId: 'prb-1', incidentId: 'incident-new' })
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Incident linked'))
@@ -814,7 +813,7 @@ describe('ProblemDetailPage — CIs, linked tickets, comments and chat', () => {
     for (const op of ['LinkIncidentToProblem', 'UnlinkIncidentFromProblem', 'LinkRelatedTicket', 'LinkResolvedTicket']) {
       apolloFinto.esiti[op] = { error: new Error(`${op} refused`) }
     }
-    const { user } = mount()
+    const { user } = mount('links')
     await user.click(screen.getByRole('button', { name: 'link INCIDENT' }))
     await user.click(screen.getByRole('button', { name: 'unlink INCIDENT' }))
     await user.click(screen.getByRole('button', { name: 'link PROBLEM' }))
@@ -849,11 +848,11 @@ describe('ProblemDetailPage — CIs, linked tickets, comments and chat', () => {
   })
 
   it('the internal chat is about this problem, as the signed-in person — or as nobody when unknown', () => {
-    const { unmount } = mount()
+    const { unmount } = mount('work')
     expect(screen.getByText('internal chat on problem prb-1 as "kc-user-1"')).toBeInTheDocument()
     unmount()
     hoisted.keycloak.subject = undefined
-    mount()
+    mount('work')
     expect(screen.getByText('internal chat on problem prb-1 as ""')).toBeInTheDocument()
   })
 })
@@ -862,12 +861,29 @@ describe('ProblemDetailPage — CIs, linked tickets, comments and chat', () => {
 describe('ProblemDetailPage — who only reads problems', () => {
   it('sees the problem, with the root cause and workaround read only, and no transition or assignment', async () => {
     permissions = []
-    mount()
+    const { user } = mount()
     expect(await screen.findByRole('heading', { level: 1 })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Mark as known error' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Reassign' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Remove assignment' })).toBeNull()
     expect(screen.queryByRole('spinbutton')).toBeNull()
     for (const box of screen.queryAllByRole('textbox')) expect(box).toHaveAttribute('readonly')
+    // Root cause and workaround are on the diagnosis tab: read only there too, and really there.
+    await user.click(screen.getByRole('tab', { name: 'Diagnosis' }))
+    expect(screen.getAllByRole('textbox')).toHaveLength(2)
+    for (const box of screen.getAllByRole('textbox')) expect(box).toHaveAttribute('readonly')
+  })
+})
+
+// ── The four tabs (26 Sep 2026, review of the pages) ──────────────────────────
+
+describe('ProblemDetailPage — tabs', () => {
+  it('opens on the overview; root cause and workaround are one tab away, open, not folded', async () => {
+    const { user } = mount()
+    expect(screen.getAllByRole('tab').map((t) => t.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false', 'false'])
+    expect(screen.queryByPlaceholderText('Describe the root cause of the problem...')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'Diagnosis' }))
+    expect(screen.getByPlaceholderText('Describe the root cause of the problem...')).toBeVisible()
+    expect(screen.getByPlaceholderText('Describe the temporary workaround...')).toBeVisible()
   })
 })

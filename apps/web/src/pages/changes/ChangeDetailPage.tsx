@@ -37,6 +37,8 @@ import {
 } from '@/graphql/queries'
 import { useMe } from '@/hooks/useMe'
 import { useTicketRights } from '@/hooks/useTicketRights'
+import { useTabParam } from '@/hooks/useTabParam'
+import { Tabs, TabPanel } from '@/components/ui/Tabs'
 import {
   EXECUTE_CHANGE_TRANSITION,
   ADD_CI_TO_CHANGE,
@@ -73,6 +75,16 @@ interface ImpactedCIRow {
   affectedBy: { id: string; name: string; type: string | null }
   impactPath: string[]
 }
+
+/**
+ * THE CHANGE IN FIVE TABS (26 Sep 2026, review of the pages): fifteen cards in
+ * one column. The card with the phase, the actions and the progress stays
+ * above the tabs, on every tab. The overview is the work of the phase — the
+ * approval, the release conflicts (seen before approving, never searched for),
+ * the next windows, the tasks of each CI, the comments; then the CIs and the
+ * release, the linked tickets, the step tasks and attachments, the history.
+ */
+const CHANGE_TABS = ['overview', 'ciRelease', 'links', 'work', 'history'] as const
 
 export function ChangeDetailPage() {
   const { t } = useTranslation()
@@ -154,6 +166,8 @@ export function ChangeDetailPage() {
   const impactedCIs = impactData?.changeImpactedCIs ?? []
 
   const [ciTab, setCITab] = useState<'affected' | 'impacted'>('affected')
+  const [tab, setTab] = useTabParam(CHANGE_TABS, 'overview')
+  const tabsId = useId()
   const [expandedImpactId, setExpandedImpactId] = useState<string | null>(null)
   const [showAddCI, setShowAddCI] = useState(false)
   const [confirmRemoveCI, setConfirmRemoveCI] = useState<{ id: string; name: string } | null>(null)
@@ -294,309 +308,352 @@ export function ChangeDetailPage() {
         categoryOf={(step) => wfByName.get(step)?.category ?? null}
       />
 
-      {/* Campi del cliente (verifica «Cosa resta cablato», ondata 4) */}
-      <div style={{ marginBottom: 16 }}>
-        <TicketOLACard entityType="change" entityId={change.id} />
-        <CustomFieldsCard entityType="change" ticketId={change.id} fields={change.customFields ?? []} canEdit={can('ticket.work')} onSaved={refetchAll} />
-      </div>
-
-      {/* Approvazione multi-parte: Change Manager + un owner group per CI affected.
-          Tabellare; aperto durante approval, collassato dopo. */}
-      {showApproval && (() => {
-        const approvals = change.approvals ?? []
-        const approvedN = approvals.filter(a => a.status === 'approved').length
-        return (
-          <SectionCard
-            key={`approval-${currentStep}`}
-            title={t('pages.changeDetail.approval')}
-            count={approvals.length}
-            collapsible
-            defaultOpen={atApproval}
-            activeColor={palette.yellow.bg}
-            activeTextColor="var(--color-slate-dark)"
-            headerRight={<span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>{t('pages.changeDetail.approvedCount', { done: approvedN, total: approvals.length })}</span>}
-          >
-            {approvals.length === 0 ? (
-              <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
-                <Trans i18nKey="pages.changeDetail.noApprovalRequirements" components={{ b: <strong /> }} />
-              </p>
-            ) : (
-              <>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--color-border)', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>
-                  <span style={{ width: 150 }}>{t('pages.changeDetail.requirement')}</span>
-                  <span style={{ flex: 1 }}>{t('sidebar.teams')}</span>
-                  <span style={{ width: 110 }}>{t('common.status')}</span>
-                  <span style={{ flex: 1 }}>{t('pages.changeDetail.approvedBy')}</span>
-                  <span style={{ width: 200 }}>{t('common.actions')}</span>
-                </div>
-                {approvals.map((a) => (
-                  <div key={`${a.kind}-${a.teamId}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 0', borderBottom: '1px solid var(--color-border-light)', fontSize: 'var(--font-size-body)' }}>
-                    <span style={{ width: 150, fontWeight: 500, color: 'var(--color-slate-dark)' }}>{a.kind === 'change_manager' ? t('changeTasks.approvalKind.change_manager') : t('changeTasks.approvalKind.owner_group')}</span>
-                    <span style={{ flex: 1, color: 'var(--color-slate)' }}>{a.teamName ?? '—'}</span>
-                    <span style={{ width: 110 }}>
-                      {a.status === 'approved'
-                        ? <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: palette.success.strong, background: palette.success.tint, padding: '2px 8px', borderRadius: 12 }}>{t('pages.changeDetail.approved')}</span>
-                        : <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: palette.yellow.text, background: palette.yellow.bg, padding: '2px 8px', borderRadius: 12 }}>{t('pages.changeDetail.pending')}</span>}
-                    </span>
-                    <span style={{ flex: 1, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
-                      {a.approvedByName ? `${a.approvedByName}${a.approvedAt ? ` · ${fmtDate(a.approvedAt)}` : ''}` : '—'}
-                    </span>
-                    <span style={{ width: 200, display: 'flex', gap: 8 }}>
-                      {a.canApprove && a.teamId && (
-                        <>
-                          <button type="button" disabled={approving} onClick={() => void (async () => {
-                            if (a.onBehalf && !(await confirm({ title: t('pages.changeDetail.approveOnBehalfTitle'), body: t('pages.changeDetail.approveOnBehalfBody', { team: a.teamName ?? '—' }), confirmLabel: t('pages.changeDetail.approve') }))) return
-                            // Not awaited: nothing follows, and onError reports a refusal — awaited, Apollo 4's
-                            // rejection of a refused mutation escaped this handler unhandled (tour of 23 Sep 2026).
-                            void approveApproval({ variables: { changeId, teamId: a.teamId, note: null } })
-                          })()}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: 'none', background: palette.success.base, color: colors.white, fontWeight: 600, fontSize: 'var(--font-size-label)', cursor: approving ? 'wait' : 'pointer' }}>
-                            <CheckCircle size={14} /> {t('pages.changeDetail.approve')}
-                          </button>
-                          <button type="button" onClick={() => { setRejectNote(''); setReopenMode('all'); setReopenIds(new Set()); setRejectModal({ teamId: a.teamId!, teamName: a.teamName ?? '' }) }}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--color-danger)', background: colors.white, color: 'var(--color-danger)', fontWeight: 600, fontSize: 'var(--font-size-label)', cursor: 'pointer' }}>
-                            <XCircle size={14} /> {t('pages.changeDetail.reject')}
-                          </button>
-                        </>
-                      )}
-                      {a.ownChange && (
-                        <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>{t('pages.changeDetail.ownChangeNote')}</span>
-                      )}
-                    </span>
-                  </div>
-                ))}
-              </>
-            )}
-          </SectionCard>
-        )
-      })()}
-
-      <UnifiedLinkedTickets
-        title={t('pages.changeDetail.linkedTickets')}
-        types={[
-          {
-            kind: 'PROBLEM', label: typeLabel('problem'), routeBase: '/problems',
-            items: change.resolvesProblems ?? [],
-            onLink: (entityId) => void linkTicket({ variables: { changeId, entityType: 'problem', entityId } }),
-            onUnlink: (entityId) => void unlinkTicket({ variables: { changeId, entityType: 'problem', entityId } }),
-            canEdit: canWork,
-          },
-          {
-            kind: 'INCIDENT', label: typeLabel('incident'), routeBase: '/incidents',
-            items: change.resolvesIncidents ?? [],
-            onLink: (entityId) => void linkTicket({ variables: { changeId, entityType: 'incident', entityId } }),
-            onUnlink: (entityId) => void unlinkTicket({ variables: { changeId, entityType: 'incident', entityId } }),
-            canEdit: canWork,
-          },
+      {/* Five tabs; the open one is in the address (?tab=) */}
+      <Tabs
+        idPrefix={tabsId}
+        ariaLabel={t('detail.tabs.label')}
+        value={tab}
+        onChange={setTab}
+        items={[
+          { key: 'overview', label: t('detail.tabs.overview') },
+          { key: 'ciRelease', label: t('detail.tabs.ciRelease') },
+          { key: 'links', label: t('detail.tabs.links'), badge: (change.resolvesProblems?.length ?? 0) + (change.resolvesIncidents?.length ?? 0) },
+          { key: 'work', label: t('detail.tabs.work') },
+          { key: 'history', label: t('detail.tabs.history') },
         ]}
       />
+      <TabPanel idPrefix={tabsId} tabKey={tab}>
+        {tab === 'overview' && (
+          <>
+            {/* Campi del cliente (verifica «Cosa resta cablato», ondata 4) */}
+            <div style={{ marginBottom: 16 }}>
+              <TicketOLACard entityType="change" entityId={change.id} />
+              <CustomFieldsCard entityType="change" ticketId={change.id} fields={change.customFields ?? []} canEdit={can('ticket.work')} onSaved={refetchAll} />
+            </div>
 
-      {/* I conflitti di RILASCIO: altre change che deployano sugli stessi CI in
-          una finestra sovrapposta (18 set 2026). Sta accanto al piano e sopra
-          gli allarmi silenziati, perché è la domanda che si fa prima di
-          approvare — non un dettaglio da cercare. */}
-      <DeployConflictsSection conflitti={change.deployConflicts?.items ?? []} illeggibili={change.deployConflicts?.unreadablePlans ?? []} />
-
-      {/* Allarmi silenziati dalla finestra di rilascio (Event Management, ondata 3) */}
-      <SuppressedAlarmsSection events={change.suppressedEvents ?? []} total={change.suppressedEventCount} changeId={change.id} />
-
-      {!wfIsTerminal(currentStep) && affected.some(a => a.deployPlan && a.deployPlan.steps.length > 0 && !a.validation) && (
-        <SectionCard title={t('pages.changeDetail.nextSteps')} collapsible count={affected.filter(a => (a.deployPlan?.steps?.length ?? 0) > 0).length}>
-          {affected.map((a) => {
-            const steps = a.deployPlan?.steps ?? []
-            if (steps.length === 0) return null
-            const firstVal = steps[0]?.validationWindow?.start
-            const firstRel = steps[0]?.releaseWindow?.start
-            return (
-              <div key={a.ci.id} style={{ display: 'flex', gap: 16, padding: '6px 0', borderBottom: '1px solid var(--color-border-light)', fontSize: 'var(--font-size-label)' }}>
-                <span style={{ width: 120, fontWeight: 500, color: 'var(--color-slate-dark)', flexShrink: 0 }}>{a.ci.name}</span>
-                {firstVal && <span style={{ color: 'var(--color-slate-light)' }}>{t('changeTasks.validation')}: <strong style={{ color: 'var(--color-slate)' }}>{formatDateTime(firstVal)}</strong></span>}
-                {firstRel && <span style={{ color: 'var(--color-slate-light)' }}>{t('changeTasks.deploy')}: <strong style={{ color: 'var(--color-slate)' }}>{formatDateTime(firstRel)}</strong></span>}
-              </div>
-            )
-          })}
-        </SectionCard>
-      )}
-
-      <CITasksTable
-        key={`tasks-${currentStep}`}
-        affected={affected}
-        actsForAnyTeam={actsForAnyTeam}
-        userTeamIds={userTeamIds}
-        defaultOpen={!atApproval}
-        activeColor={atApproval ? undefined : palette.yellow.bg}
-        activeTextColor={atApproval ? undefined : 'var(--color-slate-dark)'}
-      />
-
-      {/* IL PIANO COMPLESSIVO, in ordine di data (17 set 2026). Sta subito sotto
-          i task perché è la loro somma: si popola task per task, e al CAB è già
-          il documento da leggere. Si nasconde da sé finché non c'è niente da
-          riepilogare, quindi non serve un varco di fase qui. */}
-      <ReleasePlanCard affected={affected} />
-
-      <SectionCard title={t('pages.changeDetail.involvedCIs')} collapsible count={affected.length}>
-        <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border)' }}>
-          {(['affected', 'impacted'] as const).map(tab => {
-            const active = ciTab === tab
-            return (
-              <button key={tab} type="button" onClick={() => setCITab(tab)} style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                padding: '8px 16px', fontSize: 'var(--font-size-body)', background: 'none', border: 'none', cursor: 'pointer',
-                borderBottom: active ? '2px solid var(--color-brand)' : '2px solid transparent',
-                color: active ? 'var(--color-brand)' : 'var(--color-slate-light)',
-                fontWeight: active ? 600 : 500,
-              }}>
-                {tab === 'affected' ? t('changeTasks.ciTab.affected') : t('changeTasks.ciTab.impacted')}
-                <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 6px', borderRadius: 8, backgroundColor: active ? 'var(--color-brand-light)' : colors.slateBg, color: active ? 'var(--color-brand)' : 'var(--color-slate-light)' }}>
-                  {tab === 'affected' ? affected.length : impactedCIs.length}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-        <div>
-          {ciTab === 'affected' && (
-            <>
-              {canWrite && currentStep === wfInitialStep?.name && (
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-                  <button type="button" onClick={() => setShowAddCI(true)} style={{
-                    padding: '4px 10px', borderRadius: 6, border: '1px solid var(--color-brand)',
-                    color: 'var(--color-brand)', background: 'transparent',
-                    fontSize: 'var(--font-size-label)', fontWeight: 500, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', gap: 4,
-                  }}>
-                    <Plus size={12} /> {t('pages.questions.add')}
-                  </button>
-                </div>
-              )}
-              {affected.map((a) => (
-                <div key={a.ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--color-border-light)', fontSize: 'var(--font-size-body)' }}>
-                  <span style={{ flex: 1, fontWeight: 500, color: 'var(--color-slate-dark)' }}>{a.ci.name}</span>
-                  {a.ci.type && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.typeLabel(a.ci.type)}</span>}
-                  {a.ci.environment && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.environmentLabel(a.ci.environment)}</span>}
-                  {canWrite && currentStep === wfInitialStep?.name && (
-                    <button
-                      type="button"
-                      onClick={() => setConfirmRemoveCI({ id: a.ci.id, name: a.ci.name })}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--color-slate-light)', flexShrink: 0 }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-danger)' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-slate-light)' }}
-                    >
-                      <X size={14} />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </>
-          )}
-          {ciTab === 'impacted' && (
-            <>
-              <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 500, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>{t('pages.changeDetail.depth')}</span>
-                <select aria-label={t('pages.changeDetail.depth')} value={impactDepth} onChange={e => setImpactDepth(Number(e.target.value))} style={{ padding: '4px 8px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)' }}>
-                  {[1, 2, 3, 4, 5].map(d => <option key={d} value={d}>{d}</option>)}
-                </select>
-              </div>
-              {impactError && (
-                <div style={{ padding: '10px 12px', backgroundColor: palette.danger.bg, border: '1px solid var(--color-danger-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-danger)', marginBottom: 8 }}>
-                  {t('pages.changeDetail.impactError', { message: impactError.message })}{' '}
-                  <button type="button" onClick={() => void refetchImpacted()} style={{ background: 'none', border: 'none', color: 'var(--color-danger)', textDecoration: 'underline', cursor: 'pointer', fontSize: 'var(--font-size-body)', padding: 0 }}>{t('pages.changeDetail.retry')}</button>
-                </div>
-              )}
-              {!impactError && impactedCIs.length === 0 && <EmptyState icon={<ChevronRight size={24} />} title={t('pages.changeDetail.noImpactedCI')} description={t('pages.changeDetail.noImpactedCIAtDepth', { depth: impactDepth })} />}
-              {impactedCIs.length > 0 && (
-                <>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--color-border)', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>
-                    <span style={{ width: 24, flexShrink: 0 }} />
-                    <span style={{ flex: 1 }}>{t('pages.changeDetail.impactedCI')}</span>
-                    <span style={{ width: 80 }}>{t('common.type')}</span>
-                    {/* F-28: intestazioni tradotte (erano letterali inglesi). */}
-                    <span style={{ width: 80 }}>{t('pages.changeDetail.colEnvironment')}</span>
-                    <span style={{ width: 60 }}>{t('pages.changeDetail.colDistance')}</span>
-                    <span style={{ width: 140 }}>{t('pages.changeDetail.impactedVia')}</span>
-                    {currentStep === wfInitialStep?.name && <span style={{ width: 100, flexShrink: 0 }} />}
-                  </div>
-                  {impactedCIs.map((b, i) => {
-                    const rowId = `${b.ci.id}-${i}`
-                    const isOpen = expandedImpactId === rowId
-                    const hasPath = b.impactPath.length >= 2
-                    return (
-                      <div key={rowId}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid var(--color-border-light)', fontSize: 'var(--font-size-body)' }}>
-                          <span style={{ width: 24, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            {hasPath && (
-                              <button type="button" aria-expanded={isOpen} aria-label={b.ci.name} onClick={() => setExpandedImpactId(prev => prev === rowId ? null : rowId)} style={{ cursor: 'pointer', background: 'none', border: 'none', padding: 0, display: 'flex', alignItems: 'center', font: 'inherit', color: 'inherit' }}>
-                                <ChevronRight size={14} color="var(--color-slate-light)" style={{ transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }} />
-                              </button>
+            {/* Approvazione multi-parte: Change Manager + un owner group per CI affected.
+                Tabellare; aperto durante approval, collassato dopo. */}
+            {showApproval && (() => {
+              const approvals = change.approvals ?? []
+              const approvedN = approvals.filter(a => a.status === 'approved').length
+              return (
+                <SectionCard
+                  key={`approval-${currentStep}`}
+                  title={t('pages.changeDetail.approval')}
+                  count={approvals.length}
+                  collapsible
+                  defaultOpen={atApproval}
+                  activeColor={palette.yellow.bg}
+                  activeTextColor="var(--color-slate-dark)"
+                  headerRight={<span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>{t('pages.changeDetail.approvedCount', { done: approvedN, total: approvals.length })}</span>}
+                >
+                  {approvals.length === 0 ? (
+                    <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
+                      <Trans i18nKey="pages.changeDetail.noApprovalRequirements" components={{ b: <strong /> }} />
+                    </p>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--color-border)', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>
+                        <span style={{ width: 150 }}>{t('pages.changeDetail.requirement')}</span>
+                        <span style={{ flex: 1 }}>{t('sidebar.teams')}</span>
+                        <span style={{ width: 110 }}>{t('common.status')}</span>
+                        <span style={{ flex: 1 }}>{t('pages.changeDetail.approvedBy')}</span>
+                        <span style={{ width: 200 }}>{t('common.actions')}</span>
+                      </div>
+                      {approvals.map((a) => (
+                        <div key={`${a.kind}-${a.teamId}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 0', borderBottom: '1px solid var(--color-border-light)', fontSize: 'var(--font-size-body)' }}>
+                          <span style={{ width: 150, fontWeight: 500, color: 'var(--color-slate-dark)' }}>{a.kind === 'change_manager' ? t('changeTasks.approvalKind.change_manager') : t('changeTasks.approvalKind.owner_group')}</span>
+                          <span style={{ flex: 1, color: 'var(--color-slate)' }}>{a.teamName ?? '—'}</span>
+                          <span style={{ width: 110 }}>
+                            {a.status === 'approved'
+                              ? <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: palette.success.strong, background: palette.success.tint, padding: '2px 8px', borderRadius: 12 }}>{t('pages.changeDetail.approved')}</span>
+                              : <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: palette.yellow.text, background: palette.yellow.bg, padding: '2px 8px', borderRadius: 12 }}>{t('pages.changeDetail.pending')}</span>}
+                          </span>
+                          <span style={{ flex: 1, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
+                            {a.approvedByName ? `${a.approvedByName}${a.approvedAt ? ` · ${fmtDate(a.approvedAt)}` : ''}` : '—'}
+                          </span>
+                          <span style={{ width: 200, display: 'flex', gap: 8 }}>
+                            {a.canApprove && a.teamId && (
+                              <>
+                                <button type="button" disabled={approving} onClick={() => void (async () => {
+                                  if (a.onBehalf && !(await confirm({ title: t('pages.changeDetail.approveOnBehalfTitle'), body: t('pages.changeDetail.approveOnBehalfBody', { team: a.teamName ?? '—' }), confirmLabel: t('pages.changeDetail.approve') }))) return
+                                  // Not awaited: nothing follows, and onError reports a refusal — awaited, Apollo 4's
+                                  // rejection of a refused mutation escaped this handler unhandled (tour of 23 Sep 2026).
+                                  void approveApproval({ variables: { changeId, teamId: a.teamId, note: null } })
+                                })()}
+                                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: 'none', background: palette.success.base, color: colors.white, fontWeight: 600, fontSize: 'var(--font-size-label)', cursor: approving ? 'wait' : 'pointer' }}>
+                                  <CheckCircle size={14} /> {t('pages.changeDetail.approve')}
+                                </button>
+                                <button type="button" onClick={() => { setRejectNote(''); setReopenMode('all'); setReopenIds(new Set()); setRejectModal({ teamId: a.teamId!, teamName: a.teamName ?? '' }) }}
+                                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--color-danger)', background: colors.white, color: 'var(--color-danger)', fontWeight: 600, fontSize: 'var(--font-size-label)', cursor: 'pointer' }}>
+                                  <XCircle size={14} /> {t('pages.changeDetail.reject')}
+                                </button>
+                              </>
+                            )}
+                            {a.ownChange && (
+                              <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>{t('pages.changeDetail.ownChangeNote')}</span>
                             )}
                           </span>
-                          <span style={{ flex: 1, fontWeight: 500, color: 'var(--color-slate-dark)' }}>{b.ci.name}</span>
-                          <span style={{ width: 80 }}>{b.ci.type ? <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.typeLabel(b.ci.type)}</span> : null}</span>
-                          <span style={{ width: 80 }}>{b.ci.environment ? <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.environmentLabel(b.ci.environment)}</span> : null}</span>
-                          <span style={{ width: 60 }}><span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 6px', borderRadius: 4, backgroundColor: b.distance === 1 ? 'var(--color-danger-bg)' : b.distance === 2 ? palette.orange.bg : colors.slateBg, color: b.distance === 1 ? 'var(--color-danger)' : b.distance === 2 ? palette.warning.text : 'var(--color-slate)' }}>{t('pages.changeDetail.hops', { count: b.distance })}</span></span>
-                          <span style={{ width: 140, fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>{b.affectedBy.name}</span>
-                          {currentStep === wfInitialStep?.name && (
-                            <span style={{ width: 100, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
-                              <button
-                                type="button"
-                                title={t('pages.changeDetail.moveToAffected')}
-                                onClick={() => void addCIFromImpacted({ variables: { changeId, ciId: b.ci.id } })}
-                                style={{
-                                  padding: '4px 8px', borderRadius: 6, border: '1px solid var(--color-brand)',
-                                  color: 'var(--color-brand)', background: 'transparent',
-                                  fontSize: 'var(--font-size-label)', fontWeight: 500, cursor: 'pointer',
-                                  display: 'flex', alignItems: 'center', gap: 4,
-                                }}
-                              >
-                                <PlusCircle size={14} /> {t('pages.questions.add')}
-                              </button>
-                            </span>
-                          )}
                         </div>
-                        {isOpen && hasPath && (
-                          <div style={{ padding: '8px 0 8px 28px', fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
-                            {b.impactPath.join(' → ')}
-                          </div>
+                      ))}
+                    </>
+                  )}
+                </SectionCard>
+              )
+            })()}
+
+            {/* I conflitti di RILASCIO: altre change che deployano sugli stessi CI in
+                una finestra sovrapposta (18 set 2026). Sta accanto al piano e sopra
+                gli allarmi silenziati, perché è la domanda che si fa prima di
+                approvare — non un dettaglio da cercare. */}
+            <DeployConflictsSection conflitti={change.deployConflicts?.items ?? []} illeggibili={change.deployConflicts?.unreadablePlans ?? []} />
+
+            {!wfIsTerminal(currentStep) && affected.some(a => a.deployPlan && a.deployPlan.steps.length > 0 && !a.validation) && (
+              <SectionCard title={t('pages.changeDetail.nextSteps')} collapsible count={affected.filter(a => (a.deployPlan?.steps?.length ?? 0) > 0).length}>
+                {affected.map((a) => {
+                  const steps = a.deployPlan?.steps ?? []
+                  if (steps.length === 0) return null
+                  const firstVal = steps[0]?.validationWindow?.start
+                  const firstRel = steps[0]?.releaseWindow?.start
+                  return (
+                    <div key={a.ci.id} style={{ display: 'flex', gap: 16, padding: '6px 0', borderBottom: '1px solid var(--color-border-light)', fontSize: 'var(--font-size-label)' }}>
+                      <span style={{ width: 120, fontWeight: 500, color: 'var(--color-slate-dark)', flexShrink: 0 }}>{a.ci.name}</span>
+                      {firstVal && <span style={{ color: 'var(--color-slate-light)' }}>{t('changeTasks.validation')}: <strong style={{ color: 'var(--color-slate)' }}>{formatDateTime(firstVal)}</strong></span>}
+                      {firstRel && <span style={{ color: 'var(--color-slate-light)' }}>{t('changeTasks.deploy')}: <strong style={{ color: 'var(--color-slate)' }}>{formatDateTime(firstRel)}</strong></span>}
+                    </div>
+                  )
+                })}
+              </SectionCard>
+            )}
+
+            <CITasksTable
+              key={`tasks-${currentStep}`}
+              affected={affected}
+              actsForAnyTeam={actsForAnyTeam}
+              userTeamIds={userTeamIds}
+              defaultOpen={!atApproval}
+              activeColor={atApproval ? undefined : palette.yellow.bg}
+              activeTextColor={atApproval ? undefined : 'var(--color-slate-dark)'}
+            />
+
+            {/* F13: le change avevano solo l'audit, nessun commento. */}
+            <EntityCommentsSection entityType="change" entityId={change.id} />
+
+          </>
+        )}
+        {tab === 'ciRelease' && (
+          <>
+            <SectionCard title={t('pages.changeDetail.involvedCIs')} collapsible count={affected.length}>
+              <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border)' }}>
+                {(['affected', 'impacted'] as const).map(tab => {
+                  const active = ciTab === tab
+                  return (
+                    <button key={tab} type="button" onClick={() => setCITab(tab)} style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      padding: '8px 16px', fontSize: 'var(--font-size-body)', background: 'none', border: 'none', cursor: 'pointer',
+                      borderBottom: active ? '2px solid var(--color-brand)' : '2px solid transparent',
+                      color: active ? 'var(--color-brand)' : 'var(--color-slate-light)',
+                      fontWeight: active ? 600 : 500,
+                    }}>
+                      {tab === 'affected' ? t('changeTasks.ciTab.affected') : t('changeTasks.ciTab.impacted')}
+                      <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 6px', borderRadius: 8, backgroundColor: active ? 'var(--color-brand-light)' : colors.slateBg, color: active ? 'var(--color-brand)' : 'var(--color-slate-light)' }}>
+                        {tab === 'affected' ? affected.length : impactedCIs.length}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+              <div>
+                {ciTab === 'affected' && (
+                  <>
+                    {canWrite && currentStep === wfInitialStep?.name && (
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                        <button type="button" onClick={() => setShowAddCI(true)} style={{
+                          padding: '4px 10px', borderRadius: 6, border: '1px solid var(--color-brand)',
+                          color: 'var(--color-brand)', background: 'transparent',
+                          fontSize: 'var(--font-size-label)', fontWeight: 500, cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', gap: 4,
+                        }}>
+                          <Plus size={12} /> {t('pages.questions.add')}
+                        </button>
+                      </div>
+                    )}
+                    {affected.map((a) => (
+                      <div key={a.ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--color-border-light)', fontSize: 'var(--font-size-body)' }}>
+                        <span style={{ flex: 1, fontWeight: 500, color: 'var(--color-slate-dark)' }}>{a.ci.name}</span>
+                        {a.ci.type && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.typeLabel(a.ci.type)}</span>}
+                        {a.ci.environment && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.environmentLabel(a.ci.environment)}</span>}
+                        {canWrite && currentStep === wfInitialStep?.name && (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmRemoveCI({ id: a.ci.id, name: a.ci.name })}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--color-slate-light)', flexShrink: 0 }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-danger)' }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-slate-light)' }}
+                          >
+                            <X size={14} />
+                          </button>
                         )}
                       </div>
-                    )
-                  })}
-                </>
+                    ))}
+                  </>
+                )}
+                {ciTab === 'impacted' && (
+                  <>
+                    <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 500, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>{t('pages.changeDetail.depth')}</span>
+                      <select aria-label={t('pages.changeDetail.depth')} value={impactDepth} onChange={e => setImpactDepth(Number(e.target.value))} style={{ padding: '4px 8px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)' }}>
+                        {[1, 2, 3, 4, 5].map(d => <option key={d} value={d}>{d}</option>)}
+                      </select>
+                    </div>
+                    {impactError && (
+                      <div style={{ padding: '10px 12px', backgroundColor: palette.danger.bg, border: '1px solid var(--color-danger-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-danger)', marginBottom: 8 }}>
+                        {t('pages.changeDetail.impactError', { message: impactError.message })}{' '}
+                        <button type="button" onClick={() => void refetchImpacted()} style={{ background: 'none', border: 'none', color: 'var(--color-danger)', textDecoration: 'underline', cursor: 'pointer', fontSize: 'var(--font-size-body)', padding: 0 }}>{t('pages.changeDetail.retry')}</button>
+                      </div>
+                    )}
+                    {!impactError && impactedCIs.length === 0 && <EmptyState icon={<ChevronRight size={24} />} title={t('pages.changeDetail.noImpactedCI')} description={t('pages.changeDetail.noImpactedCIAtDepth', { depth: impactDepth })} />}
+                    {impactedCIs.length > 0 && (
+                      <>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--color-border)', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>
+                          <span style={{ width: 24, flexShrink: 0 }} />
+                          <span style={{ flex: 1 }}>{t('pages.changeDetail.impactedCI')}</span>
+                          <span style={{ width: 80 }}>{t('common.type')}</span>
+                          {/* F-28: intestazioni tradotte (erano letterali inglesi). */}
+                          <span style={{ width: 80 }}>{t('pages.changeDetail.colEnvironment')}</span>
+                          <span style={{ width: 60 }}>{t('pages.changeDetail.colDistance')}</span>
+                          <span style={{ width: 140 }}>{t('pages.changeDetail.impactedVia')}</span>
+                          {currentStep === wfInitialStep?.name && <span style={{ width: 100, flexShrink: 0 }} />}
+                        </div>
+                        {impactedCIs.map((b, i) => {
+                          const rowId = `${b.ci.id}-${i}`
+                          const isOpen = expandedImpactId === rowId
+                          const hasPath = b.impactPath.length >= 2
+                          return (
+                            <div key={rowId}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid var(--color-border-light)', fontSize: 'var(--font-size-body)' }}>
+                                <span style={{ width: 24, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  {hasPath && (
+                                    <button type="button" aria-expanded={isOpen} aria-label={b.ci.name} onClick={() => setExpandedImpactId(prev => prev === rowId ? null : rowId)} style={{ cursor: 'pointer', background: 'none', border: 'none', padding: 0, display: 'flex', alignItems: 'center', font: 'inherit', color: 'inherit' }}>
+                                      <ChevronRight size={14} color="var(--color-slate-light)" style={{ transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }} />
+                                    </button>
+                                  )}
+                                </span>
+                                <span style={{ flex: 1, fontWeight: 500, color: 'var(--color-slate-dark)' }}>{b.ci.name}</span>
+                                <span style={{ width: 80 }}>{b.ci.type ? <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.typeLabel(b.ci.type)}</span> : null}</span>
+                                <span style={{ width: 80 }}>{b.ci.environment ? <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.environmentLabel(b.ci.environment)}</span> : null}</span>
+                                <span style={{ width: 60 }}><span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 6px', borderRadius: 4, backgroundColor: b.distance === 1 ? 'var(--color-danger-bg)' : b.distance === 2 ? palette.orange.bg : colors.slateBg, color: b.distance === 1 ? 'var(--color-danger)' : b.distance === 2 ? palette.warning.text : 'var(--color-slate)' }}>{t('pages.changeDetail.hops', { count: b.distance })}</span></span>
+                                <span style={{ width: 140, fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>{b.affectedBy.name}</span>
+                                {currentStep === wfInitialStep?.name && (
+                                  <span style={{ width: 100, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
+                                    <button
+                                      type="button"
+                                      title={t('pages.changeDetail.moveToAffected')}
+                                      onClick={() => void addCIFromImpacted({ variables: { changeId, ciId: b.ci.id } })}
+                                      style={{
+                                        padding: '4px 8px', borderRadius: 6, border: '1px solid var(--color-brand)',
+                                        color: 'var(--color-brand)', background: 'transparent',
+                                        fontSize: 'var(--font-size-label)', fontWeight: 500, cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', gap: 4,
+                                      }}
+                                    >
+                                      <PlusCircle size={14} /> {t('pages.questions.add')}
+                                    </button>
+                                  </span>
+                                )}
+                              </div>
+                              {isOpen && hasPath && (
+                                <div style={{ padding: '8px 0 8px 28px', fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
+                                  {b.impactPath.join(' → ')}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {showAddCI && (
+                <AddCIModal
+                  changeId={changeId}
+                  existingCIIds={new Set(affected.map(a => a.ci.id))}
+                  onClose={() => setShowAddCI(false)}
+                  refetchAffected={refetchAffected}
+                  refetchImpacted={refetchImpacted}
+                  refetchAudit={refetchAudit}
+                />
               )}
-            </>
-          )}
-        </div>
 
-        {showAddCI && (
-          <AddCIModal
-            changeId={changeId}
-            existingCIIds={new Set(affected.map(a => a.ci.id))}
-            onClose={() => setShowAddCI(false)}
-            refetchAffected={refetchAffected}
-            refetchImpacted={refetchImpacted}
-            refetchAudit={refetchAudit}
-          />
-        )}
+              {confirmRemoveCI && (
+                <Modal
+                  open
+                  onClose={() => setConfirmRemoveCI(null)}
+                  title={t('pages.changeDetail.removeCITitle')}
+                  width={420}
+                  footer={
+                    <>
+                      <Button variant="secondary" size="xs" onClick={() => setConfirmRemoveCI(null)}>{t('common.cancel')}</Button>
+                      <Button size="xs" onClick={() => removeCI({ variables: { changeId, ciId: confirmRemoveCI.id } })} style={{ backgroundColor: 'var(--color-danger)', fontWeight: 600 }}>{t('pages.changeDetail.remove')}</Button>
+                    </>
+                  }
+                >
+                  <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
+                    <Trans i18nKey="pages.changeDetail.removeCIConfirm" values={{ ci: confirmRemoveCI.name }} components={{ b: <strong /> }} />
+                  </p>
+                </Modal>
+              )}
+            </SectionCard>
 
-        {confirmRemoveCI && (
-          <Modal
-            open
-            onClose={() => setConfirmRemoveCI(null)}
-            title={t('pages.changeDetail.removeCITitle')}
-            width={420}
-            footer={
-              <>
-                <Button variant="secondary" size="xs" onClick={() => setConfirmRemoveCI(null)}>{t('common.cancel')}</Button>
-                <Button size="xs" onClick={() => removeCI({ variables: { changeId, ciId: confirmRemoveCI.id } })} style={{ backgroundColor: 'var(--color-danger)', fontWeight: 600 }}>{t('pages.changeDetail.remove')}</Button>
-              </>
-            }
-          >
-            <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
-              <Trans i18nKey="pages.changeDetail.removeCIConfirm" values={{ ci: confirmRemoveCI.name }} components={{ b: <strong /> }} />
-            </p>
-          </Modal>
+            {/* IL PIANO COMPLESSIVO, in ordine di data (17 set 2026). Sta subito sotto
+                i task perché è la loro somma: si popola task per task, e al CAB è già
+                il documento da leggere. Si nasconde da sé finché non c'è niente da
+                riepilogare, quindi non serve un varco di fase qui. */}
+            <ReleasePlanCard affected={affected} />
+
+            {/* Allarmi silenziati dalla finestra di rilascio (Event Management, ondata 3) */}
+            <SuppressedAlarmsSection events={change.suppressedEvents ?? []} total={change.suppressedEventCount} changeId={change.id} />
+
+          </>
         )}
-      </SectionCard>
+        {tab === 'links' && (
+          <>
+            <UnifiedLinkedTickets
+              title={t('pages.changeDetail.linkedTickets')}
+              types={[
+                {
+                  kind: 'PROBLEM', label: typeLabel('problem'), routeBase: '/problems',
+                  items: change.resolvesProblems ?? [],
+                  onLink: (entityId) => void linkTicket({ variables: { changeId, entityType: 'problem', entityId } }),
+                  onUnlink: (entityId) => void unlinkTicket({ variables: { changeId, entityType: 'problem', entityId } }),
+                  canEdit: canWork,
+                },
+                {
+                  kind: 'INCIDENT', label: typeLabel('incident'), routeBase: '/incidents',
+                  items: change.resolvesIncidents ?? [],
+                  onLink: (entityId) => void linkTicket({ variables: { changeId, entityType: 'incident', entityId } }),
+                  onUnlink: (entityId) => void unlinkTicket({ variables: { changeId, entityType: 'incident', entityId } }),
+                  canEdit: canWork,
+                },
+              ]}
+            />
+
+          </>
+        )}
+        {tab === 'work' && (
+          <>
+            <TicketTasksSection entityId={change.id} titleKey="tasks.titleStep" />
+            <AttachmentsSection entityType="change" entityId={change.id} />
+          </>
+        )}
+        {tab === 'history' && (
+          <>
+            <AuditTimeline audit={audit} />
+          </>
+        )}
+      </TabPanel>
 
       {rejectModal && (() => {
         const taskGroups = affected.map((a) => ({
@@ -742,12 +799,6 @@ export function ChangeDetailPage() {
         </Modal>
       )}
 
-      <TicketTasksSection entityId={change.id} titleKey="tasks.titleStep" />
-          <AttachmentsSection entityType="change" entityId={change.id} defaultOpen={false} />
-      {/* F13: le change avevano solo l'audit, nessun commento. */}
-      <EntityCommentsSection entityType="change" entityId={change.id} />
-
-      <AuditTimeline audit={audit} />
 
       {confirmDelete && (
         <Modal

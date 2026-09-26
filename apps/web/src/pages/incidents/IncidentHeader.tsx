@@ -127,7 +127,7 @@ export function IncidentHeader({
             <button
               type="button"
               onClick={onRequestChange ?? undefined}
-              style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent)', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}
+              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent)', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}
             >
               {t('pages.incidents.requestChange')}
             </button>

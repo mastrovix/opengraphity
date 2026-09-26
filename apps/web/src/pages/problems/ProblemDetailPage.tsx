@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { TicketOLACard } from '@/components/ticket/ola/TicketOLACard'
 import { CustomFieldsCard } from '@/components/ticket/customFields/CustomFieldsCard'
 import type { CustomFieldValueView } from '@/components/ticket/customFields/customFields'
@@ -6,6 +6,8 @@ import { useConfirm } from '@/hooks/useConfirm'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { useMe } from '@/hooks/useMe'
 import { useTicketRights } from '@/hooks/useTicketRights'
+import { useTabParam } from '@/hooks/useTabParam'
+import { Tabs, TabPanel } from '@/components/ui/Tabs'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -142,6 +144,14 @@ interface User  { id: string; name: string; email: string; teams: { id: string; 
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+/**
+ * THE PROBLEM IN FOUR TABS (26 Sep 2026, review of the pages), as the incident:
+ * the overview to work it, the diagnosis (root cause and workaround, open, not
+ * folded at the bottom of a long page), what it is tied to, its tasks and
+ * attachments. The timeline stays on the right.
+ */
+const PROBLEM_TABS = ['overview', 'diagnosis', 'links', 'work'] as const
+
 export function ProblemDetailPage() {
   const { t }    = useTranslation()
   const { labelOf: typeLabel } = useItilTypeLabels()
@@ -164,6 +174,10 @@ export function ProblemDetailPage() {
   const [editAffectedUsers, setEditAffectedUsers] = useState<string | null>(null)
 
   const [timelineOpen,   setTimelineOpen]   = useState(true)
+
+  const [tab, setTab] = useTabParam(PROBLEM_TABS, 'overview')
+
+  const tabsId = useId()
 
   const [exportingPdf, setExportingPdf] = useState(false)
 
@@ -378,192 +392,226 @@ export function ProblemDetailPage() {
       </div>
 
       {/* Body grid: the main column shrinks, the side one keeps its width (D9) */}
-      <DetailLayout sideWidth={340}>
-
-        {/* Left column */}
-        <div>
-
-          {/* Dettagli */}
-          <SectionCard title={t('detail.sections.problemInformation')} defaultOpen>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <DetailField label={t('detail.ticketNumber')} value={<span style={{ fontWeight: 600 }}>{problem.number}</span>} />
-              <DetailField label={t('detail.sections.description')} value={
-                problem.description
-                  ? <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>{problem.description}</p>
-                  : <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>{t('detail.noDescription')}</p>
-              } />
-              <DetailField label={t('detail.priority')} value={
-                <span style={{ fontWeight: 600, color: styleOf('priority', problem.priority).color }} title={problem.priority}>{labelOf('priority', problem.priority) ?? problem.priority}</span>
-              } />
-              {/* La categoria: sceglie il workflow e le policy SLA per
-                  categoria, e prima non era né salvata né mostrata (B-3). */}
-              <DetailField label={t('pages.kb.category')} value={
-                problem.category
-                  ? <span title={problem.category}>{labelOf('category', problem.category) ?? problem.category}</span>
-                  : <span style={{ color: 'var(--text-muted)' }}>—</span>
-              } />
-              {/*
-                Lo SLA del problem. Mancava: il motore non lo creava (leggeva
-                un campo che nessuno pubblica) e il tipo non lo esponeva, così
-                non c'era nessuna pagina da cui accorgersene.
-              */}
-              <DetailField label={t('sla.title')} value={
-                problem.slaStatus
-                  ? <SlaBadge sla={problem.slaStatus} />
-                  : <span style={{ color: 'var(--text-muted)' }}>{t('sla.none')}</span>
-              } />
-              <DetailField label={t('detail.workflowStep')} value={
-                <PhaseBadge
-                  phase={problem.workflowInstance?.currentStep ?? problem.status}
-                  label={wfLabelFor(problem.workflowInstance?.currentStep ?? problem.status)}
-                  category={wfCategoryOf(problem.workflowInstance?.currentStep ?? problem.status)}
-                  style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, textTransform: 'none' }}
-                />
-              } />
-
-              {/* Team and person */}
-              <ProblemAssignmentFields problem={problem} usersData={usersData} usersError={usersError} canEdit={canWrite} onAssigned={() => void refetch()} />
-
-              {/* Affected users */}
-              <DetailField label={t('detail.affectedUsers')} value={!canWrite ? (problem.affectedUsers ?? '—') :
-                <Input
-                  type="number"
-                  value={editAffectedUsers ?? (problem.affectedUsers?.toString() ?? '')}
-                  onChange={(e) => setEditAffectedUsers(e.target.value)}
-                  onBlur={(e) => {
-                    const val = editAffectedUsers
-                    setEditAffectedUsers(null)
-                    // What the browser cannot read as a number («-», «1e») reaches us as '':
-                    // it is not an emptied field, and clearing the count would be a lie.
-                    if (e.currentTarget.validity.badInput) { toast.error(t('pages.problemDetail.affectedUsersNotNumber')); return }
-                    if (val === null) return
-                    // An emptied field is a count no longer known: an explicit
-                    // null, which the API stores as such (it went out as NaN).
-                    const next = val.trim() === '' ? null : Number(val)
-                    // Typed and emptied again, or retyped as it was: nothing to save.
-                    if (next === problem.affectedUsers) return
-                    void updateProblem({ variables: { id: problem.id, input: { affectedUsers: next } } })
-                  }}
-                  placeholder="0"
-                  min={0}
-                  style={{ padding: '5px 8px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }}
-                />
-              } />
-
-              {problem.createdBy && (
-                <DetailField label={t('detail.createdBy')} value={<span style={{ fontWeight: 500 }}>{problem.createdBy.name}</span>} />
-              )}
-              <DetailField label={t('detail.createdAt')} value={formatDate(problem.createdAt)} />
-              {problem.updatedAt && <DetailField label={t('detail.updatedAt')} value={timeAgo(problem.updatedAt)} />}
-              {problem.resolvedAt && <DetailField label={t('detail.resolvedAt')} value={formatDate(problem.resolvedAt)} />}
-            </div>
-          </SectionCard>
-
-          {/* Campi del cliente (verifica «Cosa resta cablato», ondata 4) */}
-          <TicketOLACard entityType="problem" entityId={problem.id} />
-          <CustomFieldsCard entityType="problem" ticketId={problem.id} fields={problem.customFields ?? []} canEdit={canEditCustomFields} onSaved={() => void refetch()} />
-
-          {/* Root Cause */}
-          <SectionCard title={t('pages.problemDetail.rootCause')} collapsible defaultOpen={false}>
-                <Textarea
-                  readOnly={!canWrite}
-                  value={editRootCause ?? (problem.rootCause ?? '')}
-                  onChange={(e) => setEditRootCause(e.target.value)}
-                  onBlur={() => {
-                    const val = editRootCause
-                    if (val !== null && val !== problem.rootCause) {
-                      void updateProblem({ variables: { id: problem.id, input: { rootCause: val } } })
-                    }
-                    setEditRootCause(null)
-                  }}
-                  placeholder={canWrite ? t('pages.problemDetail.rootCausePlaceholder') : undefined}
-                  rows={4}
-                  style={{ padding: '8px 12px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }}
-                />
-                {/* The field saves itself when left: say so while it is being written (tour of 24 Sep 2026, G23). */}
-                {editRootCause !== null && editRootCause !== (problem.rootCause ?? '') && (
-                  <div role="status" style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate)', marginTop: 4 }}>{t('pages.problemDetail.savedOnLeave')}</div>
-                )}
-          </SectionCard>
-
-          {/* Workaround */}
-          <SectionCard title={t('pages.problemDetail.workaround')} collapsible defaultOpen={false}>
-                <Textarea
-                  readOnly={!canWrite}
-                  value={editWorkaround ?? (problem.workaround ?? '')}
-                  onChange={(e) => setEditWorkaround(e.target.value)}
-                  onBlur={() => {
-                    const val = editWorkaround
-                    if (val !== null && val !== problem.workaround) {
-                      void updateProblem({ variables: { id: problem.id, input: { workaround: val } } })
-                    }
-                    setEditWorkaround(null)
-                  }}
-                  placeholder={canWrite ? t('pages.problemDetail.workaroundPlaceholder') : undefined}
-                  rows={3}
-                  style={{ padding: '8px 12px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }}
-                />
-                {editWorkaround !== null && editWorkaround !== (problem.workaround ?? '') && (
-                  <div role="status" style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate)', marginTop: 4 }}>{t('pages.problemDetail.savedOnLeave')}</div>
-                )}
-          </SectionCard>
-
-          <AffectedCIList
-            affectedCIs={problem.affectedCIs}
-            ciResults={ciResults}
-            excludedTypes={excludedCITypes ?? []}
-            onSearchChange={setCiSearch}
-            onAddCI={(ciId) => void addCI({ variables: { problemId: problem.id, ciId } })}
-            onRemoveCI={(ciId) => void removeCI({ variables: { problemId: problem.id, ciId } })}
-            canEdit={canWrite}
-          />
-
-          {/* Ticket collegati (sezione unica, stile change) */}
-          <UnifiedLinkedTickets
-            title={t('pages.changeDetail.linkedTickets')}
-            excludeId={problem.id}
-            types={[
-              {
-                kind: 'INCIDENT', label: typeLabel('incident'), routeBase: '/incidents',
-                items: problem.linkedIncidents ?? [],
-                onLink: (incidentId) => void linkIncident({ variables: { problemId: problem.id, incidentId } }),
-                onUnlink: (incidentId) => void unlinkIncident({ variables: { problemId: problem.id, incidentId } }),
-                canEdit: canLinkIncident,
-              },
-              {
-                kind: 'PROBLEM', label: typeLabel('problem'), routeBase: '/problems',
-                items: problem.linkedProblems ?? [],
-                onLink: (otherId) => void linkRelated({ variables: { entityType: 'problem', entityId: problem.id, otherId } }),
-                onUnlink: (otherId) => void unlinkRelated({ variables: { entityType: 'problem', entityId: problem.id, otherId } }),
-                canEdit: canWork,
-              },
-              {
-                kind: 'CHANGE', label: typeLabel('change'), routeBase: '/changes',
-                items: problem.linkedChanges ?? [],
-                onLink: (changeId) => void linkResolved({ variables: { changeId, entityType: 'problem', entityId: problem.id } }),
-                onUnlink: (changeId) => void unlinkResolved({ variables: { changeId, entityType: 'problem', entityId: problem.id } }),
-                canEdit: canWork,
-              },
+      {/* The tabs head the main column only: both columns start level (26 Sep 2026). */}
+      <DetailLayout
+        sideWidth={340}
+        head={
+          <Tabs
+            idPrefix={tabsId}
+            ariaLabel={t('detail.tabs.label')}
+            value={tab}
+            onChange={setTab}
+            items={[
+              { key: 'overview', label: t('detail.tabs.overview') },
+              { key: 'diagnosis', label: t('detail.tabs.diagnosis') },
+              { key: 'links', label: t('detail.tabs.links'), badge: (problem.linkedIncidents?.length ?? 0) + (problem.linkedProblems?.length ?? 0) + (problem.linkedChanges?.length ?? 0) },
+              { key: 'work', label: t('detail.tabs.work') },
             ]}
           />
+        }
+      >
 
-          {/* Allegati */}
-          <TicketTasksSection entityId={problem.id} />
-          <AttachmentsSection entityType="problem" entityId={problem.id} defaultOpen={false} />
+        {/* Left column: the open tab (in the address, ?tab=) */}
+        <div>
+          <TabPanel idPrefix={tabsId} tabKey={tab}>
+            {tab === 'overview' && (
+              <>
+              {/* Dettagli */}
+              <SectionCard title={t('detail.sections.problemInformation')} defaultOpen>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <DetailField label={t('detail.ticketNumber')} value={<span style={{ fontWeight: 600 }}>{problem.number}</span>} />
+                  <DetailField label={t('detail.sections.description')} value={
+                    problem.description
+                      ? <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>{problem.description}</p>
+                      : <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>{t('detail.noDescription')}</p>
+                  } />
+                  <DetailField label={t('detail.priority')} value={
+                    <span style={{ fontWeight: 600, color: styleOf('priority', problem.priority).color }} title={problem.priority}>{labelOf('priority', problem.priority) ?? problem.priority}</span>
+                  } />
+                  {/* La categoria: sceglie il workflow e le policy SLA per
+                      categoria, e prima non era né salvata né mostrata (B-3). */}
+                  <DetailField label={t('pages.kb.category')} value={
+                    problem.category
+                      ? <span title={problem.category}>{labelOf('category', problem.category) ?? problem.category}</span>
+                      : <span style={{ color: 'var(--text-muted)' }}>—</span>
+                  } />
+                  {/*
+                    Lo SLA del problem. Mancava: il motore non lo creava (leggeva
+                    un campo che nessuno pubblica) e il tipo non lo esponeva, così
+                    non c'era nessuna pagina da cui accorgersene.
+                  */}
+                  <DetailField label={t('sla.title')} value={
+                    problem.slaStatus
+                      ? <SlaBadge sla={problem.slaStatus} />
+                      : <span style={{ color: 'var(--text-muted)' }}>{t('sla.none')}</span>
+                  } />
+                  <DetailField label={t('detail.workflowStep')} value={
+                    <PhaseBadge
+                      phase={problem.workflowInstance?.currentStep ?? problem.status}
+                      label={wfLabelFor(problem.workflowInstance?.currentStep ?? problem.status)}
+                      category={wfCategoryOf(problem.workflowInstance?.currentStep ?? problem.status)}
+                      style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, textTransform: 'none' }}
+                    />
+                  } />
 
-          {/* Commenti */}
-          <CommentsSection
-            comments={problem.comments}
-            adding={addingComment}
-            onChanged={() => void refetch()}
-            onAdd={(text, isInternal) => addComment({ variables: { problemId: problem.id, text, isInternal } })}
-          />
+                  {/* Team and person */}
+                  <ProblemAssignmentFields problem={problem} usersData={usersData} usersError={usersError} canEdit={canWrite} onAssigned={() => void refetch()} />
 
-          <InternalChatPanel
-            entityType="problem"
-            entityId={problem.id}
-            currentUserId={keycloak.subject ?? ''}
-          />
+                  {/* Affected users */}
+                  <DetailField label={t('detail.affectedUsers')} value={!canWrite ? (problem.affectedUsers ?? '—') :
+                    <Input
+                      type="number"
+                      value={editAffectedUsers ?? (problem.affectedUsers?.toString() ?? '')}
+                      onChange={(e) => setEditAffectedUsers(e.target.value)}
+                      onBlur={(e) => {
+                        const val = editAffectedUsers
+                        setEditAffectedUsers(null)
+                        // What the browser cannot read as a number («-», «1e») reaches us as '':
+                        // it is not an emptied field, and clearing the count would be a lie.
+                        if (e.currentTarget.validity.badInput) { toast.error(t('pages.problemDetail.affectedUsersNotNumber')); return }
+                        if (val === null) return
+                        // An emptied field is a count no longer known: an explicit
+                        // null, which the API stores as such (it went out as NaN).
+                        const next = val.trim() === '' ? null : Number(val)
+                        // Typed and emptied again, or retyped as it was: nothing to save.
+                        if (next === problem.affectedUsers) return
+                        void updateProblem({ variables: { id: problem.id, input: { affectedUsers: next } } })
+                      }}
+                      placeholder="0"
+                      min={0}
+                      style={{ padding: '5px 8px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }}
+                    />
+                  } />
+
+                  {problem.createdBy && (
+                    <DetailField label={t('detail.createdBy')} value={<span style={{ fontWeight: 500 }}>{problem.createdBy.name}</span>} />
+                  )}
+                  <DetailField label={t('detail.createdAt')} value={formatDate(problem.createdAt)} />
+                  {problem.updatedAt && <DetailField label={t('detail.updatedAt')} value={timeAgo(problem.updatedAt)} />}
+                  {problem.resolvedAt && <DetailField label={t('detail.resolvedAt')} value={formatDate(problem.resolvedAt)} />}
+                </div>
+              </SectionCard>
+
+              {/* Campi del cliente (verifica «Cosa resta cablato», ondata 4) */}
+              <TicketOLACard entityType="problem" entityId={problem.id} />
+              <CustomFieldsCard entityType="problem" ticketId={problem.id} fields={problem.customFields ?? []} canEdit={canEditCustomFields} onSaved={() => void refetch()} />
+
+              <AffectedCIList
+                affectedCIs={problem.affectedCIs}
+                ciResults={ciResults}
+                excludedTypes={excludedCITypes ?? []}
+                onSearchChange={setCiSearch}
+                onAddCI={(ciId) => void addCI({ variables: { problemId: problem.id, ciId } })}
+                onRemoveCI={(ciId) => void removeCI({ variables: { problemId: problem.id, ciId } })}
+                canEdit={canWrite}
+              />
+
+              {/* Commenti */}
+              <CommentsSection
+                comments={problem.comments}
+                adding={addingComment}
+                onChanged={() => void refetch()}
+                onAdd={(text, isInternal) => addComment({ variables: { problemId: problem.id, text, isInternal } })}
+              />
+
+              </>
+            )}
+            {tab === 'diagnosis' && (
+              <>
+              {/* Root Cause */}
+              <SectionCard title={t('pages.problemDetail.rootCause')} collapsible defaultOpen>
+                    <Textarea
+                      readOnly={!canWrite}
+                      value={editRootCause ?? (problem.rootCause ?? '')}
+                      onChange={(e) => setEditRootCause(e.target.value)}
+                      onBlur={() => {
+                        const val = editRootCause
+                        if (val !== null && val !== problem.rootCause) {
+                          void updateProblem({ variables: { id: problem.id, input: { rootCause: val } } })
+                        }
+                        setEditRootCause(null)
+                      }}
+                      placeholder={canWrite ? t('pages.problemDetail.rootCausePlaceholder') : undefined}
+                      rows={4}
+                      style={{ padding: '8px 12px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }}
+                    />
+                    {/* The field saves itself when left: say so while it is being written (tour of 24 Sep 2026, G23). */}
+                    {editRootCause !== null && editRootCause !== (problem.rootCause ?? '') && (
+                      <div role="status" style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate)', marginTop: 4 }}>{t('pages.problemDetail.savedOnLeave')}</div>
+                    )}
+              </SectionCard>
+
+              {/* Workaround */}
+              <SectionCard title={t('pages.problemDetail.workaround')} collapsible defaultOpen>
+                    <Textarea
+                      readOnly={!canWrite}
+                      value={editWorkaround ?? (problem.workaround ?? '')}
+                      onChange={(e) => setEditWorkaround(e.target.value)}
+                      onBlur={() => {
+                        const val = editWorkaround
+                        if (val !== null && val !== problem.workaround) {
+                          void updateProblem({ variables: { id: problem.id, input: { workaround: val } } })
+                        }
+                        setEditWorkaround(null)
+                      }}
+                      placeholder={canWrite ? t('pages.problemDetail.workaroundPlaceholder') : undefined}
+                      rows={3}
+                      style={{ padding: '8px 12px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }}
+                    />
+                    {editWorkaround !== null && editWorkaround !== (problem.workaround ?? '') && (
+                      <div role="status" style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate)', marginTop: 4 }}>{t('pages.problemDetail.savedOnLeave')}</div>
+                    )}
+              </SectionCard>
+
+              </>
+            )}
+            {tab === 'links' && (
+              <>
+              {/* Ticket collegati (sezione unica, stile change) */}
+              <UnifiedLinkedTickets
+                title={t('pages.changeDetail.linkedTickets')}
+                excludeId={problem.id}
+                types={[
+                  {
+                    kind: 'INCIDENT', label: typeLabel('incident'), routeBase: '/incidents',
+                    items: problem.linkedIncidents ?? [],
+                    onLink: (incidentId) => void linkIncident({ variables: { problemId: problem.id, incidentId } }),
+                    onUnlink: (incidentId) => void unlinkIncident({ variables: { problemId: problem.id, incidentId } }),
+                    canEdit: canLinkIncident,
+                  },
+                  {
+                    kind: 'PROBLEM', label: typeLabel('problem'), routeBase: '/problems',
+                    items: problem.linkedProblems ?? [],
+                    onLink: (otherId) => void linkRelated({ variables: { entityType: 'problem', entityId: problem.id, otherId } }),
+                    onUnlink: (otherId) => void unlinkRelated({ variables: { entityType: 'problem', entityId: problem.id, otherId } }),
+                    canEdit: canWork,
+                  },
+                  {
+                    kind: 'CHANGE', label: typeLabel('change'), routeBase: '/changes',
+                    items: problem.linkedChanges ?? [],
+                    onLink: (changeId) => void linkResolved({ variables: { changeId, entityType: 'problem', entityId: problem.id } }),
+                    onUnlink: (changeId) => void unlinkResolved({ variables: { changeId, entityType: 'problem', entityId: problem.id } }),
+                    canEdit: canWork,
+                  },
+                ]}
+              />
+
+              </>
+            )}
+            {tab === 'work' && (
+              <>
+              {/* Allegati */}
+              <TicketTasksSection entityId={problem.id} />
+              <AttachmentsSection entityType="problem" entityId={problem.id} />
+
+              <InternalChatPanel
+                entityType="problem"
+                entityId={problem.id}
+                currentUserId={keycloak.subject ?? ''}
+              />
+              </>
+            )}
+          </TabPanel>
         </div>
 
         {/* Right column */}

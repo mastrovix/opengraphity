@@ -219,9 +219,11 @@ const onStep = (step: string, over: Record<string, unknown> = {}) => {
   apolloFinto.risposte['GetChange'] = { change: change({ workflowInstance: { id: 'wi-1', currentStep: step, status: 'running' }, ...over }) }
 }
 
-const mount = () => renderWithProviders(withVocabularyLabels(<ChangeDetailPage />, {
+/** The page, on a tab when given (it is in the address: ?tab=). */
+const mount = (tab?: string) => renderWithProviders(withVocabularyLabels(<ChangeDetailPage />, {
   environment: { production: 'Production' }, priority: { high: 'High' },
-}), { route: '/changes/chg-1', path: '/changes/:id' })
+}), { route: tab ? `/changes/chg-1?tab=${tab}` : '/changes/chg-1', path: '/changes/:id' })
+const tabNamed = (name: string | RegExp) => screen.getByRole('tab', { name })
 
 /**
  * The promise rejections nobody handled while `act` ran. Node reports one at
@@ -488,6 +490,7 @@ describe('ChangeDetailPage — moving the change along its workflow', () => {
     const { user } = mount()
     expect(screen.queryByTitle(/ — (current|pending|completed)$/)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Send to approval' })).not.toBeInTheDocument()
+    await user.click(tabNamed('CIs & release'))
     await open(user, /^CIs involved/)
     // Without a known initial step, neither the add nor the remove of a CI is offered.
     expect(screen.queryByRole('button', { name: 'Add' })).not.toBeInTheDocument()
@@ -731,14 +734,14 @@ describe('ChangeDetailPage — approvals', () => {
 
 describe('ChangeDetailPage — linked tickets and the other cards', () => {
   it('shows the problems and incidents it resolves, under the customer names of the types', () => {
-    mount()
+    mount('links')
     const linked = screen.getByRole('region', { name: 'Linked tickets' })
     expect(within(linked).getByText('Problem: PRB00000003')).toBeInTheDocument()
     expect(within(linked).getByText('Disruption: INC00000007')).toBeInTheDocument()
   })
 
   it('linking and unlinking a problem or an incident goes to the server and reads everything again', async () => {
-    const { user } = mount()
+    const { user } = mount('links')
     await user.click(screen.getByRole('button', { name: 'link Problem' }))
     expect(apolloFinto.chiamata('LinkResolvedTicket')).toEqual({ changeId: 'chg-1', entityType: 'problem', entityId: 'problem-new' })
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Ticket linked'))
@@ -755,7 +758,7 @@ describe('ChangeDetailPage — linked tickets and the other cards', () => {
   it('a refused link or unlink is reported', async () => {
     apolloFinto.esiti['LinkResolvedTicket'] = { error: new Error('already linked') }
     apolloFinto.esiti['UnlinkResolvedTicket'] = { error: new Error('link created by the change itself') }
-    const { user } = mount()
+    const { user } = mount('links')
     await user.click(screen.getByRole('button', { name: 'link Problem' }))
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('already linked'))
     await user.click(screen.getByRole('button', { name: 'unlink Problem' }))
@@ -763,29 +766,35 @@ describe('ChangeDetailPage — linked tickets and the other cards', () => {
     expect(toast.success).not.toHaveBeenCalled()
   })
 
-  it('a change without linked tickets, conflicts or alarms gives the cards empty lists, not nothing', () => {
+  it('a change without linked tickets, conflicts or alarms gives the cards empty lists, not nothing', async () => {
     onStep('assessment', { resolvesProblems: null, resolvesIncidents: null, deployConflicts: null, suppressedEvents: null, suppressedEventCount: 0, approvals: null })
-    mount()
-    expect(screen.getByText('Problem:')).toBeInTheDocument()
+    const { user } = mount()
     expect(screen.getByText('deploy conflicts: 0, unreadable plans:')).toBeInTheDocument()
+    await user.click(tabNamed('CIs & release'))
     expect(screen.getByText('suppressed alarms of chg-1: 0 of 0')).toBeInTheDocument()
+    await user.click(tabNamed(/^Linked tickets/))
+    expect(screen.getByText('Problem:')).toBeInTheDocument()
   })
 
-  it('the cards get the change data: conflicts, alarms, one row per CI, the audit trail', () => {
-    mount()
+  it('the cards get the change data: conflicts, alarms, one row per CI, the audit trail', async () => {
+    const { user } = mount()
+    // The overview: what is looked at before approving, and the work of each CI.
     expect(screen.getByText('deploy conflicts: 1, unreadable plans: TASK9')).toBeInTheDocument()
-    expect(screen.getByText('suppressed alarms of chg-1: 1 of 4')).toBeInTheDocument()
     // The CI listed twice by the API is shown once, everywhere.
     expect(screen.getByText('task table: orders-db, orders-app | any team | teams t-dba | open')).toBeInTheDocument()
+    await user.click(tabNamed('CIs & release'))
+    expect(screen.getByText('suppressed alarms of chg-1: 1 of 4')).toBeInTheDocument()
     expect(screen.getByText('consolidated plan of 2 CIs')).toBeInTheDocument()
+    await user.click(tabNamed('History'))
     expect(screen.getByText('audit entries: 1')).toBeInTheDocument()
   })
 
-  it('with no affected CIs the cards get empty lists', () => {
+  it('with no affected CIs the cards get empty lists', async () => {
     apolloFinto.risposte['GetChangeAffectedCIs'] = undefined
     apolloFinto.risposte['GetChangeAuditTrail'] = undefined
-    mount()
+    const { user } = mount('ciRelease')
     expect(screen.getByText('consolidated plan of 0 CIs')).toBeInTheDocument()
+    await user.click(tabNamed('History'))
     expect(screen.getByText('audit entries: 0')).toBeInTheDocument()
   })
 
@@ -837,7 +846,7 @@ describe('ChangeDetailPage — next steps', () => {
 
 describe('ChangeDetailPage — the CIs involved', () => {
   it('the affected CIs are listed once each, with the labels of type and environment', async () => {
-    const { user } = mount()
+    const { user } = mount('ciRelease')
     await open(user, /^CIs involved/)
     expect(screen.getByRole('button', { name: /CI Affected/ })).toHaveTextContent('CI Affected2')
     const db = screen.getByText('orders-db', { selector: 'span' }).parentElement as HTMLElement
@@ -847,7 +856,7 @@ describe('ChangeDetailPage — the CIs involved', () => {
   })
 
   it('at the initial step a CI can be added, from the search modal', async () => {
-    const { user } = mount()
+    const { user } = mount('ciRelease')
     await open(user, /^CIs involved/)
     await user.click(screen.getByRole('button', { name: 'Add' }))
     const dialog = screen.getByRole('dialog', { name: 'Add a CI to the change' })
@@ -856,7 +865,7 @@ describe('ChangeDetailPage — the CIs involved', () => {
   })
 
   it('at the initial step a CI can be removed after a confirmation; Cancel keeps it', async () => {
-    const { user } = mount()
+    const { user } = mount('ciRelease')
     await open(user, /^CIs involved/)
     const remove = within(screen.getByText('orders-db', { selector: 'span' }).parentElement as HTMLElement).getByRole('button')
     await user.hover(remove)
@@ -878,7 +887,7 @@ describe('ChangeDetailPage — the CIs involved', () => {
   })
 
   it('the removal confirmation also closes with Escape, removing nothing', async () => {
-    const { user } = mount()
+    const { user } = mount('ciRelease')
     await open(user, /^CIs involved/)
     await user.click(within(screen.getByText('orders-db', { selector: 'span' }).parentElement as HTMLElement).getByRole('button'))
     expect(screen.getByRole('dialog', { name: 'Remove the CI' })).toBeInTheDocument()
@@ -889,7 +898,7 @@ describe('ChangeDetailPage — the CIs involved', () => {
 
   it('a refused removal is reported and the confirmation stays open', async () => {
     apolloFinto.esiti['RemoveCIFromChange'] = { error: new Error('CI already deployed') }
-    const { user } = mount()
+    const { user } = mount('ciRelease')
     await open(user, /^CIs involved/)
     await user.click(within(screen.getByText('orders-db', { selector: 'span' }).parentElement as HTMLElement).getByRole('button'))
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }))
@@ -899,7 +908,7 @@ describe('ChangeDetailPage — the CIs involved', () => {
 
   it('past the initial step the CIs can no longer be added or removed', async () => {
     onStep('scheduled')
-    const { user } = mount()
+    const { user } = mount('ciRelease')
     await open(user, /^CIs involved/)
     expect(screen.queryByRole('button', { name: 'Add' })).not.toBeInTheDocument()
     expect(within(screen.getByText('orders-db', { selector: 'span' }).parentElement as HTMLElement).queryByRole('button')).not.toBeInTheDocument()
@@ -914,7 +923,7 @@ describe('ChangeDetailPage — the CIs involved', () => {
 
     it('lists what the change impacts, how far and through which CI; the path opens and closes', async () => {
       apolloFinto.risposte['GetChangeImpactedCIs'] = { changeImpactedCIs: IMPACTED }
-      const { user } = mount()
+      const { user } = mount('ciRelease')
       await open(user, /^CIs involved/)
       await user.click(screen.getByRole('button', { name: /CI Impacted/ }))
       expect(screen.getByRole('button', { name: /CI Impacted/ })).toHaveTextContent('CI Impacted3')
@@ -933,7 +942,7 @@ describe('ChangeDetailPage — the CIs involved', () => {
     })
 
     it('a different depth asks the server again', async () => {
-      const { user } = mount()
+      const { user } = mount('ciRelease')
       await open(user, /^CIs involved/)
       await user.click(screen.getByRole('button', { name: /CI Impacted/ }))
       await user.selectOptions(screen.getByRole('combobox', { name: 'Depth' }), '3')
@@ -943,7 +952,7 @@ describe('ChangeDetailPage — the CIs involved', () => {
 
     it('at the initial step an impacted CI can be moved to the affected ones', async () => {
       apolloFinto.risposte['GetChangeImpactedCIs'] = { changeImpactedCIs: IMPACTED }
-      const { user } = mount()
+      const { user } = mount('ciRelease')
       await open(user, /^CIs involved/)
       await user.click(screen.getByRole('button', { name: /CI Impacted/ }))
       await user.click(screen.getAllByTitle('Move to affected CIs')[0]!)
@@ -955,28 +964,28 @@ describe('ChangeDetailPage — the CIs involved', () => {
     it('a refused move is reported; past the initial step no CI can be moved', async () => {
       apolloFinto.esiti['AddCIToChange'] = { error: new Error('no owner group') }
       apolloFinto.risposte['GetChangeImpactedCIs'] = { changeImpactedCIs: IMPACTED }
-      const { user, unmount } = mount()
+      const { user, unmount } = mount('ciRelease')
       await open(user, /^CIs involved/)
       await user.click(screen.getByRole('button', { name: /CI Impacted/ }))
       await user.click(screen.getAllByTitle('Move to affected CIs')[0]!)
       await waitFor(() => expect(toast.error).toHaveBeenCalledWith('no owner group'))
       unmount()
       onStep('scheduled')
-      const second = mount()
+      const second = mount('ciRelease')
       await open(second.user, /^CIs involved/)
       await second.user.click(screen.getByRole('button', { name: /CI Impacted/ }))
       expect(screen.queryByTitle('Move to affected CIs')).not.toBeInTheDocument()
     })
 
     it('no impacted CI says so; a failed computation says why and can be retried', async () => {
-      const { user, unmount } = mount()
+      const { user, unmount } = mount('ciRelease')
       await open(user, /^CIs involved/)
       await user.click(screen.getByRole('button', { name: /CI Impacted/ }))
       expect(screen.getByText('No impacted CI')).toBeInTheDocument()
       expect(screen.getByText('No CI impacted at depth 1.')).toBeInTheDocument()
       unmount()
       apolloFinto.erroriQuery['GetChangeImpactedCIs'] = new Error('graph timeout')
-      const second = mount()
+      const second = mount('ciRelease')
       await open(second.user, /^CIs involved/)
       await second.user.click(screen.getByRole('button', { name: /CI Impacted/ }))
       expect(screen.getByText(/Error computing the affected CIs: graph timeout/)).toBeInTheDocument()

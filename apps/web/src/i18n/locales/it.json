@@ -3654,7 +3654,21 @@
     "removeAssignment": "Togli l'assegnazione",
     "formAnswerEmpty": "senza risposta",
     "formAnswerEdit": "Correggi «{{field}}»",
-    "formAnswerSaved": "«{{field}}» corretto"
+    "formAnswerSaved": "«{{field}}» corretto",
+    "tabs": {
+      "label": "Sezioni del ticket",
+      "ciLabel": "Sezioni del CI",
+      "overview": "Panoramica",
+      "diagnosis": "Diagnosi",
+      "links": "Ticket collegati",
+      "work": "Attività e allegati",
+      "ciRelease": "CI e rilascio",
+      "history": "Storia",
+      "information": "Informazioni",
+      "relations": "Relazioni e mappa",
+      "tickets": "Ticket",
+      "attachments": "Allegati"
+    }
   },
   "search": {
     "placeholder": "Cerca ovunque... (Ctrl+K)",

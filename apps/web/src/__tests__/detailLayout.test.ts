@@ -87,6 +87,6 @@ describe('the rule itself', () => {
     'pages/knowledge-base/KBArticlePage.tsx',
   ])('%s uses DetailLayout', (file) => {
     const src = fs.readFileSync(path.join(SRC, file), 'utf8')
-    expect(src).toMatch(/<DetailLayout sideWidth=\{\d+\}/)
+    expect(src).toMatch(/<DetailLayout\s+sideWidth=\{\d+\}/)
   })
 })

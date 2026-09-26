@@ -11,8 +11,8 @@
  *              (or `title`, which is used as the accessible name too)
  *
  * Sizes map to the recurring paddings:
- * - sm (default): 8px 16px, font-size-card-title (primary) — list-header buttons
- * - xs:           6px 14px, font-size-body — modal action buttons / row actions
+ * - sm (default): 6px 14px, font-size-card-title (primary) — list-header buttons
+ * - xs:           4px 12px, font-size-body — modal action buttons / row actions
  *
  * `type` defaults to "button" so a Button inside `<Modal as="form">` never
  * submits by accident; pass `type="submit"` explicitly for the submit action.
@@ -60,9 +60,10 @@ export interface ButtonProps {
   className?: string
 }
 
+// 26 Sep 2026: a size smaller (they were 36-38 px tall with 12-13 px text; see the button rule in index.css).
 const PADDING: Record<ButtonSize, string> = {
-  sm: '8px 16px',
-  xs: '6px 14px',
+  sm: '6px 14px',
+  xs: '4px 12px',
 }
 
 /** primary font size follows the size; secondary always uses body size (as in the originals). */

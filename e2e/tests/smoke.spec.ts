@@ -58,9 +58,11 @@ test('incident detail shows attachments and comments cards', async ({ page }) =>
   await page.waitForTimeout(600)
   await firstRow.click()
   await page.waitForURL(/\/incidents\/[0-9a-f-]+/, { timeout: 15_000 })
-  // Cards shipped with the attachments work (i18n: Allegati/Attachments)
+  // The comments are on the overview tab; the attachments one tab away (26 Sep 2026: the page in tabs)
+  await expect(page.getByText(/commenti|comments/i).first()).toBeVisible({ timeout: 15_000 })
+  await page.getByRole('tab', { name: /attività e allegati|tasks & attachments/i }).click()
+  await expect(page).toHaveURL(/[?&]tab=work/)
   await expect(page.getByText(/allegati|attachments/i).first()).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByText(/commenti|comments/i).first()).toBeVisible()
 })
 
 test('command palette finds incidents', async ({ page }) => {

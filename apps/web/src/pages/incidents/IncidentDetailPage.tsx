@@ -4,6 +4,8 @@ import { CustomFieldsCard } from '@/components/ticket/customFields/CustomFieldsC
 import type { CustomFieldValueView } from '@/components/ticket/customFields/customFields'
 import { useMe } from '@/hooks/useMe'
 import { useTicketRights } from '@/hooks/useTicketRights'
+import { useTabParam } from '@/hooks/useTabParam'
+import { Tabs, TabPanel } from '@/components/ui/Tabs'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useConfirm } from '@/hooks/useConfirm'
@@ -167,6 +169,15 @@ interface User { id: string; name: string; email: string; teams: { id: string; n
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+/**
+ * THE INCIDENT IN FOUR TABS (26 Sep 2026, review of the pages): fourteen cards
+ * stacked in one column mixed three jobs — working the ticket, diagnosing it,
+ * reading what it is tied to — and the comments came thirteenth. The first tab
+ * holds what whoever works the incident needs; the timeline and the similar
+ * incidents stay on the right, on every tab.
+ */
+const INCIDENT_TABS = ['overview', 'diagnosis', 'links', 'work'] as const
+
 export function IncidentDetailPage() {
   const { matrix, loading: matrixLoading, error: matrixError } = usePriorityMatrix()
   const { t }    = useTranslation()
@@ -200,6 +211,8 @@ export function IncidentDetailPage() {
 
   const [ciSearch,      setCiSearch]      = useState('')
   const [timelineOpen, setTimelineOpen] = useState(true)
+  const [tab, setTab] = useTabParam(INCIDENT_TABS, 'overview')
+  const tabsId = useId()
 
   const { can } = useMe()
   // Chi legge e basta non modifica: la stessa regola dell'API (viewer).
@@ -544,156 +557,190 @@ export function IncidentDetailPage() {
       </Modal>
 
       {/* Body grid: the main column shrinks, the side one keeps its width (D9) */}
-      <DetailLayout sideWidth={340}>
-
-        {/* Left column */}
-        <div>
-
-          {/* Dettagli (descrizione in testa) */}
-          <SectionCard title={t('detail.sections.incidentInformation')} defaultOpen>
-            <div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
-                <DetailField label={t('detail.ticketNumber')} value={<span style={{ fontWeight: 600 }}>{incident.number}</span>} />
-                <DetailField label={t('detail.sections.description')} value={
-                  incident.description
-                    ? <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>{incident.description}</p>
-                    : <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>{t('detail.noDescription')}</p>
-                } />
-              </div>
-              <div className="og-pair" style={{ marginBottom: 16 }}>
-                  <DetailField label={t('detail.priority')} value={<span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><b>{priorityCode(matrix?.priorities ?? [], incident.priority)}</b><SeverityBadge value={incident.priority} vocabulary="priority" /></span>} />
-                  {incident.impact && incident.urgency && (
-                    <DetailField label={t('detail.impactUrgency')} value={
-                      /*
-                        Le ETICHETTE, non i valori: qui si leggeva «high / high».
-                        E si chiedono a due vocabolari diversi di proposito —
-                        `low` è «Basso» per l'impatto e «Bassa» per l'urgenza.
-                      */
-                      `${labelOf('impact', incident.impact) ?? incident.impact} / ${labelOf('urgency', incident.urgency) ?? incident.urgency}`
-                    } />
-                  )}
-                  <DetailField label={t('sla.title')} value={
-                    incident.slaStatus
-                      ? <SlaBadge sla={incident.slaStatus} />
-                      : <span style={{ color: 'var(--text-muted)' }}>{t('sla.none')}</span>
-                  } />
-                  <DetailField label={t('detail.workflowStep')} value={
-                    <Pill bg="var(--color-brand-light)" color="var(--color-brand)" radius={100} style={{ fontSize: 'var(--font-size-body)', textTransform: 'capitalize' }}>
-                      {/*
-                        L'ETICHETTA del passo, come la timeline e come la
-                        pagina del problem: qui si leggeva il nome interno
-                        («New») mentre la timeline, venti pixel a destra,
-                        diceva già «Nuovo» — sullo stesso incident.
-                      */}
-                      {incident.workflowInstance ? incidentStepLabel(incident.workflowInstance.currentStep) : t('detail.noWorkflowStep')}
-                    </Pill>
-                  } />
-                  <DetailField label={t('detail.assignedTo')} value={
-                    incident.assignee ? (
-                      <div>
-                        <div style={{ fontWeight: 500 }}>{incident.assignee.name}</div>
-                        <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>{incident.assignee.email}</div>
-                      </div>
-                    ) : (
-                      <span style={{ color: 'var(--text-muted)' }}>{t('detail.notAssigned')}</span>
-                    )
-                  } />
-                  <DetailField label={t('detail.openedAt')} value={formatDate(incident.createdAt)} />
-                  <DetailField label={t('detail.updatedAt')} value={timeAgo(incident.updatedAt)} />
-                  {incident.resolvedAt && (
-                    <DetailField label={t('detail.resolvedAt')} value={formatDate(incident.resolvedAt)} />
-                  )}
-                  {incident.rootCause && (
-                    <div style={{ gridColumn: '1 / -1' }}>
-                      <DetailField label={t('detail.rootCause')} value={incident.rootCause} />
-                    </div>
-                  )}
-                </div>
-
-                {/* Assegnazione a due step — nascosta quando l'incident è in
-                    uno step terminale (es. closed / resolved). */}
-                {canWrite && !incidentStepByName.get(incident.status)?.isTerminal && (
-                  <IncidentAssignment incident={incident} usersData={usersData} usersError={usersError} onAssigned={() => void refetch()} />
-                )}
-            </div>
-          </SectionCard>
-
-          {/* Campi del cliente (verifica «Cosa resta cablato», ondata 4) */}
-          <TicketOLACard entityType="incident" entityId={incident.id} />
-          <CustomFieldsCard entityType="incident" ticketId={incident.id} fields={incident.customFields ?? []} canEdit={canEditCustomFields} onSaved={() => void refetch()} />
-
-          {/* CI Impattati */}
-          <AffectedCIList
-            affectedCIs={incident.affectedCIs}
-            ciResults={ciResults}
-            excludedTypes={excludedCITypes ?? []}
-            onSearchChange={setCiSearch}
-            onAddCI={(ciId) => void addCI({ variables: { incidentId: incident.id, ciId } })}
-            onRemoveCI={(ciId) => void removeCI({ variables: { incidentId: incident.id, ciId } })}
-            canEdit={canWork}
-          />
-
-          {/* Ticket collegati (sezione unica, stile change) */}
-          <UnifiedLinkedTickets
-            title={t('pages.changeDetail.linkedTickets')}
-            excludeId={incident.id}
-            types={[
-              {
-                kind: 'INCIDENT', label: typeLabel('incident'), routeBase: '/incidents',
-                items: incident.linkedIncidents ?? [],
-                onLink: (otherId) => void linkRelated({ variables: { entityType: 'incident', entityId: incident.id, otherId } }),
-                onUnlink: (otherId) => void unlinkRelated({ variables: { entityType: 'incident', entityId: incident.id, otherId } }),
-                canEdit: canWork,
-              },
-              {
-                kind: 'PROBLEM', label: typeLabel('problem'), routeBase: '/problems',
-                items: incident.linkedProblems ?? [],
-                onLink: (problemId) => void linkIncProblem({ variables: { problemId, incidentId: incident.id } }),
-                onUnlink: (problemId) => void unlinkIncProblem({ variables: { problemId, incidentId: incident.id } }),
-                canEdit: canLinkProblem,
-              },
-              {
-                kind: 'CHANGE', label: typeLabel('change'), routeBase: '/changes',
-                items: incident.linkedChanges ?? [],
-                onLink: (changeId) => void linkResolved({ variables: { changeId, entityType: 'incident', entityId: incident.id } }),
-                onUnlink: (changeId) => void unlinkResolved({ variables: { changeId, entityType: 'incident', entityId: incident.id } }),
-                canEdit: canWork,
-              },
+      {/* The tabs head the main column only: both columns start level (26 Sep 2026). */}
+      <DetailLayout
+        sideWidth={340}
+        head={
+          <Tabs
+            idPrefix={tabsId}
+            ariaLabel={t('detail.tabs.label')}
+            value={tab}
+            onChange={setTab}
+            items={[
+              { key: 'overview', label: t('detail.tabs.overview') },
+              { key: 'diagnosis', label: t('detail.tabs.diagnosis') },
+              { key: 'links', label: t('detail.tabs.links'), badge: (incident.linkedIncidents?.length ?? 0) + (incident.linkedProblems?.length ?? 0) + (incident.linkedChanges?.length ?? 0) },
+              { key: 'work', label: t('detail.tabs.work') },
             ]}
           />
+        }
+      >
 
-          {/* The problems still open on the incident's CIs: proposed here, linked only by whoever decides (25 Sep 2026). */}
-          {can('problem.read') && <ProblemSuggestionsCard incidentId={incident.id} canLink={canLinkProblem} />}
-          {/* The changes released on those CIs around the opening: the first suspects, shown and never linked. */}
-          {can('change.read') && <ChangeSuspectsCard incidentId={incident.id} />}
+        {/* Left column: the open tab (in the address, ?tab=) */}
+        <div>
+          <TabPanel idPrefix={tabsId} tabKey={tab}>
+            {tab === 'overview' && (
+              <>
+              {/* Dettagli (descrizione in testa) */}
+              <SectionCard title={t('detail.sections.incidentInformation')} defaultOpen>
+                <div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+                    <DetailField label={t('detail.ticketNumber')} value={<span style={{ fontWeight: 600 }}>{incident.number}</span>} />
+                    <DetailField label={t('detail.sections.description')} value={
+                      incident.description
+                        ? <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>{incident.description}</p>
+                        : <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>{t('detail.noDescription')}</p>
+                    } />
+                  </div>
+                  <div className="og-pair" style={{ marginBottom: 16 }}>
+                      <DetailField label={t('detail.priority')} value={<span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><b>{priorityCode(matrix?.priorities ?? [], incident.priority)}</b><SeverityBadge value={incident.priority} vocabulary="priority" /></span>} />
+                      {incident.impact && incident.urgency && (
+                        <DetailField label={t('detail.impactUrgency')} value={
+                          /*
+                            Le ETICHETTE, non i valori: qui si leggeva «high / high».
+                            E si chiedono a due vocabolari diversi di proposito —
+                            `low` è «Basso» per l'impatto e «Bassa» per l'urgenza.
+                          */
+                          `${labelOf('impact', incident.impact) ?? incident.impact} / ${labelOf('urgency', incident.urgency) ?? incident.urgency}`
+                        } />
+                      )}
+                      <DetailField label={t('sla.title')} value={
+                        incident.slaStatus
+                          ? <SlaBadge sla={incident.slaStatus} />
+                          : <span style={{ color: 'var(--text-muted)' }}>{t('sla.none')}</span>
+                      } />
+                      <DetailField label={t('detail.workflowStep')} value={
+                        <Pill bg="var(--color-brand-light)" color="var(--color-brand)" radius={100} style={{ fontSize: 'var(--font-size-body)', textTransform: 'capitalize' }}>
+                          {/*
+                            L'ETICHETTA del passo, come la timeline e come la
+                            pagina del problem: qui si leggeva il nome interno
+                            («New») mentre la timeline, venti pixel a destra,
+                            diceva già «Nuovo» — sullo stesso incident.
+                          */}
+                          {incident.workflowInstance ? incidentStepLabel(incident.workflowInstance.currentStep) : t('detail.noWorkflowStep')}
+                        </Pill>
+                      } />
+                      <DetailField label={t('detail.assignedTo')} value={
+                        incident.assignee ? (
+                          <div>
+                            <div style={{ fontWeight: 500 }}>{incident.assignee.name}</div>
+                            <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>{incident.assignee.email}</div>
+                          </div>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)' }}>{t('detail.notAssigned')}</span>
+                        )
+                      } />
+                      <DetailField label={t('detail.openedAt')} value={formatDate(incident.createdAt)} />
+                      <DetailField label={t('detail.updatedAt')} value={timeAgo(incident.updatedAt)} />
+                      {incident.resolvedAt && (
+                        <DetailField label={t('detail.resolvedAt')} value={formatDate(incident.resolvedAt)} />
+                      )}
+                      {incident.rootCause && (
+                        <div style={{ gridColumn: '1 / -1' }}>
+                          <DetailField label={t('detail.rootCause')} value={incident.rootCause} />
+                        </div>
+                      )}
+                    </div>
 
-          {/* Allarmi di monitoraggio correlati (aperti/agganciati dalla policy eventi) */}
-          <MonitoringAlarmsSection events={incident.correlatedEvents} total={incident.correlatedEventCount} purged={incident.correlatedEventsPurged} incidentId={incident.id} />
+                    {/* Assegnazione a due step — nascosta quando l'incident è in
+                        uno step terminale (es. closed / resolved). */}
+                    {canWrite && !incidentStepByName.get(incident.status)?.isTerminal && (
+                      <IncidentAssignment incident={incident} usersData={usersData} usersError={usersError} onAssigned={() => void refetch()} />
+                    )}
+                </div>
+              </SectionCard>
 
-          {/* Servizi monitorati collegati (visibile solo se ce n'è almeno uno) */}
-          <ImpactedServicesSection services={incident.impactedServices} />
+              {/* Campi del cliente (verifica «Cosa resta cablato», ondata 4) */}
+              <TicketOLACard entityType="incident" entityId={incident.id} />
+              <CustomFieldsCard entityType="incident" ticketId={incident.id} fields={incident.customFields ?? []} canEdit={canEditCustomFields} onSaved={() => void refetch()} />
 
-          {/* Applicazioni impattate (dal grafo delle dipendenze) — D·6.4: testi in i18n, non cablati in italiano */}
-          <ImpactedApplicationsSection applications={incident.impactedApplications} />
+              {/* CI Impattati */}
+              <AffectedCIList
+                affectedCIs={incident.affectedCIs}
+                ciResults={ciResults}
+                excludedTypes={excludedCITypes ?? []}
+                onSearchChange={setCiSearch}
+                onAddCI={(ciId) => void addCI({ variables: { incidentId: incident.id, ciId } })}
+                onRemoveCI={(ciId) => void removeCI({ variables: { incidentId: incident.id, ciId } })}
+                canEdit={canWork}
+              />
 
-          {/* Allegati */}
-          <TicketTasksSection entityId={incident.id} />
-          <AttachmentsSection entityType="incident" entityId={incident.id} defaultOpen={false} />
+              {/* Commenti */}
+              <CommentsSection
+                comments={incident.comments}
+                adding={addingComment}
+                onChanged={() => void refetch()}
+                onAdd={(text, isInternal) => addComment({ variables: { id: incident.id, text, isInternal } })}
+              />
 
-          {/* Commenti */}
-          <CommentsSection
-            comments={incident.comments}
-            adding={addingComment}
-            onChanged={() => void refetch()}
-            onAdd={(text, isInternal) => addComment({ variables: { id: incident.id, text, isInternal } })}
-          />
+              </>
+            )}
+            {tab === 'diagnosis' && (
+              <>
+              {/* The problems still open on the incident's CIs: proposed here, linked only by whoever decides (25 Sep 2026). */}
+              {can('problem.read') && <ProblemSuggestionsCard incidentId={incident.id} canLink={canLinkProblem} />}
+              {/* The changes released on those CIs around the opening: the first suspects, shown and never linked. */}
+              {can('change.read') && <ChangeSuspectsCard incidentId={incident.id} />}
 
-          {/* Internal Chat (agents only) */}
-          <InternalChatPanel
-            entityType="incident"
-            entityId={incident.id}
-            currentUserId={keycloak.subject ?? ''}
-          />
+              {/* Allarmi di monitoraggio correlati (aperti/agganciati dalla policy eventi) */}
+              <MonitoringAlarmsSection events={incident.correlatedEvents} total={incident.correlatedEventCount} purged={incident.correlatedEventsPurged} incidentId={incident.id} />
+
+              {/* Servizi monitorati collegati (visibile solo se ce n'è almeno uno) */}
+              <ImpactedServicesSection services={incident.impactedServices} />
+
+              {/* Applicazioni impattate (dal grafo delle dipendenze) — D·6.4: testi in i18n, non cablati in italiano */}
+              <ImpactedApplicationsSection applications={incident.impactedApplications} />
+
+              </>
+            )}
+            {tab === 'links' && (
+              <>
+              {/* Ticket collegati (sezione unica, stile change) */}
+              <UnifiedLinkedTickets
+                title={t('pages.changeDetail.linkedTickets')}
+                excludeId={incident.id}
+                types={[
+                  {
+                    kind: 'INCIDENT', label: typeLabel('incident'), routeBase: '/incidents',
+                    items: incident.linkedIncidents ?? [],
+                    onLink: (otherId) => void linkRelated({ variables: { entityType: 'incident', entityId: incident.id, otherId } }),
+                    onUnlink: (otherId) => void unlinkRelated({ variables: { entityType: 'incident', entityId: incident.id, otherId } }),
+                    canEdit: canWork,
+                  },
+                  {
+                    kind: 'PROBLEM', label: typeLabel('problem'), routeBase: '/problems',
+                    items: incident.linkedProblems ?? [],
+                    onLink: (problemId) => void linkIncProblem({ variables: { problemId, incidentId: incident.id } }),
+                    onUnlink: (problemId) => void unlinkIncProblem({ variables: { problemId, incidentId: incident.id } }),
+                    canEdit: canLinkProblem,
+                  },
+                  {
+                    kind: 'CHANGE', label: typeLabel('change'), routeBase: '/changes',
+                    items: incident.linkedChanges ?? [],
+                    onLink: (changeId) => void linkResolved({ variables: { changeId, entityType: 'incident', entityId: incident.id } }),
+                    onUnlink: (changeId) => void unlinkResolved({ variables: { changeId, entityType: 'incident', entityId: incident.id } }),
+                    canEdit: canWork,
+                  },
+                ]}
+              />
+
+              </>
+            )}
+            {tab === 'work' && (
+              <>
+              {/* Allegati */}
+              <TicketTasksSection entityId={incident.id} />
+              <AttachmentsSection entityType="incident" entityId={incident.id} />
+
+              {/* Internal Chat (agents only) */}
+              <InternalChatPanel
+                entityType="incident"
+                entityId={incident.id}
+                currentUserId={keycloak.subject ?? ''}
+              />
+              </>
+            )}
+          </TabPanel>
         </div>
 
         {/* Right column */}

@@ -68,10 +68,11 @@ describe('Button', () => {
     expect(screen.getByRole('button', { name: 'X' })).toHaveStyle(style)
   })
 
-  it('size xs riduce il padding (6px 14px) rispetto a sm (8px 16px)', () => {
+  // 26 Sep 2026: a size smaller — the buttons were 36-38 px tall with 12-13 px text.
+  it('size xs riduce il padding (4px 12px) rispetto a sm (6px 14px)', () => {
     render(<><Button size="xs">A</Button><Button size="sm">B</Button></>)
-    expect(screen.getByRole('button', { name: 'A' })).toHaveStyle({ padding: '6px 14px' })
-    expect(screen.getByRole('button', { name: 'B' })).toHaveStyle({ padding: '8px 16px' })
+    expect(screen.getByRole('button', { name: 'A' })).toHaveStyle({ padding: '4px 12px' })
+    expect(screen.getByRole('button', { name: 'B' })).toHaveStyle({ padding: '6px 14px' })
   })
 
   it('icon: aria-label esplicito, altrimenti title come nome accessibile', () => {

@@ -120,9 +120,13 @@ const location = () => screen.getByTestId('location').textContent
 const relationsCard = () => screen.getByRole('button', { name: new RegExp(`^${T('pages.ci.relations')} \\(2\\)`) })
 const dependencyRow = () => screen.getByRole('button', { name: /db-prod/ })
 
-/** Apre la card Relazioni e il gruppo DEPENDS ON. */
+/** The relations tab (its name carries the count of relations). */
+const relationsTab = () => screen.getByRole('tab', { name: /^Relations & map/ })
+
+/** Apre la scheda Relazioni e mappa, la card Relazioni e il gruppo DEPENDS ON. */
 async function openDependencies(user: ReturnType<typeof renderPage>['user']) {
   await screen.findByRole('heading', { level: 1, name: 'web-01' })
+  if (relationsTab().getAttribute('aria-selected') !== 'true') await user.click(relationsTab())
   const card = relationsCard()
   if (card.getAttribute('aria-expanded') === 'false') await user.click(card)
   const group = screen.getByRole('button', { name: /DEPENDS ON/ })
@@ -150,11 +154,13 @@ describe('CIDetailPage', () => {
 
   it('in modalità modifica la navigazione dalle relazioni è bloccata, con tooltip; Annulla la riabilita', async () => {
     const { user } = renderPage()
-    await openDependencies(user)
+    await screen.findByRole('heading', { level: 1, name: 'web-01' })
 
+    // The edit is on the information tab; the relations are on theirs, and stay locked while it is open.
     await user.click(screen.getByRole('button', { name: T('common.edit') }))
     expect(await screen.findByDisplayValue('web-01')).toBeInTheDocument()       // form di edit aperto
     expect(screen.queryByRole('button', { name: T('common.edit') })).not.toBeInTheDocument()
+    await openDependencies(user)
 
     const row = dependencyRow()
     expect(row).toHaveAttribute('aria-disabled', 'true')
@@ -163,14 +169,16 @@ describe('CIDetailPage', () => {
     await user.click(row)
     row.focus()
     await user.keyboard('{Enter}')
-    expect(location()).toBe('/ci/server/srv-1')                                 // nessuna navigazione
+    expect(location()).toBe('/ci/server/srv-1?tab=relations')                   // nessuna navigazione: si resta sulla scheda
 
     // anche i dipendenti sono bloccati
     await user.click(screen.getByRole('button', { name: /HOSTED ON/ }))
     expect(screen.getByRole('button', { name: /crm-app/ })).toHaveAttribute('aria-disabled', 'true')
 
+    await user.click(screen.getByRole('tab', { name: 'Information' }))
     await user.click(screen.getByRole('button', { name: T('common.cancel') }))
     expect(screen.queryByDisplayValue('web-01')).not.toBeInTheDocument()
+    await openDependencies(user)
     expect(dependencyRow()).not.toHaveAttribute('aria-disabled')
     dependencyRow().focus()
     await user.keyboard('{Enter}')
@@ -198,8 +206,10 @@ describe('CIDetailPage', () => {
   })
 
   it('la card Relazioni conta dipendenze + dipendenti e le raggruppa', async () => {
-    const { user } = renderPage()
+    const { user } = renderPage({ route: '/ci/server/srv-1?tab=relations' })
     await screen.findByRole('heading', { level: 1, name: 'web-01' })
+    // The tab counts them too.
+    expect(relationsTab()).toHaveTextContent('Relations & map2')
     const card = relationsCard()
     await user.click(card)
     const panel = document.getElementById(card.getAttribute('aria-controls')!)!
