@@ -139,6 +139,29 @@ describe('le quattro porte', () => {
   })
 })
 
+describe('the caps are for advice, not for faults (26 Sep 2026)', () => {
+  const guasto = () => ({
+    tenantId: 't1', area: 'operations' as const, kind: 'proposal.operationsCIHealthOutOfStep',
+    params: { count: '1' }, scope: 'ci:health:2026-09-26', cause: 'ci:health',
+    evidence: { n: 1, windowDays: 1, refs: [] },
+    action: { type: 'ci.recompute_health', params: { ciIds: ['c1'] } },
+  })
+
+  it('an operational remedy is written even with the page full and two already born today', async () => {
+    finto.aperte = 5
+    finto.oggi = 2
+    expect((await scriviProposta(guasto())).scritta).toBe(true)
+  })
+
+  it('and it does not take the analysts\' slots: the counts leave the operational ones out', async () => {
+    const spia = vi.spyOn(await import('../db.js'), 'runQueryOne')
+    await scriviProposta(proposta())
+    const conteggio = spia.mock.calls.map((c) => c[1] as string).find((q) => q.includes('AS aperte'))!
+    expect(conteggio).toContain("WHERE p.area <> 'operations'")
+    spia.mockRestore()
+  })
+})
+
 describe('quello che finisce sul nodo', () => {
   it('la FASCIA delle prove si scrive insieme al conteggio: serve al ritorno dopo un rifiuto', async () => {
     await scriviProposta(proposta(47))

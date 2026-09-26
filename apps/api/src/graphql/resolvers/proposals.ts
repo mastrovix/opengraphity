@@ -16,6 +16,7 @@
  *    scrive l'errore sul nodo e lo si mostra: una proposta accettata che non
  *    ha fatto niente, e non lo dice, è la bugia peggiore di tutte.
  */
+import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../context.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { requirePermission } from '../../lib/permissions.js'
@@ -35,8 +36,12 @@ import {
 } from '../../lib/proposals.js'
 import { eseguiAzione, disfaAzione, azioneDisfabile } from '../../lib/proposalActions.js'
 import {
-  puoPrendereAtto, puoAprireUnProblem, titoloDelProblem, descrizioneDelProblem,
+  puoPrendereAtto, puoAprireUnProblem, titoloDelProblem, descrizioneDelProblem, GENERI_OPERATIVI_DA_PROBLEM,
 } from '../../lib/proposalAgreement.js'
+import { openGrafoSystemCI } from '../../lib/opengrafoSystemCI.js'
+import { setTicketTeam } from '../../services/ticketAssignment.js'
+import { publishEvent } from '../../lib/publishEvent.js'
+import { TICKET_TEAM_ASSIGNED_EVENT } from '@opengraphity/types'
 import { createProblem } from '../../services/problemService.js'
 import { legaAllaProposta, fascicoloDelProblem, fascicoloPossibile } from '../../lib/problemDossier.js'
 import { avviaIndagine } from '../../lib/indagineAutomatica.js'
@@ -106,6 +111,8 @@ function mappaGql(row: ProposalRow, ctx: GraphQLContext) {
     notNowUntil: row.notNowUntil,
     auditEntryId: row.auditEntryId,
     executionError: row.executionError,
+    executionErrorKey: row.executionErrorI18n?.key ?? null,
+    executionErrorParams: paramList(row.executionErrorI18n?.params),
     verification: row.verification,
     verifiedAt: row.verifiedAt,
     verificationDetail: paramList((row.verificationDetail ?? undefined) as Record<string, string | number> | undefined),
@@ -162,6 +169,7 @@ async function proposalsQuery(
     counts: {
       open: counts.open, accepted: counts.accepted, rejected: counts.rejected,
       notNow: counts.not_now, expired: counts.expired, superseded: counts.superseded,
+      openFaults: counts.openFaults,
     },
     maxOpen: PROPOSAL_LIMIT_DEFAULTS.maxOpen,
     lastRunAt: await ultimoGiro(ctx.tenantId),
@@ -254,8 +262,11 @@ async function acceptProposal(_: unknown, args: { id: string }, ctx: GraphQLCont
     await audit(ctx, 'proposal.execution_failed', 'Proposal', row.id, {
       area: row.area, kind: row.kind, action: row.action.type, error: messaggio,
     })
+    // A refusal the action explains (a ValidationError) is kept in the client's words too:
+    // the line under the proposal said the technical message, in English, with ids (26 Sep 2026).
+    const i18n = err instanceof GraphQLError ? err.extensions['i18n'] as { key: string; params?: Record<string, string | number> } | undefined : undefined
     await segnaDecisa(ctx.tenantId, row.id, {
-      status: 'open', decidedBy: ctx.userId, executionError: messaggio,
+      status: 'open', decidedBy: ctx.userId, executionError: messaggio, executionErrorI18n: i18n ?? null,
     })
     throw err
   }
@@ -377,6 +388,23 @@ async function acknowledgeProposal(_: unknown, args: { id: string }, ctx: GraphQ
   return mappaGql(aggiornata ?? row, ctx)
 }
 
+/** The tenant's OpenGrafo CI and the team that owns it, or the reason there is none. */
+async function opengrafoOwnerOf(tenantId: string): Promise<{ ciId: string; teamId: string }> {
+  const session = getSession(undefined, 'READ')
+  try {
+    const sistema = await openGrafoSystemCI(session, tenantId)
+    if (!sistema) {
+      throw new ValidationError('this organization has no OpenGrafo CI to open the problem on', { key: 'errors.proposal.noOpenGrafoCI' })
+    }
+    if (!sistema.ownerTeamId || sistema.ownerMembers === 0) {
+      throw new ValidationError('the OpenGrafo CI has no Owner Group with members: the problem would reach no one', { key: 'errors.proposal.openGrafoCINobody' })
+    }
+    return { ciId: sistema.ciId, teamId: sistema.ownerTeamId }
+  } finally {
+    await session.close()
+  }
+}
+
 /**
  * «SONO D'ACCORDO, E QUALCUNO CI LAVORI»: apre un Problem.
  *
@@ -416,12 +444,33 @@ async function openProblemFromProposal(
    * predefinito, e inventarne uno avrebbe messo in mano al prodotto una
    * decisione che è del cliente.
    */
+  /*
+   * A REMEDY THAT DID NOT HOLD IS A FAULT OF OPENGRAFO (26 Sep 2026, the
+   * owner). Its Problem is opened on the tenant's OpenGrafo CI and given to
+   * the team that owns it — without, it went into investigation owned by no
+   * one, and «notify the owning team» failed. No CI, or a team with nobody in
+   * it: said before anything is written, pointing at the CI.
+   */
+  const operativo = GENERI_OPERATIVI_DA_PROBLEM.has(row.kind) ? await opengrafoOwnerOf(ctx.tenantId) : null
+
   const problem = await createProblem({
     title:       titoloDelProblem(row.params, row.kind),
     description: descrizioneDelProblem(row),
     impact:      args.impact,
     urgency:     args.urgency,
+    ...(operativo ? { affectedCIs: [operativo.ciId] } : {}),
   }, { tenantId: ctx.tenantId, userId: ctx.userId })
+
+  if (operativo) {
+    const session = getSession(undefined, 'WRITE')
+    try {
+      await setTicketTeam(session, 'Problem', problem.id as string, operativo.teamId, ctx.tenantId)
+    } finally {
+      await session.close()
+    }
+    // The SLA policy may depend on the team just assigned (as assignProblemToTeam does).
+    await publishEvent(TICKET_TEAM_ASSIGNED_EVENT, ctx.tenantId, ctx.userId, { entity_type: 'problem', entity_id: problem.id as string, team_id: operativo.teamId })
+  }
 
   /*
    * Il legame si scrive SUL PROBLEM, non solo sulla proposta: è da lì che il

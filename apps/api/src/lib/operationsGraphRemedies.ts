@@ -199,18 +199,18 @@ export async function syncServiceMapRemedy(tenantId: string, params: Record<stri
   const mapId = params['mapId']
   if (typeof mapId !== 'string' || mapId === '') throw new Error(`operations: service_map.sync without a map (${JSON.stringify(params)})`)
   const session = getSession(undefined, 'READ')
-  let map: { autoSync: boolean | null; status: string | null } | null
+  let map: { autoSync: boolean | null; status: string | null; name: string | null } | null
   try {
     map = await runQueryOne(session, `
       MATCH (m:ServiceMap {tenant_id: $tenantId, id: $mapId})
-      RETURN m.auto_sync AS autoSync, m.status AS status
+      RETURN m.auto_sync AS autoSync, m.status AS status, m.name AS name
     `, { tenantId, mapId })
   } finally {
     await session.close()
   }
   if (!map) throw new ValidationError(`service map ${mapId} no longer exists`, { key: 'errors.proposal.mapGone' })
   if (map.autoSync !== true || map.status === 'paused') {
-    throw new ValidationError(`service map ${mapId} is frozen or paused: it is not synchronized behind the admin's back`, { key: 'errors.proposal.mapNotLive' })
+    throw new ValidationError(`service map ${mapId} is frozen or paused: it is not synchronized behind the admin's back`, { key: 'errors.proposal.mapNotLive', params: { map: map.name ?? mapId } })
   }
   const { syncServiceMap } = await import('../services/serviceImpact/sync.js')
   const r = await syncServiceMap(tenantId, mapId, 'manual', REMEDY_ACTOR)

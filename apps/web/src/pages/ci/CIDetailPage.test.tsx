@@ -285,3 +285,41 @@ describe('CIDetailPage — sezione Salute (monitoraggio)', () => {
     expect(healthCard()).toHaveAttribute('aria-expanded', 'false')
   })
 })
+
+describe('a CI type with no fields of its own (26 Sep 2026)', () => {
+  // Platform: the metamodel arrives after the first render, and nothing else changes.
+  const PLATFORM_DETAIL = gql`
+    query DynamicDetail_Platform($id: ID!) {
+      platform(id: $id) {
+        id name type status environment description createdAt updatedAt notes isInfrastructure
+        ownerGroup { id name }
+        supportGroup { id name }
+        dependencies { relation ci { id name type environment status } }
+        dependents { relation ci { id name type environment status } }
+      }
+    }
+  `
+  it('opened from its address, the CI is asked for and shown — not «CI not found»', async () => {
+    const platformTypes: GqlMock = {
+      request: { query: GET_CI_TYPES },
+      result: { data: { ciTypes: [{
+        __typename: 'CIType', id: 'ct-platform', name: 'platform', label: 'Platform', icon: 'network', color: '#be185d', active: true,
+        validationScript: null, chainFamilies: [], fields: [field('name', 'string', 1, [], true)], relations: [], systemRelations: [],
+      }] } },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+    }
+    const platformDetail: GqlMock = {
+      request: { query: PLATFORM_DETAIL, variables: () => true },
+      result: { data: { platform: {
+        __typename: 'Platform', id: 'srv-1', name: 'OpenGrafo', type: 'platform', status: 'active', environment: null,
+        description: null, createdAt: '2026-09-26T00:00:00Z', updatedAt: null, notes: null, isInfrastructure: false,
+        ownerGroup: null, supportGroup: null, dependencies: [], dependents: [],
+      } } },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+    }
+    const [, , ...rest] = mocks()
+    renderPage({ mocks: [platformTypes, platformDetail, ...rest], route: '/ci/platform/srv-1' })
+    expect(await screen.findByRole('heading', { level: 1, name: 'OpenGrafo' })).toBeInTheDocument()
+    expect(screen.queryByText(T('pages.ci.notFound'))).toBeNull()
+  })
+})

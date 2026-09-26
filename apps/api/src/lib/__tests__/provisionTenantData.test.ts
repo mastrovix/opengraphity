@@ -38,6 +38,12 @@ vi.mock('../portalSeverityOptions.js', () => ({
   seedPortalSeverityOptions: vi.fn(async (_s: unknown, t: string) => { seeded.push(`severities:${t}`); return { seeded: ['low', 'high'] } }),
 }))
 // Idem per la lingua: il seme ha i suoi test in `tenantLanguageSeed.test.ts`.
+// The OpenGrafo CI (26 Sep 2026) has its own tests (opengrafoSystemCI.test.ts): here it is there, owned by someone.
+const sistema = vi.hoisted(() => ({ ci: { ciId: 'ci-og', ownerTeamId: 't-adm', ownerMembers: 1 } as { ciId: string; ownerTeamId: string | null; ownerMembers: number } | null }))
+vi.mock('../opengrafoSystemCI.js', () => ({
+  ensureOpenGrafoSystemCI: vi.fn(async () => ({ teamCreated: false, members: 0, ciCreated: false })),
+  openGrafoSystemCI: vi.fn(async () => sistema.ci),
+}))
 vi.mock('../tenantLanguage.js', () => ({
   seedDefaultLanguage: vi.fn(async (_s: unknown, t: string) => { seeded.push(`language:${t}`); return { seeded: 'en' } }),
 }))
@@ -145,6 +151,21 @@ describe('tenantProvisioningGaps — dire cosa manca, invece di scoprirlo al pri
   it('un tenant completo non ha lacune', async () => {
     const s = session([row({ ...completo, entityTypes: [...REQUIRED_WORKFLOW_ENTITY_TYPES] })])
     await expect(tenantProvisioningGaps(s as never, 'c-one')).resolves.toEqual([])
+  })
+
+  it('the OpenGrafo CI missing, or its team with nobody in it: said — the second is for a person to fix (26 Sep 2026)', async () => {
+    const s = session([row({ ...completo, entityTypes: [...REQUIRED_WORKFLOW_ENTITY_TYPES] })])
+    sistema.ci = null
+    await expect(tenantProvisioningGaps(s as never, 'c-one')).resolves.toEqual([{ kind: 'no_opengrafo_ci' }])
+    sistema.ci = { ciId: 'ci-og', ownerTeamId: 't-adm', ownerMembers: 0 }
+    await expect(tenantProvisioningGaps(s as never, 'c-one')).resolves.toEqual([{ kind: 'opengrafo_ci_nobody' }])
+    sistema.ci = { ciId: 'ci-og', ownerTeamId: 't-adm', ownerMembers: 1 }
+  })
+
+  it('the system team is not one of the tenant\'s teams: with it alone, «no teams» is still said', async () => {
+    const s = session([row({ ...completo, entityTypes: [...REQUIRED_WORKFLOW_ENTITY_TYPES] })])
+    await tenantProvisioningGaps(s as never, 'c-one')
+    expect(String((s as { run: { mock: { calls: unknown[][] } } }).run.mock.calls[0]![0])).toContain('count(CASE WHEN coalesce(tm.is_system, false) = false THEN 1 END) AS teams')
   })
 
   it('lo stato di c-two prima dell\'ondata 8: dashboard e regole sì, workflow nessuno', async () => {

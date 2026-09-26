@@ -2818,7 +2818,9 @@
         "accepted": "Accepted",
         "rejected": "Rejected",
         "expired": "Expired",
-        "ofMax": "of {{max}} at most"
+        "ofMax": "of {{max}} at most",
+        "ofMaxWithFaults_one": "of {{max}} at most; {{count}} fault is outside the cap",
+        "ofMaxWithFaults_other": "of {{max}} at most; {{count}} faults are outside the cap"
       },
       "occurrences_other": "{{count}} cases",
       "evidence": "What it is based on",
@@ -2853,8 +2855,8 @@
       "window_one": "over {{count}} day",
       "window_other": "over {{count}} days",
       "runSkipped": {
-        "intro_one": "The model produced {{count}}, and it did not reach this page: {{reasons}}.",
-        "intro_other": "The model produced {{count}}, and none reached this page: {{reasons}}.",
+        "intro_one": "The analysis found {{count}}, and it did not reach this page: {{reasons}}.",
+        "intro_other": "The analysis found {{count}}, and none reached this page: {{reasons}}.",
         "gia_presente_one": "{{count}} is already here",
         "gia_presente_other": "{{count}} are already here",
         "rifiutata_di_recente_one": "{{count}} rejected recently",
@@ -4524,7 +4526,9 @@
       "unknownField": "«{{field}}» is not a field of the type {{type}}.",
       "requiredGroup": "{{group}} is required for CIs of type {{type}}: it can be changed, not removed.",
       "ambiguousType": "The CI {{ci}} matches more than one CI type ({{types}}): the assessment questions would be arbitrary. Leave one active type for these labels.",
-      "groupNotDeclared": "CIs of type \"{{type}}\" have no {{group}}: the type does not declare it."
+      "groupNotDeclared": "CIs of type \"{{type}}\" have no {{group}}: the type does not declare it.",
+      "systemCINotDeletable": "“{{name}}” is a system CI: it cannot be deleted.",
+      "systemCINotRenamable": "“{{name}}” is a system CI: its name cannot be changed."
     },
     "portal": {
       "unclassifiedStates": "{{count}} ticket states belong to no class of the active incident workflow ({{states}}): the portal counters would not count them. Fix the steps (initial / terminal / category) in the designer.",
@@ -5063,7 +5067,9 @@
       "noFailedJobs": "The {{queue}} queue has no failed job any more: someone already retried them, or they went through.",
       "nothingStuck": "None of the items of this proposal is stuck any more: the periodic pass or someone else has already put them right.",
       "mapGone": "This service map no longer exists.",
-      "mapNotLive": "This service map has been frozen or paused since the proposal: it is not synchronized behind the admin's back."
+      "mapNotLive": "The service map “{{map}}” has been frozen or paused since the proposal: it is not synchronized behind the admin's back.",
+      "noOpenGrafoCI": "This organization has no OpenGrafo CI to open the problem on: the next migration creates it.",
+      "openGrafoCINobody": "The OpenGrafo CI has no Owner Group with people in it: the problem would reach no one. Set the Owner Group on the OpenGrafo CI (CMDB), or add members to its team."
     },
     "rest": {
       "repeatedRouteParam": "Route parameter “{{name}}” arrived as a list: this route declares a repeated parameter, which its callers do not expect.",
@@ -6949,7 +6955,9 @@
       "no_workflows": "no active workflow for: {{entityTypes}}",
       "no_assessment_questions": "no assessment questions: no change could ever get past the assessment stage (Assessment Questions)",
       "no_teams": "no teams: without teams CIs have no Owner/Support Group and no change can be created (Organization & access → Teams)",
-      "no_change_manager": "no team designated Change Manager: normal and emergency changes cannot enter approval (Organization & access → Teams)"
+      "no_change_manager": "no team designated Change Manager: normal and emergency changes cannot enter approval (Organization & access → Teams)",
+      "no_opengrafo_ci": "no OpenGrafo CI: the problems of the operational remedies have no CI to be opened on",
+      "opengrafo_ci_nobody": "the OpenGrafo CI has no Owner Group with people in it: the problems of the operational remedies reach no one (CMDB → OpenGrafo)"
     },
     "andMore_one": " (and {{count}} more)",
     "andMore_other": " (and {{count}} more)",
@@ -8072,16 +8080,24 @@
       "proposal.dailyWorkSlowStep": "In step “{{step}}” tickets sit for {{median, number}} h (p90 {{p90, number}} h) over {{count}} runs",
       "proposal.dailyWorkInstantStep": "Step “{{step}}” is crossed in {{median, number}} h over {{count}} runs: is it a step or a formality?",
       "proposal.configMissingLabels": "Write the {{count}} labels missing from the “{{vocabulary}}” dictionary ({{values}})",
-      "proposal.operationsFailedJobs": "{{count}} failed jobs in the {{queue}} queue: retry them (twenty at most)",
-      "proposal.operationsFailedJobsNotHeld": "Again {{count}} failed jobs in the {{queue}} queue, and the last retry did not hold: a person has to look",
-      "proposal.operationsStuckAlarms": "{{count}} firing alarms left without a decision, which the automatic pass could not pick up: re-evaluate them (twenty at most)",
-      "proposal.operationsStuckAlarmsNotHeld": "{{count}} alarms still stuck, and the last re-evaluation did not hold: a person has to look",
+      "proposal.operationsFailedJobs_one": "1 failed job in the {{queue}} queue: retry it",
+      "proposal.operationsFailedJobs_other": "{{count}} failed jobs in the {{queue}} queue: retry them (twenty at most)",
+      "proposal.operationsFailedJobsNotHeld_one": "Again 1 failed job in the {{queue}} queue, and the last retry did not hold: a person has to look",
+      "proposal.operationsFailedJobsNotHeld_other": "Again {{count}} failed jobs in the {{queue}} queue, and the last retry did not hold: a person has to look",
+      "proposal.operationsStuckAlarms_one": "1 firing alarm left without a decision, which the automatic pass could not pick up: re-evaluate it",
+      "proposal.operationsStuckAlarms_other": "{{count}} firing alarms left without a decision, which the automatic pass could not pick up: re-evaluate them (twenty at most)",
+      "proposal.operationsStuckAlarmsNotHeld_one": "1 alarm still stuck, and the last re-evaluation did not hold: a person has to look",
+      "proposal.operationsStuckAlarmsNotHeld_other": "{{count}} alarms still stuck, and the last re-evaluation did not hold: a person has to look",
       "proposal.operationsStaleServiceMap": "The service map “{{map}}” is behind the CMDB: synchronize it now",
       "proposal.operationsStaleServiceMapNotHeld": "The service map “{{map}}” is still behind the CMDB after a synchronization: a person has to look",
-      "proposal.operationsCIHealthOutOfStep": "{{count}} CIs have a health that is not what their alarms say: recompute it (twenty at most)",
-      "proposal.operationsCIHealthOutOfStepNotHeld": "{{count}} CIs still have a health out of step with their alarms after a recompute: a person has to look",
-      "proposal.operationsStuckWorkflows": "{{count}} tickets are still in a wait whose timer ran out long ago: take them out of it the way the workflow says (twenty at most)",
-      "proposal.operationsStuckWorkflowsNotHeld": "{{count}} tickets are still in a wait whose timer ran out, after a resume: a person has to look"
+      "proposal.operationsCIHealthOutOfStep_one": "1 CI has a health that is not what its alarms say: recompute it",
+      "proposal.operationsCIHealthOutOfStep_other": "{{count}} CIs have a health that is not what their alarms say: recompute it (twenty at most)",
+      "proposal.operationsCIHealthOutOfStepNotHeld_one": "1 CI still has a health out of step with its alarms after a recompute: a person has to look",
+      "proposal.operationsCIHealthOutOfStepNotHeld_other": "{{count}} CIs still have a health out of step with their alarms after a recompute: a person has to look",
+      "proposal.operationsStuckWorkflows_one": "1 ticket is still in a wait whose timer ran out long ago: take it out the way the workflow says",
+      "proposal.operationsStuckWorkflows_other": "{{count}} tickets are still in a wait whose timer ran out long ago: take them out of it the way the workflow says (twenty at most)",
+      "proposal.operationsStuckWorkflowsNotHeld_one": "1 ticket is still in a wait whose timer ran out, after a resume: a person has to look",
+      "proposal.operationsStuckWorkflowsNotHeld_other": "{{count}} tickets are still in a wait whose timer ran out, after a resume: a person has to look"
     },
     "rejection": {
       "wrong_analysis": "The analysis is wrong",

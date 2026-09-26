@@ -66,6 +66,9 @@ export function proposalsSDL(): string {
     auditEntryId: String
     """Perché l'esecuzione è fallita, quando è fallita. Una proposta accettata e non eseguita lo dice."""
     executionError: String
+    """The refusal in the client's words (i18n key and params), when the action gave one."""
+    executionErrorKey: String
+    executionErrorParams: [ProposalParam!]!
     """Se «Disfa» ha senso adesso: accettata, non già disfatta, con lo stato precedente salvato e un'azione che sa disfarsi. Un bottone che fallirà non si offre."""
     undoable: Boolean!
     """An operational remedy is verified, not undone: resolved, unresolved, or null while not checked yet (26 Sep 2026)."""
@@ -89,6 +92,8 @@ export function proposalsSDL(): string {
     notNow:     Int!
     expired:    Int!
     superseded: Int!
+    """Open proposals of the area operations: faults, outside the cap on open proposals."""
+    openFaults: Int!
   }
 
   type ProposalsResult {

@@ -107,12 +107,10 @@ function ciTypeWithTenantScript(): CITypeWithDefinitions {
   })
 }
 
-function fakeSession(props: Record<string, unknown> | null = null, knownTeams: readonly string[] = ['team-1', 'team-2'], ciExists = true) {
+function fakeSession(props: Record<string, unknown> | null = null, knownTeams: readonly string[] = ['team-1', 'team-2']) {
   const run = vi.fn().mockImplementation(async (cypher: string, params?: Record<string, unknown>) => ({
     records: cypher.includes('RETURN properties(n) AS p')
       ? (props ? [{ get: () => props }] : [])
-      : cypher.includes('RETURN n.id AS id')
-        ? (ciExists ? [{ get: () => 'ci-1' }] : [])
       : cypher.includes('RETURN t.id AS teamId')
         ? (knownTeams.includes(String(params?.['teamId'])) ? [{ get: () => params?.['teamId'] }] : [])
         : [],
@@ -512,7 +510,7 @@ describe('buildUpdateMutation', () => {
 
 describe('buildDeleteMutation (B7 — Event Management)', () => {
   it('cancellazione fisica scoped per tenant: gli alias ALIAS_OF del CI vanno via nella stessa scrittura, gli Event RAISED_ON restano orfani (solo la relazione cade)', async () => {
-    const session = fakeSession()
+    const session = fakeSession({ id: 'ci-1', name: 'srv' })
     vi.mocked(withSession).mockImplementation((fn) => fn(session as never))
     const del = buildDeleteMutation('Server')
 
@@ -529,7 +527,7 @@ describe('buildDeleteMutation (B7 — Event Management)', () => {
 
   // ── Revisione 2 · D4.3: i commenti PRIMA della cancellazione ─────────────
   it('D4.3 — prima del DETACH DELETE annota gli incident che perdono il loro unico CI (e, per una BusinessApplication, quelli del servizio); la nota non può far fallire la cancellazione', async () => {
-    const session = fakeSession()
+    const session = fakeSession({ id: 'ci-1', name: 'srv' })
     vi.mocked(withSession).mockImplementation((fn) => fn(session as never))
     await expect(buildDeleteMutation('Server')(undefined, { id: 'ci-1' }, ctx)).resolves.toBe(true)
     expect(noteIncidentsBeforeCIDeletion).toHaveBeenCalledWith('t1', 'ci-1', session)
@@ -544,7 +542,7 @@ describe('buildDeleteMutation (B7 — Event Management)', () => {
 
   // ── Servizi monitorati, ondata 4 §4 ───────────────────────────────────────
   it('cancellando una BusinessApplication vanno via anche la sua ServiceMap e la cronologia; l\'incident del servizio NO (è storia del ticket)', async () => {
-    const session = fakeSession()
+    const session = fakeSession({ id: 'ci-1', name: 'srv' })
     vi.mocked(withSession).mockImplementation((fn) => fn(session as never))
     const del = buildDeleteMutation('BusinessApplication')
 
@@ -563,7 +561,7 @@ describe('buildDeleteMutation (B7 — Event Management)', () => {
   })
 
   it('cancellando un CI qualunque la clausola della mappa non trova nulla: la mappa che lo includeva resta (diventerà stale)', async () => {
-    const session = fakeSession()
+    const session = fakeSession({ id: 'ci-1', name: 'srv' })
     vi.mocked(withSession).mockImplementation((fn) => fn(session as never))
     await buildDeleteMutation('Server')(undefined, { id: 'ci-1' }, ctx)
     const [cypher] = session.run.mock.calls.find(([c]) => String(c).includes('DETACH DELETE'))!
@@ -574,7 +572,7 @@ describe('buildDeleteMutation (B7 — Event Management)', () => {
 
   // ── Servizi monitorati, ondata 5 (mappa viva) ─────────────────────────────
   it('avvisa il motore dei servizi DOPO la cancellazione (le mappe vive si risincronizzano subito); un errore di coda non fa fallire la cancellazione', async () => {
-    const session = fakeSession()
+    const session = fakeSession({ id: 'ci-1', name: 'srv' })
     vi.mocked(withSession).mockImplementation((fn) => fn(session as never))
     await buildDeleteMutation('Server')(undefined, { id: 'ci-1' }, ctx)
     expect(notifyCIGraphChanged).toHaveBeenCalledWith('t1', ['ci-1'], 'ci.deleted')
@@ -638,7 +636,7 @@ describe('updateCIRecord — la strada unica della modifica di un CI', () => {
 describe('buildDeleteMutation — CM-11', () => {
   it('un id che non esiste nel tenant → NOT_FOUND, niente cancellazione, niente audit', async () => {
     const { audit } = await import('../../../lib/audit.js')
-    const session = fakeSession(null, undefined, false)
+    const session = fakeSession(null)
     vi.mocked(withSession).mockImplementation((fn) => fn(session as never))
     await expect(buildDeleteMutation('Server')(undefined, { id: 'nope' }, ctx)).rejects.toMatchObject({ extensions: { code: 'NOT_FOUND' } })
     expect(session.executeWrite).not.toHaveBeenCalled()
@@ -646,3 +644,24 @@ describe('buildDeleteMutation — CM-11', () => {
   })
 })
 
+
+describe('the OpenGrafo CI is the product\'s (26 Sep 2026)', () => {
+  const sistema = { id: 'ci-og', name: 'OpenGrafo', is_system: true, ip_address: '10.0.0.1' }
+
+  it('it is not deleted: refused before anything is written', async () => {
+    const session = fakeSession(sistema)
+    vi.mocked(withSession).mockImplementation((fn) => fn(session as never))
+    await expect(buildDeleteMutation('Platform')(undefined, { id: 'ci-og' }, ctx))
+      .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.ci.systemCINotDeletable' } } })
+    expect(session.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('it is not renamed; the rest of it is the organization\'s', async () => {
+    const session = fakeSession(sistema)
+    vi.mocked(withSession).mockImplementation((fn) => fn(session as never))
+    const update = buildUpdateMutation(ciType(), 'Server', mapCI)
+    await expect(update(undefined, { id: 'ci-og', input: { name: 'Something else' } }, ctx))
+      .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.ci.systemCINotRenamable' } } })
+    await expect(update(undefined, { id: 'ci-og', input: { name: 'OpenGrafo', description: 'ours' } }, ctx)).resolves.toBeDefined()
+  })
+})

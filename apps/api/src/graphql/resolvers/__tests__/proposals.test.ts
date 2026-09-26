@@ -74,6 +74,13 @@ vi.mock('../../../jobs/proposalScanner.js', () => ({
 }))
 
 const runQueryOne = vi.fn()
+// The OpenGrafo CI and its team (26 Sep 2026): who a remedy's Problem is given to.
+const sistemaOG = vi.hoisted(() => ({ ci: { ciId: 'ci-og', ownerTeamId: 't-adm', ownerMembers: 3 } as { ciId: string; ownerTeamId: string | null; ownerMembers: number } | null }))
+vi.mock('../../../lib/opengrafoSystemCI.js', () => ({ openGrafoSystemCI: async () => sistemaOG.ci }))
+const setTicketTeam = vi.fn(async () => ({ teamName: 'OpenGrafo Administrators', previousTeamName: null, unassignedUserName: null }))
+vi.mock('../../../services/ticketAssignment.js', () => ({ setTicketTeam: (...a: unknown[]) => setTicketTeam(...(a as [])) }))
+const publishEvent = vi.fn(async () => undefined)
+vi.mock('../../../lib/publishEvent.js', () => ({ publishEvent: (...a: unknown[]) => publishEvent(...(a as [])) }))
 vi.mock('../ci-utils.js', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   runQueryOne: (...a: unknown[]) => runQueryOne(...a),
@@ -116,7 +123,7 @@ const riga = (over: Record<string, unknown> = {}) => ({
   occurrences: 3, windowDays: 30, action: { type: 'create_sla_policy' },
   rationale: 'perché', rationaleLanguage: 'it', status: 'open',
   createdAt: 'ieri', decidedAt: null, decidedBy: null, rejectedKind: null, rejectedNote: null,
-  notNowUntil: null, auditEntryId: null, executionError: null, undone: false, undoState: null,
+  notNowUntil: null, auditEntryId: null, executionError: null, executionErrorI18n: null, undone: false, undoState: null,
   openedProblem: null, ...over,
 })
 
@@ -241,7 +248,17 @@ describe('acceptProposal', () => {
     const r = await esito(() => proposalResolvers.Mutation.acceptProposal!(null, { id: 'p1' } as never, ctx()))
     expect(r.message).toBe('la policy esiste già')
     expect(audit.mock.calls.map((c) => c[1])).toContain('proposal.execution_failed')
-    expect(segnaDecisa.mock.calls[0]![2]).toMatchObject({ status: 'open', executionError: 'la policy esiste già' })
+    expect(segnaDecisa.mock.calls[0]![2]).toMatchObject({ status: 'open', executionError: 'la policy esiste già', executionErrorI18n: null })
+  })
+
+  it('a refusal the action explains is kept in the client\'s words too: key and params (26 Sep 2026)', async () => {
+    const { ValidationError } = await import('../../../lib/errors.js')
+    eseguiAzione.mockRejectedValue(new ValidationError('service map m1 is frozen or paused', { key: 'errors.proposal.mapNotLive', params: { map: 'Billing' } }))
+    await esito(() => proposalResolvers.Mutation.acceptProposal!(null, { id: 'p1' } as never, ctx()))
+    expect(segnaDecisa.mock.calls[0]![2]).toMatchObject({
+      status: 'open', executionError: 'service map m1 is frozen or paused',
+      executionErrorI18n: { key: 'errors.proposal.mapNotLive', params: { map: 'Billing' } },
+    })
   })
 })
 
@@ -369,6 +386,34 @@ describe('openProblemFromProposal', () => {
     expect(createProblem.mock.calls[0]![0]).toMatchObject({ title: 'Jobs keep failing in queue sla-jobs after a retry' })
     expect(fascicoloPossibile).toHaveBeenCalledWith('t1', expect.objectContaining({ kind: 'proposal.operationsFailedJobsNotHeld' }))
     expect(enqueuePortaIlFascicolo).not.toHaveBeenCalled()
+  })
+
+  it('it is opened on the OpenGrafo CI and given to the team that owns it, before the investigation starts', async () => {
+    sistemaOG.ci = { ciId: 'ci-og', ownerTeamId: 't-adm', ownerMembers: 3 }
+    proposta.mockResolvedValue(riga({ action: null, area: 'operations', kind: 'proposal.operationsStuckAlarmsNotHeld', params: { count: '3' } }))
+    await proposalResolvers.Mutation.openProblemFromProposal!(null, { id: 'p1', impact: 'high', urgency: 'low' } as never, ctx())
+    expect(createProblem.mock.calls[0]![0]).toMatchObject({ affectedCIs: ['ci-og'] })
+    expect(setTicketTeam).toHaveBeenCalledWith(expect.anything(), 'Problem', 'prb1', 't-adm', 't1')
+    expect(publishEvent).toHaveBeenCalledWith('ticket.team_assigned', 't1', 'u1', { entity_type: 'problem', entity_id: 'prb1', team_id: 't-adm' })
+    expect(setTicketTeam.mock.invocationCallOrder[0]!).toBeLessThan(avviaIndagine.mock.invocationCallOrder[0]!)
+  })
+
+  it('a team with nobody in it, or no CI: refused before anything is written — the problem would reach no one', async () => {
+    proposta.mockResolvedValue(riga({ action: null, area: 'operations', kind: 'proposal.operationsStuckAlarmsNotHeld', params: { count: '3' } }))
+    sistemaOG.ci = { ciId: 'ci-og', ownerTeamId: 't-adm', ownerMembers: 0 }
+    expect((await esito(() => proposalResolvers.Mutation.openProblemFromProposal!(null, { id: 'p1', impact: 'high', urgency: 'low' } as never, ctx()))).message)
+      .toContain('reach no one')
+    sistemaOG.ci = null
+    expect((await esito(() => proposalResolvers.Mutation.openProblemFromProposal!(null, { id: 'p1', impact: 'high', urgency: 'low' } as never, ctx()))).message)
+      .toContain('no OpenGrafo CI')
+    expect(createProblem).not.toHaveBeenCalled()
+    sistemaOG.ci = { ciId: 'ci-og', ownerTeamId: 't-adm', ownerMembers: 3 }
+  })
+
+  it('a platform fault is not an OpenGrafo-CI problem: no CI, no team from here', async () => {
+    await proposalResolvers.Mutation.openProblemFromProposal!(null, { id: 'p1', impact: 'high', urgency: 'low' } as never, ctx())
+    expect(createProblem.mock.calls[0]![0]).not.toHaveProperty('affectedCIs')
+    expect(setTicketTeam).not.toHaveBeenCalled()
   })
 })
 

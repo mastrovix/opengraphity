@@ -82,6 +82,8 @@ export interface ProposalRow {
   /** L'id della voce di Audit dell'azione eseguita: dalla proposta si arriva a cosa è successo. */
   auditEntryId: string | null
   executionError: string | null
+  /** The refusal as the client says it (key + params of the ValidationError), when the action gave one (26 Sep 2026). */
+  executionErrorI18n: { key: string; params: Record<string, string | number> } | null
   /**
    * Lo stato precedente salvato al momento dell'esecuzione: è da qui che si
    * disfa. Una chiusura in memoria non sopravvivrebbe al riavvio fra
@@ -164,6 +166,7 @@ function mappa(r: Record<string, unknown>): ProposalRow {
     notNowUntil:  r['notNowUntil'] == null ? null : String(r['notNowUntil']),
     auditEntryId: r['auditEntryId'] == null ? null : String(r['auditEntryId']),
     executionError: r['executionError'] == null ? null : String(r['executionError']),
+    executionErrorI18n: leggiJson<{ key: string; params: Record<string, string | number> }>(r['executionErrorI18n'], 'executionErrorI18n'),
     undoState: leggiJson<Record<string, unknown>>(r['undoState'], 'undoState'),
     openedProblem: leggiJson<{ id: string; number: string }>(r['openedProblem'], 'openedProblem'),
     undone: r['undone'] === true,
@@ -185,7 +188,7 @@ const CAMPI = `
   p.decided_at AS decidedAt, p.decided_by AS decidedBy,
   p.rejected_kind AS rejectedKind, p.rejected_note AS rejectedNote,
   p.not_now_until AS notNowUntil, p.audit_entry_id AS auditEntryId,
-  p.execution_error AS executionError, p.undo_state AS undoState,
+  p.execution_error AS executionError, p.execution_error_i18n AS executionErrorI18n, p.undo_state AS undoState,
   coalesce(p.undone, false) AS undone, p.opened_problem AS openedProblem,
   p.cause AS cause, p.execution_details AS executionDetails,
   p.verification AS verification, p.verified_at AS verifiedAt,
@@ -204,7 +207,7 @@ export type EsitoScrittura =
  * tocca: le prove nuove non devono resettare una decisione presa); è stata
  * rifiutata e non è passato abbastanza tempo o le prove non sono cambiate di
  * fascia; il cliente ha già il massimo di proposte aperte; ne sono già nate
- * troppe oggi.
+ * troppe oggi. Le ultime due non valgono per i rimedi operativi (vedi sotto).
  */
 export async function scriviProposta(
   p: ProposalToWrite,
@@ -251,18 +254,32 @@ export async function scriviProposta(
       `, { tenantId: p.tenantId, area: p.area, fingerprint, closed: [...PROPOSAL_STATUSES_THAT_MAY_RETURN] })
     }
 
-    const conteggi = await runQueryOne<{ aperte: number; oggi: number }>(session, `
-      MATCH (p:Proposal {tenant_id: $tenantId})
-      WITH collect(p) AS tutte
-      RETURN size([x IN tutte WHERE x.status IN $aperte]) AS aperte,
-             size([x IN tutte WHERE x.created_at >= $daMezzanotte]) AS oggi
-    `, {
-      tenantId: p.tenantId,
-      aperte: [...PROPOSAL_OPEN_STATUSES],
-      daMezzanotte: new Date(Date.UTC(adesso.getUTCFullYear(), adesso.getUTCMonth(), adesso.getUTCDate())).toISOString(),
-    })
-    if (Number(conteggi?.aperte ?? 0) >= limiti.maxOpen)   return { scritta: false, motivo: 'tetto_aperte' }
-    if (Number(conteggi?.oggi ?? 0)   >= limiti.maxPerDay) return { scritta: false, motivo: 'tetto_giornaliero' }
+    /*
+     * THE CAPS ARE FOR ADVICE, NOT FOR FAULTS (26 Sep 2026, the owner's
+     * choice). Five open and two a day keep the page from filling with
+     * suggestions nobody asked for. An operational remedy says that something
+     * is broken NOW: under the same caps, a CI shown «down» stayed off the page
+     * because two suggestions had been born that morning — found trying the
+     * cases on the demo tenant. So the operational ones neither stop at the
+     * caps nor count towards them (they do not take the analysts' slots
+     * either). What bounds them is their own rules: one per cause per day,
+     * twenty items each, and they expire when the fault is gone.
+     */
+    if (p.area !== 'operations') {
+      const conteggi = await runQueryOne<{ aperte: number; oggi: number }>(session, `
+        MATCH (p:Proposal {tenant_id: $tenantId})
+        WHERE p.area <> 'operations'
+        WITH collect(p) AS tutte
+        RETURN size([x IN tutte WHERE x.status IN $aperte]) AS aperte,
+               size([x IN tutte WHERE x.created_at >= $daMezzanotte]) AS oggi
+      `, {
+        tenantId: p.tenantId,
+        aperte: [...PROPOSAL_OPEN_STATUSES],
+        daMezzanotte: new Date(Date.UTC(adesso.getUTCFullYear(), adesso.getUTCMonth(), adesso.getUTCDate())).toISOString(),
+      })
+      if (Number(conteggi?.aperte ?? 0) >= limiti.maxOpen)   return { scritta: false, motivo: 'tetto_aperte' }
+      if (Number(conteggi?.oggi ?? 0)   >= limiti.maxPerDay) return { scritta: false, motivo: 'tetto_giornaliero' }
+    }
 
     const righe = await runQuery<Record<string, unknown>>(session, `
       CREATE (p:Proposal {
@@ -273,7 +290,7 @@ export async function scriviProposta(
         status: 'open', created_at: $now,
         decided_at: null, decided_by: null,
         rejected_kind: null, rejected_note: null, not_now_until: null,
-        audit_entry_id: null, execution_error: null,
+        audit_entry_id: null, execution_error: null, execution_error_i18n: null,
         undo_state: null, undone: false,
         cause: $cause, execution_details: null,
         verification: null, verified_at: null, verification_detail: null
@@ -361,18 +378,23 @@ export async function proposta(tenantId: string, id: string): Promise<ProposalRo
   }
 }
 
-/** I conteggi in testa alla pagina, in una query sola. */
-export async function conteggiProposte(tenantId: string): Promise<Record<ProposalStatus, number>> {
+/**
+ * I conteggi in testa alla pagina, in una query sola. `openFaults`: le aperte
+ * dell'area `operations`, che il tetto delle aperte non conta (26 Sep 2026) —
+ * la pagina lo dice accanto al tetto, invece di far sembrare il tetto superato.
+ */
+export async function conteggiProposte(tenantId: string): Promise<Record<ProposalStatus, number> & { openFaults: number }> {
   const session = getSession(undefined, 'READ')
   try {
-    const righe = await runQuery<{ status: string; n: number }>(session, `
+    const righe = await runQuery<{ status: string; n: number; faults: number }>(session, `
       MATCH (p:Proposal {tenant_id: $tenantId})
-      RETURN p.status AS status, count(*) AS n
+      RETURN p.status AS status, count(*) AS n, sum(CASE WHEN p.area = 'operations' THEN 1 ELSE 0 END) AS faults
     `, { tenantId })
-    const out = { open: 0, accepted: 0, rejected: 0, not_now: 0, expired: 0, superseded: 0 }
+    const out = { open: 0, accepted: 0, rejected: 0, not_now: 0, expired: 0, superseded: 0, openFaults: 0 }
     for (const r of righe) {
       const s = String(r.status) as ProposalStatus
       if (s in out) out[s] = Number(r.n)
+      if (s === 'open') out.openFaults = Number(r.faults ?? 0)
     }
     return out
   } finally {
@@ -392,6 +414,8 @@ export async function segnaDecisa(
     notNowUntil?: string | null
     auditEntryId?: string | null
     executionError?: string | null
+    /** Written with `executionError`: the same refusal in the client's words. */
+    executionErrorI18n?: { key: string; params?: Record<string, string | number> } | null
     undoState?: Record<string, unknown> | null
     undone?: boolean
     openedProblem?: { id: string; number: string } | null
@@ -412,6 +436,7 @@ export async function segnaDecisa(
           p.not_now_until = $notNowUntil,
           p.audit_entry_id = $auditEntryId,
           p.execution_error = $executionError,
+          p.execution_error_i18n = $executionErrorI18n,
           p.undo_state = $undoState,
           p.undone = $undone,
           p.opened_problem = $openedProblem,
@@ -425,6 +450,7 @@ export async function segnaDecisa(
       notNowUntil: campi.notNowUntil ?? null,
       auditEntryId: campi.auditEntryId ?? null,
       executionError: campi.executionError ?? null,
+      executionErrorI18n: campi.executionErrorI18n ? JSON.stringify({ key: campi.executionErrorI18n.key, params: campi.executionErrorI18n.params ?? {} }) : null,
       undoState: campi.undoState ? JSON.stringify(campi.undoState) : null,
       undone: campi.undone ?? false,
       openedProblem: campi.openedProblem ? JSON.stringify(campi.openedProblem) : null,

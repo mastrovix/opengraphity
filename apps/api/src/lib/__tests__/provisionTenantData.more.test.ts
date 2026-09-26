@@ -22,6 +22,12 @@ vi.mock('../seedNotificationRules.js', () => ({ seedNotificationRules: vi.fn(asy
 vi.mock('../roles.js', () => ({ seedFactoryRoles: vi.fn(async () => []) }))
 vi.mock('../domainMatrixSeed.js', () => ({ seedDomainMatrices: vi.fn(async () => []) }))
 vi.mock('../portalSeverityOptions.js', () => ({ seedPortalSeverityOptions: vi.fn(async () => ({ seeded: null })) }))
+// The OpenGrafo CI (26 Sep 2026) has its own tests (opengrafoSystemCI.test.ts): here it is there, owned by someone.
+const sistema = vi.hoisted(() => ({ ci: { ciId: 'ci-og', ownerTeamId: 't-adm', ownerMembers: 1 } as { ciId: string; ownerTeamId: string | null; ownerMembers: number } | null }))
+vi.mock('../opengrafoSystemCI.js', () => ({
+  ensureOpenGrafoSystemCI: vi.fn(async () => ({ teamCreated: false, members: 0, ciCreated: false })),
+  openGrafoSystemCI: vi.fn(async () => sistema.ci),
+}))
 vi.mock('../tenantLanguage.js', () => ({ seedDefaultLanguage: vi.fn(async () => ({ seeded: null })) }))
 
 const { provisionTenantData } = await import('../provisionTenantData.js')

@@ -162,6 +162,7 @@ import { certificatesOnServers } from './20261011_1090_certificates_on_servers.j
 import { applicationChainsAsAlternatives } from './20261011_1100_application_chains_as_alternatives.js'
 import { everyLinkRequired } from './20261011_1110_every_link_required.js'
 import { dynamicGroupsOutsideChains } from './20261011_1120_dynamic_groups_outside_chains.js'
+import { platformTypeAndOpenGrafoCI } from './20261012_1010_platform_type_and_opengrafo_ci.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -305,4 +306,5 @@ export const MIGRATIONS: readonly Migration[] = [
   applicationChainsAsAlternatives,
   everyLinkRequired,
   dynamicGroupsOutsideChains,
+  platformTypeAndOpenGrafoCI,
 ]

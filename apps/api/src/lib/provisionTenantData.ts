@@ -44,6 +44,7 @@ import { seedFactoryRoles } from './roles.js'
 import { seedPortalSeverityOptions } from './portalSeverityOptions.js'
 import { seedDefaultLanguage } from './tenantLanguage.js'
 import { seedStartingChains } from './cmdbStartingChains.js'
+import { ensureOpenGrafoSystemCI, openGrafoSystemCI, type OpenGrafoSystemCIResult } from './opengrafoSystemCI.js'
 
 /** I tipi di entità che devono avere una definizione di workflow attiva. */
 export const REQUIRED_WORKFLOW_ENTITY_TYPES = ['incident', 'problem', 'kb_article', 'change', 'service_request'] as const
@@ -66,6 +67,8 @@ export interface TenantProvisioningResult {
   /** La lingua dichiarata adesso, `null` se il cliente l'aveva già scelta. */
   defaultLanguageSeeded: string | null
   /** The starting CMDB chains written now (0 when the tenant already had its own). */
+  /** The OpenGrafo CI and its team, created where missing (lib/opengrafoSystemCI.ts). */
+  openGrafoCI: OpenGrafoSystemCIResult
   cmdbChainsCreated: number
   /**
    * Una riga per definizione di workflow. `created` è `null` per i seeder che
@@ -151,6 +154,8 @@ export async function provisionTenantData(
   const lingua = await seedDefaultLanguage(session, tenantId)
   // The CMDB chains (24 Sep 2026): without one, every relation between CIs is refused.
   const cmdbChainsCreated = await seedStartingChains(session, tenantId)
+  // OpenGrafo as a CI of the tenant, owned by its administrators (26 Sep 2026): the remedies' problems land there.
+  const openGrafoCI = await ensureOpenGrafoSystemCI(session, tenantId)
 
   // Ogni tipo di ticket vuole la sua definizione PRIMA del primo create*:
   // `createInstance` fallisce a voce alta senza (packages/workflow/engine.ts).
@@ -215,6 +220,7 @@ export async function provisionTenantData(
     portalSeveritiesSeeded: severita.seeded,
     defaultLanguageSeeded: lingua.seeded,
     cmdbChainsCreated,
+    openGrafoCI,
     workflows,
     gapsLeft: gaps.filter((g) => GAP_DA_PERSONA.includes(g.kind)),
   }
@@ -229,6 +235,8 @@ const GAP_DA_PERSONA: readonly ProvisioningGap['kind'][] = [
   'no_teams',
   'no_change_manager',
   'no_assessment_questions',
+  // The OpenGrafo CI's team is people: if it has none, a person adds them (26 Sep 2026).
+  'opengrafo_ci_nobody',
 ]
 
 /**
@@ -245,6 +253,7 @@ export interface ProvisioningGap {
   kind:
     | 'tenant_missing' | 'no_roles' | 'no_dashboard' | 'no_notification_rules' | 'no_domain_matrices'
     | 'no_workflows' | 'no_assessment_questions' | 'no_teams' | 'no_change_manager'
+    | 'no_opengrafo_ci' | 'opengrafo_ci_nobody'
   /** Solo dati per l'interpolazione: mai prosa. */
   params?: Record<string, string>
 }
@@ -266,6 +275,8 @@ export function formatGap(g: ProvisioningGap): string {
     case 'no_assessment_questions': return 'no assessment questions: no change could ever get past the assessment stage (Assessment Questions)'
     case 'no_teams':                return 'no teams: without teams CIs have no Owner/Support Group and no change can be created (Organization & access → Teams)'
     case 'no_change_manager':       return 'no team designated Change Manager: normal and emergency changes cannot enter approval (Organization & access → Teams)'
+    case 'no_opengrafo_ci':         return 'no OpenGrafo CI: the problems of the operational remedies have no CI to be opened on'
+    case 'opengrafo_ci_nobody':     return 'the OpenGrafo CI has no Owner Group with members: the problems of the operational remedies reach no one (CMDB → OpenGrafo)'
   }
 }
 
@@ -290,8 +301,9 @@ export async function tenantProvisioningGaps(session: Queryable, tenantId: strin
      OPTIONAL MATCH (aq:AssessmentQuestion {tenant_id: $tenantId})
      WITH roleKeys, userRoles, dashboards, rules, matrices, count(aq) AS questions
      OPTIONAL MATCH (tm:Team {tenant_id: $tenantId})
+     // The system team (OpenGrafo Administrators) is not the tenant's teams: with it alone no change can be made.
      WITH roleKeys, userRoles, dashboards, rules, matrices, questions,
-          count(tm) AS teams,
+          count(CASE WHEN coalesce(tm.is_system, false) = false THEN 1 END) AS teams,
           count(CASE WHEN tm.is_change_manager = true THEN 1 END) AS changeManagers
      OPTIONAL MATCH (w:WorkflowDefinition {tenant_id: $tenantId})
      WHERE w.active = true
@@ -347,5 +359,9 @@ export async function tenantProvisioningGaps(session: Queryable, tenantId: strin
   } else if (num('changeManagers') === 0) {
     gaps.push({ kind: 'no_change_manager' })
   }
+  // The OpenGrafo CI and who answers for it (26 Sep 2026, lib/opengrafoSystemCI.ts).
+  const sistema = await openGrafoSystemCI(session, tenantId)
+  if (!sistema) gaps.push({ kind: 'no_opengrafo_ci' })
+  else if (sistema.ownerMembers === 0) gaps.push({ kind: 'opengrafo_ci_nobody' })
   return gaps
 }

@@ -17,6 +17,7 @@ import { isMaintenanceLifecycle, isRetiredLifecycle, resolveCILifecycleSemantics
 import { recomputeCIHealth } from '../../services/events/ciHealth.js'
 import { runValidationScript } from '../../lib/metamodelScript.js'
 import { assertGroupDeclared, assertGroupRemovable } from '../../lib/ciGroups.js'
+import { assertSystemCIChange } from '../../lib/opengrafoSystemCI.js'
 
 export { assertGroupRemovable }
 
@@ -269,6 +270,8 @@ export async function updateCIRecord(
   )
   if (!existing.records.length) throw new NotFoundError('CI')
   const current = existing.records[0].get('p') as Props
+  // The OpenGrafo CI of every tenant is the product's: not renamed (lib/opengrafoSystemCI.ts).
+  assertSystemCIChange(current, { name: input['name'] })
 
   const groupInputs = new Set<string>(GROUP_INPUTS.map((g) => g.input))
   const merged: Record<string, unknown> = {}
@@ -413,9 +416,11 @@ export function buildDeleteMutation(
       // CM-11: un id che non esiste in questo tenant rispondeva `true`, con
       // tanto di voce d'audit per una cancellazione mai avvenuta.
       const found = await session.executeRead(tx =>
-        tx.run(`MATCH (n:${neo4jLabel} {id: $id, tenant_id: $tenantId}) RETURN n.id AS id`, { id: args.id, tenantId: ctx.tenantId }),
+        tx.run(`MATCH (n:${neo4jLabel} {id: $id, tenant_id: $tenantId}) RETURN properties(n) AS p`, { id: args.id, tenantId: ctx.tenantId }),
       )
       if (!found.records.length) throw new NotFoundError('CI', args.id)
+      // The OpenGrafo CI of every tenant is the product's: not deleted (lib/opengrafoSystemCI.ts).
+      assertSystemCIChange(found.records[0].get('p') as Props, 'delete')
       await noteIncidentsBeforeCIDeletion(ctx.tenantId, args.id, session)
       await session.executeWrite(tx =>
         tx.run(

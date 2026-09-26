@@ -71,14 +71,14 @@ interface Proposal {
   status: string; createdAt: string
   decidedAt: string | null; decidedBy: string | null; decidedByName: string | null
   rejectedKind: string | null; rejectedNote: string | null; notNowUntil: string | null
-  auditEntryId: string | null; executionError: string | null; undoable: boolean
+  auditEntryId: string | null; executionError: string | null; executionErrorKey: string | null; executionErrorParams: Param[]; undoable: boolean
   verification: 'resolved' | 'unresolved' | null; verifiedAt: string | null; verificationDetail: Param[]
   acknowledgeable: boolean; problemOpenable: boolean
   openedProblemId: string | null; openedProblemNumber: string | null
 }
 interface Risultato {
   total: number; maxOpen: number; lastRunAt: string | null; aiAvailable: boolean
-  counts: { open: number; accepted: number; rejected: number; notNow: number; expired: number; superseded: number }
+  counts: { open: number; accepted: number; rejected: number; notNow: number; expired: number; superseded: number; openFaults: number }
   items: Proposal[]
 }
 
@@ -276,8 +276,11 @@ export function ProposalsPage() {
 
       {r && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 20 }}>
+          {/* Faults do not count towards the cap (26 Sep 2026): said next to it, or the cap looks exceeded. */}
           <StatTile label={t('pages.proposals.counts.open')}     value={r.counts.open}
-                    context={t('pages.proposals.counts.ofMax', { max: r.maxOpen })} />
+                    context={r.counts.openFaults > 0
+                      ? t('pages.proposals.counts.ofMaxWithFaults', { max: r.maxOpen, count: r.counts.openFaults })
+                      : t('pages.proposals.counts.ofMax', { max: r.maxOpen })} />
           <StatTile label={t('pages.proposals.counts.accepted')} value={r.counts.accepted} />
           <StatTile label={t('pages.proposals.counts.rejected')} value={r.counts.rejected} />
           <StatTile label={t('pages.proposals.counts.expired')}  value={r.counts.expired} />
@@ -408,7 +411,10 @@ export function ProposalsPage() {
                 <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 6,
                   background: palette.danger.tint, color: 'var(--color-trigger-sla-breach)',
                   fontSize: 'var(--font-size-body)' }}>
-                  {t('pages.proposals.executionFailed', { error: p.executionError })}
+                  {t('pages.proposals.executionFailed', {
+                    // The refusal in the reader's words when the action explained it; the technical message otherwise.
+                    error: p.executionErrorKey ? t(p.executionErrorKey, paramsDi(p.executionErrorParams)) : p.executionError,
+                  })}
                 </div>
               )}
 

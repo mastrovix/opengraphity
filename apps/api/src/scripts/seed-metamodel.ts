@@ -49,6 +49,8 @@ interface CIType {
   neo4j_label:        string
   active?:            boolean
   chain_families?:    string[]
+  /** Written when the type is created; otherwise migration 20260916_1710 derives it from the families. */
+  service_role?:      'component' | 'infrastructure'
   fields:             FieldDef[]
   relations:          RelationDef[]
   systemRels:         SystemRelDef[]
@@ -153,6 +155,25 @@ const CI_TYPES: CIType[] = [
       { name: 'hostedOn',     label: 'Hosted On',              relationship_type: 'HOSTED_ON',       target_type: 'Server',      cardinality: 'many', direction: 'outgoing', order: 3, description: 'Server su cui è ospitata questa applicazione' },
       { name: 'certificates', label: 'Uses Certificate',       relationship_type: 'USES_CERTIFICATE',target_type: 'Certificate', cardinality: 'many', direction: 'outgoing', order: 4, description: 'Certificati SSL/TLS utilizzati da questa applicazione' },
       { name: 'realizedBy',   label: 'Realizes Business App',  relationship_type: 'REALIZES',        target_type: 'BusinessApplication', cardinality: 'many', direction: 'incoming', order: 5, description: 'Business application realizzate da questa istanza applicativa' },
+    ],
+    systemRels: [
+      { name: 'ownerGroup',   label: 'Owner Group',   relationship_type: 'OWNED_BY',     target_entity: 'Team', required: true,  order: 1 },
+      { name: 'supportGroup', label: 'Support Group', relationship_type: 'SUPPORTED_BY', target_entity: 'Team', required: false, order: 2 },
+    ],
+  },
+  {
+    // A piece of a platform that is both software and infrastructure — OpenGrafo itself is
+    // one in every tenant (26 Sep 2026, lib/opengrafoSystemCI.ts); «così si può usare per
+    // altri componenti». Both chain families; software, so a service component.
+    name: 'platform', label: 'Platform', icon: 'network', color: '#be185d', neo4j_label: 'Platform',
+    chain_families: ['Application', 'Infrastructure'],
+    service_role: 'component',
+    fields: [],
+    relations: [
+      { name: 'dependencies', label: 'Dependencies',     relationship_type: 'DEPENDS_ON',       target_type: 'any',         cardinality: 'many', direction: 'outgoing', order: 1, description: 'CIs this platform depends on' },
+      { name: 'dependents',   label: 'Dependents',       relationship_type: 'DEPENDS_ON',       target_type: 'any',         cardinality: 'many', direction: 'incoming', order: 2, description: 'CIs that depend on this platform' },
+      { name: 'hostedOn',     label: 'Hosted On',        relationship_type: 'HOSTED_ON',        target_type: 'Server',      cardinality: 'many', direction: 'outgoing', order: 3, description: 'Servers this platform runs on' },
+      { name: 'certificates', label: 'Uses Certificate', relationship_type: 'USES_CERTIFICATE', target_type: 'Certificate', cardinality: 'many', direction: 'outgoing', order: 4, description: 'TLS certificates this platform uses' },
     ],
     systemRels: [
       { name: 'ownerGroup',   label: 'Owner Group',   relationship_type: 'OWNED_BY',     target_entity: 'Team', required: true,  order: 1 },
@@ -327,6 +348,7 @@ async function seedCIType(session: Awaited<ReturnType<typeof getSession>>, ci: C
          t.chain_families    = $chainFamilies,
          // The statuses a certificate has and the other types do not (G35); a type set later keeps its own.
          t.status_excluded   = $statusExcluded,
+         t.service_role      = $serviceRole,
          t.created_at        = $now
        ON MATCH SET
          t.label             = $label,
@@ -340,6 +362,7 @@ async function seedCIType(session: Awaited<ReturnType<typeof getSession>>, ci: C
         neo4jLabel: ci.neo4j_label, validationScript: ci.validation_script ?? null,
         chainFamilies: JSON.stringify(ci.chain_families ?? ['Application', 'Infrastructure']),
         statusExcluded: ci.name === 'certificate' || ci.name === '__base__' ? null : JSON.stringify(CERTIFICATE_ONLY_STATUSES),
+        serviceRole: ci.service_role ?? null,
         active: isActive, tenantId: TENANT_ID, now },
     ),
   )

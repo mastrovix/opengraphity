@@ -43,14 +43,14 @@ const proposal = (over: Record<string, unknown> = {}) => ({
   occurrences: 12, windowDays: 30, actionType: null, rationale: null, rationaleLanguage: null,
   status: 'open', createdAt: '2026-09-20T10:00:00Z',
   decidedAt: null, decidedBy: null, decidedByName: null, rejectedKind: null, rejectedNote: null, notNowUntil: null,
-  auditEntryId: null, executionError: null, undoable: false, acknowledgeable: false, problemOpenable: false,
+  auditEntryId: null, executionError: null, executionErrorKey: null, executionErrorParams: [], undoable: false, acknowledgeable: false, problemOpenable: false,
   openedProblemId: null, openedProblemNumber: null,
   verification: null, verifiedAt: null, verificationDetail: [], ...over,
 })
 
 const page = (items: unknown[], over: Record<string, unknown> = {}) => ({ proposals: {
   total: items.length, maxOpen: 5, lastRunAt: '2026-09-20T02:00:00Z', aiAvailable: true,
-  counts: { open: 3, accepted: 4, rejected: 2, notNow: 0, expired: 1, superseded: 0 },
+  counts: { open: 3, accepted: 4, rejected: 2, notNow: 0, expired: 1, superseded: 0, openFaults: 0 },
   items, ...over,
 } })
 
@@ -110,7 +110,7 @@ describe('ProposalsPage: running the analysis', () => {
     const { user } = mount()
     await user.click(screen.getByRole('button', { name: 'Analyse now' }))
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith(
-      "2 new proposals · The model produced 2, and none reached this page: 2 over today's cap."))
+      "2 new proposals · The analysis found 2, and none reached this page: 2 over today's cap."))
     expect(apolloFinto.refetch).toHaveBeenCalled()
   })
 
@@ -371,6 +371,25 @@ describe('ProposalsPage — operational remedies', () => {
     mount()
     expect(await screen.findByText(/the remedy held\. 20 jobs retried, 0 failed again\./)).toBeInTheDocument()
     expect(screen.getByText(/the remedy did not hold\. .*a person has to look\. 20 jobs retried, 3 failed again\./)).toBeInTheDocument()
+  })
+
+  it('one fault is said in the singular; faults are counted outside the cap, next to it (26 Sep 2026)', async () => {
+    const one = remedy({ id: 'p-1', status: 'open', decidedAt: null, kind: 'proposal.operationsCIHealthOutOfStep', params: [param('count', '1')], actionType: 'ci.recompute_health' })
+    apolloFinto.risposte['GetProposals'] = page([one], { counts: { open: 1, accepted: 0, rejected: 0, notNow: 0, expired: 0, superseded: 0, openFaults: 1 } })
+    mount()
+    expect(await screen.findByText('1 CI has a health that is not what its alarms say: recompute it')).toBeInTheDocument()
+    expect(screen.getByText(/of 5 at most; 1 fault is outside the cap/)).toBeInTheDocument()
+  })
+
+  it('a refusal is said in the reader\'s words, with the map\'s name — not the technical message with an id (26 Sep 2026)', async () => {
+    apolloFinto.risposte['GetProposals'] = page([remedy({
+      id: 'p-m', status: 'open', decidedAt: null, kind: 'proposal.operationsStaleServiceMap', params: [param('map', 'Billing')], actionType: 'service_map.sync',
+      executionError: 'service map 8a4e is frozen or paused: it is not synchronized behind the admin\'s back',
+      executionErrorKey: 'errors.proposal.mapNotLive', executionErrorParams: [param('map', 'Billing')],
+    })])
+    mount()
+    expect(await screen.findByText(/The service map “Billing” has been frozen or paused since the proposal/)).toBeInTheDocument()
+    expect(screen.queryByText(/8a4e/)).toBeNull()
   })
 
   it('each remedy of the graph says what the check found; the map\'s says only whether it held', async () => {

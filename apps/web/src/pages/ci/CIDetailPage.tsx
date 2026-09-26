@@ -442,8 +442,11 @@ export function CIDetailPage() {
         }
       }
     `
+  // `ciType !== undefined` too (26 Sep 2026): opening the address directly, the metamodel arrives after the
+  // first render, and a type with no fields of its own (Platform) changed nothing else — the query stayed null,
+  // was never sent, and the page said «CI not found».
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [typeName, specificFields.map(f => f.name).join(',')])
+  }, [typeName, ciType !== undefined, specificFields.map(f => f.name).join(',')])
 
   const { data, loading, error, refetch } = useQuery<Record<string, CIDetail | null>>(
     detailQuery ?? gql`query EmptyCIDetail { __typename }`,

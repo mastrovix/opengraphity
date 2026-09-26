@@ -209,8 +209,13 @@ describe('conteggiProposte', () => {
   it('returns every known status, zero when absent, and ignores unknown statuses', async () => {
     fake.many = () => [{ status: 'open', n: 3 }, { status: 'rejected', n: 1 }, { status: 'weird', n: 99 }]
     const out = await conteggiProposte('t1')
-    expect(out).toEqual({ open: 3, accepted: 0, rejected: 1, not_now: 0, expired: 0, superseded: 0 })
+    expect(out).toEqual({ open: 3, accepted: 0, rejected: 1, not_now: 0, expired: 0, superseded: 0, openFaults: 0 })
     expect(fake.queries[0]?.p).toEqual({ tenantId: 't1' })
+  })
+
+  it('counts the open faults apart: they are outside the cap on open proposals (26 Sep 2026)', async () => {
+    fake.many = () => [{ status: 'open', n: 4, faults: 2 }, { status: 'accepted', n: 3, faults: 1 }]
+    expect(await conteggiProposte('t1')).toMatchObject({ open: 4, accepted: 3, openFaults: 2 })
   })
 })
 

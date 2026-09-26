@@ -2818,7 +2818,9 @@
         "accepted": "Accettate",
         "rejected": "Rifiutate",
         "expired": "Scadute",
-        "ofMax": "su {{max}} al massimo"
+        "ofMax": "su {{max}} al massimo",
+        "ofMaxWithFaults_one": "su {{max}} al massimo; {{count}} guasto è fuori dal tetto",
+        "ofMaxWithFaults_other": "su {{max}} al massimo; {{count}} guasti sono fuori dal tetto"
       },
       "occurrences_other": "{{count}} casi",
       "evidence": "Su cosa si fonda",
@@ -2853,8 +2855,8 @@
       "window_one": "in {{count}} giorno",
       "window_other": "in {{count}} giorni",
       "runSkipped": {
-        "intro_one": "Il modello ne ha prodotta {{count}}, non è arrivata sulla pagina: {{reasons}}.",
-        "intro_other": "Il modello ne ha prodotte {{count}}, nessuna è arrivata sulla pagina: {{reasons}}.",
+        "intro_one": "L'analisi ne ha trovata {{count}}, non è arrivata sulla pagina: {{reasons}}.",
+        "intro_other": "L'analisi ne ha trovate {{count}}, nessuna è arrivata sulla pagina: {{reasons}}.",
         "gia_presente_one": "{{count}} è già qui",
         "gia_presente_other": "{{count}} sono già qui",
         "rifiutata_di_recente_one": "{{count}} rifiutata di recente",
@@ -4524,7 +4526,9 @@
       "unknownField": "«{{field}}» non è un campo del tipo {{type}}.",
       "requiredGroup": "{{group}} è obbligatorio per i CI di tipo {{type}}: si può cambiare, non togliere.",
       "ambiguousType": "Il CI {{ci}} combacia con più di un tipo ({{types}}): le domande dell'assessment sarebbero arbitrarie. Lascia attivo un solo tipo per queste etichette.",
-      "groupNotDeclared": "I CI di tipo «{{type}}» non hanno {{group}}: il tipo non lo prevede."
+      "groupNotDeclared": "I CI di tipo «{{type}}» non hanno {{group}}: il tipo non lo prevede.",
+      "systemCINotDeletable": "«{{name}}» è un CI di sistema: non si può cancellare.",
+      "systemCINotRenamable": "«{{name}}» è un CI di sistema: il nome non si può cambiare."
     },
     "portal": {
       "unclassifiedStates": "{{count}} stati dei ticket non appartengono a nessuna classe del workflow incident attivo ({{states}}): i contatori del portale non li conterebbero. Sistema i passi (iniziale / finale / categoria) nel disegnatore.",
@@ -5063,7 +5067,9 @@
       "noFailedJobs": "La coda {{queue}} non ha più job falliti: qualcuno li ha già rilanciati, oppure sono passati.",
       "nothingStuck": "Nessuno degli elementi di questa proposta è ancora bloccato: la passata periodica o qualcun altro li ha già sistemati.",
       "mapGone": "Questa mappa di servizio non esiste più.",
-      "mapNotLive": "Dopo la proposta questa mappa di servizio è stata congelata o messa in pausa: non la si sincronizza alle spalle dell'amministratore."
+      "mapNotLive": "Dopo la proposta la mappa di servizio «{{map}}» è stata congelata o messa in pausa: non la si sincronizza alle spalle dell'amministratore.",
+      "noOpenGrafoCI": "Questa organizzazione non ha il CI OpenGrafo su cui aprire il problem: lo crea la prossima migrazione.",
+      "openGrafoCINobody": "Il CI OpenGrafo non ha un Owner Group con delle persone: il problem non arriverebbe a nessuno. Imposta l'Owner Group sul CI OpenGrafo (CMDB), oppure aggiungi membri al suo team."
     },
     "rest": {
       "repeatedRouteParam": "Il parametro «{{name}}» della rotta è arrivato come elenco: questa rotta dichiara un parametro ripetuto, e chi la usa non se lo aspetta.",
@@ -6949,7 +6955,9 @@
       "no_workflows": "nessun workflow attivo per: {{entityTypes}}",
       "no_assessment_questions": "nessuna domanda di assessment: nessuna change potrebbe superare la fase di assessment (Domande Assessment)",
       "no_teams": "nessun team: senza team i CI non hanno Owner/Support Group e nessuna change si crea (Organizzazione e accessi → Team)",
-      "no_change_manager": "nessun team designato Change Manager: le change normal ed emergency non possono entrare in approvazione (Organizzazione e accessi → Team)"
+      "no_change_manager": "nessun team designato Change Manager: le change normal ed emergency non possono entrare in approvazione (Organizzazione e accessi → Team)",
+      "no_opengrafo_ci": "nessun CI OpenGrafo: i problem dei rimedi operativi non hanno un CI su cui aprirsi",
+      "opengrafo_ci_nobody": "il CI OpenGrafo non ha un Owner Group con delle persone: i problem dei rimedi operativi non arrivano a nessuno (CMDB → OpenGrafo)"
     },
     "andMore_one": " (e un altro)",
     "andMore_other": " (e altri {{count}})",
@@ -8072,16 +8080,24 @@
       "proposal.dailyWorkSlowStep": "Nel passo «{{step}}» i ticket stanno fermi {{median, number}} h (p90 {{p90, number}} h) su {{count}} passaggi",
       "proposal.dailyWorkInstantStep": "Il passo «{{step}}» viene attraversato in {{median, number}} h su {{count}} passaggi: è un passo o una formalità?",
       "proposal.configMissingLabels": "Scrivi le {{count}} etichette che mancano al Dizionario «{{vocabulary}}» ({{values}})",
-      "proposal.operationsFailedJobs": "{{count}} job falliti nella coda {{queue}}: rilanciarli (al massimo venti)",
-      "proposal.operationsFailedJobsNotHeld": "Di nuovo {{count}} job falliti nella coda {{queue}}, e l'ultimo rilancio non ha tenuto: serve una persona",
-      "proposal.operationsStuckAlarms": "{{count}} allarmi accesi rimasti senza decisione, che la passata automatica non è riuscita a riprendere: rivalutarli (al massimo venti)",
-      "proposal.operationsStuckAlarmsNotHeld": "{{count}} allarmi ancora bloccati, e l'ultima rivalutazione non ha tenuto: serve una persona",
+      "proposal.operationsFailedJobs_one": "1 job fallito nella coda {{queue}}: rilanciarlo",
+      "proposal.operationsFailedJobs_other": "{{count}} job falliti nella coda {{queue}}: rilanciarli (al massimo venti)",
+      "proposal.operationsFailedJobsNotHeld_one": "Di nuovo 1 job fallito nella coda {{queue}}, e l'ultimo rilancio non ha tenuto: serve una persona",
+      "proposal.operationsFailedJobsNotHeld_other": "Di nuovo {{count}} job falliti nella coda {{queue}}, e l'ultimo rilancio non ha tenuto: serve una persona",
+      "proposal.operationsStuckAlarms_one": "1 allarme acceso rimasto senza decisione, che la passata automatica non è riuscita a riprendere: rivalutarlo",
+      "proposal.operationsStuckAlarms_other": "{{count}} allarmi accesi rimasti senza decisione, che la passata automatica non è riuscita a riprendere: rivalutarli (al massimo venti)",
+      "proposal.operationsStuckAlarmsNotHeld_one": "1 allarme ancora bloccato, e l'ultima rivalutazione non ha tenuto: serve una persona",
+      "proposal.operationsStuckAlarmsNotHeld_other": "{{count}} allarmi ancora bloccati, e l'ultima rivalutazione non ha tenuto: serve una persona",
       "proposal.operationsStaleServiceMap": "La mappa di servizio «{{map}}» è indietro rispetto alla CMDB: sincronizzarla adesso",
       "proposal.operationsStaleServiceMapNotHeld": "La mappa di servizio «{{map}}» è ancora indietro rispetto alla CMDB dopo una sincronizzazione: serve una persona",
-      "proposal.operationsCIHealthOutOfStep": "{{count}} CI hanno una salute diversa da quella che dicono i loro allarmi: ricalcolarla (al massimo venti)",
-      "proposal.operationsCIHealthOutOfStepNotHeld": "{{count}} CI hanno ancora una salute non allineata ai loro allarmi dopo un ricalcolo: serve una persona",
-      "proposal.operationsStuckWorkflows": "{{count}} ticket sono ancora in un'attesa il cui timer è scaduto da tempo: farli uscire come dice il workflow (al massimo venti)",
-      "proposal.operationsStuckWorkflowsNotHeld": "{{count}} ticket sono ancora in un'attesa col timer scaduto, dopo una ripresa: serve una persona"
+      "proposal.operationsCIHealthOutOfStep_one": "1 CI ha una salute diversa da quella che dicono i suoi allarmi: ricalcolarla",
+      "proposal.operationsCIHealthOutOfStep_other": "{{count}} CI hanno una salute diversa da quella che dicono i loro allarmi: ricalcolarla (al massimo venti)",
+      "proposal.operationsCIHealthOutOfStepNotHeld_one": "1 CI ha ancora una salute non allineata ai suoi allarmi dopo un ricalcolo: serve una persona",
+      "proposal.operationsCIHealthOutOfStepNotHeld_other": "{{count}} CI hanno ancora una salute non allineata ai loro allarmi dopo un ricalcolo: serve una persona",
+      "proposal.operationsStuckWorkflows_one": "1 ticket è ancora in un'attesa il cui timer è scaduto da tempo: farlo uscire come dice il workflow",
+      "proposal.operationsStuckWorkflows_other": "{{count}} ticket sono ancora in un'attesa il cui timer è scaduto da tempo: farli uscire come dice il workflow (al massimo venti)",
+      "proposal.operationsStuckWorkflowsNotHeld_one": "1 ticket è ancora in un'attesa col timer scaduto, dopo una ripresa: serve una persona",
+      "proposal.operationsStuckWorkflowsNotHeld_other": "{{count}} ticket sono ancora in un'attesa col timer scaduto, dopo una ripresa: serve una persona"
     },
     "rejection": {
       "wrong_analysis": "L'analisi è sbagliata",
