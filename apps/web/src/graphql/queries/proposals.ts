@@ -29,7 +29,7 @@ export const GET_PROPOSALS = gql`
       rationale rationaleLanguage
       status createdAt decidedAt decidedBy decidedByName
       rejectedKind rejectedNote notNowUntil
-      auditEntryId executionError executionErrorKey executionErrorParams { name value } undoable
+      auditEntryId executionError executionErrorKey executionErrorParams { name value } reportNote undoable
       verification verifiedAt verificationDetail { name value }
       acknowledgeable problemOpenable openedProblemId openedProblemNumber
       }
@@ -50,7 +50,7 @@ export const ACCEPT_PROPOSAL = gql`
       rationale rationaleLanguage
       status createdAt decidedAt decidedBy decidedByName
       rejectedKind rejectedNote notNowUntil
-      auditEntryId executionError executionErrorKey executionErrorParams { name value } undoable
+      auditEntryId executionError executionErrorKey executionErrorParams { name value } reportNote undoable
       verification verifiedAt verificationDetail { name value }
       acknowledgeable problemOpenable openedProblemId openedProblemNumber
     }
@@ -70,7 +70,7 @@ export const REJECT_PROPOSAL = gql`
       rationale rationaleLanguage
       status createdAt decidedAt decidedBy decidedByName
       rejectedKind rejectedNote notNowUntil
-      auditEntryId executionError executionErrorKey executionErrorParams { name value } undoable
+      auditEntryId executionError executionErrorKey executionErrorParams { name value } reportNote undoable
       verification verifiedAt verificationDetail { name value }
       acknowledgeable problemOpenable openedProblemId openedProblemNumber
     }
@@ -90,7 +90,7 @@ export const POSTPONE_PROPOSAL = gql`
       rationale rationaleLanguage
       status createdAt decidedAt decidedBy decidedByName
       rejectedKind rejectedNote notNowUntil
-      auditEntryId executionError executionErrorKey executionErrorParams { name value } undoable
+      auditEntryId executionError executionErrorKey executionErrorParams { name value } reportNote undoable
       verification verifiedAt verificationDetail { name value }
       acknowledgeable problemOpenable openedProblemId openedProblemNumber
     }
@@ -110,7 +110,7 @@ export const UNDO_PROPOSAL = gql`
       rationale rationaleLanguage
       status createdAt decidedAt decidedBy decidedByName
       rejectedKind rejectedNote notNowUntil
-      auditEntryId executionError executionErrorKey executionErrorParams { name value } undoable
+      auditEntryId executionError executionErrorKey executionErrorParams { name value } reportNote undoable
       verification verifiedAt verificationDetail { name value }
       acknowledgeable problemOpenable openedProblemId openedProblemNumber
     }

@@ -153,6 +153,14 @@ describe('the caps are for advice, not for faults (26 Sep 2026)', () => {
     expect((await scriviProposta(guasto())).scritta).toBe(true)
   })
 
+  it('a customer\'s report is not dropped by the cap either: a customer unheard is worse than one more line', async () => {
+    finto.aperte = 5
+    finto.oggi = 2
+    const report = { ...proposta(), area: 'platform' as const, kind: 'proposal.platformCustomerReport', action: null,
+      reportSource: { tenantId: 'acme', problemId: 'p1', problemNumber: 'PRB1' } }
+    expect((await scriviProposta(report)).scritta).toBe(true)
+  })
+
   it('and it does not take the analysts\' slots: the counts leave the operational ones out', async () => {
     const spia = vi.spyOn(await import('../db.js'), 'runQueryOne')
     await scriviProposta(proposta())

@@ -71,7 +71,7 @@ interface Proposal {
   status: string; createdAt: string
   decidedAt: string | null; decidedBy: string | null; decidedByName: string | null
   rejectedKind: string | null; rejectedNote: string | null; notNowUntil: string | null
-  auditEntryId: string | null; executionError: string | null; executionErrorKey: string | null; executionErrorParams: Param[]; undoable: boolean
+  auditEntryId: string | null; executionError: string | null; executionErrorKey: string | null; executionErrorParams: Param[]; reportNote: string | null; undoable: boolean
   verification: 'resolved' | 'unresolved' | null; verifiedAt: string | null; verificationDetail: Param[]
   acknowledgeable: boolean; problemOpenable: boolean
   openedProblemId: string | null; openedProblemNumber: string | null
@@ -103,6 +103,9 @@ const DECISE      = ['accepted', 'rejected', 'expired', 'superseded']
  * cifre o un id restano quello che sono, e non diventano un numero con i
  * punti delle migliaia.
  */
+/** The kind of a customer's report to OpenGrafo (lib/openGrafoReports.ts). */
+const REPORT_KIND = 'proposal.platformCustomerReport'
+
 const NUMERO = /^-?\d{1,9}(\.\d{1,3})?$/
 
 export function valoreDelParametro(grezzo: string): string | number {
@@ -365,6 +368,27 @@ export function ProposalsPage() {
                     <span style={{ color: 'var(--color-slate-light)' }}> — {t('pages.proposals.writtenIn', { lang: p.rationaleLanguage })}</span>
                   )}
                 </p>
+              )}
+
+              {/* A customer's report (26 Sep 2026): a person's note, and the technical data that left the customer. */}
+              {p.kind === REPORT_KIND && (
+                <div style={{ marginTop: 10, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
+                  {p.reportNote && (
+                    <p style={{ margin: 0 }}>
+                      <span style={{ fontWeight: 600 }}>{t('pages.proposals.reportNote')}: </span>{p.reportNote}
+                    </p>
+                  )}
+                  {p.evidence.extra.length > 0 && (
+                    <dl aria-label={t('pages.proposals.reportData')} style={{ margin: '6px 0 0', display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '2px 12px' }}>
+                      {p.evidence.extra.map((x: Param) => (
+                        <div key={x.name} style={{ display: 'contents' }}>
+                          <dt style={{ color: 'var(--color-slate-light)', fontFamily: 'var(--font-mono, monospace)' }}>{x.name}</dt>
+                          <dd style={{ margin: 0, wordBreak: 'break-word' }}>{x.value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+                </div>
               )}
 
               {(p.evidence.refs.length > 0 || p.evidence.hiddenRefs > 0) && (

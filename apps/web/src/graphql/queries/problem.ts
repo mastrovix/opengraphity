@@ -36,7 +36,15 @@ export const GET_PROBLEM = gql`
       workflowHistory { id stepName enteredAt exitedAt durationMs triggeredBy triggerType notes }
       comments { id text type isInternal createdAt authorKind authorLabel author { id name } editedAt editedByName deletedAt deletedByName }
       customFields { ...CustomFieldValueFields }
+      openGrafoReport { canReport reportedAt }
     }
   }
   ${CUSTOM_FIELD_VALUE_FIELDS}
+`
+
+/** «Segnala a OpenGrafo» (26 Sep 2026): exactly what would leave the organization, built by the server. */
+export const GET_OPENGRAFO_REPORT_DRAFT = gql`
+  query GetOpenGrafoReportDraft($problemId: ID!) {
+    openGrafoReportDraft(problemId: $problemId) { name value }
+  }
 `

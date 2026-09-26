@@ -37,6 +37,8 @@ vi.mock('../../lib/autoanalisiGitHub.js', () => ({
 }))
 vi.mock('../../lib/problemDossier.js', () => ({ fascicoloDelProblem: async () => '## dossier' }))
 vi.mock('../../lib/indagineAutomatica.js', () => ({ segnaRisolto: vi.fn() }))
+const reportsClosed = vi.hoisted(() => vi.fn(async () => 0))
+vi.mock('../../lib/openGrafoReports.js', () => ({ reportsClosed }))
 
 const close = vi.fn(async () => {})
 const run = vi.fn(async () => {})
@@ -113,6 +115,16 @@ describe('startAutoanalisiWorker', () => {
 })
 
 describe('controlla with nothing waiting', () => {
+  it('tells the customers whose reported problems were closed, with or without GitHub (26 Sep 2026)', async () => {
+    const before = cfg.valore
+    cfg.valore = null as never
+    await _perITest.controlla()
+    expect(reportsClosed).toHaveBeenCalledTimes(1)
+    reportsClosed.mockRejectedValueOnce(new Error('neo4j down'))
+    await expect(_perITest.controlla()).resolves.toBeUndefined()
+    cfg.valore = before
+  })
+
   it('does not ask GitHub anything and closes the read session', async () => {
     runQuery.mockResolvedValue([])
     await _perITest.controlla()

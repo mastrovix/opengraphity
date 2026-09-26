@@ -39,6 +39,7 @@ import {
   puoPrendereAtto, puoAprireUnProblem, titoloDelProblem, descrizioneDelProblem, GENERI_OPERATIVI_DA_PROBLEM,
 } from '../../lib/proposalAgreement.js'
 import { openGrafoSystemCI } from '../../lib/opengrafoSystemCI.js'
+import { reportDraft, reportState, reportToOpenGrafo, tellTheReporter, type ReportOutcome } from '../../lib/openGrafoReports.js'
 import { setTicketTeam } from '../../services/ticketAssignment.js'
 import { publishEvent } from '../../lib/publishEvent.js'
 import { TICKET_TEAM_ASSIGNED_EVENT } from '@opengraphity/types'
@@ -111,6 +112,7 @@ function mappaGql(row: ProposalRow, ctx: GraphQLContext) {
     notNowUntil: row.notNowUntil,
     auditEntryId: row.auditEntryId,
     executionError: row.executionError,
+    reportNote: row.reportNote,
     executionErrorKey: row.executionErrorI18n?.key ?? null,
     executionErrorParams: paramList(row.executionErrorI18n?.params),
     verification: row.verification,
@@ -311,6 +313,7 @@ async function rejectProposal(
   await audit(ctx, 'proposal.rejected', 'Proposal', row.id, {
     area: row.area, kind: row.kind, rejectedKind: args.kind, note: nota,
   })
+  await tellIfReport(row, 'rejected')
   return mappaGql(aggiornata ?? row, ctx)
 }
 
@@ -385,6 +388,7 @@ async function acknowledgeProposal(_: unknown, args: { id: string }, ctx: GraphQ
     status: 'accepted', decidedBy: ctx.userId,
   })
   await audit(ctx, 'proposal.acknowledged', 'Proposal', row.id, { area: row.area, kind: row.kind })
+  await tellIfReport(row, 'acknowledged')
   return mappaGql(aggiornata ?? row, ctx)
 }
 
@@ -539,6 +543,7 @@ async function openProblemFromProposal(
     { module: 'proposals', tenantId: ctx.tenantId, proposal: row.id, problem: problem.number },
     'proposals: a problem was opened from a proposal',
   )
+  await tellIfReport(row, 'problem_opened', { platformProblem: problem.number as string })
   return mappaGql(aggiornata ?? row, ctx)
 }
 
@@ -589,6 +594,36 @@ async function runProposalAnalysis(_: unknown, __: unknown, ctx: GraphQLContext)
  * problem nascono da una persona e non dall'archivio dei log. La pagina usa
  * il `null` per non mostrare un bottone che non avrebbe niente da dare.
  */
+/**
+ * A customer's report was read (26 Sep 2026): the customer's Problem hears
+ * it. After the decision, and never able to undo it — a comment that could
+ * not be written is said in the logs, the decision stands.
+ */
+async function tellIfReport(row: ProposalRow, outcome: ReportOutcome, params: Record<string, string> = {}): Promise<void> {
+  if (!row.reportSource) return
+  try {
+    await tellTheReporter(row.reportSource, outcome, params)
+  } catch (err) {
+    logger.error({ module: 'proposals', proposal: row.id, outcome, err: err instanceof Error ? err.message : String(err) },
+      'proposals: the customer who reported this could not be told')
+  }
+}
+
+// ── «Segnala a OpenGrafo», the customer's side (26 Sep 2026) ────────────────
+
+async function openGrafoReportDraftQuery(_: unknown, args: { problemId: string }, ctx: GraphQLContext) {
+  requirePermission(ctx, 'problem.write')
+  const draft = await reportDraft(ctx.tenantId, args.problemId)
+  return paramList(draft.data)
+}
+
+async function reportProblemToOpenGrafoMutation(_: unknown, args: { problemId: string; note: string }, ctx: GraphQLContext) {
+  requirePermission(ctx, 'problem.write')
+  const out = await reportToOpenGrafo(ctx.tenantId, args.problemId, args.note)
+  await audit(ctx, 'problem.reported_to_opengrafo', 'Problem', args.problemId, { proposalId: out.proposalId })
+  return { canReport: false, reportedAt: out.reportedAt }
+}
+
 async function problemDossierQuery(_: unknown, args: { problemId: string }, ctx: GraphQLContext) {
   requirePermission(ctx, 'problem.read')
   return fascicoloDelProblem(ctx.tenantId, args.problemId)
@@ -599,6 +634,7 @@ export const proposalResolvers = {
     proposals: proposalsQuery,
     proposal:  proposalQuery,
     problemDossier: problemDossierQuery,
+    openGrafoReportDraft: openGrafoReportDraftQuery,
   },
   Mutation: {
     acceptProposal,
@@ -608,6 +644,10 @@ export const proposalResolvers = {
     acknowledgeProposal,
     openProblemFromProposal,
     runProposalAnalysis,
+    reportProblemToOpenGrafo: reportProblemToOpenGrafoMutation,
+  },
+  Problem: {
+    openGrafoReport: (p: { id: string }, _: unknown, ctx: GraphQLContext) => reportState(ctx.tenantId, p.id),
   },
   Proposal: {
     decidedByName: (p: { decidedBy: string | null }, _: unknown, ctx: GraphQLContext) =>

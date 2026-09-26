@@ -34,6 +34,7 @@ import type { Worker } from 'bullmq'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { createWorker, getQueue } from '../lib/bullmq.js'
 import { logger } from '../lib/logger.js'
+import { reportsClosed } from '../lib/openGrafoReports.js'
 import { fascicoloDelProblem } from '../lib/problemDossier.js'
 import { segnaRisolto } from '../lib/indagineAutomatica.js'
 import { TENANT_DI_PIATTAFORMA } from '../lib/serverLogEvents.js'
@@ -192,6 +193,19 @@ async function issueGiaAperta(tenantId: string, problemId: string): Promise<numb
 }
 
 async function controlla(): Promise<void> {
+  /*
+   * The customers who reported a problem hear when OpenGrafo closes it (26 Sep
+   * 2026, lib/openGrafoReports.ts) — with or without GitHub: a report can be
+   * handled entirely inside the product. A failure is said and does not stop
+   * the rest of the round.
+   */
+  try {
+    const told = await reportsClosed()
+    if (told > 0) log.info({ told }, 'customers told that the problems opened from their reports were closed')
+  } catch (err) {
+    log.error({ err }, 'the customers who reported closed problems could not be told, retried at the next round')
+  }
+
   const cfg = configurazioneAutoanalisi()
   if (!cfg) return
 

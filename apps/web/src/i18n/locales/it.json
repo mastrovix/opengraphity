@@ -2036,7 +2036,20 @@
       "dossierCopied": "Fascicolo copiato.",
       "dossierCopyFailed": "Non sono riuscito a copiare: selezionalo a mano.",
       "knownErrorHint": "Un errore noto è un problem di cui si conosce la causa e che ha un workaround: scrivili entrambi, così chi incontra di nuovo il problema può usarli.",
-      "savedOnLeave": "Non ancora salvato: si salva quando esci dal campo."
+      "savedOnLeave": "Non ancora salvato: si salva quando esci dal campo.",
+      "openGrafoReport": {
+        "button": "Segnala a OpenGrafo",
+        "title": "Segnala a OpenGrafo",
+        "hint": "OpenGrafo riceve una proposta da leggere, con i soli dati tecnici qui sotto e la tua nota: nessun titolo, descrizione, commento o nome esce dall'organizzazione. Le risposte arrivano come commenti su questo problem.",
+        "whatLeaves": "Quello che parte, e niente di più",
+        "note": "La tua nota per OpenGrafo",
+        "notePlaceholder": "Che cosa hai visto, quando, che cosa hai già provato.",
+        "noteHint_one": "Resta {{count}} carattere.",
+        "noteHint_other": "Restano {{count}} caratteri.",
+        "send": "Invia a OpenGrafo",
+        "sent": "Segnalazione inviata a OpenGrafo.",
+        "reportedOn": "Segnalato a OpenGrafo il {{date}}"
+      }
     },
     "createChange": {
       "titlePlaceholder": "Es. Aggiornamento del database di produzione a PostgreSQL 16",
@@ -2879,10 +2892,12 @@
       "verificationPending": "Rimedio applicato: si ricontrolla qualche minuto dopo.",
       "verificationResolved": "Ricontrollato il {{date}}: il rimedio ha tenuto.",
       "verificationUnresolved": "Ricontrollato il {{date}}: il rimedio non ha tenuto. Per questa causa non si ripropone per una settimana — serve una persona.",
-      "verificationRetry": "{{retried}} job rilanciati, {{failedAgain}} falliti di nuovo.",
-      "verificationAlarms": "{{alarms}} allarmi rivalutati, {{stillStuck}} ancora bloccati.",
-      "verificationCIHealth": "{{cis}} CI ricalcolati, {{stillOutOfStep}} ancora non allineati ai loro allarmi.",
-      "verificationWorkflows": "{{tickets}} ticket ripresi, {{stillStuck}} ancora fermi sul passo dove erano bloccati."
+      "verificationRetry": "Job rilanciati: {{retried}} · falliti di nuovo: {{failedAgain}}.",
+      "verificationAlarms": "Allarmi rivalutati: {{alarms}} · ancora bloccati: {{stillStuck}}.",
+      "verificationCIHealth": "CI ricalcolati: {{cis}} · ancora non allineati ai loro allarmi: {{stillOutOfStep}}.",
+      "verificationWorkflows": "Ticket ripresi: {{tickets}} · ancora fermi nell'attesa: {{stillStuck}}.",
+      "reportNote": "Nota di chi ha segnalato",
+      "reportData": "Dati tecnici ricevuti"
     },
     "dailyWork": {
       "title": "Lavoro quotidiano",
@@ -5105,6 +5120,13 @@
       "duplicateLink": "{{parent}} ha due volte lo stesso collegamento verso {{child}}.",
       "relationNotAdmitted": "Nessuna catena della CMDB ammette {{relation}} da {{source}} a {{target}}: disegnala in una catena in CMDB Health → Catene.",
       "linkOptional": "Il collegamento a {{type}} è facoltativo: in una catena ogni collegamento è obbligatorio, e un'alternativa è un'altra catena."
+    },
+    "openGrafoReport": {
+      "platformTenant": "La piattaforma non segnala a sé stessa.",
+      "notOnOpenGrafo": "Si segnala a OpenGrafo solo un problem che ha il CI OpenGrafo fra i CI colpiti.",
+      "noteRequired": "Scrivi una nota: è quello che OpenGrafo legge per primo.",
+      "noteTooLong": "La nota supera i {{max}} caratteri.",
+      "alreadyReported": "Questo problem è già stato segnalato a OpenGrafo."
     }
   },
   "errorBoundary": {
@@ -8037,7 +8059,8 @@
       "proposal.problem_opened": "Problem aperto da una proposta di miglioramento",
       "cmdb_chain.created": "Catena della CMDB disegnata",
       "cmdb_chain.updated": "Catena della CMDB modificata",
-      "cmdb_chain.deleted": "Catena della CMDB eliminata"
+      "cmdb_chain.deleted": "Catena della CMDB eliminata",
+      "problem.reported_to_opengrafo": "Problem segnalato a OpenGrafo"
     }
   },
   "tasks": {
@@ -8097,7 +8120,8 @@
       "proposal.operationsStuckWorkflows_one": "1 ticket è ancora in un'attesa il cui timer è scaduto da tempo: farlo uscire come dice il workflow",
       "proposal.operationsStuckWorkflows_other": "{{count}} ticket sono ancora in un'attesa il cui timer è scaduto da tempo: farli uscire come dice il workflow (al massimo venti)",
       "proposal.operationsStuckWorkflowsNotHeld_one": "1 ticket è ancora in un'attesa col timer scaduto, dopo una ripresa: serve una persona",
-      "proposal.operationsStuckWorkflowsNotHeld_other": "{{count}} ticket sono ancora in un'attesa col timer scaduto, dopo una ripresa: serve una persona"
+      "proposal.operationsStuckWorkflowsNotHeld_other": "{{count}} ticket sono ancora in un'attesa col timer scaduto, dopo una ripresa: serve una persona",
+      "proposal.platformCustomerReport": "L'organizzazione «{{tenant}}» segnala un difetto di OpenGrafo (il suo problem {{problem}})"
     },
     "rejection": {
       "wrong_analysis": "L'analisi è sbagliata",

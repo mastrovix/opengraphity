@@ -2036,7 +2036,20 @@
       "dossierCopied": "Dossier copied.",
       "dossierCopyFailed": "Could not copy: select it by hand.",
       "knownErrorHint": "A known error is a problem whose cause is known and that has a workaround: write both, so whoever meets the problem again can use them.",
-      "savedOnLeave": "Not saved yet: it is saved when you leave the field."
+      "savedOnLeave": "Not saved yet: it is saved when you leave the field.",
+      "openGrafoReport": {
+        "button": "Report to OpenGrafo",
+        "title": "Report to OpenGrafo",
+        "hint": "OpenGrafo receives a proposal to read, with only the technical data below and your note: no title, description, comment or name leaves the organization. The answers come back as comments on this problem.",
+        "whatLeaves": "What leaves, and nothing more",
+        "note": "Your note for OpenGrafo",
+        "notePlaceholder": "What you saw, when, what you already tried.",
+        "noteHint_one": "{{count}} character left.",
+        "noteHint_other": "{{count}} characters left.",
+        "send": "Send to OpenGrafo",
+        "sent": "Report sent to OpenGrafo.",
+        "reportedOn": "Reported to OpenGrafo on {{date}}"
+      }
     },
     "createChange": {
       "titlePlaceholder": "E.g. Upgrade the production database to PostgreSQL 16",
@@ -2879,10 +2892,12 @@
       "verificationPending": "Remedy applied: it is checked again a few minutes after running.",
       "verificationResolved": "Checked on {{date}}: the remedy held.",
       "verificationUnresolved": "Checked on {{date}}: the remedy did not hold. It is not proposed again for this cause this week — a person has to look.",
-      "verificationRetry": "{{retried}} jobs retried, {{failedAgain}} failed again.",
-      "verificationAlarms": "{{alarms}} alarms re-evaluated, {{stillStuck}} still stuck.",
-      "verificationCIHealth": "{{cis}} CIs recomputed, {{stillOutOfStep}} still out of step with their alarms.",
-      "verificationWorkflows": "{{tickets}} tickets resumed, {{stillStuck}} still on the step they were stuck on."
+      "verificationRetry": "Jobs retried: {{retried}} · failed again: {{failedAgain}}.",
+      "verificationAlarms": "Alarms re-evaluated: {{alarms}} · still stuck: {{stillStuck}}.",
+      "verificationCIHealth": "CIs recomputed: {{cis}} · still out of step with their alarms: {{stillOutOfStep}}.",
+      "verificationWorkflows": "Tickets resumed: {{tickets}} · still in the wait: {{stillStuck}}.",
+      "reportNote": "Note of the person who reported it",
+      "reportData": "Technical data received"
     },
     "dailyWork": {
       "title": "Daily work",
@@ -5105,6 +5120,13 @@
       "duplicateLink": "{{parent}} has the same link to {{child}} twice.",
       "relationNotAdmitted": "No CMDB chain admits {{relation}} from {{source}} to {{target}}: draw it in a chain in CMDB Health → Chains.",
       "linkOptional": "The link to {{type}} is optional: every link of a chain is required, and an alternative is another chain."
+    },
+    "openGrafoReport": {
+      "platformTenant": "The platform does not report to itself.",
+      "notOnOpenGrafo": "Only a problem with the OpenGrafo CI among its CIs is reported to OpenGrafo.",
+      "noteRequired": "Write a note: it is what OpenGrafo reads first.",
+      "noteTooLong": "The note is longer than {{max}} characters.",
+      "alreadyReported": "This problem was already reported to OpenGrafo."
     }
   },
   "errorBoundary": {
@@ -8037,7 +8059,8 @@
       "proposal.problem_opened": "Problem opened from an improvement proposal",
       "cmdb_chain.created": "CMDB chain drawn",
       "cmdb_chain.updated": "CMDB chain changed",
-      "cmdb_chain.deleted": "CMDB chain deleted"
+      "cmdb_chain.deleted": "CMDB chain deleted",
+      "problem.reported_to_opengrafo": "Problem reported to OpenGrafo"
     }
   },
   "tasks": {
@@ -8097,7 +8120,8 @@
       "proposal.operationsStuckWorkflows_one": "1 ticket is still in a wait whose timer ran out long ago: take it out the way the workflow says",
       "proposal.operationsStuckWorkflows_other": "{{count}} tickets are still in a wait whose timer ran out long ago: take them out of it the way the workflow says (twenty at most)",
       "proposal.operationsStuckWorkflowsNotHeld_one": "1 ticket is still in a wait whose timer ran out, after a resume: a person has to look",
-      "proposal.operationsStuckWorkflowsNotHeld_other": "{{count}} tickets are still in a wait whose timer ran out, after a resume: a person has to look"
+      "proposal.operationsStuckWorkflowsNotHeld_other": "{{count}} tickets are still in a wait whose timer ran out, after a resume: a person has to look",
+      "proposal.platformCustomerReport": "The organization “{{tenant}}” reports a fault of OpenGrafo (its problem {{problem}})"
     },
     "rejection": {
       "wrong_analysis": "The analysis is wrong",

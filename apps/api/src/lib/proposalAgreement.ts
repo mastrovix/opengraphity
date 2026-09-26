@@ -56,6 +56,8 @@ export const GENERI_DA_PROBLEM: ReadonlySet<string> = new Set([
   'proposal.platformRecurringError',
   'proposal.platformErrorSpike',
   'proposal.platformSharedFault',
+  // A customer's report (26 Sep 2026): a person of the customer said it is a fault of OpenGrafo.
+  'proposal.platformCustomerReport',
 ])
 
 /**
@@ -127,6 +129,8 @@ const TITOLI_OPERATIVI: Readonly<Record<string, (p: Record<string, string>) => s
   'proposal.operationsStaleServiceMapNotHeld':   (p) => `Service map "${p['map'] ?? '?'}" stays behind the CMDB after a synchronization`,
   'proposal.operationsCIHealthOutOfStepNotHeld': (p) => `CI health stays out of step with the alarms after a recompute (${p['count'] ?? '?'} CIs)`,
   'proposal.operationsStuckWorkflowsNotHeld':    (p) => `Tickets stay in a wait whose timer ran out (${p['count'] ?? '?'})`,
+  // A customer's report (26 Sep 2026): who reported it, which of their problems, and the technical cause when there is one.
+  'proposal.platformCustomerReport':             (p) => `Reported by ${p['tenant'] ?? '?'} (${p['problem'] ?? '?'})${p['cause'] ? `: ${p['cause']}` : ''}`,
 }
 
 /**

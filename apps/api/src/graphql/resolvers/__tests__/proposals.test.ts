@@ -76,6 +76,10 @@ vi.mock('../../../jobs/proposalScanner.js', () => ({
 const runQueryOne = vi.fn()
 // The OpenGrafo CI and its team (26 Sep 2026): who a remedy's Problem is given to.
 const sistemaOG = vi.hoisted(() => ({ ci: { ciId: 'ci-og', ownerTeamId: 't-adm', ownerMembers: 3 } as { ciId: string; ownerTeamId: string | null; ownerMembers: number } | null }))
+const tellTheReporter = vi.hoisted(() => vi.fn(async () => undefined))
+vi.mock('../../../lib/openGrafoReports.js', () => ({
+  tellTheReporter, reportDraft: vi.fn(), reportState: vi.fn(), reportToOpenGrafo: vi.fn(),
+}))
 vi.mock('../../../lib/opengrafoSystemCI.js', () => ({ openGrafoSystemCI: async () => sistemaOG.ci }))
 const setTicketTeam = vi.fn(async () => ({ teamName: 'OpenGrafo Administrators', previousTeamName: null, unassignedUserName: null }))
 vi.mock('../../../services/ticketAssignment.js', () => ({ setTicketTeam: (...a: unknown[]) => setTicketTeam(...(a as [])) }))
@@ -123,7 +127,7 @@ const riga = (over: Record<string, unknown> = {}) => ({
   occurrences: 3, windowDays: 30, action: { type: 'create_sla_policy' },
   rationale: 'perché', rationaleLanguage: 'it', status: 'open',
   createdAt: 'ieri', decidedAt: null, decidedBy: null, rejectedKind: null, rejectedNote: null,
-  notNowUntil: null, auditEntryId: null, executionError: null, executionErrorI18n: null, undone: false, undoState: null,
+  notNowUntil: null, auditEntryId: null, executionError: null, executionErrorI18n: null, reportNote: null, reportSource: null, undone: false, undoState: null,
   openedProblem: null, ...over,
 })
 
@@ -339,6 +343,21 @@ describe('acknowledgeProposal — «preso atto»', () => {
     expect(eseguiAzione).not.toHaveBeenCalled()
     expect(segnaDecisa.mock.calls[0]![2]).toMatchObject({ status: 'accepted', decidedBy: 'u1' })
     expect(audit.mock.calls[0]![1]).toBe('proposal.acknowledged')
+  })
+
+  it('a customer\'s report, taken note of: the customer\'s Problem hears it; a comment that fails does not undo the decision', async () => {
+    const source = { tenantId: 'acme', problemId: 'pc1', problemNumber: 'PRB00000801' }
+    proposta.mockResolvedValue(riga({ action: null, kind: 'proposal.platformCustomerReport', reportSource: source }))
+    await proposalResolvers.Mutation.acknowledgeProposal!(null, { id: 'p1' } as never, ctx())
+    expect(tellTheReporter).toHaveBeenCalledWith(source, 'acknowledged', {})
+    tellTheReporter.mockRejectedValueOnce(new Error('neo4j down'))
+    await expect(proposalResolvers.Mutation.acknowledgeProposal!(null, { id: 'p1' } as never, ctx())).resolves.toBeDefined()
+  })
+
+  it('any other proposal: nobody to tell', async () => {
+    proposta.mockResolvedValue(riga({ action: null }))
+    await proposalResolvers.Mutation.acknowledgeProposal!(null, { id: 'p1' } as never, ctx())
+    expect(tellTheReporter).not.toHaveBeenCalled()
   })
 })
 

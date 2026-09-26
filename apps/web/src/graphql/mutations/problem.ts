@@ -93,3 +93,9 @@ export const ADD_PROBLEM_COMMENT = gql`
 export const DELETE_PROBLEM = gql`
   mutation DeleteProblem($id: ID!) { deleteProblem(id: $id) }
 `
+
+export const REPORT_PROBLEM_TO_OPENGRAFO = gql`
+  mutation ReportProblemToOpenGrafo($problemId: ID!, $note: String!) {
+    reportProblemToOpenGrafo(problemId: $problemId, note: $note) { canReport reportedAt }
+  }
+`

@@ -66,6 +66,8 @@ export function proposalsSDL(): string {
     auditEntryId: String
     """Perché l'esecuzione è fallita, quando è fallita. Una proposta accettata e non eseguita lo dice."""
     executionError: String
+    """A customer's report to OpenGrafo: the note its person wrote. A person's words, not a model's."""
+    reportNote: String
     """The refusal in the client's words (i18n key and params), when the action gave one."""
     executionErrorKey: String
     executionErrorParams: [ProposalParam!]!
@@ -115,6 +117,16 @@ export function proposalsSDL(): string {
     skipped: [ProposalParam!]!
   }
 
+  type OpenGrafoReportState {
+    """The Problem is on the OpenGrafo CI, in a customer's tenant, and was not reported yet."""
+    canReport:  Boolean!
+    reportedAt: String
+  }
+
+  extend type Problem {
+    openGrafoReport: OpenGrafoReportState!
+  }
+
   extend type Query {
     proposals(status: [String!], area: [String!], limit: Int, offset: Int): ProposalsResult!
     proposal(id: ID!): Proposal
@@ -125,6 +137,8 @@ export function proposalsSDL(): string {
     da una proposta di piattaforma — cioè quasi sempre.
     """
     problemDossier(problemId: ID!): String
+    """«Segnala a OpenGrafo»: exactly the technical data that would leave this organization, to be seen before sending."""
+    openGrafoReportDraft(problemId: ID!): [ProposalParam!]!
   }
 
   extend type Mutation {
@@ -147,6 +161,11 @@ export function proposalsSDL(): string {
     voluto dire cablare una decisione che è sua.
     """
     openProblemFromProposal(id: ID!, impact: String!, urgency: String!): Proposal!
+    """
+    «Segnala a OpenGrafo» (26 Sep 2026): a Problem on the OpenGrafo CI goes to OpenGrafo as a proposal to read,
+    with its technical data and this note. Once per Problem; the way back comes as comments on it.
+    """
+    reportProblemToOpenGrafo(problemId: ID!, note: String!): OpenGrafoReportState!
     """Fa girare l'analisi adesso, per questo cliente."""
     runProposalAnalysis: ProposalRunResult!
   }

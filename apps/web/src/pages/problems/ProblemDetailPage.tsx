@@ -65,6 +65,7 @@ import { useSlaSettling } from '@/hooks/useSlaSettling'
 import { useValueStyle } from '@/hooks/useValueStyle'
 import { withLocalizedLabel } from '@/lib/localizedLabel'
 import { showError } from '@/lib/showError'
+import { ReportToOpenGrafo } from './ReportToOpenGrafo'
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface WorkflowInstance {
@@ -112,6 +113,8 @@ interface ProblemComment {
 
 interface Problem {
   customFields: CustomFieldValueView[]
+  /** «Segnala a OpenGrafo»: whether it can be reported, and when it was (26 Sep 2026). */
+  openGrafoReport?: { canReport: boolean; reportedAt: string | null } | null
   id:                   string
   number:               string
   title:                string
@@ -366,6 +369,7 @@ export function ProblemDetailPage() {
       />
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        {canWrite && <ReportToOpenGrafo problemId={problem.id} state={problem.openGrafoReport} onSent={() => void refetch()} />}
         <ProblemDossier dossier={fascicolo} />
         <Button
           variant="secondary"

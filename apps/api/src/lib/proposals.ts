@@ -56,6 +56,13 @@ export interface ProposalToWrite {
    * without a person» reads it; other areas leave it out.
    */
   cause?:           string | null
+  /**
+   * A customer's report to OpenGrafo (26 Sep 2026, lib/openGrafoReports.ts):
+   * the note its person wrote — a person's words, not a model's — and where
+   * it comes from, for the comments on the way back.
+   */
+  reportNote?:   string | null
+  reportSource?: { tenantId: string; problemId: string; problemNumber: string } | null
 }
 
 export interface ProposalRow {
@@ -84,6 +91,9 @@ export interface ProposalRow {
   executionError: string | null
   /** The refusal as the client says it (key + params of the ValidationError), when the action gave one (26 Sep 2026). */
   executionErrorI18n: { key: string; params: Record<string, string | number> } | null
+  /** A customer's report: the note and where it comes from (null otherwise). */
+  reportNote:   string | null
+  reportSource: { tenantId: string; problemId: string; problemNumber: string } | null
   /**
    * Lo stato precedente salvato al momento dell'esecuzione: è da qui che si
    * disfa. Una chiusura in memoria non sopravvivrebbe al riavvio fra
@@ -167,6 +177,8 @@ function mappa(r: Record<string, unknown>): ProposalRow {
     auditEntryId: r['auditEntryId'] == null ? null : String(r['auditEntryId']),
     executionError: r['executionError'] == null ? null : String(r['executionError']),
     executionErrorI18n: leggiJson<{ key: string; params: Record<string, string | number> }>(r['executionErrorI18n'], 'executionErrorI18n'),
+    reportNote:   r['reportNote'] == null ? null : String(r['reportNote']),
+    reportSource: leggiJson<{ tenantId: string; problemId: string; problemNumber: string }>(r['reportSource'], 'reportSource'),
     undoState: leggiJson<Record<string, unknown>>(r['undoState'], 'undoState'),
     openedProblem: leggiJson<{ id: string; number: string }>(r['openedProblem'], 'openedProblem'),
     undone: r['undone'] === true,
@@ -189,6 +201,7 @@ const CAMPI = `
   p.rejected_kind AS rejectedKind, p.rejected_note AS rejectedNote,
   p.not_now_until AS notNowUntil, p.audit_entry_id AS auditEntryId,
   p.execution_error AS executionError, p.execution_error_i18n AS executionErrorI18n, p.undo_state AS undoState,
+  p.report_note AS reportNote, p.report_source AS reportSource,
   coalesce(p.undone, false) AS undone, p.opened_problem AS openedProblem,
   p.cause AS cause, p.execution_details AS executionDetails,
   p.verification AS verification, p.verified_at AS verifiedAt,
@@ -265,7 +278,8 @@ export async function scriviProposta(
      * either). What bounds them is their own rules: one per cause per day,
      * twenty items each, and they expire when the fault is gone.
      */
-    if (p.area !== 'operations') {
+    // A customer's report is not advice either: dropped by the cap, it would be a customer unheard.
+    if (p.area !== 'operations' && !p.reportSource) {
       const conteggi = await runQueryOne<{ aperte: number; oggi: number }>(session, `
         MATCH (p:Proposal {tenant_id: $tenantId})
         WHERE p.area <> 'operations'
@@ -292,7 +306,7 @@ export async function scriviProposta(
         rejected_kind: null, rejected_note: null, not_now_until: null,
         audit_entry_id: null, execution_error: null, execution_error_i18n: null,
         undo_state: null, undone: false,
-        cause: $cause, execution_details: null,
+        cause: $cause, execution_details: null, report_note: $reportNote, report_source: $reportSource,
         verification: null, verified_at: null, verification_detail: null
       })
       RETURN ${CAMPI}
@@ -306,6 +320,8 @@ export async function scriviProposta(
       rationale: p.rationale ?? null,
       rationaleLanguage: p.rationaleLanguage ?? null,
       cause: p.cause ?? null,
+      reportNote: p.reportNote ?? null,
+      reportSource: p.reportSource ? JSON.stringify(p.reportSource) : null,
       now: adesso.toISOString(),
     })
     const riga = righe[0]

@@ -60,6 +60,8 @@ describe('un Problem si apre solo dove un Problem è la cosa giusta', () => {
 
   it('il catalogo è chiuso e piccolo: aggiungerne uno deve essere un gesto che si vede', () => {
     expect([...GENERI_DA_PROBLEM].sort()).toEqual([
+      // 26 Sep 2026: a customer's report to OpenGrafo — a person of the customer said it is a fault of the product.
+      'proposal.platformCustomerReport',
       'proposal.platformErrorSpike',
       'proposal.platformRecurringError',
       'proposal.platformSharedFault',
@@ -103,6 +105,13 @@ describe('che cosa finisce nel Problem', () => {
       .toBe('Jobs keep failing in queue sla-jobs after a retry')
     expect(titoloDelProblem({ map: 'Billing' }, 'proposal.operationsStaleServiceMapNotHeld'))
       .toBe('Service map "Billing" stays behind the CMDB after a synchronization')
+  })
+
+  it('a customer\'s report names who reported it, which problem, and the technical cause — not «the platform analyst»', () => {
+    expect(titoloDelProblem({ tenant: 'acme', problem: 'PRB00000801', cause: 'queue:sla-jobs' }, 'proposal.platformCustomerReport'))
+      .toBe('Reported by acme (PRB00000801): queue:sla-jobs')
+    expect(titoloDelProblem({ tenant: 'acme', problem: 'PRB00000802' }, 'proposal.platformCustomerReport'))
+      .toBe('Reported by acme (PRB00000802)')
   })
 
   it('no rationale, no model: an operational Problem does not claim a model wrote it', () => {

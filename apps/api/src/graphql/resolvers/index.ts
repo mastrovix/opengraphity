@@ -494,6 +494,8 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
     User:               { teams: userTeams, permissions: userPermissions, roleName: userRoleName },
     Problem:            {
       ...problemResolvers.Problem,
+      // «Segnala a OpenGrafo» (26 Sep 2026): whether this Problem can be reported, and when it was.
+      ...proposalResolvers.Problem,
       linkedIncidents: problemLinkedIncidents,
       linkedProblems:  problemRelatedProblems,
       linkedChanges:   problemLinkedChanges,

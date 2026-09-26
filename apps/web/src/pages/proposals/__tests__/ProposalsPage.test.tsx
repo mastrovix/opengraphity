@@ -43,7 +43,7 @@ const proposal = (over: Record<string, unknown> = {}) => ({
   occurrences: 12, windowDays: 30, actionType: null, rationale: null, rationaleLanguage: null,
   status: 'open', createdAt: '2026-09-20T10:00:00Z',
   decidedAt: null, decidedBy: null, decidedByName: null, rejectedKind: null, rejectedNote: null, notNowUntil: null,
-  auditEntryId: null, executionError: null, executionErrorKey: null, executionErrorParams: [], undoable: false, acknowledgeable: false, problemOpenable: false,
+  auditEntryId: null, executionError: null, executionErrorKey: null, executionErrorParams: [], reportNote: null, undoable: false, acknowledgeable: false, problemOpenable: false,
   openedProblemId: null, openedProblemNumber: null,
   verification: null, verifiedAt: null, verificationDetail: [], ...over,
 })
@@ -369,8 +369,8 @@ describe('ProposalsPage — operational remedies', () => {
       remedy({ id: 'p-ko', verification: 'unresolved', verifiedAt: '2026-09-26T08:05:00Z', verificationDetail: [param('retried', '20'), param('failedAgain', '3')] }),
     ])
     mount()
-    expect(await screen.findByText(/the remedy held\. 20 jobs retried, 0 failed again\./)).toBeInTheDocument()
-    expect(screen.getByText(/the remedy did not hold\. .*a person has to look\. 20 jobs retried, 3 failed again\./)).toBeInTheDocument()
+    expect(await screen.findByText(/the remedy held\. Jobs retried: 20 · failed again: 0\./)).toBeInTheDocument()
+    expect(screen.getByText(/the remedy did not hold\. .*a person has to look\. Jobs retried: 20 · failed again: 3\./)).toBeInTheDocument()
   })
 
   it('one fault is said in the singular; faults are counted outside the cap, next to it (26 Sep 2026)', async () => {
@@ -392,6 +392,19 @@ describe('ProposalsPage — operational remedies', () => {
     expect(screen.queryByText(/8a4e/)).toBeNull()
   })
 
+  it('a customer\'s report shows the person\'s note and the technical data received (26 Sep 2026)', async () => {
+    apolloFinto.risposte['GetProposals'] = page([remedy({
+      id: 'p-r', status: 'open', decidedAt: null, area: 'platform', kind: 'proposal.platformCustomerReport', actionType: null,
+      params: [param('tenant', 'acme'), param('problem', 'PRB00000801')], reportNote: 'Retries keep failing since Monday',
+      evidence: { n: 1, windowDays: 0, hiddenRefs: 0, refs: [], extra: [param('queue', 'sla-jobs'), param('origin', 'remedy')] },
+    })])
+    mount()
+    expect(await screen.findByText('The organization “acme” reports a fault of OpenGrafo (its problem PRB00000801)')).toBeInTheDocument()
+    expect(screen.getByText('Retries keep failing since Monday')).toBeInTheDocument()
+    expect(screen.getAllByRole('definition')).toHaveLength(2)
+    expect(screen.getByText('sla-jobs')).toBeInTheDocument()
+  })
+
   it('each remedy of the graph says what the check found; the map\'s says only whether it held', async () => {
     apolloFinto.risposte['GetProposals'] = page([
       remedy({ id: 'p-a', kind: 'proposal.operationsStuckAlarms', params: [param('count', '3')], actionType: 'events.reevaluate_stuck',
@@ -402,8 +415,8 @@ describe('ProposalsPage — operational remedies', () => {
         verification: 'resolved', verifiedAt: '2026-09-26T08:05:00Z', verificationDetail: [param('stale', 'false'), param('reason', '')] }),
     ])
     mount()
-    expect(await screen.findByText(/did not hold\. .* 3 alarms re-evaluated, 1 still stuck\./)).toBeInTheDocument()
-    expect(screen.getByText(/the remedy held\. 2 tickets resumed, 0 still on the step they were stuck on\./)).toBeInTheDocument()
+    expect(await screen.findByText(/did not hold\. .* Alarms re-evaluated: 3 · still stuck: 1\./)).toBeInTheDocument()
+    expect(screen.getByText(/the remedy held\. Tickets resumed: 2 · still in the wait: 0\./)).toBeInTheDocument()
     expect(screen.getByText('The service map “Billing” is behind the CMDB: synchronize it now')).toBeInTheDocument()
     expect(screen.getAllByText(/^Checked on .*: the remedy held\.$/)).toHaveLength(1)
   })

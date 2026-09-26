@@ -210,6 +210,8 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   // Il fascicolo è la lettura di un Problem, e chiede il permesso di leggere
   // i problem: la sbarra sul perimetro (solo piattaforma) è nel modulo.
   { anyOf: ['problem.read'],    query: ['problemDossier'] },
+  // «Segnala a OpenGrafo» (26 Sep 2026): sending a report is working on the Problem.
+  { anyOf: ['problem.write'],   query: ['openGrafoReportDraft'], mutation: ['reportProblemToOpenGrafo'] },
   {
     anyOf: ['report.read'],
     query: ['reportTemplates', 'reportTemplate', 'executeReport', 'previewReportSection', 'slaReport', 'reportConversations', 'reportConversation'],
