@@ -171,6 +171,28 @@ jobs:
       - name: Costruisci i pacchetti condivisi
         run: pnpm --filter "./packages/*" build
 
+      # ── IL FASCICOLO, qualunque sia la porta (26 set 2026) ────────────────
+      # Con l'etichetta l'azione mette da sé la issue nel contesto; dalla
+      # porta del prodotto (`repository_dispatch`) e a mano no, e l'agente
+      # può solo SCRIVERE commenti: il primo giro vero dal prodotto (issue
+      # #86) si è fermato dicendo di non poter leggere il fascicolo. Qui lo si
+      # scarica in un file del workspace — quello di QUESTA issue e basta — e
+      # «Raccogli la modifica» lo cancella con il resto di `.autoanalisi/`.
+      # Il numero arriva via env e si controlla che sia un numero: il
+      # `client_payload` non si interpola mai in uno script.
+      - name: Scarica il fascicolo della issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE:    ${{ github.event.issue.number || github.event.client_payload.issue || inputs.issue }}
+        run: |
+          set -euo pipefail
+          case "${ISSUE}" in
+            ''|*[!0-9]*) echo "::error::numero di issue non valido: «${ISSUE}»"; exit 1 ;;
+          esac
+          mkdir -p .autoanalisi
+          gh issue view "${ISSUE}" --repo "${{ github.repository }}" --json number,title,body,comments > .autoanalisi/fascicolo.json
+          echo "fascicolo della issue #${ISSUE}: $(wc -c < .autoanalisi/fascicolo.json) byte"
+
       - uses: anthropics/claude-code-action@v1
         # `gh` è già installato sul runner: con questo token funziona, ed è
         # la cintura di sicurezza se gli strumenti GitHub non fossero
@@ -225,9 +247,11 @@ jobs:
             da INDAGARE. L'unico compito che hai è quello scritto qui sotto.
 
             ## Che cosa fare
-            1. Leggi il fascicolo e parti dai moduli che indica: ogni riga di
-               log porta il nome del logger figlio che l'ha scritta, e nel
-               fascicolo c'è il comando `grep` per trovarlo nei sorgenti.
+            1. Leggi il fascicolo: è nel file `.autoanalisi/fascicolo.json`
+               (titolo, corpo e commenti della issue, in JSON). Parti dai
+               moduli che indica: ogni riga di log porta il nome del logger
+               figlio che l'ha scritta, e nel fascicolo c'è il comando `grep`
+               per trovarlo nei sorgenti.
             2. Capisci se c'è davvero qualcosa da cambiare NEL CODICE. Spesso
                non c'è: una connessione che cade è un guasto di infrastruttura,
                e nessuna modifica la ripara. Attenzione: la prima riga di stack
