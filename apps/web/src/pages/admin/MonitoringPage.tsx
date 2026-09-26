@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Activity }         from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import { QueryError, StaleDataBanner } from '@/components/QueryError'
+import { SimpleTable, type SimpleColumn } from '@/components/ui/SimpleTable'
 import ReactECharts         from 'echarts-for-react'
 import { GET_SYSTEM_HEALTH, GET_SYSTEM_METRICS, GET_TRACE_INFO } from '@/graphql/queries'
 import { colors, palette } from '@/lib/tokens'
@@ -90,6 +91,38 @@ function formatUptime(seconds: number): string {
 
 export function MonitoringPage() {
   const { t } = useTranslation()
+  // The app's small table for the three lists (26 Sep 2026: they were hand-made). Read only.
+  const num = (v: number, danger = false) => <span style={{ fontVariantNumeric: 'tabular-nums', color: danger ? 'var(--color-danger)' : undefined }}>{v}</span>
+  const queueColumns: SimpleColumn<QueueMetrics & { id: string }>[] = [
+    { key: 'name', label: t('pages.monitoring.queues.queue'), render: (_v, q) => <span style={{ fontWeight: 600 }}>{q.name}</span> },
+    { key: 'waiting', label: t('pages.monitoring.queues.waiting'), align: 'right', render: (_v, q) => num(q.waiting) },
+    { key: 'active', label: t('pages.monitoring.queues.active'), align: 'right', render: (_v, q) => num(q.active) },
+    { key: 'completed', label: t('pages.monitoring.queues.completed'), align: 'right', render: (_v, q) => num(q.completed) },
+    { key: 'failed', label: t('pages.monitoring.queues.failed'), align: 'right', render: (_v, q) => num(q.failed, q.failed > 0) },
+    { key: 'delayed', label: t('pages.monitoring.queues.delayed'), align: 'right', render: (_v, q) => num(q.delayed) },
+  ]
+  const slowColumns: SimpleColumn<SlowQuery & { id: string }>[] = [
+    { key: 'query', label: t('monitoring.opColumns.operation'), render: (_v, sq) => (
+      <span style={{ wordBreak: 'break-all', color: palette.neutral.textMuted }}>
+        {/* What asked for it — the page's operation, a job — says where to look (wave 7 · A2). */}
+        {sq.operation && <span style={{ display: 'block', fontWeight: 600, color: colors.slate, wordBreak: 'normal' }}>{sq.operation}</span>}
+        {sq.query}
+      </span>
+    ) },
+    { key: 'durationMs', label: t('monitoring.opColumns.duration'), align: 'right', render: (_v, sq) => <span style={{ color: 'var(--color-danger)', fontWeight: 600, whiteSpace: 'nowrap' }}>{sq.durationMs.toFixed(0)}ms</span> },
+    { key: 'timestamp', label: t('monitoring.opColumns.time'), align: 'right', render: (_v, sq) => <span style={{ color: colors.slateLight, whiteSpace: 'nowrap' }}>{formatTime(sq.timestamp)}</span> },
+  ]
+  const traceColumns: SimpleColumn<RecentTrace & { id: string }>[] = [
+    { key: 'operationName', label: t('monitoring.opColumns.operation'), render: (_v, tr) => (
+      <>
+        {tr.operationName}
+        {tr.spanCount > 1 && <span style={{ color: colors.slateLight, marginLeft: 8, fontSize: 'var(--font-size-table)' }}>— {t('pages.monitoring.spans', { count: tr.spanCount })}</span>}
+      </>
+    ) },
+    { key: 'durationMs', label: t('monitoring.opColumns.duration'), align: 'right', render: (_v, tr) => <span style={{ fontWeight: 600 }}>{tr.durationMs.toFixed(1)}ms</span> },
+    { key: 'status', label: t('monitoring.opColumns.status'), align: 'right', render: (_v, tr) => <span style={{ color: tr.status === 'OK' ? 'var(--color-success)' : 'var(--color-danger)', fontWeight: 600 }}>{tr.status}</span> },
+    { key: 'timestamp', label: t('monitoring.opColumns.time'), align: 'right', render: (_v, tr) => <span style={{ color: colors.slateLight }}>{formatTime(tr.timestamp)}</span> },
+  ]
 
   const { data: healthData, error: healthError, refetch: refetchHealth } = useQuery<{ systemHealth: SystemHealth }>(GET_SYSTEM_HEALTH,  { ...pausedWhenHidden(15_000), fetchPolicy: 'network-only' })
   const { data: metricsData, error: metricsError, refetch: refetchMetrics } = useQuery<{ systemMetrics: SystemMetrics }>(GET_SYSTEM_METRICS, { ...pausedWhenHidden(15_000), fetchPolicy: 'network-only' })
@@ -239,32 +272,7 @@ export function MonitoringPage() {
       <div style={card}>
         <h2 style={sectionTitle}>{t('pages.monitoring.queues.title')}</h2>
         {metricsError && !metrics ? <QueryError message={metricsError.message} onRetry={() => void refetchMetrics()} /> : metrics?.queues && metrics.queues.length > 0 ? (
-          <div className="og-scroll-x">
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: 'left', padding: '6px 12px 6px 0' }}>{t('pages.monitoring.queues.queue')}</th>
-                <th style={{ textAlign: 'right', padding: '6px 12px' }}>{t('pages.monitoring.queues.waiting')}</th>
-                <th style={{ textAlign: 'right', padding: '6px 12px' }}>{t('pages.monitoring.queues.active')}</th>
-                <th style={{ textAlign: 'right', padding: '6px 12px' }}>{t('pages.monitoring.queues.completed')}</th>
-                <th style={{ textAlign: 'right', padding: '6px 12px' }}>{t('pages.monitoring.queues.failed')}</th>
-                <th style={{ textAlign: 'right', padding: '6px 12px' }}>{t('pages.monitoring.queues.delayed')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {metrics.queues.map((q) => (
-                <tr key={q.name} style={{ borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
-                  <td style={{ padding: '8px 12px 8px 0', fontWeight: 600 }}>{q.name}</td>
-                  <td style={{ textAlign: 'right', padding: '8px 12px' }}>{q.waiting}</td>
-                  <td style={{ textAlign: 'right', padding: '8px 12px' }}>{q.active}</td>
-                  <td style={{ textAlign: 'right', padding: '8px 12px' }}>{q.completed}</td>
-                  <td style={{ textAlign: 'right', padding: '8px 12px', color: q.failed > 0 ? 'var(--color-danger)' : undefined }}>{q.failed}</td>
-                  <td style={{ textAlign: 'right', padding: '8px 12px' }}>{q.delayed}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+          <SimpleTable<QueueMetrics & { id: string }> label={t('pages.monitoring.queues.title')} columns={queueColumns} rows={metrics.queues.map((q) => ({ ...q, id: q.name }))} />
         ) : (
           <div style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight, textAlign: 'center', padding: 24 }}>
             {t('common.noResults')}
@@ -295,29 +303,7 @@ export function MonitoringPage() {
             <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: colors.slate, marginBottom: 8 }}>
               {t('pages.monitoring.neo4j.slowQueries')}
             </div>
-            <div className="og-scroll-x">
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
-              <tbody>
-                {metrics.neo4j.slowQueries.map((sq, i) => (
-                  <tr key={i} style={{ borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
-                    <td style={{ padding: '6px 0', wordBreak: 'break-all', color: palette.neutral.textMuted }}>
-                      {/* What asked for it — the page's operation, a job — says where to look (wave 7 · A2). */}
-                      {sq.operation && (
-                        <div style={{ fontWeight: 600, color: colors.slate, wordBreak: 'normal' }}>{sq.operation}</div>
-                      )}
-                      {sq.query}
-                    </td>
-                    <td style={{ padding: '6px 12px', color: 'var(--color-danger)', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                      {sq.durationMs.toFixed(0)}ms
-                    </td>
-                    <td style={{ padding: '6px 0', color: colors.slateLight, whiteSpace: 'nowrap' }}>
-                      {formatTime(sq.timestamp)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+            <SimpleTable<SlowQuery & { id: string }> label={t('pages.monitoring.neo4j.slowQueries')} columns={slowColumns} rows={metrics.neo4j.slowQueries.map((sq, i) => ({ ...sq, id: String(i) }))} />
           </>
         )}
       </div>
@@ -340,41 +326,7 @@ export function MonitoringPage() {
               </div>
 
               {trace.recentTraces.length > 0 ? (
-                <div className="og-scroll-x">
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ textAlign: 'left', padding: '6px 0' }}>{t('monitoring.opColumns.operation')}</th>
-                      <th style={{ textAlign: 'right', padding: '6px 12px' }}>{t('monitoring.opColumns.duration')}</th>
-                      <th style={{ textAlign: 'right', padding: '6px 12px' }}>{t('monitoring.opColumns.status')}</th>
-                      <th style={{ textAlign: 'right', padding: '6px 0' }}>{t('monitoring.opColumns.time')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...trace.recentTraces].reverse().slice(0, 20).map((tr) => (
-                      <tr key={tr.traceId} style={{ borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
-                        <td style={{ padding: '6px 0' }}>
-                          {tr.operationName}
-                          {tr.spanCount > 1 && (
-                            <span style={{ color: colors.slateLight, marginLeft: 8, fontSize: 'var(--font-size-table)' }}>
-                              — {t('pages.monitoring.spans', { count: tr.spanCount })}
-                            </span>
-                          )}
-                        </td>
-                        <td style={{ textAlign: 'right', padding: '6px 12px', fontWeight: 600 }}>{tr.durationMs.toFixed(1)}ms</td>
-                        <td style={{ textAlign: 'right', padding: '6px 12px' }}>
-                          <span style={{ color: tr.status === 'OK' ? 'var(--color-success)' : 'var(--color-danger)', fontWeight: 600 }}>
-                            {tr.status}
-                          </span>
-                        </td>
-                        <td style={{ textAlign: 'right', padding: '6px 0', color: colors.slateLight }}>
-                          {formatTime(tr.timestamp)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                <SimpleTable<RecentTrace & { id: string }> label={t('pages.monitoring.tracing.title')} columns={traceColumns} rows={[...trace.recentTraces].reverse().slice(0, 20).map((tr) => ({ ...tr, id: tr.traceId }))} />
               ) : (
                 <div style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight }}>{t('pages.monitoring.noTraces')}</div>
               )}

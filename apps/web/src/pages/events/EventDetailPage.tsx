@@ -19,17 +19,19 @@
  * `history` dalla più recente; le azioni della pagina rileggono l'evento
  * (`refetch`) così la voce appena scritta compare subito.
  */
+import { BackLink, DetailTitle } from '@/components/ui/BackLink'
 import { useId } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Radar, GitBranch } from 'lucide-react'
+import { Radar, GitBranch } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageLoader } from '@/components/PageLoader'
 import { QueryError } from '@/components/QueryError'
 import { EmptyState } from '@/components/EmptyState'
 import { Button } from '@/components/Button'
 import { SectionCard } from '@/components/ui/SectionCard'
+import { SimpleTable } from '@/components/ui/SimpleTable'
 import { DetailField } from '@/components/ui/DetailField'
 import { Pill } from '@/components/ui/Pill'
 import { useMe } from '@/hooks/useMe'
@@ -49,7 +51,7 @@ import type { MonitoringEventDetail, EventPolicy } from '@/types/events'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import { useCILabels } from '@/hooks/useCILabels'
 
-const linkStyle = { color: colors.brand, textDecoration: 'none', fontWeight: 500 } as const
+const linkStyle = { color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, fontWeight: 500 } as const
 
 export function EventDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -91,12 +93,9 @@ export function EventDetailPage() {
     <PageContainer>
       <div style={{ marginBottom: 24 }}>
         {/* G-EVT-13: torna alla console con i filtri con cui ci si era arrivati. */}
-        <button type="button" onClick={goBackToList} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 12, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-card-title)', padding: 0 }}>
-          <ArrowLeft size={14} aria-hidden="true" />
-          {t('events.detail.back')}
-        </button>
+        <BackLink onClick={goBackToList}>{t('events.detail.back')}</BackLink>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
-          <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: colors.slateDark, letterSpacing: '-0.01em', margin: 0 }}>{ev.title}</h1>
+          <DetailTitle>{ev.title}</DetailTitle>
           <EventStatusBadge status={ev.status} severity={ev.severity} />
           <EventSeverityBadge severity={ev.severity} />
         </div>
@@ -153,24 +152,15 @@ export function EventDetailPage() {
             {labels.error && <p role="alert" style={{ color: colors.danger, fontSize: 'var(--font-size-body)', margin: 0 }}>{t('events.detail.labelsInvalid', { error: labels.error })}</p>}
             {!labels.error && labels.entries.length === 0 && <p style={{ color: colors.slateLight, fontSize: 'var(--font-size-body)', margin: 0 }}>{t('events.detail.noLabels')}</p>}
             {labels.entries.length > 0 && (
-              <div className="og-scroll-x">
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
-                <thead>
-                  <tr>
-                    <th scope="col" style={{ textAlign: 'left', padding: '4px 8px' }}>{t('events.detail.labelKey')}</th>
-                    <th scope="col" style={{ textAlign: 'left', padding: '4px 8px' }}>{t('events.detail.labelValue')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {labels.entries.map(([k, v]) => (
-                    <tr key={k}>
-                      <td style={{ padding: '6px 8px', fontFamily: 'var(--font-mono)', color: colors.slate, borderBottom: '1px solid var(--color-border-light)', whiteSpace: 'nowrap' }}>{k}</td>
-                      <td style={{ padding: '6px 8px', color: colors.slateDark, borderBottom: '1px solid var(--color-border-light)', wordBreak: 'break-all' }}>{v}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+              // The app's small table (26 Sep 2026: it was hand-made).
+              <SimpleTable<{ id: string; value: string }>
+                label={t('events.detail.labels')}
+                columns={[
+                  { key: 'id', label: t('events.detail.labelKey'), render: (_v, l) => <span style={{ fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>{l.id}</span> },
+                  { key: 'value', label: t('events.detail.labelValue'), render: (_v, l) => <span style={{ wordBreak: 'break-all' }}>{l.value}</span> },
+                ]}
+                rows={labels.entries.map(([k, v]) => ({ id: k, value: String(v) }))}
+             />
             )}
           </SectionCard>
         </div>

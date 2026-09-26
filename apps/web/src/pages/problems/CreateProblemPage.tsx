@@ -1,3 +1,9 @@
+import { SearchBox } from '@/components/ui/SearchBox'
+import { Loading } from '@/components/ui/Loading'
+import { Pill } from '@/components/ui/Pill'
+import { BackLink, DetailTitle } from '@/components/ui/BackLink'
+import { Input, Select, Textarea } from '@/components/ui/FormControls'
+import { Button } from '@/components/Button'
 import { useEffect, useId, useState } from 'react'
 import { derivePriority, priorityCode } from '@/lib/priority'
 import { usePriorityMatrix } from '@/hooks/usePriorityMatrix'
@@ -188,19 +194,11 @@ export function CreateProblemPage() {
       <div style={{ maxWidth: 580, margin: '0 auto' }}>
 
         {/* Header */}
-        <button
-          type="button"
-          onClick={() => navigate('/problems')}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 16, padding: 0 }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-brand)' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-slate-light)' }}
-        >
-          ← Problems
-        </button>
+        <BackLink onClick={() => navigate('/problems')}>{t('pages.problems.title')}</BackLink>
 
-        <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 4px', letterSpacing: '-0.02em' }}>
+        <DetailTitle style={{ margin: '0 0 4px' }}>
           {t('pages.createProblem.title')}
-        </h1>
+        </DetailTitle>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: '0 0 24px' }}>
           {t('pages.createProblem.subtitle')}
         </p>
@@ -213,15 +211,12 @@ export function CreateProblemPage() {
             <label htmlFor={ids.title} style={fieldLabel}>
               {t('common.title')} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
-            <input
+            <Input
               id={ids.title}
               type="text"
               value={title}
               onChange={e => setTitle(e.target.value)}
               placeholder={t('pages.createProblem.titlePlaceholder')}
-              style={inputBase}
-              onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
-              onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = colors.border }}
             />
           </div>
 
@@ -233,15 +228,19 @@ export function CreateProblemPage() {
               {fieldRuleSet.requiredMark('category')}
             </label>
             {categoryLoading ? (
-              <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{t('common.loading')}</span>
+              <Loading inline />
             ) : (
-              <select id={ids.category} value={category} aria-invalid={customErrors['category'] ? true : undefined}
-                onChange={e => { setCategory(e.target.value); setCustomErrors((p) => { const n = { ...p }; delete n['category']; return n }) }} style={inputBase}>
+              <Select
+                id={ids.category}
+                value={category}
+                aria-invalid={customErrors['category'] ? true : undefined}
+                onChange={e => { setCategory(e.target.value); setCustomErrors((p) => { const n = { ...p }; delete n['category']; return n }) }}
+              >
                 <option value="">{t('pages.createIncident.selectCategory')}</option>
                 {categoryValues.map(c => (
                   <option key={c} value={c}>{labelOf('category', c) ?? c}</option>
                 ))}
-              </select>
+              </Select>
             )}
             {fieldRuleSet.errorOf('category')}
           </div>}
@@ -288,15 +287,13 @@ export function CreateProblemPage() {
             <label htmlFor={ids.description} style={fieldLabel}>
               {t('common.description')} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
-            <textarea
+            <Textarea
               id={ids.description}
               value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder={t('pages.createProblem.descriptionPlaceholder')}
               rows={3}
-              style={{ ...inputBase, resize: 'vertical', lineHeight: 1.6 }}
-              onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
-              onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = colors.border }}
+              style={{ resize: 'vertical', lineHeight: 1.6 }}
             />
           </div>
 
@@ -309,19 +306,7 @@ export function CreateProblemPage() {
 
             <CIExclusionHint excluded={excludedCITypes} />
             <div style={{ position: 'relative' }}>
-              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 'var(--font-size-card-title)', pointerEvents: 'none', color: 'var(--color-slate-light)' }}>
-                🔍
-              </span>
-              <input
-                id={ids.ciSearch}
-                type="text"
-                value={ciSearch}
-                onChange={e => setCiSearch(e.target.value)}
-                placeholder={t('pages.createTicket.searchByName')}
-                style={{ ...inputBase, paddingLeft: 36 }}
-                onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
-                onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = colors.border }}
-              />
+              <SearchBox id={ids.ciSearch} value={ciSearch} onChange={setCiSearch} placeholder={t('pages.createTicket.searchByName')} />
 
               {ciResults.length > 0 && ciSearch.length >= 2 && (
                 <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, background: colors.white, border: `1px solid ${colors.border}`, borderRadius: 8, boxShadow: `0 4px 12px ${alpha.black10}`, maxHeight: 200, overflowY: 'auto', zIndex: 20 }}>
@@ -334,9 +319,9 @@ export function CreateProblemPage() {
                       style={{ width: '100%', background: 'none', border: 'none', borderRadius: 0, font: 'inherit', color: 'inherit', textAlign: 'left', padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${palette.neutral.borderLight}` }}
                     >
                       <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)', flex: 1 }}>{ci.name}</span>
-                      <span style={{ fontSize: 'var(--font-size-body)', padding: '1px 6px', borderRadius: 4, backgroundColor: 'var(--color-border-light)', color: 'var(--color-slate)' }}>
+                      <Pill bg="var(--color-border-light)" color="var(--color-slate)" radius={4} style={{ fontSize: 'var(--font-size-body)' }}>
                         {ciLabels.subtitle(ci)}
-                      </span>
+                      </Pill>
                     </button>
                   ))}
                 </div>
@@ -351,7 +336,7 @@ export function CreateProblemPage() {
                     <button
                       type="button"
                       onClick={() => setSelectedCIs(p => p.filter(c => c.id !== ci.id))}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-brand-hover)', padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center', opacity: 0.7 }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center', opacity: 0.7 }}
                     >
                       <X size={12} />
                     </button>
@@ -398,24 +383,16 @@ export function CreateProblemPage() {
             <button
               type="button"
               onClick={() => navigate('/problems')}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', padding: 0 }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-link)', padding: 0, textDecoration: 'underline', textUnderlineOffset: 2 }}
             >
               {t('common.cancel')}
             </button>
-            <button
-              type="button"
+            <Button variant="primary"
               onClick={handleSubmit}
               disabled={!canSubmit || loading || checkingSla}
-              style={{
-                background: 'var(--color-brand)', color: colors.white, border: 'none', borderRadius: 8,
-                padding: '10px 24px', fontSize: 'var(--font-size-card-title)', fontWeight: 600,
-                cursor: canSubmit && !loading && !checkingSla ? 'pointer' : 'not-allowed',
-                opacity: canSubmit && !loading && !checkingSla ? 1 : 0.5,
-                transition: 'opacity 150ms',
-              }}
             >
               {loading ? t('common.creating') : t('pages.createProblem.submit')}
-            </button>
+            </Button>
           </div>
 
         </div>

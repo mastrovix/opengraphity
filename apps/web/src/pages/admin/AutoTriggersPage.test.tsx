@@ -86,7 +86,7 @@ async function overwrite(user: User, input: HTMLElement, value: string) {
 
 async function openNew(user: User) {
   await user.click(screen.getByRole('button', { name: 'New trigger' }))
-  expect(inDialog().getByText('New trigger', { selector: 'span' })).toBeInTheDocument()
+  expect(inDialog().getByRole('heading', { name: 'New trigger' })).toBeInTheDocument()
 }
 
 async function openEdit(user: User, name = 'Remind the team') {

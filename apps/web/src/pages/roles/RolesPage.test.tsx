@@ -18,8 +18,8 @@ describe('RolesPage', () => {
       mocks: [me(), rolesMock([{ key: 'service_desk', name: 'Service Desk', permissions: ['workspace.use', 'incident.read'], userCount: 0 }, { key: 'cab', name: 'CAB', userCount: 2 }])],
       route: '/roles',
     })
-    const row = (name: string) => screen.getByRole('link', { name }).closest('tr')!
-    expect(await screen.findByRole('link', { name: 'Service Desk' })).toBeInTheDocument()
+    const row = (name: string) => screen.getByText(name, { selector: 'td' }).closest('tr')!
+    expect(await screen.findByText('Service Desk', { selector: 'td' })).toBeInTheDocument()
 
     expect(within(row('Admin')).getByText('Factory')).toBeInTheDocument()
     expect(within(row('Admin')).getByText(`${PERMISSIONS.length} of ${PERMISSIONS.length}`)).toBeInTheDocument()

@@ -1,3 +1,4 @@
+import { BackLink, DetailTitle } from '@/components/ui/BackLink'
 import { useId, useState } from 'react'
 import { TicketOLACard } from '@/components/ticket/ola/TicketOLACard'
 import { CustomFieldsCard } from '@/components/ticket/customFields/CustomFieldsCard'
@@ -29,7 +30,6 @@ import { Button } from '@/components/Button'
 import { Input, Textarea, Select, FieldLabel } from '@/components/ui/FormControls'
 import { Pencil } from 'lucide-react'
 import { keycloak } from '@/lib/keycloak'
-import { colors } from '@/lib/tokens'
 import { GET_SERVICE_REQUEST, GET_ALL_CIS } from '@/graphql/queries'
 import { EXECUTE_WORKFLOW_TRANSITION, UPDATE_SERVICE_REQUEST, ADD_CI_TO_SERVICE_REQUEST, REMOVE_CI_FROM_SERVICE_REQUEST } from '@/graphql/mutations'
 import { AffectedCIList, type AffectedCIRef } from '@/components/ticket/AffectedCIList'
@@ -183,7 +183,7 @@ export function ServiceRequestDetailPage() {
   if (!sr) return (
     <PageContainer>
       <p style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{t('pages.requests.notFound')}</p>
-      <button type="button" onClick={() => navigate('/requests')} style={{ color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>{t('detail.backToList')}</button>
+      <button type="button" onClick={() => navigate('/requests')} style={{ color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>{t('detail.backToList')}</button>
     </PageContainer>
   )
 
@@ -192,20 +192,14 @@ export function ServiceRequestDetailPage() {
   return (
     <PageContainer>
       {/* Back */}
-      <button
-        type="button"
-        onClick={() => navigate('/requests')}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 16, padding: 0 }}
-      >
-        ← {t('pages.requests.title')}
-      </button>
+      <BackLink onClick={() => navigate('/requests')}>{t('pages.requests.title')}</BackLink>
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
         <div>
           {/* Giro UI del 15 set 2026 · U-12: il numero non compariva da nessuna parte (incident, problem e change lo mostrano). */}
           <div data-testid="request-number" style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 2 }}>{sr.number}</div>
-          <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)', margin: '0 0 6px' }}>{sr.title}</h1>
+          <DetailTitle style={{ margin: '0 0 6px' }}>{sr.title}</DetailTitle>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <Pill bg={stColor.bg} color={stColor.color}>{stepLabel(sr.status)}</Pill>
             <Pill bg="transparent" color={styleOf('priority', sr.priority).color} style={{ border: `1.5px solid ${styleOf('priority', sr.priority).accent}` }}>{labelOf('priority', sr.priority) ?? sr.priority}</Pill>
@@ -384,7 +378,7 @@ export function ServiceRequestDetailPage() {
           width={460}
           footer={
             <>
-              <button type="button" onClick={() => setTransitionModal(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--color-border-light)', background: colors.white, cursor: 'pointer', fontSize: 13 }}>{t('common.cancel')}</button>
+              <Button variant="secondary" onClick={() => setTransitionModal(null)}>{t('common.cancel')}</Button>
               <button
                 type="button"
                 disabled={transitioning || transitionNotes.trim().length === 0}
@@ -399,14 +393,14 @@ export function ServiceRequestDetailPage() {
           <label htmlFor={ids.notes} style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>
             {t(transitionModal.inputField === 'rejection_reason' ? 'pages.requests.rejectionReason' : 'common.note')}
           </label>
-          <textarea
+          <Textarea
             id={ids.notes}
             value={transitionNotes}
             onChange={(e) => setTransitionNotes(e.target.value)}
             rows={4}
             // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: textarea del modal di transizione aperto dall'utente
             autoFocus
-            style={{ width: '100%', border: '1px solid var(--color-border-light)', borderRadius: 8, padding: 10, fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }}
+            style={{ resize: 'vertical' }}
           />
         </Modal>
       )}

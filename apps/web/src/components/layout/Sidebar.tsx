@@ -1,3 +1,4 @@
+import { Pill } from '@/components/ui/Pill'
 import { useCILabels } from '@/hooks/useCILabels'
 import { useLocation } from 'react-router-dom'
 // F-21: i contatori della barra non interrogano l'API a scheda nascosta.
@@ -108,17 +109,9 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
     + (pendingApprovalsData?.pendingTicketApprovals ?? []).filter((a) => !a.onBehalf).length
 
   const anomalyBadge = (anomalyCritical > 0 || anomalyError) ? (
-    <span
-      aria-label={anomalyError ? t('sidebar.anomalyLoadError') : t('sidebar.criticalAnomalies', { count: anomalyCritical })}
-      title={anomalyError ? anomalyError.message : undefined}
-      style={{
-        fontSize: 'var(--font-size-label)', fontWeight: 700, lineHeight: 1,
-        padding: '2px 5px', borderRadius: 8,
-        background: 'var(--danger)', color: colors.white,
-      }}
-    >
+    <Pill bg="var(--danger)" color={colors.white} radius={8} aria-label={anomalyError ? t('sidebar.anomalyLoadError') : t('sidebar.criticalAnomalies', { count: anomalyCritical })} title={anomalyError ? anomalyError.message : undefined} style={{ fontSize: 'var(--font-size-label)', fontWeight: 700 }}>
       {anomalyError ? '!' : anomalyCritical}
-    </span>
+    </Pill>
   ) : undefined
 
   return (

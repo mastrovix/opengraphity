@@ -38,11 +38,11 @@
  * `palette.success.*` operativo, `palette.purple.*` manutenzione, neutro
  * sconosciuto (SERVICE_HEALTH_FAMILY); mai esadecimali.
  */
+import { SearchBox } from '@/components/ui/SearchBox'
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Maximize2, Search, Star, Wrench, X } from 'lucide-react'
+import { Maximize2, Star, Wrench, X } from 'lucide-react'
 import { Button } from '@/components/Button'
-import { Input } from '@/components/ui/FormControls'
 import { useMetamodel } from '@/contexts/MetamodelContext'
 import { CIIcon } from '@/lib/ciIcon'
 import { useCILabels } from '@/hooks/useCILabels'
@@ -289,17 +289,7 @@ export function ServiceMapCanvas({ map, selectedId, onSelect, isolatedId = null,
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-        <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-          <Search size={13} aria-hidden="true" style={{ position: 'absolute', left: 8, color: colors.slateLight }} />
-          <Input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            aria-label={t('monitoring.services.map.searchLabel')}
-            placeholder={t('monitoring.services.map.searchPlaceholder')}
-            style={{ paddingLeft: 26, width: 200 }}
-          />
-        </span>
+        <SearchBox value={search} onChange={setSearch} ariaLabel={t('monitoring.services.map.searchLabel')} placeholder={t('monitoring.services.map.searchPlaceholder')} style={{ width: 200 }} />
         {isolated === null && map.nodes.length > FOCUS_THRESHOLD && map.explanation.length > 0 && (
           <Button variant="secondary" size="xs" aria-pressed={focus} onClick={toggleFocus}>
             {focus ? t('monitoring.services.map.showAll') : t('monitoring.services.map.showPathOnly')}

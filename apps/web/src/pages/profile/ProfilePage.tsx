@@ -3,6 +3,7 @@
  * Replaces the two former "Profilo" pages (`/profile` language only,
  * `/settings/profile` Slack only) — E-13.
  */
+import { Loading } from '@/components/ui/Loading'
 import { useState } from 'react'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
@@ -10,7 +11,7 @@ import { gql } from '@apollo/client'
 import { UserCircle } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
-import { Input } from '@/components/ui/FormControls'
+import { Input, Select } from '@/components/ui/FormControls'
 import { Button } from '@/components/Button'
 import { QueryError } from '@/components/QueryError'
 import { useMe } from '@/hooks/useMe'
@@ -114,7 +115,7 @@ export function ProfilePage() {
           {error ? (
             <QueryError message={error.message} onRetry={() => void refetch()} />
           ) : loading && !me ? (
-            <p style={sectionDesc}>{t('common.loading')}</p>
+            <Loading />
           ) : me ? (
             <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 16px', fontSize: 'var(--font-size-body)', alignItems: 'center' }}>
               <span style={{ color: 'var(--color-slate)' }}>{t('pages.users.name')}</span>
@@ -138,29 +139,20 @@ export function ProfilePage() {
             personale (una volta toccata, l'azienda non contava più) e non
             c'era modo di tornare alla lingua dell'organizzazione.
           */}
-          <select
+          <Select
             aria-label={t('pages.profile.language')}
             value={personal ? (i18n.language.startsWith('it') ? 'it' : 'en') : ORGANIZATION}
             onChange={(e) => {
               void chooseLanguage(e.target.value)
             }}
-            style={{
-              padding: '8px 12px',
-              borderRadius: 6,
-              border: '1px solid var(--border)',
-              fontSize: 'var(--font-size-card-title)',
-              color: 'var(--color-slate-dark)',
-              background: colors.white,
-              cursor: 'pointer',
-              minWidth: 160,
-            }}
+            style={{ cursor: 'pointer', minWidth: 160 }}
           >
             <option value={ORGANIZATION}>
               {t('pages.profile.organizationLanguage', { language: orgLanguage ? t(orgLanguage === 'it' ? 'pages.profile.italian' : 'pages.profile.english') : t('pages.profile.notConfigured') })}
             </option>
             <option value="en">{t('pages.profile.english')}</option>
             <option value="it">{t('pages.profile.italian')}</option>
-          </select>
+          </Select>
         </div>
 
         {/* ── E-mail (revisione del 14 set 2026 · CO-1) ── */}

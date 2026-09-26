@@ -26,12 +26,14 @@
  *
  * Contratto: `serviceMaps` in apps/api/src/graphql/schema-services.ts.
  */
+import { Loading } from '@/components/ui/Loading'
+import { Chip } from '@/components/ui/Chip'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { NetworkStatus } from '@apollo/client'
 import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
-import { Boxes, RefreshCw, XCircle, AlertTriangle, CheckCircle2, Wrench, HelpCircle, Plus, Loader2, type LucideIcon } from 'lucide-react'
+import { Boxes, RefreshCw, AlertTriangle, Plus, Loader2 } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { ListPageHeader } from '@/components/ListPageHeader'
 import { EmptyState } from '@/components/EmptyState'
@@ -39,17 +41,19 @@ import { QueryError, StaleDataBanner } from '@/components/QueryError'
 import { Pagination } from '@/components/ui/Pagination'
 import { Input, Select } from '@/components/ui/FormControls'
 import { Button } from '@/components/Button'
+import { StatTile } from '@/components/ui/StatTile'
+import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { useMe } from '@/hooks/useMe'
 import { useCriticalityLabel } from '@/hooks/useCILabels'
 import { formatDateTime, formatDuration, currentLocale } from '@/lib/datetime'
 import { pausedWhenHidden } from '@/lib/polling'
 import { GET_SERVICE_MAPS } from '@/graphql/queries'
-import { colors, palette } from '@/lib/tokens'
+import { palette } from '@/lib/tokens'
 import { srOnlyStyle } from '@/lib/a11y'
 import { CreateServiceMapDialog } from './CreateServiceMapDialog'
 import { BusinessCapabilitiesSection } from './BusinessCapabilitiesSection'
-import { SERVICE_HEALTH_FAMILY, ServiceHealthBadge, ServiceStatusPill, ImpactScore, causeLabel, healthIfActiveNote, isServiceHealth, serviceHealthFamily, staleShortLabel } from './servicesShared'
-import { SERVICE_MAP_STATUSES, type ServiceHealth, type ServiceMapStatus, type ServiceMapPage, type ServiceMapRow, type ServiceMapFilterVars } from '@/types/services'
+import { SERVICE_HEALTH_FAMILY, ServiceHealthBadge, ServiceHealthIcon, SERVICE_HEALTH_ICON, ServiceStatusPill, ImpactScore, causeLabel, healthIfActiveNote, isServiceHealth, staleShortLabel } from './servicesShared'
+import { SERVICE_HEALTHS, SERVICE_MAP_STATUSES, type ServiceHealth, type ServiceMapStatus, type ServiceMapPage, type ServiceMapRow, type ServiceMapFilterVars } from '@/types/services'
 
 const PAGE_SIZE       = 50
 const POLL_MS         = 15_000
@@ -71,7 +75,6 @@ export const servicesForCIPath = (ciId: string) => `/monitoring/services?ciId=${
  * togliere dai riquadri (C-13).
  */
 const TILE_ORDER: ServiceHealth[] = ['down', 'degraded', 'maintenance', 'operational', 'unknown']
-const TILE_ICON: Record<ServiceHealth, LucideIcon> = { down: XCircle, degraded: AlertTriangle, maintenance: Wrench, operational: CheckCircle2, unknown: HelpCircle }
 
 /*
   La copia locale di questo stile aveva lo stesso difetto dell'originale —
@@ -132,102 +135,85 @@ interface TileProps {
   onClick:  () => void
 }
 
+/** A tile of the page: the app's StatTile (26 Sep 2026), pressed while its filter is on. */
 function HealthTile({ health, value, context, hint, active, onClick }: TileProps) {
   const { t } = useTranslation()
   const fam = SERVICE_HEALTH_FAMILY[health]
-  const Icon = TILE_ICON[health]
-  const body = (
-    <>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <span aria-hidden="true" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, borderRadius: 999, background: fam.tint, color: fam.accent, flexShrink: 0 }}>
-          <Icon size={20} />
-        </span>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 28, lineHeight: 1.1, fontWeight: 700, color: fam.accent, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
-          <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: 2 }}>{t(`monitoring.services.tiles.${health}`)}</div>
-        </div>
-      </div>
-      <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 10 }}>{context}</div>
-    </>
-  )
-  const style: React.CSSProperties = {
-    textAlign: 'left', font: 'inherit', padding: '14px 16px', borderRadius: 12, minWidth: 0,
-    background: active ? fam.tint : colors.white,
-    border: active ? `2px solid ${fam.accent}` : '1px solid var(--border)',
-    boxShadow: 'var(--shadow-card)',
-    cursor: 'pointer',
-    transition: 'background-color 150ms, border-color 150ms',
-  }
-  return <button type="button" onClick={onClick} aria-pressed={active} title={hint} style={style}>{body}</button>
+  const Icon = SERVICE_HEALTH_ICON[health]
+  return <StatTile label={t(`monitoring.services.tiles.${health}`)} value={value} accent={fam.accent} tint={fam.tint} icon={<Icon size={20} />} context={context} hint={hint} onClick={onClick} pressed={active} />
 }
 
 // ── Tabella ──────────────────────────────────────────────────────────────────
 
-const TH: React.CSSProperties = {
-  textAlign: 'left', padding: '10px 12px', fontSize: 'var(--font-size-label)', fontWeight: 600, letterSpacing: '0.05em',
-  textTransform: 'uppercase', color: 'var(--color-slate)', background: 'var(--surface-1)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap',
-}
-const TD: React.CSSProperties = { padding: '10px 12px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', verticalAlign: 'middle' }
-
-/** Riga: il clic apre il dettaglio, il bersaglio da tastiera è il Link sul nome (niente tabIndex sulla riga). */
-function ServiceRowView({ row }: { row: ServiceMapRow }) {
+/**
+ * The columns of the list (26 Sep 2026: the app's table, not a hand-made one).
+ * The row opens the service. `data-tone` keeps the colour of what carries a
+ * judgement (the maintenance note, the stale mark): the table greys the rest.
+ */
+function useServiceColumns(): ColumnDef<ServiceMapRow>[] {
   const { t } = useTranslation()
   const criticalityLabel = useCriticalityLabel()
-  const navigate = useNavigate()
-  // Salute fuori vocabolario → famiglia «rotta» (rossa, loggata), mai un colore plausibile.
-  const fam = serviceHealthFamily(row.health)
-  const since = row.healthSince ? formatDuration(Date.now() - new Date(row.healthSince).getTime()) : null
-  const to = servicePath(row.id)
-  const sinceId = `service-${row.id}-since`
-  const first = row.explanation[0]
-  const ifActive = healthIfActiveNote(t, row)
-  const meta = [row.service.criticality ? criticalityLabel(row.service.criticality) : null].filter(Boolean).join(' · ')
-
-  return (
-    <tr onClick={() => navigate(to)} className="hover-bg" style={{ cursor: 'pointer', borderTop: '1px solid var(--border)' }}>
-      <td style={{ ...TD, borderLeft: `4px solid ${fam.accent}` }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <Link to={to} onClick={(e) => e.stopPropagation()} title={t('monitoring.services.openService', { name: row.name })} style={{ fontWeight: 600, color: 'var(--color-slate-dark)', textDecoration: 'none' }}>
-            {row.name}
-          </Link>
-          {row.status !== 'active' && <ServiceStatusPill status={row.status} />}
-          {row.stale && (
-            <span role="img" data-testid="stale-icon" data-reason={row.staleReason ?? 'none'} aria-label={staleShortLabel(t, row.staleReason)} title={staleShortLabel(t, row.staleReason)} style={{ display: 'inline-flex', color: palette.warning.base }}>
-              <AlertTriangle size={14} aria-hidden="true" />
-            </span>
-          )}
-        </div>
-        {meta && <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 2 }}>{meta}</div>}
-      </td>
-      <td style={TD}>
-        <ServiceHealthBadge health={row.health} />
-        {/* R1: «in manutenzione» da solo nasconderebbe che senza la finestra di change il servizio sarebbe giù. */}
-        {ifActive && (
-          <div data-testid="health-if-active" style={{ fontSize: 'var(--font-size-table)', color: palette.purple.text, marginTop: 3 }}>{ifActive}</div>
-        )}
-        {since && (
-          <div aria-describedby={sinceId} title={t('monitoring.services.sinceHint', { date: formatDateTime(row.healthSince) })} style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 3 }}>
-            {t('monitoring.services.since', { duration: since })}
-            <span id={sinceId} style={SR_ONLY}>{t('monitoring.services.sinceHint', { date: formatDateTime(row.healthSince) })}</span>
+  return [
+    { key: 'name', label: t('monitoring.services.columns.service'), render: (_v, row) => {
+      const meta = [row.service.criticality ? criticalityLabel(row.service.criticality) : null].filter(Boolean).join(' · ')
+      return (
+        // The health as an icon, beside the name (26 Sep 2026: it was a stripe along the row).
+        // The name and its subtitle stand together to the right of the icon, as in the CI health list.
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <ServiceHealthIcon health={row.health} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 600 }}>{row.name}</span>
+              {row.status !== 'active' && <ServiceStatusPill status={row.status} />}
+              {row.stale && (
+                <span role="img" data-testid="stale-icon" data-tone="stale" data-reason={row.staleReason ?? 'none'} aria-label={staleShortLabel(t, row.staleReason)} title={staleShortLabel(t, row.staleReason)} style={{ display: 'inline-flex', color: palette.warning.base }}>
+                  <AlertTriangle size={14} aria-hidden="true" />
+                </span>
+              )}
+            </div>
+            {meta && <div style={{ marginTop: 2 }}>{meta}</div>}
           </div>
-        )}
-      </td>
-      <td style={TD}><ImpactScore score={row.impactScore} health={row.health} /></td>
-      <td style={{ ...TD, maxWidth: 320 }}>
-        {first
-          ? <span title={causeLabel(t, first)} style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{causeLabel(t, first)}</span>
-          : <span style={{ color: 'var(--color-slate-light)' }}>—</span>}
-      </td>
-      <td style={{ ...TD, fontVariantNumeric: 'tabular-nums' }}>{t('monitoring.services.components', { count: row.nodeCount })}</td>
-      <td style={TD}>{row.service.ownerGroup?.name ?? <span style={{ color: 'var(--color-slate-light)' }}>—</span>}</td>
-    </tr>
-  )
+        </div>
+      )
+    } },
+    // The gravest first when sorting up (26 Sep 2026: every column sorts).
+    { key: 'health', label: t('monitoring.services.columns.health'), width: '160px', rank: SERVICE_HEALTHS, render: (_v, row) => {
+      const since = row.healthSince ? formatDuration(Date.now() - new Date(row.healthSince).getTime()) : null
+      const sinceId = `service-${row.id}-since`
+      const ifActive = healthIfActiveNote(t, row)
+      return (
+        <>
+          <ServiceHealthBadge health={row.health} />
+          {/* R1: «in manutenzione» da solo nasconderebbe che senza la finestra di change il servizio sarebbe giù. */}
+          {ifActive && (
+            <div data-testid="health-if-active" data-tone="maintenance" style={{ color: palette.purple.text, marginTop: 3 }}>{ifActive}</div>
+          )}
+          {since && (
+            <div aria-describedby={sinceId} title={t('monitoring.services.sinceHint', { date: formatDateTime(row.healthSince) })} style={{ marginTop: 3 }}>
+              {t('monitoring.services.since', { duration: since })}
+              <span id={sinceId} style={SR_ONLY}>{t('monitoring.services.sinceHint', { date: formatDateTime(row.healthSince) })}</span>
+            </div>
+          )}
+        </>
+      )
+    } },
+    { key: 'impactScore', label: t('monitoring.services.columns.impact'), width: '150px', render: (_v, row) => <ImpactScore score={row.impactScore} health={row.health} /> },
+    { key: 'explanation', label: t('monitoring.services.columns.cause'), sortValue: (row) => (row.explanation[0] ? causeLabel(t, row.explanation[0]) : null), render: (_v, row) => {
+      const first = row.explanation[0]
+      return first
+        ? <span title={causeLabel(t, first)} style={{ display: 'block', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{causeLabel(t, first)}</span>
+        : '—'
+    } },
+    { key: 'nodeCount', label: t('monitoring.services.columns.components'), width: '130px', render: (_v, row) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{t('monitoring.services.components', { count: row.nodeCount })}</span> },
+    { key: 'service', label: t('monitoring.services.columns.owner'), width: '150px', sortValue: (row) => row.service.ownerGroup?.name ?? null, render: (_v, row) => row.service.ownerGroup?.name ?? '—' },
+  ]
 }
 
 // ── Pagina ───────────────────────────────────────────────────────────────────
 
 export function ServicesPage() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const { can } = useMe()
   const managesServices = can('config.services')
 
@@ -303,20 +289,13 @@ export function ServicesPage() {
     ? t('monitoring.services.updatedAt', { time: new Date(lastUpdated).toLocaleTimeString(currentLocale(), { hour: '2-digit', minute: '2-digit' }) })
     : '—'
 
-  const headers: { key: string; label: string; width?: string }[] = [
-    { key: 'service',    label: t('monitoring.services.columns.service') },
-    { key: 'health',     label: t('monitoring.services.columns.health'),     width: '160px' },
-    { key: 'impact',     label: t('monitoring.services.columns.impact'),     width: '150px' },
-    { key: 'cause',      label: t('monitoring.services.columns.cause') },
-    { key: 'components', label: t('monitoring.services.columns.components'), width: '130px' },
-    { key: 'owner',      label: t('monitoring.services.columns.owner'),      width: '150px' },
-  ]
+  const serviceColumns = useServiceColumns()
 
   let tableBody: ReactNode
   if (error && !data) {
     tableBody = <QueryError message={error.message} onRetry={() => void refetch()} />
   } else if (loading && !data) {
-    tableBody = <p role="status" style={{ color: 'var(--color-slate-light)', padding: '24px 0' }}>{t('common.loading')}</p>
+    tableBody = <Loading padded />
   } else if (nothingYet) {
     tableBody = (
       <div className="card-border">
@@ -342,18 +321,15 @@ export function ServicesPage() {
           </span>
           {totalPages > 1 && <span>{t('monitoring.services.page', { page: page + 1, total: totalPages })}</span>}
         </div>
-        <div className="card-border" style={{ overflowX: 'auto' }}>
-          <table aria-label={t('monitoring.services.title')} style={{ width: '100%', minWidth: 860, borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>{headers.map((h) => <th key={h.key} scope="col" style={{ ...TH, width: h.width }}>{h.label}</th>)}</tr>
-            </thead>
-            <tbody>
-              {items.length === 0
-                ? <tr><td colSpan={headers.length} style={{ ...TD, textAlign: 'center', color: 'var(--color-slate-light)', padding: '28px 12px' }}>{t('monitoring.services.noMatch')}</td></tr>
-                : items.map((row) => <ServiceRowView key={row.id} row={row} />)}
-            </tbody>
-          </table>
-        </div>
+        <SortableFilterTable<ServiceMapRow>
+          label={t('monitoring.services.title')}
+          columns={serviceColumns}
+          data={items}
+          emptyMessage={t('monitoring.services.noMatch')}
+          // The server pages the list by gravity: a column sorts the page on screen, and says so.
+          sortHint={t('common.sortPageOnly')}
+          onRowClick={(row) => navigate(servicePath(row.id))}
+       />
         <Pagination currentPage={page + 1} totalPages={totalPages} onPrev={() => setPage(page - 1)} onNext={() => setPage(page + 1)} />
       </>
     )
@@ -395,18 +371,9 @@ export function ServicesPage() {
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 12 }}>
         {/* Arrivo dalla colonna «Servizi» di Salute CI: il chip dice che si guarda un solo CI e il clic lo toglie. */}
         {filter.ciId && (
-          <button
-            type="button"
-            aria-pressed
-            data-testid="services-ci-filter"
-            onClick={() => setParams({ ciId: null })}
-            style={{
-              padding: '4px 10px', borderRadius: 999, cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600,
-              border: '1px solid var(--color-brand)', background: 'var(--color-brand-light)', color: 'var(--color-brand)',
-            }}
-          >
+          <Chip pressed={true} data-testid="services-ci-filter" onClick={() => setParams({ ciId: null })}>
             {t('monitoring.console.ciFilter')}
-          </button>
+          </Chip>
         )}
         <Select aria-label={t('monitoring.services.filters.status')} value={filter.status ?? ''} onChange={(e) => setParams({ status: e.target.value })} style={{ width: 180 }}>
           <option value="">{t('monitoring.services.filters.allStatuses')}</option>

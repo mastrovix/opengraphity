@@ -13,6 +13,7 @@
  *  - un campo usato da un modulo non si cancella, e il rifiuto elenca i moduli
  *    (la colonna «usato da» lo mostra prima di provarci).
  */
+import { Button } from '@/components/Button'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery } from '@apollo/client/react'
@@ -23,8 +24,9 @@ import { CREATE_FORM_FIELD, DELETE_FORM_FIELD, UPDATE_FORM_FIELD } from '@/graph
 import { showError } from '@/lib/showError'
 import { LimitsCard } from './LimitsCard'
 import { FieldEditor, bozzaDaCampo, inputDaBozza, BOZZA_VUOTA, type Bozza } from './FieldEditor'
-import { colors, fontWeight } from '@/lib/tokens'
+import { colors } from '@/lib/tokens'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 
 export interface FormFieldRow {
   id: string
@@ -54,8 +56,6 @@ export interface FormFieldRow {
 
 
 
-const th: React.CSSProperties = { textAlign: 'left', padding: '8px 10px', fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: `1px solid ${colors.border}` }
-const td: React.CSSProperties = { padding: '8px 10px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', borderBottom: `1px solid ${colors.slateBg}`, verticalAlign: 'top' }
 
 export function FieldLibraryPanel() {
   const { t, i18n } = useTranslation()
@@ -64,6 +64,40 @@ export function FieldLibraryPanel() {
   })
   const { data: enumData } = useQuery<{ enumTypes: Array<{ name: string; label: string }> }>(GET_ENUM_TYPES, { fetchPolicy: 'cache-first' })
   const campi = data?.formFields ?? []
+  const apri = (c: FormFieldRow) => { setInModifica(c); setBozza(bozzaDaCampo(c)) }
+  const columns: ColumnDef<FormFieldRow>[] = [
+    { key: 'label', label: t('pages.catalogForms.library.label'), sortable: true, render: (_v, c) => (
+      <>
+        {c.label}
+        {c.required && <span data-tone="danger" style={{ color: 'var(--color-danger)', marginLeft: 3 }}>*</span>}
+        {c.help && <div>{c.help}</div>}
+      </>
+    ) },
+    { key: 'name', label: t('pages.catalogForms.library.name'), sortable: true, render: (_v, c) => <span style={{ fontFamily: 'var(--font-mono)' }}>{c.name}</span> },
+    { key: 'fieldType', label: t('pages.catalogForms.library.type'), sortable: true, render: (_v, c) => (
+      <>
+        {t(`pages.catalogForms.fieldType.${c.fieldType}`)}
+        {c.vocabulary && <div>{c.vocabulary}</div>}
+      </>
+    ) },
+    { key: 'inList', label: t('pages.catalogForms.library.inListShort'), render: (_v, c) => (c.inList ? t('common.yes') : t('common.no')) },
+    { key: 'usedBy', label: t('pages.catalogForms.library.usedBy'), render: (_v, c) => (c.usedBy.length === 0 ? t('pages.catalogForms.library.usedByNone') : c.usedBy.join(', ')) },
+    { key: 'id', label: t('common.actions'), sortable: false, render: (_v, c) => (
+      <span style={{ whiteSpace: 'nowrap' }}>
+        <button type="button" onClick={() => apri(c)} aria-label={t('common.edit')}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', padding: 4 }}>
+          <Pencil size={14} />
+        </button>
+        <button type="button" onClick={() => setDaCancellare(c)} aria-label={t('common.delete')}
+          style={{ background: 'none', border: 'none', cursor: c.usedBy.length > 0 ? 'not-allowed' : 'pointer', color: c.usedBy.length > 0 ? 'var(--color-slate-light)' : 'var(--color-danger)', padding: 4 }}
+          disabled={c.usedBy.length > 0}
+          title={c.usedBy.length > 0 ? t('pages.catalogForms.library.cannotDelete', { forms: c.usedBy.join(', ') }) : undefined}
+        >
+          <Trash2 size={14} />
+        </button>
+      </span>
+    ) },
+  ]
 
   const [bozza, setBozza] = useState<Bozza | null>(null)
   const [inModifica, setInModifica] = useState<FormFieldRow | null>(null)
@@ -102,12 +136,11 @@ export function FieldLibraryPanel() {
         <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', maxWidth: '60ch' }}>
           {t('pages.catalogForms.library.intro')}
         </p>
-        <button type="button"
+        <Button variant="primary"
           onClick={() => { setInModifica(null); setBozza(BOZZA_VUOTA) }}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: colors.white, fontSize: 'var(--font-size-body)', fontWeight: fontWeight.medium, cursor: 'pointer' }}
         >
           <Plus size={14} /> {t('pages.catalogForms.library.add')}
-        </button>
+        </Button>
       </div>
 
       {bozza && (
@@ -134,66 +167,15 @@ export function FieldLibraryPanel() {
         </div>
       )}
 
-      <div className="og-scroll-x">
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              <th style={th}>{t('pages.catalogForms.library.label')}</th>
-              <th style={th}>{t('pages.catalogForms.library.name')}</th>
-              <th style={th}>{t('pages.catalogForms.library.type')}</th>
-              <th style={th}>{t('pages.catalogForms.library.inListShort')}</th>
-              <th style={th}>{t('pages.catalogForms.library.usedBy')}</th>
-              <th style={th} aria-label={t('common.actions')} />
-            </tr>
-          </thead>
-          <tbody>
-            {campi.map((c) => (
-              <tr key={c.id}>
-                <td style={td}>
-                  {c.label}
-                  {c.required && <span style={{ color: 'var(--color-danger)', marginLeft: 3 }}>*</span>}
-                  {c.help && <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{c.help}</div>}
-                </td>
-                <td style={{ ...td, fontFamily: 'var(--font-mono)', color: 'var(--color-slate)' }}>{c.name}</td>
-                <td style={td}>
-                  {t(`pages.catalogForms.fieldType.${c.fieldType}`)}
-                  {c.vocabulary && <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{c.vocabulary}</div>}
-                </td>
-                <td style={{ ...td, color: c.inList ? 'var(--color-slate-dark)' : 'var(--color-slate-light)' }}>
-                  {c.inList ? t('common.yes') : t('common.no')}
-                </td>
-                <td style={td}>
-                  {c.usedBy.length === 0
-                    ? <span style={{ color: 'var(--color-slate-light)' }}>{t('pages.catalogForms.library.usedByNone')}</span>
-                    : c.usedBy.join(', ')}
-                </td>
-                <td style={{ ...td, whiteSpace: 'nowrap', textAlign: 'right' }}>
-                  <button type="button"
-                    onClick={() => {
-                      setInModifica(c)
-                      setBozza(bozzaDaCampo(c))
-                    }}
-                    aria-label={t('common.edit')}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', padding: 4 }}
-                  >
-                    <Pencil size={14} />
-                  </button>
-                  <button type="button" onClick={() => setDaCancellare(c)} aria-label={t('common.delete')}
-                    style={{ background: 'none', border: 'none', cursor: c.usedBy.length > 0 ? 'not-allowed' : 'pointer', color: c.usedBy.length > 0 ? 'var(--color-slate-light)' : 'var(--color-danger)', padding: 4, opacity: c.usedBy.length > 0 ? 0.5 : 1 }}
-                    disabled={c.usedBy.length > 0}
-                    title={c.usedBy.length > 0 ? t('pages.catalogForms.library.cannotDelete', { forms: c.usedBy.join(', ') }) : undefined}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {!loading && campi.length === 0 && (
-              <tr><td style={{ ...td, color: 'var(--color-slate-light)', textAlign: 'center', padding: 28 }} colSpan={6}>{t('pages.catalogForms.library.empty')}</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {/* The app's table (26 Sep 2026: it was hand-made). The row opens the field to edit. */}
+      <SortableFilterTable<FormFieldRow>
+        label={t('pages.catalogForms.tabs.library')}
+        columns={columns}
+        data={campi}
+        loading={loading && !data}
+        emptyMessage={t('pages.catalogForms.library.empty')}
+        onRowClick={apri}
+     />
 
       {daCancellare && (
         <ConfirmModal

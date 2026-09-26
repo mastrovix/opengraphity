@@ -140,11 +140,9 @@ export function Breadcrumb() {
             ) : c.to === null ? (
               <span style={{ color: C.textMuted }}>{c.label}</span>
             ) : (
-              <Link
+              <Link className="hover-strong"
                 to={c.to}
                 style={{ color: C.textMuted, textDecoration: 'none' }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = C.textDefault }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = C.textMuted }}
               >
                 {c.label}
               </Link>

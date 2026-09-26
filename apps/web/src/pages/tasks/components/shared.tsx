@@ -1,6 +1,7 @@
 /**
  * Presentational + styling helpers shared by the TaskViewPage form modules.
  */
+import { Button } from '@/components/Button'
 import { colors } from '@/lib/tokens'
 
 export const inputStyle: React.CSSProperties = {
@@ -79,13 +80,14 @@ export function StickyAction({ label, disabled, blockReason, onClick, busyLabel 
   const off = disabled || busyLabel !== null
   return (
     <div style={{ position: 'sticky', bottom: 0, background: colors.white, borderTop: `1px solid ${colors.border}`, padding: '12px 0', marginTop: 20 }}>
-      <button type="button" disabled={off} aria-busy={busyLabel !== null} onClick={onClick} style={{
-        width: '100%', padding: '12px 24px', borderRadius: 8, border: 'none',
-        backgroundColor: 'var(--color-brand)', color: colors.white, fontSize: 'var(--font-size-card-title)',
-        fontWeight: 600, cursor: busyLabel !== null ? 'wait' : off ? 'not-allowed' : 'pointer', opacity: off ? 0.5 : 1,
-      }}>
+      <Button variant="primary"
+        disabled={off}
+        aria-busy={busyLabel !== null}
+        onClick={onClick}
+        style={{ width: '100%' }}
+      >
         {busyLabel ?? label}
-      </button>
+      </Button>
       {blockReason && <p style={{ margin: '6px 0 0', fontSize: 'var(--font-size-label)', color: 'var(--color-trigger-sla-breach)', textAlign: 'center' }}>{blockReason}</p>}
     </div>
   )

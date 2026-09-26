@@ -82,12 +82,12 @@ describe('useCustomFieldColumns', () => {
     expect(headers).toEqual(['Title', 'Cost center', 'Approved', 'Outcome', 'Go live', 'ticket_ref'])
   })
 
-  it('the customer columns cannot be sorted: the server sorts only on the product\'s fields', () => {
+  it('the customer columns sort too, on the server by their `cf:` key (26 Sep 2026: every column sorts)', () => {
     show([])
     expect(screen.getByRole('columnheader', { name: 'Title' })).toHaveAttribute('aria-sort', 'none')
     const outcome = screen.getByRole('columnheader', { name: 'Outcome' })
-    expect(outcome).not.toHaveAttribute('aria-sort')
-    expect(within(outcome).queryByRole('button')).toBeNull()
+    expect(outcome).toHaveAttribute('aria-sort', 'none')
+    expect(within(outcome).getByRole('button')).toBeInTheDocument()
   })
 
   it('a cell reads like a person reads it: the vocabulary word, Yes/No, the date in the reader\'s format', () => {

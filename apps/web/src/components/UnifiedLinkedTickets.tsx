@@ -13,6 +13,8 @@
  * I link non rimovibili (removable === false, es. change auto-collegate)
  * mostrano un lucchetto invece della ✕.
  */
+import { Pill } from '@/components/ui/Pill'
+import { Button } from '@/components/Button'
 import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -134,10 +136,11 @@ export function UnifiedLinkedTickets({ title, types, excludeId }: { title: strin
   return (
     <SectionCard title={title} count={total} collapsible>
       {linkable.length > 0 && <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-        <button type="button" onClick={() => { setShowSearch((s) => !s); setTerm('') }}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--color-brand)', color: 'var(--color-brand)', background: 'transparent', fontSize: 'var(--font-size-label)', fontWeight: 500, cursor: 'pointer' }}>
+        <Button variant="secondary" size="xs"
+          onClick={() => { setShowSearch((s) => !s); setTerm('') }}
+        >
           <Plus size={12} /> {t(showSearch ? 'common.close' : 'components.linkedTickets.link')}
-        </button>
+        </Button>
       </div>}
 
       {showSearch && active && (
@@ -176,13 +179,13 @@ export function UnifiedLinkedTickets({ title, types, excludeId }: { title: strin
           <div key={g.kind} style={{ marginBottom: 12 }}>
             {/* Intestazione del gruppo per tipologia */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0 6px', borderBottom: '2px solid var(--border)' }}>
-              <span style={{ fontSize: 'var(--font-size-caption)', fontWeight: 700, color: colors.white, background: BADGE[g.kind], borderRadius: 4, padding: '2px 6px' }}>{g.kind}</span>
+              <Pill bg={BADGE[g.kind]} color={colors.white} radius={4} style={{ fontSize: 'var(--font-size-caption)', fontWeight: 700 }}>{g.kind}</Pill>
               <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{g.label}</span>
               <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>({g.rows.length})</span>
             </div>
             {g.rows.map((r) => (
               <div key={`${g.kind}-${r.id}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: `1px solid ${palette.neutral.borderLight}`, fontSize: 'var(--font-size-body)' }}>
-                <span style={{ width: 130 }}><Link to={`${g.routeBase}/${r.id}`} style={{ fontWeight: 600, color: 'var(--color-brand)', textDecoration: 'none' }}>{r.number}</Link></span>
+                <span style={{ width: 130 }}><Link to={`${g.routeBase}/${r.id}`} style={{ fontWeight: 600, color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{r.number}</Link></span>
                 <span style={{ flex: 1, color: 'var(--color-slate-dark)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</span>
                 <StepCell kind={g.kind} status={r.status} />
                 <span style={{ width: 30, display: 'flex', justifyContent: 'flex-end' }}>

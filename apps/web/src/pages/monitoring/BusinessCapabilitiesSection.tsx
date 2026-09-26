@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next'
 import { QueryError } from '@/components/QueryError'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { Pill } from '@/components/ui/Pill'
+import { SimpleTable, type SimpleColumn } from '@/components/ui/SimpleTable'
 import { GET_BUSINESS_CAPABILITIES_HEALTH } from '@/graphql/queries'
 import { colors } from '@/lib/tokens'
 import { TINT_CRITICAL, TINT_WARNING } from '@/lib/eventPalette'
@@ -29,12 +30,6 @@ import type { BusinessCapabilityHealth } from '@/types/services'
  */
 const serviceSearchPath = (name: string) => `/monitoring/services?q=${encodeURIComponent(name)}`
 
-const TH: React.CSSProperties = {
-  textAlign: 'left', padding: '8px 10px', fontSize: 'var(--font-size-label)', fontWeight: 600, letterSpacing: '0.05em',
-  textTransform: 'uppercase', color: colors.slate, borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap',
-}
-const TD: React.CSSProperties = { padding: '8px 10px', fontSize: 'var(--font-size-body)', color: colors.slateDark, verticalAlign: 'top', borderTop: `1px solid ${colors.border}` }
-
 const badgeFont = { fontSize: 'var(--font-size-label)' } as const
 
 export function BusinessCapabilitiesSection() {
@@ -43,6 +38,31 @@ export function BusinessCapabilitiesSection() {
     fetchPolicy: 'cache-and-network',
   })
   const items = data?.businessCapabilitiesHealth ?? []
+  // The app's small table (26 Sep 2026). Read only: a row opens nothing, the services are links.
+  const columns: SimpleColumn<BusinessCapabilityHealth>[] = [
+    { key: 'name', label: t('monitoring.services.capabilities.title'), render: (_v, cap) => <span style={{ fontWeight: 600 }}>{cap.name}</span> },
+    { key: 'health', label: t('monitoring.services.columns.health'), width: '150px', render: (_v, cap) => <ServiceHealthBadge health={cap.health} /> },
+    { key: 'downServices', label: t('monitoring.services.columns.impact'), width: '180px', render: (_v, cap) => (
+      <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
+        {cap.downServices > 0 && (
+          <Pill bg={TINT_CRITICAL.bg} color={TINT_CRITICAL.color} style={badgeFont}>{t('monitoring.services.capabilities.down', { count: cap.downServices })}</Pill>
+        )}
+        {cap.degradedServices > 0 && (
+          <Pill bg={TINT_WARNING.bg} color={TINT_WARNING.color} style={badgeFont}>{t('monitoring.services.capabilities.degraded', { count: cap.degradedServices })}</Pill>
+        )}
+        {cap.downServices === 0 && cap.degradedServices === 0 && <span style={{ color: colors.slateLight }}>—</span>}
+      </span>
+    ) },
+    { key: 'services', label: t('monitoring.services.capabilities.services'), render: (_v, cap) => cap.services.length === 0
+      ? <span style={{ color: colors.slateLight }}>{t('monitoring.services.capabilities.noServices')}</span>
+      : (
+        <span style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
+          {cap.services.map((s) => (
+            <Link key={s.id} to={serviceSearchPath(s.name)} style={{ color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, fontWeight: 500 }}>{s.name}</Link>
+          ))}
+        </span>
+      ) },
+  ]
 
   // Aperta di default: `defaultOpen` è letto al primo render, quando i dati non sono ancora arrivati.
   return (
@@ -52,50 +72,7 @@ export function BusinessCapabilitiesSection() {
       {data && items.length === 0 && (
         <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: colors.slateLight }}>{t('monitoring.services.capabilities.empty')}</p>
       )}
-      {items.length > 0 && (
-        <div style={{ overflowX: 'auto' }}>
-          <table aria-label={t('monitoring.services.capabilities.title')} style={{ width: '100%', minWidth: 620, borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th scope="col" style={TH}>{t('monitoring.services.capabilities.title')}</th>
-                <th scope="col" style={{ ...TH, width: '150px' }}>{t('monitoring.services.columns.health')}</th>
-                <th scope="col" style={{ ...TH, width: '180px' }}>{t('monitoring.services.columns.impact')}</th>
-                <th scope="col" style={TH}>{t('monitoring.services.capabilities.services')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((cap) => (
-                <tr key={cap.id} data-testid="capability-row">
-                  <td style={{ ...TD, fontWeight: 600 }}>{cap.name}</td>
-                  <td style={TD}><ServiceHealthBadge health={cap.health} /></td>
-                  <td style={TD}>
-                    <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
-                      {cap.downServices > 0 && (
-                        <Pill bg={TINT_CRITICAL.bg} color={TINT_CRITICAL.color} style={badgeFont}>{t('monitoring.services.capabilities.down', { count: cap.downServices })}</Pill>
-                      )}
-                      {cap.degradedServices > 0 && (
-                        <Pill bg={TINT_WARNING.bg} color={TINT_WARNING.color} style={badgeFont}>{t('monitoring.services.capabilities.degraded', { count: cap.degradedServices })}</Pill>
-                      )}
-                      {cap.downServices === 0 && cap.degradedServices === 0 && <span style={{ color: colors.slateLight }}>—</span>}
-                    </span>
-                  </td>
-                  <td style={TD}>
-                    {cap.services.length === 0
-                      ? <span style={{ color: colors.slateLight }}>{t('monitoring.services.capabilities.noServices')}</span>
-                      : (
-                        <span style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
-                          {cap.services.map((s) => (
-                            <Link key={s.id} to={serviceSearchPath(s.name)} style={{ color: colors.brand, textDecoration: 'none', fontWeight: 500 }}>{s.name}</Link>
-                          ))}
-                        </span>
-                      )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {items.length > 0 && <SimpleTable<BusinessCapabilityHealth> label={t('monitoring.services.capabilities.title')} columns={columns} rows={items} />}
     </SectionCard>
   )
 }

@@ -80,7 +80,7 @@ async function pressOn(user: UserEvent, grip: RegExp, key: string) {
 const dialogNamed = (name: string) => screen.getByRole('dialog', { name })
 /** A properties modal is closed by its «×», whose name is «Cancel». */
 const closeDialog = async (user: UserEvent, name: string) => {
-  await user.click(within(dialogNamed(name)).getAllByRole('button', { name: 'Cancel' })[0]!)
+  await user.click(within(dialogNamed(name)).getByRole('button', { name: 'Close' }))
   await waitFor(() => expect(screen.queryByRole('dialog', { name })).toBeNull())
 }
 const optionsOf = (select: HTMLElement) => within(select).getAllByRole('option').map((o) => o.textContent)

@@ -17,6 +17,7 @@
  * metterli in due posti vorrebbe dire due verità. Il pannello lo dice e porta
  * il collegamento.
  */
+import { Button } from '@/components/Button'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery } from '@apollo/client/react'
@@ -26,7 +27,7 @@ import { toast } from 'sonner'
 import { GET_CATALOG_ITEMS_WITH_WORKFLOW, GET_WORKFLOW_LIST } from '@/graphql/queries'
 import { DUPLICATE_WORKFLOW_DEFINITION, SET_WORKFLOW_DEFINITION_ACTIVE, UPDATE_SERVICE_CATALOG_ITEM } from '@/graphql/mutations'
 import { showError } from '@/lib/showError'
-import { colors, fontWeight } from '@/lib/tokens'
+import { colors } from '@/lib/tokens'
 import { Input, Select } from '@/components/ui/FormControls'
 
 interface Voce {
@@ -196,15 +197,12 @@ export function ItineraryPanel() {
             </span>
             <Input value={nomeCopia} onChange={(e) => setNomeCopia(e.target.value)} placeholder={t('pages.catalogForms.itinerary.copyNamePlaceholder')} />
           </label>
-          <button type="button" onClick={() => void duplicaIter()} disabled={duplicando || !daDuplicare || nomeCopia.trim() === ''}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, border: 'none',
-              background: 'var(--color-brand)', color: colors.white, fontSize: 'var(--font-size-body)', fontWeight: fontWeight.medium,
-              cursor: duplicando || !daDuplicare || nomeCopia.trim() === '' ? 'not-allowed' : 'pointer',
-              opacity: duplicando || !daDuplicare || nomeCopia.trim() === '' ? 0.55 : 1,
-            }}>
+          <Button variant="primary"
+            onClick={() => duplicaIter()}
+            disabled={duplicando || !daDuplicare || nomeCopia.trim() === ''}
+          >
             <Copy size={14} /> {t('pages.catalogForms.itinerary.duplicate')}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -230,7 +228,7 @@ export function ItineraryPanel() {
                       : t('pages.catalogForms.itinerary.everyCategory')}
                   </span>
                 </span>
-                <Link to={`/workflow/${d.id}`} style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-brand-hover)', textDecoration: 'none', whiteSpace: 'nowrap' }}>
+                <Link to={`/workflow/${d.id}`} style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, whiteSpace: 'nowrap' }}>
                   {t('pages.catalogForms.itinerary.openInDesigner')}
                 </Link>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 'var(--font-size-body)', color: d.active ? 'var(--color-slate-dark)' : 'var(--color-slate-light)' }}>
@@ -313,7 +311,7 @@ export function ItineraryPanel() {
 
       <p style={{ marginTop: 18, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', maxWidth: '70ch' }}>
         {t('pages.catalogForms.itinerary.approversElsewhere')}{' '}
-        <Link to="/workflow" style={{ color: 'var(--color-brand)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+        <Link to="/workflow" style={{ color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
           {t('sidebar.workflowDesigner')} <ExternalLink size={11} />
         </Link>
       </p>

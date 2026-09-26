@@ -1,3 +1,4 @@
+import { Input, Select } from '@/components/ui/FormControls'
 import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -117,11 +118,6 @@ const labelStyle: React.CSSProperties = {
   fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase',
   letterSpacing: '0.05em', marginBottom: 6, display: 'block',
 }
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '8px 12px', borderRadius: 6,
-  border: `1px solid ${palette.neutral.borderStrong}`, fontSize: 'var(--font-size-body)', boxSizing: 'border-box',
-}
-const selectStyle: React.CSSProperties = { ...inputStyle, background: colors.white }
 
 export function ReportChartConfig({
   chartType, onChartTypeChange,
@@ -198,13 +194,13 @@ export function ReportChartConfig({
             <div>
               <div style={labelStyle}>{t('reportChart.groupBy')}</div>
               <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                <select aria-label={t('a11y.chartGroupByNode')} value={groupByNodeId} onChange={e => onGroupByNodeIdChange(e.target.value)} style={{ ...selectStyle, flex: 1 }}>
+                <Select aria-label={t('a11y.chartGroupByNode')} value={groupByNodeId} onChange={e => onGroupByNodeIdChange(e.target.value)} style={{ flex: 1 }}>
                   <option value="">{t('reportChart.nodePlaceholder')}</option>
                   {resultNodes.map(([nid, nd]) => (
                     <option key={nid} value={nid}>{nd.label}</option>
                   ))}
-                </select>
-                <select aria-label={t('a11y.chartGroupByField')} value={groupByField} onChange={e => onGroupByFieldChange(e.target.value)} style={{ ...selectStyle, flex: 1 }}>
+                </Select>
+                <Select aria-label={t('a11y.chartGroupByField')} value={groupByField} onChange={e => onGroupByFieldChange(e.target.value)} style={{ flex: 1 }}>
                   <option value="">{t('reportChart.fieldOption')}</option>
                   {groupByNodeId && nodeDataMap[groupByNodeId]
                     ? nodeDataMap[groupByNodeId].fields
@@ -213,7 +209,7 @@ export function ReportChartConfig({
                           <option key={f.name} value={f.name}>{navigableLabel(t, f)}</option>
                         ))
                     : null}
-                </select>
+                </Select>
               </div>
               {isTimeSeries && step3DateFields.length === 0 && (
                 <div style={{ color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)', marginTop: 8 }}>
@@ -227,9 +223,9 @@ export function ReportChartConfig({
             <div style={{ display: 'flex', gap: 12 }}>
               <div style={{ flex: 1 }}>
                 <label htmlFor={ids.metric} style={labelStyle}>{t('reportChart.metricLabel')}</label>
-                <select id={ids.metric} value={metric} onChange={e => onMetricChange(e.target.value)} style={selectStyle}>
+                <Select id={ids.metric} value={metric} onChange={e => onMetricChange(e.target.value)}>
                   {METRIC_TYPES.map(m => <option key={m.value} value={m.value}>{t(m.labelKey)}</option>)}
-                </select>
+                </Select>
               </div>
               {/*
                 IL CAMPO DELLA METRICA VIENE DALLA RADICE (19 set 2026).
@@ -244,12 +240,12 @@ export function ReportChartConfig({
               {metric !== 'count' && (
                 <div style={{ flex: 1 }}>
                   <label htmlFor={ids.metricField} style={labelStyle}>{t('reportChart.field')}</label>
-                  <select id={ids.metricField} value={metricField} onChange={e => onMetricFieldChange(e.target.value)} style={selectStyle}>
+                  <Select id={ids.metricField} value={metricField} onChange={e => onMetricFieldChange(e.target.value)}>
                     <option value="">{t('common.select')}</option>
                     {campiNumericiDellaRadice.map((f) => (
                       <option key={f.name} value={f.name}>{navigableLabel(t, f)}</option>
                     ))}
-                  </select>
+                  </Select>
                   {campiNumericiDellaRadice.length === 0 && (
                     <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
                       {t('reportChart.noNumericField')}
@@ -276,10 +272,13 @@ export function ReportChartConfig({
           {needsGroupBy && raggruppaPerData && (
             <div>
               <label htmlFor={ids.granularity} style={labelStyle}>{t('reportChart.granularityLabel')}</label>
-              <select id={ids.granularity} value={groupByGranularity || 'day'}
-                onChange={e => onGroupByGranularityChange(e.target.value)} style={selectStyle}>
+              <Select
+                id={ids.granularity}
+                value={groupByGranularity || 'day'}
+                onChange={e => onGroupByGranularityChange(e.target.value)}
+              >
                 {GRANULARITIES.map(g => <option key={g.value} value={g.value}>{t(g.labelKey)}</option>)}
-              </select>
+              </Select>
             </div>
           )}
 
@@ -287,14 +286,14 @@ export function ReportChartConfig({
             <div style={{ display: 'flex', gap: 12 }}>
               <div style={{ flex: 1 }}>
                 <label htmlFor={ids.limit} style={labelStyle}>{t('reportChart.topN')}</label>
-                <input id={ids.limit} type="number" value={limit} onChange={e => onLimitChange(Number(e.target.value))} style={inputStyle} min={1} max={100} />
+                <Input id={ids.limit} type="number" value={limit} onChange={e => onLimitChange(Number(e.target.value))} min={1} max={100} />
               </div>
               <div style={{ flex: 1 }}>
                 <label htmlFor={ids.sortDir} style={labelStyle}>{t('common.order')}</label>
-                <select id={ids.sortDir} value={sortDir} onChange={e => onSortDirChange(e.target.value)} style={selectStyle}>
+                <Select id={ids.sortDir} value={sortDir} onChange={e => onSortDirChange(e.target.value)}>
                   <option value="DESC">{t('reportChart.descending')}</option>
                   <option value="ASC">{t('reportChart.ascending')}</option>
-                </select>
+                </Select>
               </div>
             </div>
           )}

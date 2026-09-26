@@ -1,7 +1,10 @@
+import { Loading } from '@/components/ui/Loading'
+import { Pill } from '@/components/ui/Pill'
 import { Settings2, AlertCircle, Search, GitPullRequest, Inbox } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
+import { Tabs } from '@/components/ui/Tabs'
 import { CIIcon } from '@/lib/ciIcon'
 import { useITILTypeDesigner } from './useITILTypeDesigner'
 import type { Tab } from './useITILTypeDesigner'
@@ -36,9 +39,7 @@ export function ITILTypeDesignerPage() {
       </div>
 
       {loading && (
-        <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', padding: 16 }}>
-          {t('common.loading')}
-        </div>
+        <Loading />
       )}
 
       {!loading && (
@@ -81,18 +82,17 @@ export function ITILTypeDesignerPage() {
                       <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{selectedType.label}</div>
                       <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{selectedType.name}</div>
                     </div>
-                    <span style={{ marginLeft: 8, padding: '3px 10px', border: '1px solid var(--border)', borderRadius: 100, fontSize: 'var(--font-size-body)', background: palette.success.tint, color: 'var(--color-success)', fontWeight: 500 }}>● {t('common.active')}</span>
+                    <Pill bg={palette.success.tint} color="var(--color-success)" radius={100} style={{ marginLeft: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-body)', fontWeight: 500 }}>● {t('common.active')}</Pill>
                   </div>
                 </div>
                 {/* Tabs */}
-                <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', padding: '0 20px' }}>
-                  {(['settings', 'fields', 'ciExclusions', 'rules', 'preview'] as Tab[]).map((tab) => (
-                    <button type="button" key={tab} onClick={() => h.handleTabChange(tab)}
-                      style={{ padding: '10px 14px', border: 'none', borderBottom: h.activeTab === tab ? '2px solid var(--color-brand)' : '2px solid transparent', marginBottom: -1, background: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer', color: h.activeTab === tab ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: h.activeTab === tab ? 600 : 400 }}>
-                      {tab === 'ciExclusions' ? t('itilDesigner.ciExclusions.tab') : t(`citypeDesigner.tab.${tab}`)}
-                    </button>
-                  ))}
-                </div>
+                <Tabs<Tab>
+                  ariaLabel={t('itilDesigner.tabsLabel')}
+                  items={(['settings', 'fields', 'ciExclusions', 'rules', 'preview'] as Tab[]).map((tab) => ({ key: tab, label: tab === 'ciExclusions' ? t('itilDesigner.ciExclusions.tab') : t(`citypeDesigner.tab.${tab}`) }))}
+                  value={h.activeTab}
+                  onChange={(tab) => h.handleTabChange(tab)}
+                  style={{ padding: '0 20px', marginBottom: 0 }}
+                />
                 {/* Tab content */}
                 <div style={{ padding: '20px 24px' }}>
                   {h.activeTab === 'settings' && <ITILTypeSettings settingsForm={settingsForm} setSettingsForm={h.setSettingsForm} settingsSaving={h.settingsSaving} onSaveSettings={h.handleSaveSettings} FallbackIcon={FallbackIcon} />}

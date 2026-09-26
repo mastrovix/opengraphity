@@ -23,6 +23,7 @@
  * del prodotto è l'inglese e i nomi dei campi sono codice; le spiegazioni
  * passano da i18n, quindi chi lavora in italiano legge italiano.
  */
+import { Button } from '@/components/Button'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronRight, Plus } from 'lucide-react'
@@ -87,20 +88,14 @@ export function ScriptHelp({ campi, conFormula, onInserisci }: {
                 e un appunti che su un tablet chiede un permesso è un modo di
                 non funzionare. Si aggiunge in coda: non si sovrascrive quello
                 che c'è già. */}
-            <button
-              type="button"
+            <Button variant="secondary"
               onClick={() => { onInserisci(dove, e.codice) }}
               title={t('pages.catalogForms.library.help.insert')}
               aria-label={t('pages.catalogForms.library.help.insert')}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 4, flex: '0 0 auto',
-                padding: '5px 8px', borderRadius: 6, border: `1px solid ${colors.border}`,
-                background: colors.white, cursor: 'pointer',
-                fontSize: 'var(--font-size-table)', color: 'var(--color-brand)',
-              }}
+              style={{ flex: '0 0 auto' }}
             >
               <Plus size={12} /> {t('pages.catalogForms.library.help.insert')}
-            </button>
+            </Button>
           </div>
         </div>
       ))}
@@ -116,7 +111,7 @@ export function ScriptHelp({ campi, conFormula, onInserisci }: {
         style={{
           display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
           padding: '8px 10px', borderRadius: 8, border: 'none', background: 'none', cursor: 'pointer',
-          fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', fontWeight: fontWeight.medium,
+          fontSize: 'var(--font-size-body)', color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, fontWeight: fontWeight.medium,
         }}
       >
         {aperto ? <ChevronDown size={14} /> : <ChevronRight size={14} />}

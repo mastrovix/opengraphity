@@ -19,18 +19,13 @@
  * dire leggere il suo codice, che è esattamente il mestiere che non vogliamo
  * fare a mano.
  */
+import { Textarea } from '@/components/ui/FormControls'
+import { Button } from '@/components/Button'
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { runFormula } from '@opengraphity/web-core'
-import { colors } from '@/lib/tokens'
 import { ScriptHelp, type CampoLeggibile } from './ScriptHelp'
 
-const areaStile: React.CSSProperties = {
-  width: '100%', minHeight: 64, padding: '6px 8px', borderRadius: 6,
-  border: `1px solid ${colors.border}`, background: colors.white,
-  fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-table)',
-  color: 'var(--color-slate-dark)', boxSizing: 'border-box', resize: 'vertical',
-}
 
 const aiutoStile: React.CSSProperties = {
   margin: '4px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', maxWidth: '70ch',
@@ -86,12 +81,11 @@ export function ScriptFields({
           <label htmlFor={idFormula} style={{ display: 'block', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginBottom: 3 }}>
             {t('pages.catalogForms.library.formula')}
           </label>
-          <textarea
+          <Textarea
             id={idFormula}
             value={formula}
             onChange={(e) => { onFormula(e.target.value); setEsito(null) }}
             placeholder={t('pages.catalogForms.library.formulaPlaceholder')}
-            style={areaStile}
             spellCheck={false}
           />
           <p style={aiutoStile}>{t('pages.catalogForms.library.formulaHelp')}</p>
@@ -102,17 +96,20 @@ export function ScriptFields({
                 <span style={{ display: 'block', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginBottom: 3 }}>
                   {t('pages.catalogForms.library.testInput')}
                 </span>
-                <textarea value={valoriProva} onChange={(e) => setValoriProva(e.target.value)}
-                  style={{ ...areaStile, minHeight: 40 }} spellCheck={false} />
+                <Textarea
+                  value={valoriProva}
+                  onChange={(e) => setValoriProva(e.target.value)}
+                  spellCheck={false}
+                  style={{ minHeight: 40 }}
+                />
               </label>
-              <button type="button" onClick={() => void prova()} disabled={provando}
-                style={{
-                  marginTop: 18, padding: '6px 12px', borderRadius: 8, border: `1px solid ${colors.border}`,
-                  background: colors.white, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)',
-                  cursor: provando ? 'progress' : 'pointer',
-                }}>
+              <Button variant="secondary"
+                onClick={() => prova()}
+                disabled={provando}
+                style={{ marginTop: 18 }}
+              >
                 {t('pages.catalogForms.library.testFormula')}
-              </button>
+              </Button>
               {esito && (
                 /* `role="status"`: chi usa un lettore di schermo premeva «Prova»
                    e non sentiva NIENTE. */
@@ -133,12 +130,11 @@ export function ScriptFields({
         <label htmlFor={idScript} style={{ display: 'block', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginBottom: 3 }}>
           {t('pages.catalogForms.library.validationScript')}
         </label>
-        <textarea
+        <Textarea
           id={idScript}
           value={validationScript}
           onChange={(e) => onValidationScript(e.target.value)}
           placeholder={t('pages.catalogForms.library.validationScriptPlaceholder')}
-          style={areaStile}
           spellCheck={false}
         />
         <p style={aiutoStile}>{t('pages.catalogForms.library.validationScriptHelp')}</p>

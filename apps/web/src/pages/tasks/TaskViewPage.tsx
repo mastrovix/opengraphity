@@ -7,6 +7,10 @@
  * here; form components are purely controlled and receive their data +
  * callbacks via props.
  */
+import { Loading } from '@/components/ui/Loading'
+import { DetailTitle } from '@/components/ui/BackLink'
+import { Select } from '@/components/ui/FormControls'
+import { Button } from '@/components/Button'
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery } from '@apollo/client/react'
@@ -35,10 +39,10 @@ import { ReviewTaskForm } from './components/ReviewTaskForm'
 import { ChangeOverviewSidebar } from './components/ChangeOverviewSidebar'
 import { ReopenModal } from './components/ReopenModal'
 import { TeamGatePanel } from './components/TeamGatePanel'
-import { KIND_TITLE_KEY, inputStyle } from './components/shared'
+import { KIND_TITLE_KEY } from './components/shared'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { DetailLayout } from '@/components/ui/DetailLayout'
-import { colors, palette } from '@/lib/tokens'
+import { colors } from '@/lib/tokens'
 import { plannedWindowStart, beforePlannedWindow } from './components/plannedWindow'
 import { useConfirm } from '@/hooks/useConfirm'
 import { formatDateTime } from '@/lib/datetime'
@@ -150,7 +154,7 @@ export function TaskViewPage() {
     else if (kind === 'review') void m.reopenRev({ variables: { id, reason } })
   }
 
-  if (taskLoading && !task) return <PageContainer><p>{t('common.loading')}</p></PageContainer>
+  if (taskLoading && !task) return <PageContainer><Loading /></PageContainer>
   if (taskError && !taskData) return <PageContainer><QueryError message={taskError.message} onRetry={() => void refetchTask()} /></PageContainer>
   if (!task) return <PageContainer><p>{t('pages.taskView.notFound')}</p></PageContainer>
 
@@ -202,7 +206,7 @@ export function TaskViewPage() {
           {t('sidebar.teams')}: {tsk.assignedTeam?.name ?? '—'}
         </span>
         <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginLeft: 12 }}>{t('pages.taskView.assignedTo')}</span>
-        <select
+        <Select
           aria-label={t('pages.taskView.assignedTo')}
           disabled={!canAssign}
           value={tsk.assignee?.id ?? ''}
@@ -213,11 +217,11 @@ export function TaskViewPage() {
             const assign = task.kind === 'deploy-plan' ? m.assignPlanUser : m.assignUser
             void assign({ variables: { taskId: tsk.id, userId: e.target.value || null } })
           }}
-          style={{ ...inputStyle, flex: 1, maxWidth: 250 }}
+          style={{ flex: 1, maxWidth: 250 }}
         >
           <option value="">{t('pages.taskView.unassigned')}</option>
           {teamUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-        </select>
+        </Select>
       </div>
     )
   })()
@@ -227,7 +231,7 @@ export function TaskViewPage() {
       {/* Il codice dell'attività è il titolo della pagina: il percorso finisce sul
           tipo di attività, altrimenti «TASK…» si leggeva due volte di fila. */}
       <nav aria-label={t('topbar.breadcrumb')} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
-        <Link to={`/changes/${task.changeId}`} style={{ color: 'var(--color-brand)', textDecoration: 'none' }}>{task.changeCode}</Link>
+        <Link to={`/changes/${task.changeId}`} style={{ color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{task.changeCode}</Link>
         <ChevronRight size={14} aria-hidden="true" />
         <span style={{ color: 'var(--color-slate)' }}>{task.ciName}</span>
         <ChevronRight size={14} aria-hidden="true" />
@@ -238,23 +242,15 @@ export function TaskViewPage() {
         <div>
           {showReopenModal && <ReopenModal onConfirm={handleReopen} onCancel={() => setShowReopenModal(false)} />}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
-            <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>
+            <DetailTitle>
               {task.code}
-            </h1>
+            </DetailTitle>
             {actsForAnyTeam && isTaskCompleted && (
-              <button
-                type="button"
+              <Button variant="secondary"
                 onClick={() => setShowReopenModal(true)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '6px 12px', borderRadius: 6,
-                  border: `1px solid ${colors.warning}`, background: 'var(--color-warning-bg)',
-                  color: palette.warning.strong, fontWeight: 600, cursor: 'pointer',
-                  fontSize: 'var(--font-size-body)',
-                }}
               >
                 <RotateCcw size={14} /> {t('changeTasks.reopenTask')}
-              </button>
+              </Button>
             )}
           </div>
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: '0 0 20px' }}>
@@ -275,7 +271,7 @@ export function TaskViewPage() {
           {task.kind === 'assessment' && assessTask && catalog === null && (
             catalogRead?.error
               ? <QueryError message={t('pages.taskView.questionsUnavailable', { error: catalogRead.error.message })} onRetry={() => void catalogRead.refetch()} />
-              : <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{t('common.loading')}</p>
+              : <Loading />
           )}
 
           {task.kind === 'assessment' && assessTask && catalog !== null && (

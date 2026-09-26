@@ -7,6 +7,7 @@
  * what the person adds. Once sent, the button gives way to the date; the
  * answers come back as comments on the Problem.
  */
+import { Loading } from '@/components/ui/Loading'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLazyQuery, useMutation } from '@apollo/client/react'
@@ -75,7 +76,7 @@ export function ReportToOpenGrafo({ problemId, state, onSent }: Props) {
           <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', marginTop: 12 }}>
             {t('pages.problemDetail.openGrafoReport.whatLeaves')}
           </div>
-          {draft.loading && <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>{t('common.loading')}</p>}
+          {draft.loading && <Loading />}
           {draft.error && <p role="alert" style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>{draft.error.message}</p>}
           {rows.length > 0 && (
             <dl aria-label={t('pages.problemDetail.openGrafoReport.whatLeaves')} style={{ margin: '6px 0 0', display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '4px 12px', fontSize: 'var(--font-size-body)' }}>

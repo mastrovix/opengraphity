@@ -19,6 +19,7 @@
  * Nome e tipo non si cambiano dopo: `inModifica` li blocca. E il nome proposto
  * smette di seguire l'etichetta appena qualcuno lo scrive a mano.
  */
+import { Button } from '@/components/Button'
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@apollo/client/react'
@@ -28,7 +29,7 @@ import {
 } from '@opengraphity/types'
 import { ScriptFields } from './ScriptFields'
 import { TableColumnsEditor } from './TableColumnsEditor'
-import { colors, fontWeight } from '@/lib/tokens'
+import { colors } from '@/lib/tokens'
 import { Input, Select, LabelledField } from '@/components/ui/FormControls'
 import { GET_CI_TYPES } from '@/graphql/queries'
 import { useCIBaseEnums } from '@/lib/ciEnums'
@@ -565,14 +566,17 @@ export function FieldEditor({
         />
 
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-          <button type="button" disabled={busy} onClick={() => { void save() }}
-            style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: colors.white, fontSize: 'var(--font-size-body)', fontWeight: fontWeight.medium, cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1 }}>
+          <Button variant="primary"
+            disabled={busy}
+            onClick={() => { void save() }}
+          >
             {busy ? t('common.saving') : etichettaSalva}
-          </button>
-          <button type="button" onClick={onAnnulla}
-            style={{ padding: '7px 14px', borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.white, fontSize: 'var(--font-size-body)', cursor: 'pointer', color: 'var(--color-slate-dark)' }}>
+          </Button>
+          <Button variant="secondary"
+            onClick={onAnnulla}
+          >
             {t('common.cancel')}
-          </button>
+          </Button>
         </div>
 
     </>

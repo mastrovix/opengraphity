@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { BarChart2 } from 'lucide-react'
 import { useElementWidth } from '@/lib/charts/useElementWidth'
 import { fontFamily, colors, palette } from '@/lib/tokens'
+import { SimpleTable, type SimpleColumn } from '@/components/ui/SimpleTable'
 import {
   buildBarOption, buildHorizontalBarOption, buildLineOption, buildPieOption, toPoints,
   type LooseChartPoint,
@@ -160,36 +161,13 @@ export function ReportChartRenderer({ chartType, data, title, error, errorKey, v
 
     case 'table': {
       const d = parsed as TableData
-      return (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily }}>
-            <thead>
-              <tr>
-                {d.columns.map(col => (
-                  <th key={col} style={{ textAlign: 'left', padding: '10px 14px', whiteSpace: 'nowrap' }}>
-                    {col}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {d.rows.map((row, i) => (
-                <tr key={i} style={{ borderBottom: `1px solid ${palette.neutral.borderLight}`, background: i % 2 === 0 ? colors.white : palette.neutral.surface1 }}>
-                  {(row as unknown[]).map((cell, j) => (
-                    <td key={j} style={{
-                      padding: '10px 14px', fontSize: 'var(--font-size-card-title)',
-                      color: j === 0 ? 'var(--color-slate-dark)' : 'var(--color-slate)',
-                      fontWeight: j === 0 ? 500 : 400,
-                    }}>
-                      {String(cell ?? '—')}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )
+      // The app's small table (26 Sep 2026: it was hand-made). The first column names the row.
+      const columns: SimpleColumn<Record<string, unknown> & { id: string }>[] = d.columns.map((col, j) => ({
+        key: `c${j}`, label: col,
+        render: (v) => <span style={{ fontWeight: j === 0 ? 500 : 400 }}>{String(v ?? '—')}</span>,
+      }))
+      const rows = d.rows.map((row, i) => ({ id: String(i), ...Object.fromEntries((row as unknown[]).map((cell, j) => [`c${j}`, cell])) }))
+      return <SimpleTable columns={columns} rows={rows} />
     }
 
     default:

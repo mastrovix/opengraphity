@@ -35,7 +35,7 @@ export function CIServicesSection({ ciId }: { ciId: string }) {
               const first = s.explanation[0]
               return (
                 <li key={s.id} data-testid="ci-service-row" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 'var(--font-size-body)' }}>
-                  <Link to={`/monitoring/services/${s.id}`} style={{ color: colors.brand, textDecoration: 'none', fontWeight: 600 }}>{s.name}</Link>
+                  <Link to={`/monitoring/services/${s.id}`} style={{ color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, fontWeight: 600 }}>{s.name}</Link>
                   <ServiceHealthBadge health={s.health} />
                   <ImpactScore score={s.impactScore} health={s.health} width={60} />
                   {/* R1: «in manutenzione» da solo non dice come starebbe il servizio senza la finestra di change. */}

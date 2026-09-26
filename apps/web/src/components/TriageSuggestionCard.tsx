@@ -1,3 +1,5 @@
+import { Pill } from '@/components/ui/Pill'
+import { Button } from '@/components/Button'
 import { useTranslation } from 'react-i18next'
 import { useAIFeature } from '@/hooks/useAIFeature'
 import { AIDisabledNotice } from '@/components/ai/AIDisabledNotice'
@@ -71,22 +73,13 @@ export function TriageSuggestionCard({
 
   return (
     <div style={{ marginBottom: 20 }}>
-      <button
-        type="button"
+      <Button variant="secondary"
         disabled={loading || title.trim() === ''}
-        onClick={() => void run({ variables: { title, description: description || null, ciIds } })}
+        onClick={() => run({ variables: { title, description: description || null, ciIds } })}
         title={t(title.trim() === '' ? 'components.triage.needsTitle' : 'components.triage.hint')}
-        style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          padding: '7px 14px', borderRadius: 8,
-          border: '1px solid var(--color-brand)', background: 'transparent',
-          color: 'var(--color-brand)', fontSize: 'var(--font-size-body)', fontWeight: 500,
-          cursor: loading || title.trim() === '' ? 'not-allowed' : 'pointer',
-          opacity: title.trim() === '' ? 0.5 : 1,
-        }}
       >
         <Sparkles size={14} /> {loading ? t('components.triage.analyzing') : t('components.triage.suggest')}
-      </button>
+      </Button>
 
       {error && (
         <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--color-danger-bg)', border: `1px solid ${palette.danger.border}`, borderRadius: 8, color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)' }}>
@@ -100,22 +93,22 @@ export function TriageSuggestionCard({
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>
               <Sparkles size={13} color="var(--color-brand)" /> {t('components.triage.title')}
             </span>
-            <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: conf.bg, color: conf.color, textTransform: 'uppercase' }}>
+            <Pill bg={conf.bg} color={conf.color} radius={10} style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase' }}>
               {i18n.exists(conf.labelKey) ? t(conf.labelKey) : conf.labelKey}
-            </span>
+            </Pill>
           </div>
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-            <span style={{ fontSize: 'var(--font-size-label)', padding: '3px 10px', borderRadius: 6, background: colors.white, border: `1px solid ${colors.border}`, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Pill bg={colors.white} color="var(--color-slate-dark)" style={{ fontSize: 'var(--font-size-label)', fontWeight: 400, border: `1px solid ${colors.border}`, gap: 4 }}>
               {t('pages.incidents.priority')}: <SeverityBadge value={s.severity} />
-            </span>
-            <span style={{ fontSize: 'var(--font-size-label)', padding: '3px 10px', borderRadius: 6, background: colors.white, border: `1px solid ${colors.border}` }}>
+            </Pill>
+            <Pill bg={colors.white} color="var(--color-slate-dark)" style={{ fontSize: 'var(--font-size-label)', fontWeight: 400, border: `1px solid ${colors.border}` }}>
               {t('pages.kb.category')}: <strong>{s.category}</strong>
-            </span>
+            </Pill>
             {s.teamName && (
-              <span style={{ fontSize: 'var(--font-size-label)', padding: '3px 10px', borderRadius: 6, background: colors.white, border: `1px solid ${colors.border}` }}>
+              <Pill bg={colors.white} color="var(--color-slate-dark)" style={{ fontSize: 'var(--font-size-label)', fontWeight: 400, border: `1px solid ${colors.border}` }}>
                 {t('detail.team')}: <strong>{s.teamName}</strong>
-              </span>
+              </Pill>
             )}
           </div>
 
@@ -138,13 +131,11 @@ export function TriageSuggestionCard({
             </p>
           )}
 
-          <button
-            type="button"
+          <Button variant="primary"
             onClick={() => onApply({ severity: s.severity, category: s.category, teamName: s.teamName })}
-            style={{ padding: '6px 16px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: colors.white, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: 'pointer' }}
           >
             {t('components.triage.apply')}
-          </button>
+          </Button>
         </div>
       )}
     </div>

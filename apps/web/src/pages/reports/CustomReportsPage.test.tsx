@@ -628,13 +628,13 @@ describe('Report Builder — a report', () => {
   it('removing a section asks first, and only a yes removes it', async () => {
     const { user } = renderWithProviders(<CustomReportsPage />)
     await openReport(user)
-    await user.click(screen.getAllByRole('button', { name: '🗑' })[1]!)
+    await user.click(screen.getAllByRole('button', { name: 'Delete' })[1]!)
     expect(within(dialog()).getByText('Remove the section?')).toBeInTheDocument()
     await user.click(within(dialog()).getByRole('button', { name: 'Cancel' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     expect(apolloFinto.chiamata('RemoveReportSection')).toBeUndefined()
 
-    await user.click(screen.getAllByRole('button', { name: '🗑' })[1]!)
+    await user.click(screen.getAllByRole('button', { name: 'Delete' })[1]!)
     await user.click(within(dialog()).getByRole('button', { name: 'Delete' }))
     await waitFor(() => expect(apolloFinto.chiamata('RemoveReportSection')).toEqual({ templateId: 'r1', sectionId: 's2' }))
     expect(apolloFinto.refetch).toHaveBeenCalled()
@@ -644,7 +644,7 @@ describe('Report Builder — a report', () => {
     apolloFinto.esiti['RemoveReportSection'] = { error: new Error('Section is locked') }
     const { user } = renderWithProviders(<CustomReportsPage />)
     await openReport(user)
-    await user.click(screen.getAllByRole('button', { name: '🗑' })[0]!)
+    await user.click(screen.getAllByRole('button', { name: 'Delete' })[0]!)
     await user.click(within(dialog()).getByRole('button', { name: 'Delete' }))
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Section is locked'))
     expect(apolloFinto.refetch).not.toHaveBeenCalled()

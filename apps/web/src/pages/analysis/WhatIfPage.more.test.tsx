@@ -304,7 +304,7 @@ describe('the services and teams tabs', () => {
   it('a service shows its environment, impact and path, and opens its CI page (the graph label becomes the route)', async () => {
     apolloFinto.risposte['WhatIfAnalysis'] = { whatIfAnalysis: result({ impactedServices: SERVICES }) }
     const { user } = renderWithProviders(<WhatIfPage />)
-    await user.click(screen.getByRole('button', { name: 'Services (2)' }))
+    await user.click(screen.getByRole('tab', { name: /^Services/ }))
     const checkout = within(screen.getByRole('row', { name: /Checkout/ })).getAllByRole('cell').map((c) => c.textContent)
     expect(checkout).toEqual(['Checkout', 'production', 'Critical', 'orders-db → orders-app-01 → Checkout'])
     const reporting = within(screen.getByRole('row', { name: /Reporting/ })).getAllByRole('cell').map((c) => c.textContent)
@@ -318,14 +318,14 @@ describe('the services and teams tabs', () => {
     const teams = Array.from({ length: 21 }, (_, i) => ({ id: `t${i}`, name: `team-${String(i).padStart(2, '0')}`, role: 'owner', impactedCICount: 1 }))
     apolloFinto.risposte['WhatIfAnalysis'] = { whatIfAnalysis: result({ impactedServices: services, impactedTeams: teams }) }
     const { user } = renderWithProviders(<WhatIfPage />)
-    await user.click(screen.getByRole('button', { name: 'Services (25)' }))
+    await user.click(screen.getByRole('tab', { name: /^Services/ }))
     expect(names()).toHaveLength(20)
     await user.click(screen.getByRole('button', { name: 'Next →' }))
     expect(names()).toEqual(['service-20', 'service-21', 'service-22', 'service-23', 'service-24'])
     await user.click(screen.getByRole('button', { name: '← Prev' }))
     expect(names()[0]).toBe('service-00')
 
-    await user.click(screen.getByRole('button', { name: 'Teams (21)' }))
+    await user.click(screen.getByRole('tab', { name: /^Teams/ }))
     expect(names()).toHaveLength(20)
     await user.click(screen.getByRole('button', { name: 'Next →' }))
     expect(names()).toEqual(['team-20'])
@@ -341,14 +341,14 @@ describe('the services and teams tabs', () => {
     ]
     apolloFinto.risposte['WhatIfAnalysis'] = { whatIfAnalysis: result({ impactedServices: services }) }
     const { user } = renderWithProviders(<WhatIfPage />)
-    await user.click(screen.getByRole('button', { name: 'Services (3)' }))
+    await user.click(screen.getByRole('tab', { name: /^Services/ }))
     await user.click(within(screen.getByRole('columnheader', { name: /Impact/ })).getByRole('button'))
     expect(names()).toEqual(['Checkout', 'Reporting', 'Billing'])
   })
 
   it('no team involved: the tab says so', async () => {
     const { user } = renderWithProviders(<WhatIfPage />)
-    await user.click(screen.getByRole('button', { name: 'Teams (0)' }))
+    await user.click(screen.getByRole('tab', { name: /^Teams/ }))
     expect(screen.getByText('No teams involved')).toBeInTheDocument()
   })
 })

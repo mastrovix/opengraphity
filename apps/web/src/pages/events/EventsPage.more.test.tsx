@@ -83,7 +83,7 @@ describe('EventsPage — counters', () => {
     ['No CI', 'orphan', { orphan: true }],
   ])('the %s tile filters on what it counts', async (label, key, filter) => {
     const { user } = renderPage()
-    await user.click(screen.getByRole('button', { name: new RegExp(`^${label}\\s*\\d`) }))
+    await user.click(screen.getByRole('button', { name: new RegExp(`^\\d+\\s*${label}$`) }))
     await attendiURL('/events', { stat: key })
     await waitFor(() => expect(lastFilter()).toEqual(filter))
   })
@@ -124,7 +124,7 @@ describe('EventsPage — "Resolved 24h" is a sliding window', () => {
   it('clicking the tile recomputes the window from now', async () => {
     const { user } = renderPage()
     const before = Date.now()
-    await user.click(screen.getByRole('button', { name: /^Resolved 24h\s*\d/ }))
+    await user.click(screen.getByRole('button', { name: /^\d+\s*Resolved 24h$/ }))
     await waitFor(() => expect(lastFilter()?.resolvedSince).toBeTruthy())
     const since = Date.parse(String(lastFilter()!.resolvedSince))
     expect(since).toBeGreaterThanOrEqual(before - 24 * 3_600_000)

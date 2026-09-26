@@ -2,11 +2,11 @@
  * Prompt modal for the admin "reopen task" flow. Asks for a reason
  * (min 10 chars) before invoking the parent-provided callback.
  */
+import { Textarea } from '@/components/ui/FormControls'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
-import { inputStyle } from './shared'
 import { colors } from '@/lib/tokens'
 
 export function ReopenModal({ onConfirm, onCancel }: {
@@ -39,14 +39,15 @@ export function ReopenModal({ onConfirm, onCancel }: {
       }
     >
       <p style={{ margin: '0 0 12px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{t('pages.tasks.reopen.prompt')}</p>
-      <textarea aria-label={t('pages.tasks.reopen.placeholder')}
+      <Textarea
+        aria-label={t('pages.tasks.reopen.placeholder')}
         value={reason}
         onChange={e => setReason(e.target.value)}
         rows={3}
-        style={{ ...inputStyle, resize: 'vertical' }}
         placeholder={t('pages.tasks.reopen.placeholder')}
         // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: textarea del modal aperto dall'utente
         autoFocus
+        style={{ resize: 'vertical' }}
       />
     </Modal>
   )

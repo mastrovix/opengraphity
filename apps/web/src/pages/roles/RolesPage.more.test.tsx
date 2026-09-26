@@ -32,7 +32,7 @@ beforeEach(() => {
   apolloFinto.risposte['GetRoles'] = { roles: ROLES }
 })
 
-const row = (name: string) => screen.getByRole('link', { name }).closest('tr')!
+const row = (name: string) => screen.getByText(name, { selector: 'td' }).closest('tr')!
 
 describe('RolesPage actions', () => {
   it('deleting a custom role asks first, sends its key, confirms and reloads the list', async () => {

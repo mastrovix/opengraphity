@@ -202,7 +202,7 @@ export function ChangeOverviewSidebar({
               </div>
             )}
 
-            <Link to={`/changes/${changeId}`} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', textDecoration: 'none', fontWeight: 500 }}>
+            <Link to={`/changes/${changeId}`} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, fontWeight: 500 }}>
               {t('changeTasks.viewFullChange')}
             </Link>
           </>

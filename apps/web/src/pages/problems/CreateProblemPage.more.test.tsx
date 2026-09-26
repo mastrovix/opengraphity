@@ -330,12 +330,9 @@ describe('CreateProblemPage — affected CIs', () => {
     expect(apolloFinto.chiamata('GetAllCIs')).toBeUndefined()
   })
 
-  it('the search box highlights while focused', () => {
+  it('the search box highlights while focused: it is the app\'s field, lit by .og-field:focus (26 Sep 2026)', () => {
     page()
-    fireEvent.focus(searchBox())
-    expect(searchBox().style.borderColor).toBe('var(--color-brand)')
-    fireEvent.blur(searchBox())
-    expect(searchBox().style.borderColor).toBe('var(--color-border)')
+    expect(searchBox()).toHaveClass('og-field')
   })
 })
 
@@ -391,13 +388,11 @@ describe('CreateProblemPage — the customer fields, failures and leaving', () =
     expect(apolloFinto.chiamata('CreateProblem')).toBeUndefined()
   })
 
-  it('the back link goes to the list, and highlights under the pointer', async () => {
+  it('the back link goes to the list, and reads as a link (26 Sep 2026)', async () => {
     const { user } = page()
-    const back = screen.getByRole('button', { name: '← Problems' })
-    await user.hover(back)
-    expect(back.style.color).toBe('var(--color-brand)')
-    await user.unhover(back)
-    expect(back.style.color).toBe('var(--color-slate-light)')
+    const back = screen.getByRole('button', { name: 'Problems' })
+    expect(back.style.color).toBe('var(--color-link)')
+    expect(back.style.textDecoration).toBe('underline')
     await user.click(back)
     await attendiURL('/problems')
   })

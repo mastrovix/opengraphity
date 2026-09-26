@@ -1,3 +1,5 @@
+import { Input, Select, Textarea } from '@/components/ui/FormControls'
+import { Button } from '@/components/Button'
 import { useState, useEffect, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { CITypeDef, CIFieldDef } from '@/contexts/MetamodelContext'
@@ -22,28 +24,7 @@ const DEFAULTS_DEBOUNCE_MS = 300
 
 // ── Style constants ────────────────────────────────────────────────────────────
 
-const inputBase: React.CSSProperties = {
-  width:           '100%',
-  padding:         '10px 14px',
-  border:          `1px solid ${colors.border}`,
-  borderRadius:    6,
-  fontSize:        14,
-  color:           'var(--color-slate-dark)',
-  outline:         'none',
-  backgroundColor: colors.white,
-  boxSizing:       'border-box',
-  transition:      'border-color 150ms, box-shadow 150ms',
-}
 
-const selectBase: React.CSSProperties = {
-  ...inputBase,
-  appearance:         'none',
-  backgroundImage:    'var(--select-arrow)',
-  backgroundRepeat:   'no-repeat',
-  backgroundPosition: 'right 12px center',
-  paddingRight:       36,
-  cursor:             'pointer',
-}
 
 function focusHandlers(hasError: boolean) {
   return {
@@ -111,28 +92,28 @@ function FieldRenderer({
 
     case 'number':
       return (
-        <input
+        <Input
           type="number"
           id={id}
           {...invalid}
           value={value !== null && value !== undefined ? String(value) : ''}
           onChange={e => onChange(e.target.value === '' ? null : Number(e.target.value))}
           placeholder={field.label}
-          style={{ ...inputBase, borderColor }}
           {...focusHandlers(hasError)}
+          style={{ borderColor }}
         />
       )
 
     case 'date':
       return (
-        <input
+        <Input
           type="date"
           id={id}
           {...invalid}
           value={value !== null && value !== undefined ? String(value) : ''}
           onChange={e => onChange(e.target.value || null)}
-          style={{ ...inputBase, borderColor }}
           {...focusHandlers(hasError)}
+          style={{ borderColor }}
         />
       )
 
@@ -147,13 +128,13 @@ function FieldRenderer({
       const current = value !== null && value !== undefined ? String(value) : ''
       const orphan = current !== '' && !field.enumValues.includes(current)
       return (
-        <select
+        <Select
           id={id}
           {...invalid}
           value={current}
           onChange={e => onChange(e.target.value || null)}
-          style={{ ...selectBase, borderColor }}
           {...focusHandlers(hasError)}
+          style={{ borderColor }}
         >
           <option value="">{t('components.ciDynamicForm.selectOption')}</option>
           {orphan && (
@@ -164,21 +145,21 @@ function FieldRenderer({
           {field.enumValues.map(opt => (
             <option key={opt} value={opt}>{(field.enumTypeName && labelOf(field.enumTypeName, opt)) || opt}</option>
           ))}
-        </select>
+        </Select>
       )
     }
 
     default: // string
       return (
-        <input
+        <Input
           type="text"
           id={id}
           {...invalid}
           value={value !== null && value !== undefined ? String(value) : ''}
           onChange={e => onChange(e.target.value || null)}
           placeholder={field.label}
-          style={{ ...inputBase, borderColor }}
           {...focusHandlers(hasError)}
+          style={{ borderColor }}
         />
       )
   }
@@ -381,14 +362,13 @@ export function CIDynamicForm({
         </label>
         {/* Niente autoFocus: nel modal di creazione è Modal a spostare il focus sul
             primo controllo; nelle anteprime del designer tipi non deve rubare il focus. */}
-        <input
+        <Input
           type="text"
           id={fieldId('name')}
           aria-invalid={validationErrors['name'] ? true : undefined}
           aria-describedby={validationErrors['name'] ? `${fieldId('name')}-error` : undefined}
           value={String(formValues['name'] ?? '')}
           onChange={e => handleChange('name', e.target.value)}
-          style={inputBase}
         />
         {validationErrors['name'] && (
           <p id={`${fieldId('name')}-error`} style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>
@@ -404,18 +384,18 @@ export function CIDynamicForm({
       <div className="og-pair">
         <div>
           <label htmlFor={fieldId('status')} style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>{t('pages.cmdb.status')}</label>
-          <select id={fieldId('status')} value={String(formValues['status'] ?? '')} onChange={e => handleChange('status', e.target.value)} style={inputBase}>
+          <Select id={fieldId('status')} value={String(formValues['status'] ?? '')} onChange={e => handleChange('status', e.target.value)}>
             <option value="">—</option>
             {/* Only the statuses this type offers (G35); the current one stays, to be seen. */}
             {baseEnums.statuses.filter(s => !(ciType.statusesExcluded ?? []).includes(s) || s === formValues['status']).map(s => <option key={s} value={s}>{optionLabel('status', s)}</option>)}
-          </select>
+          </Select>
         </div>
         <div>
           <label htmlFor={fieldId('environment')} style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>{t('pages.cmdb.environment')}</label>
-          <select id={fieldId('environment')} value={String(formValues['environment'] ?? '')} onChange={e => handleChange('environment', e.target.value)} style={inputBase}>
+          <Select id={fieldId('environment')} value={String(formValues['environment'] ?? '')} onChange={e => handleChange('environment', e.target.value)}>
             <option value="">—</option>
             {baseEnums.environments.map(v => <option key={v} value={v}>{optionLabel('environment', v)}</option>)}
-          </select>
+          </Select>
         </div>
       </div>
       {groupRelations.length > 0 && (
@@ -452,7 +432,7 @@ export function CIDynamicForm({
       )}
       <div>
         <label htmlFor={fieldId('description')} style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>{t('common.description')}</label>
-        <textarea id={fieldId('description')} value={String(formValues['description'] ?? '')} onChange={e => handleChange('description', e.target.value)} rows={2} style={{ ...inputBase, resize: 'vertical' }} />
+        <Textarea id={fieldId('description')} value={String(formValues['description'] ?? '')} onChange={e => handleChange('description', e.target.value)} rows={2} style={{ resize: 'vertical' }} />
       </div>
       {/* The infrastructure flag, a field of every CI (24 Sep 2026): out of the application chains. */}
       <div>
@@ -506,22 +486,12 @@ export function CIDynamicForm({
       })}
 
       <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 8 }}>
-        <button
-          type="button"
+        <Button variant="secondary"
           onClick={onCancel}
           disabled={submitting || loading}
-          style={{
-            padding:      '9px 20px',
-            border:       `1px solid ${colors.border}`,
-            borderRadius: 6,
-            background:   colors.white,
-            fontSize:     14,
-            cursor:       'pointer',
-            color:        'var(--color-slate)',
-          }}
         >
           {t('common.cancel')}
-        </button>
+        </Button>
         <button
           type="submit"
           disabled={submitting || loading || Boolean(scriptError)}

@@ -121,7 +121,7 @@ export function WatcherBar({ entityType, entityId }: Props) {
             type="button"
             aria-expanded={showAdd}
             onClick={() => { setShowAdd(!showAdd); setSearch('') }}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 6, padding: '4px 0', fontSize: 'var(--font-size-table)', color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+            style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 6, padding: '4px 0', fontSize: 'var(--font-size-table)', color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
           >
             <Plus size={12} aria-hidden="true" /> {t('watchers.add')}
           </button>

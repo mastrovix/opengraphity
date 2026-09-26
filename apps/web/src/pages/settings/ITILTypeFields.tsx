@@ -1,3 +1,4 @@
+import { Button } from '@/components/Button'
 import { useId, useMemo, useState } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { GET_TICKET_WORKFLOW_STEPS } from '@/graphql/queries'
@@ -6,9 +7,9 @@ import { Trans, useTranslation } from 'react-i18next'
 import { Plus, X, Check } from 'lucide-react'
 import { DesignerFieldRow } from './shared/DesignerFieldRow'
 import {
-  inputS, selectS, textareaS, labelS, btnPrimary, btnSecondary, FIELD_TYPES,
+  labelS, FIELD_TYPES,
 } from './shared/designerStyles'
-import { Input, Select } from '@/components/ui/FormControls'
+import { Input, Select, Textarea } from '@/components/ui/FormControls'
 import type { EnumTypeRef } from './shared/designerStyles'
 import { enumOptionLabel } from './shared/designerStyles'
 import type { ITILField, FieldFormState, EnumTypeOption } from './useITILTypeDesigner'
@@ -87,7 +88,7 @@ function StepRulesEditor({ form, set, steps }: {
         {form.visibilityMode === 'steps' && stepChecks('visibilitySteps', t('itilDesigner.steps.onlySteps'))}
         {form.visibilityMode === 'from' && (
           <div style={{ margin: '6px 0 0 22px', maxWidth: 260 }}>
-            <Select aria-label={t('itilDesigner.steps.fromStepLabel')} style={selectS} value={form.visibilityFrom} onChange={(e) => set('visibilityFrom', e.target.value)}>
+            <Select aria-label={t('itilDesigner.steps.fromStepLabel')} value={form.visibilityFrom} onChange={(e) => set('visibilityFrom', e.target.value)}>
               <option value="">—</option>
               {steps.map((s) => <option key={s.name} value={s.name}>{s.only ? `${s.label} (${t('itilDesigner.steps.onlyIn', { workflows: s.only.join(', ') })})` : s.label}</option>)}
             </Select>
@@ -134,8 +135,8 @@ function FieldEditor({
       <div className="og-pair" style={{ marginBottom: 12 }}>
         <div>
           <label style={labelS}>{t('itilDesigner.fieldName')}</label>
-          <input aria-label={t('itilDesigner.fieldName')}
-            style={{ ...inputS, background: isSystem || !!field.name ? colors.slateBg : colors.white }}
+          <Input
+            aria-label={t('itilDesigner.fieldName')}
             value={form.name}
             disabled={isSystem || !!field.name}
             onChange={(e) => set('name', e.target.value)}
@@ -144,8 +145,8 @@ function FieldEditor({
         </div>
         <div>
           <label style={labelS}>{t('itilDesigner.fieldLabel')}</label>
-          <input aria-label={t('itilDesigner.fieldLabel')}
-            style={inputS}
+          <Input
+            aria-label={t('itilDesigner.fieldLabel')}
             value={form.label}
             onChange={(e) => set('label', e.target.value)}
             placeholder={t('citypeDesigner.field.labelPlaceholder')}
@@ -157,8 +158,7 @@ function FieldEditor({
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px auto', gap: 12, marginBottom: 12 }}>
         <div>
           <label style={labelS}>{t('itilDesigner.fieldType')}</label>
-          <Select
-            style={{ ...selectS, background: isSystem ? colors.slateBg : colors.white }}
+          <Select style={{ background: isSystem ? colors.slateBg : colors.white }}
             value={form.fieldType}
             // Il tipo di un campo esistente non cambia: i valori sono già sui ticket (ondata 4).
             disabled={isSystem || !!field.name}
@@ -171,7 +171,7 @@ function FieldEditor({
         </div>
         <div>
           <label style={labelS}>{t('itilDesigner.order')}</label>
-          <Input style={inputS} type="number" value={form.order} onChange={(e) => set('order', Number(e.target.value))} />
+          <Input type="number" value={form.order} onChange={(e) => set('order', Number(e.target.value))} />
         </div>
         <div style={{ paddingTop: 20 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', cursor: isSystem ? 'default' : 'pointer' }}>
@@ -204,7 +204,6 @@ function FieldEditor({
         <div style={{ marginBottom: 12 }}>
           <label style={labelS}>{t('itilDesigner.enumRef')} *</label>
           <Select
-            style={selectS}
             value={form.enumTypeId ?? ''}
             onChange={(e) => setForm((f) => ({ ...f, enumTypeId: e.target.value || null }))}
           >
@@ -238,9 +237,13 @@ function FieldEditor({
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
                 <Trans i18nKey="citypeDesigner.field.validationHint" components={{ code: <code /> }} />
               </p>
-              <textarea aria-label={t('itilDesigner.fieldValidationPlaceholder')} style={{ ...textareaS, minHeight: 90 }} value={form.validationScript}
+              <Textarea
+                aria-label={t('itilDesigner.fieldValidationPlaceholder')}
+                value={form.validationScript}
                 onChange={(e) => set('validationScript', e.target.value)}
-                placeholder={t('itilDesigner.fieldValidationPlaceholder')} />
+                placeholder={t('itilDesigner.fieldValidationPlaceholder')}
+                style={{ minHeight: 90 }}
+              />
             </div>
           )}
           {scriptTab === 'visibility' && (
@@ -248,9 +251,13 @@ function FieldEditor({
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
                 <Trans i18nKey="citypeDesigner.field.visibilityHint" components={{ code: <code /> }} />
               </p>
-              <textarea aria-label={t('itilDesigner.visibilityPlaceholder')} style={{ ...textareaS, minHeight: 90 }} value={form.visibilityScript}
+              <Textarea
+                aria-label={t('itilDesigner.visibilityPlaceholder')}
+                value={form.visibilityScript}
                 onChange={(e) => set('visibilityScript', e.target.value)}
-                placeholder={t('itilDesigner.visibilityPlaceholder')} />
+                placeholder={t('itilDesigner.visibilityPlaceholder')}
+                style={{ minHeight: 90 }}
+              />
             </div>
           )}
           {scriptTab === 'default' && (
@@ -258,21 +265,25 @@ function FieldEditor({
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
                 <Trans i18nKey="citypeDesigner.field.defaultHint" components={{ code: <code /> }} />
               </p>
-              <textarea aria-label={t('itilDesigner.defaultPlaceholder')} style={{ ...textareaS, minHeight: 90 }} value={form.defaultScript}
+              <Textarea
+                aria-label={t('itilDesigner.defaultPlaceholder')}
+                value={form.defaultScript}
                 onChange={(e) => set('defaultScript', e.target.value)}
-                placeholder={t('itilDesigner.defaultPlaceholder')} />
+                placeholder={t('itilDesigner.defaultPlaceholder')}
+                style={{ minHeight: 90 }}
+              />
             </div>
           )}
         </div>
       </details>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-        <button type="button" style={btnSecondary} onClick={onCancel}>
+        <Button variant="secondary" onClick={onCancel}>
           <X size={13} /> {t('common.cancel')}
-        </button>
-        <button type="button" style={btnPrimary} onClick={() => onSave(form)}>
+        </Button>
+        <Button variant="primary" onClick={() => onSave(form)}>
           <Check size={13} /> {t('itilDesigner.save')}
-        </button>
+        </Button>
       </div>
     </div>
   )
@@ -366,13 +377,12 @@ export function ITILTypeFields({
           <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', letterSpacing: '0.06em' }}>
             {t('itilDesigner.customFields', { count: customFields.length })}
           </div>
-          <button type="button"
-            style={btnPrimary}
+          <Button variant="primary"
             onClick={() => { setAddingField(true); setEditingFieldId(null) }}
             disabled={addingField}
           >
             <Plus size={13} /> {t('itilDesigner.addField')}
-          </button>
+          </Button>
         </div>
         {customFields.map((f) => (
           editingFieldId === f.id ? (

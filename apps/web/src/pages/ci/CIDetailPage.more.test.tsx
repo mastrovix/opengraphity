@@ -171,7 +171,7 @@ describe('page states', () => {
     expect(screen.getByText('Production')).toBeInTheDocument()
     expect(screen.getByText('Gold tier')).toBeInTheDocument()
     expect(screen.getByText('10.0.0.7')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: '← Server' }))
+    await user.click(screen.getByRole('button', { name: 'Server' }))
     await waitFor(() => expect(location()).toBe('/ci/server'))
   })
 

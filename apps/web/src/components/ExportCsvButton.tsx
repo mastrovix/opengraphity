@@ -1,7 +1,7 @@
+import { Button } from '@/components/Button'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Download, Loader2 } from 'lucide-react'
-import { colors, palette } from '@/lib/tokens'
 import { showError } from '@/lib/showError'
 
 interface Props {
@@ -14,7 +14,7 @@ export function ExportCsvButton({ onExport }: Props) {
   const [busy, setBusy] = useState(false)
 
   return (
-    <button type="button"
+    <Button variant="secondary"
       onClick={() => {
         setBusy(true)
         onExport()
@@ -23,10 +23,9 @@ export function ExportCsvButton({ onExport }: Props) {
       }}
       disabled={busy}
       title={t('csvExport.tooltip')}
-      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', backgroundColor: colors.white, border: `1px solid ${palette.neutral.borderStrong}`, borderRadius: 6, cursor: busy ? 'default' : 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)' }}
     >
       {busy ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
       {t('csvExport.button')}
-    </button>
+    </Button>
   )
 }

@@ -75,7 +75,7 @@ beforeEach(() => {
 
 const show = () => renderWithProviders(<ITILTypeDesignerPage />)
 const typeButton = (label: string) => screen.getByRole('button', { name: new RegExp(`${label}\\s*\\d+ fields?$`) })
-const tab = (name: string) => screen.getByRole('button', { name })
+const tab = (name: string) => screen.getByRole('tab', { name })
 /** The card header of the open type: icon, label, technical name, state. */
 const header = (name: string) => screen.getByText(name, { selector: 'div' }).parentElement!.parentElement!
 

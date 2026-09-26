@@ -18,7 +18,7 @@
  * modificabili come prima: sono due cose diverse — quelli valgono per tutte le
  * richieste, questi sono le risposte a UNA voce di catalogo.
  */
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation } from '@apollo/client/react'
 import { Pencil } from 'lucide-react'
@@ -26,6 +26,7 @@ import { toast } from 'sonner'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { Button } from '@/components/Button'
 import { Input, Select } from '@/components/ui/FormControls'
+import { SimpleTable } from '@/components/ui/SimpleTable'
 import { SET_REQUEST_FORM_ANSWER } from '@/graphql/mutations'
 import { showError } from '@/lib/showError'
 import { formatDate, formatDateTime } from '@/lib/datetime'
@@ -102,40 +103,18 @@ export function FormAnswersCard({ answers, revision, requestId }: {
                   sono quelle della revisione con cui è stata compilata, quindi
                   restano leggibili anche se il campo oggi ne ha altre. */}
               {a.tableColumns.length > 0 ? (
-                <div className="og-scroll-x">
-                  <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-                    <thead>
-                      <tr>
-                        {/* Nessuno stile in linea nella testata: tinta, corpo,
-                            peso e colore li decide `table thead th` in
-                            index.css, e il test `testateTabelle` lo tiene fermo. */}
-                        {a.tableColumns.map((c) => (
-                          <th key={c.name} style={{ textAlign: 'left', padding: '2px 8px 2px 0', whiteSpace: 'nowrap' }}>
-                            {c.label}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {a.rows.map((riga, i) => (
-                        <tr key={i}>
-                          {riga.cells.map((cella) => (
-                            <td key={cella.column} style={{ padding: '2px 8px 2px 0', verticalAlign: 'top' }}>
-                              {cella.displayValue ?? cella.value ?? <span style={{ color: colors.slateLight }}>—</span>}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                      {a.rows.length === 0 && (
-                        <tr>
-                          <td colSpan={a.tableColumns.length} style={{ color: colors.slateLight, padding: '2px 0' }}>
-                            {t('detail.formAnswerEmpty')}
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                // The app's small table (26 Sep 2026: it was hand-made).
+                <SimpleTable<Record<string, unknown> & { id: string }>
+                  columns={a.tableColumns.map((c) => ({
+                    key: `c:${c.name}`, label: c.label,
+                    render: (v) => (v as ReactNode) ?? <span style={{ color: colors.slateLight }}>—</span>,
+                  }))}
+                  rows={a.rows.map((riga, i) => ({
+                    id: String(i),
+                    ...Object.fromEntries(riga.cells.map((cella) => [`c:${cella.column}`, cella.displayValue ?? cella.value ?? null])),
+                  }))}
+                  empty={<span style={{ color: colors.slateLight }}>{t('detail.formAnswerEmpty')}</span>}
+               />
               ) : null}
               {/* In CORREZIONE: il controllo giusto per il tipo, e per un campo a
                   vocabolario la tendina con le etichette — non una casella dove

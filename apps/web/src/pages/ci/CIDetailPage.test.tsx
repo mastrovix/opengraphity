@@ -139,7 +139,7 @@ describe('CIDetailPage', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'web-01' })).toBeInTheDocument()
     expect(screen.getByText('10.0.0.7')).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'server' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '← Server' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Server' })).toBeInTheDocument()
   })
 
   it('le righe delle relazioni sono bottoni navigabili (click e tastiera)', async () => {

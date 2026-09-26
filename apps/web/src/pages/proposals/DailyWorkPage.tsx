@@ -17,6 +17,7 @@
  * guarda deve poter dire «questa soglia è sbagliata», e per dirlo deve
  * vederla.
  */
+import { Loading } from '@/components/ui/Loading'
 import { useState } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
@@ -131,7 +132,7 @@ export function DailyWorkPage() {
 
       {error && <QueryError message={error.message} onRetry={() => void refetch()} />}
       {!error && loading && !a && (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-slate-light)' }}>{t('common.loading')}</div>
+        <Loading padded />
       )}
 
       {a && (

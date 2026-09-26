@@ -1,5 +1,5 @@
+import { BackLink, DetailTitle } from '@/components/ui/BackLink'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft } from 'lucide-react'
 import { Pill } from '@/components/ui/Pill'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
@@ -60,12 +60,9 @@ export function ProblemHeader({
   const { labelOf } = useDomainVocabularies()
   return (
     <div style={{ marginBottom: 24 }}>
-      <button type="button" onClick={onBack} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 12, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-card-title)', padding: 0 }}>
-        <ArrowLeft size={14} />
-        {t('common.back')}
-      </button>
+      <BackLink onClick={onBack}>{t('common.back')}</BackLink>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
-        <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.01em', margin: 0 }}>{problem.title}</h1>
+        <DetailTitle>{problem.title}</DetailTitle>
         {/*
           La priorità con la sua ETICHETTA («Critica»), non col valore grezzo
           («critical»): l'etichetta è dato del cliente e si scrive dal

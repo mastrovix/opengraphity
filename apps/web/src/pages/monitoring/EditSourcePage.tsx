@@ -8,12 +8,13 @@
  * all'uscita — D·1.17). Le chiavi che l'editor non rappresenta sono elencate
  * prima del salvataggio che le perderebbe (`dropped`, D·1.2).
  */
+import { BackLink } from '@/components/ui/BackLink'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Radar, KeyRound, Loader2, Save } from 'lucide-react'
+import { Radar, KeyRound, Loader2, Save } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
 import { PageLoader } from '@/components/PageLoader'
@@ -140,9 +141,7 @@ export function EditSourcePage() {
 
   return (
     <PageContainer>
-      <Link to="/monitoring/sources" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 12, color: 'var(--text-muted)', textDecoration: 'none', fontSize: 'var(--font-size-card-title)' }}>
-        <ArrowLeft size={14} aria-hidden="true" />{t('monitoring.edit.back')}
-      </Link>
+      <BackLink to="/monitoring/sources">{t('monitoring.edit.back')}</BackLink>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
         <PageTitle icon={<Radar size={22} color="var(--color-icon-accent)" />}>{t('monitoring.edit.title')} — {source.name}</PageTitle>
         <Button icon={saving ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Save size={14} aria-hidden="true" />} disabled={!canSave || saving} onClick={() => void handleSave()}>

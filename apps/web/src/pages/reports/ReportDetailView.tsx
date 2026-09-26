@@ -1,3 +1,5 @@
+import { Pill } from '@/components/ui/Pill'
+import { Button } from '@/components/Button'
 import { useTranslation } from 'react-i18next'
 
 import { ReportChartRenderer } from '@/components/ReportChartRenderer'
@@ -5,7 +7,6 @@ import { CHART_TYPES } from '@/components/ReportChartConfig'
 import { ReportSectionBuilder, type ReportSectionInput } from '@/components/ReportSectionBuilder'
 import {
   type ReportTemplate, type ReportSection, type SectionResult, type View,
-  btnPrimary, btnGhost,
 } from './useCustomReports'
 
 import { getReportIcon } from './reportIcons'
@@ -67,7 +68,7 @@ export function ReportDetailView(props: ReportDetailViewProps) {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '12px 32px', borderBottom: '1px solid var(--color-border)', background: colors.white, display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-          <button type="button" onClick={() => setView('detail')} style={{ ...btnGhost, padding: '6px 12px', fontSize: 'var(--font-size-body)' }}>&larr; {t('common.back')}</button>
+          <Button variant="secondary" onClick={() => setView('detail')}>&larr; {t('common.back')}</Button>
           <span style={{ fontWeight: 600, fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>{t('pages.reports.addSectionTo', { report: selected.name })}</span>
         </div>
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
@@ -82,7 +83,7 @@ export function ReportDetailView(props: ReportDetailViewProps) {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '12px 32px', borderBottom: '1px solid var(--color-border)', background: colors.white, display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-          <button type="button" onClick={cancelEditSection} style={{ ...btnGhost, padding: '6px 12px', fontSize: 'var(--font-size-body)' }}>&larr; {t('common.back')}</button>
+          <Button variant="secondary" onClick={cancelEditSection}>&larr; {t('common.back')}</Button>
           <span style={{ fontWeight: 600, fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>{t('pages.reports.editSectionOf', { section: editSection.title })}</span>
         </div>
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
@@ -101,29 +102,27 @@ export function ReportDetailView(props: ReportDetailViewProps) {
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Header */}
       <div style={{ padding: '12px 32px', borderBottom: '1px solid var(--color-border)', background: colors.white, display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-        <button type="button" onClick={() => setView('list')} style={{ ...btnGhost, padding: '6px 12px', fontSize: 'var(--font-size-body)', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <Button variant="secondary" onClick={() => setView('list')}>
           &larr; {t('pages.reports.allReports')}
-        </button>
+        </Button>
         <span style={{ display: 'flex', alignItems: 'center' }}>{getReportIcon(selected)}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 600, fontSize: 'var(--font-size-section-title)', color: 'var(--color-slate-dark)' }}>{selected.name}</div>
           {selected.description && <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{selected.description}</div>}
         </div>
-        {canWrite && <button type="button" onClick={() => openSettings(selected)} style={{ ...btnGhost, fontSize: 'var(--font-size-body)' }}>&#x2699; {t('citypeDesigner.tab.settings')}</button>}
-        <button
-          type="button"
+        {canWrite && <Button variant="secondary" onClick={() => openSettings(selected)}>&#x2699; {t('citypeDesigner.tab.settings')}</Button>}
+        <Button variant="secondary"
           onClick={handleExecuteSelected}
           disabled={execLoading}
-          style={{ ...btnGhost, fontSize: 'var(--font-size-body)' }}
-        >{execLoading ? t('common.loading') : `\u25B6 ${t('pages.reportBuilder.execute')}`}</button>
+        >{execLoading ? t('common.loading') : `\u25B6 ${t('pages.reportBuilder.execute')}`}</Button>
         {canWrite && <>
-          <button type="button" onClick={() => void handleExportPDF()} disabled={exportingPDF} style={{ ...btnGhost, fontSize: 'var(--font-size-body)' }}>
+          <Button variant="secondary" onClick={() => handleExportPDF()} disabled={exportingPDF}>
             {exportingPDF ? '\u2026' : '\u2193 PDF'}
-          </button>
-          <button type="button" onClick={() => void handleExportExcel()} disabled={exportingExcel} style={{ ...btnGhost, fontSize: 'var(--font-size-body)' }}>
+          </Button>
+          <Button variant="secondary" onClick={() => handleExportExcel()} disabled={exportingExcel}>
             {exportingExcel ? '\u2026' : '\u2193 Excel'}
-          </button>
-          <button type="button" onClick={() => setView('add-section')} style={btnPrimary}>{t('pages.reports.addSection')}</button>
+          </Button>
+          <Button variant="primary" onClick={() => setView('add-section')}>{t('pages.reports.addSection')}</Button>
         </>}
       </div>
 
@@ -142,13 +141,15 @@ export function ReportDetailView(props: ReportDetailViewProps) {
               <div style={{ padding: '10px 16px', background: 'var(--color-slate-bg)', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{sec.title}</span>
-                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', background: colors.border, padding: '2px 6px', borderRadius: 4 }}>{chartTypeLabel(t, sec.chartType)}</span>
+                  <Pill bg={colors.border} color="var(--color-slate)" radius={4} style={{ fontSize: 'var(--font-size-body)' }}>{chartTypeLabel(t, sec.chartType)}</Pill>
                 </div>
                 {canWrite && <div style={{ display: 'flex', gap: 6 }}>
-                  <button type="button" onClick={() => startEditSection(sec)}
-                    style={{ ...btnGhost, padding: '4px 10px', fontSize: 'var(--font-size-body)' }}>&#x270F; {t('pages.reports.editSection')}</button>
-                  <button type="button" onClick={() => handleRemoveSection(selected.id, sec.id)}
-                    style={{ ...btnGhost, padding: '4px 10px', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>&#x1F5D1;</button>
+                  <Button variant="secondary" size="xs"
+                    onClick={() => startEditSection(sec)}
+                  >&#x270F; {t('pages.reports.editSection')}</Button>
+                  <Button variant="danger" size="xs" aria-label={t('common.delete')}
+                    onClick={() => handleRemoveSection(selected.id, sec.id)}
+                  >&#x1F5D1;</Button>
                 </div>}
               </div>
               <div style={{ padding: 16 }}>

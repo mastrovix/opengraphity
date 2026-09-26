@@ -233,7 +233,7 @@ describe('queues, database and process', () => {
     expect(within(slow).getByText('812ms')).toBeInTheDocument()
     expect(within(slow).getByText('10:30:00')).toBeInTheDocument()
     // A query with no operation shows just the query.
-    const other = screen.getByText('MATCH (s:SLAStatus) RETURN s').closest('td')!
+    const other = screen.getByText('MATCH (s:SLAStatus) RETURN s')
     expect(other.children).toHaveLength(0)
   })
 

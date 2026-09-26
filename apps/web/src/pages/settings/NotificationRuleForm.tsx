@@ -1,7 +1,9 @@
-import { useId, useState } from 'react'
+import { Input, Select } from '@/components/ui/FormControls'
+import { Button } from '@/components/Button'
+import { Modal } from '@/components/Modal'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { X } from 'lucide-react'
-import { colors, fontWeight, lookupOrError, alpha, palette } from '@/lib/tokens'
+import { colors, fontWeight } from '@/lib/tokens'
 import { WORKFLOW_STEP_PURPOSES, NOTIFICATION_SEVERITIES } from '@opengraphity/types'
 import { SEVERITY_COLOR, CHANNEL_LABEL_KEY, STANDARD_EVENTS, useTargetOptions, withCurrent, routableFor, type NotificationRouting } from './NotificationRuleList'
 
@@ -68,7 +70,6 @@ export function NewRuleDialog({
 }) {
   const { t } = useTranslation()
   const targetOptions = useTargetOptions()
-  const titleId = useId()
   const [eventTypeSelect, setEventTypeSelect]   = useState('')
   const [customEventType, setCustomEventType]   = useState('')
   const [titleKey,         setTitleKey]          = useState('')
@@ -107,10 +108,6 @@ export function NewRuleDialog({
   const toggleCh = (ch: string) =>
     setChannels((prev) => prev.includes(ch) ? prev.filter((c) => c !== ch) : [...prev, ch])
 
-  const inputStyle: React.CSSProperties = {
-    padding: '7px 10px', border: `1px solid ${colors.border}`, borderRadius: 6,
-    fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', background: palette.neutral.surface1, width: '100%', boxSizing: 'border-box',
-  }
 
   const labelStyle: React.CSSProperties = {
     display: 'flex', flexDirection: 'column', gap: 5,
@@ -121,40 +118,39 @@ export function NewRuleDialog({
     textTransform: 'uppercase', letterSpacing: '0.06em',
   }
 
+  // The app's `Modal` (26 Sep 2026: this dialog drew its own overlay and header).
   return (
-    // Backdrop: il click fuori dal pannello chiude il dialogo (scorciatoia solo-mouse;
-    // da tastiera si usa il bottone "Chiudi" nell'header). Stesso pattern di components/Modal.
-    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- overlay: chiusura via mouse, bottone Chiudi per la tastiera
-    <div
-      style={{
-        position: 'fixed', inset: 0, background: alpha.scrim,
-        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200,
-      }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+    <Modal
+      open
+      onClose={onClose}
+      title={t('notificationRules.addRule')}
+      zIndex={200}
+      bodyStyle={{ display: 'flex', flexDirection: 'column', gap: 16 }}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            {t('notificationRules.cancel')}
+          </Button>
+          <Button
+            onClick={() => onSave({
+              eventType, titleKey: titleKey.trim(), severityOverride: severity, channels: chosenChannels, target, enabled: true,
+              stepPurpose:  isStepEntered ? stepPurpose  || undefined : undefined,
+              stepCategory: isStepEntered && !stepPurpose ? stepCategory || undefined : undefined,
+              escalationDelayMinutes: isEscalation && escalationDelay ? Number(escalationDelay) : undefined,
+              escalationMessage: isEscalation ? escalationMessage || undefined : undefined,
+              digestTime: isDigest ? digestTime || undefined : undefined,
+            })}
+            disabled={!canSave || saving}
+          >
+            {saving ? '…' : t('notificationRules.save')}
+          </Button>
+        </>
+      }
     >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        style={{
-          background: colors.white, borderRadius: 12, padding: 28, width: 480,
-          boxShadow: `0 8px 40px ${alpha.black20}`, display: 'flex', flexDirection: 'column', gap: 16,
-        }}
-      >
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span id={titleId} style={{ fontSize: 'var(--font-size-section-title)', fontWeight: fontWeight.bold, color: 'var(--color-slate-dark)' }}>
-            {t('notificationRules.addRule')}
-          </span>
-          <button type="button" onClick={onClose} aria-label={t('common.close')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', padding: 0 }}>
-            <X size={18} aria-hidden="true" />
-          </button>
-        </div>
-
         {/* Event type */}
         <label style={labelStyle}>
           <span style={labelTextStyle}>{t('notificationRules.eventType')}</span>
-          <select value={eventTypeSelect} onChange={(e) => setEventTypeSelect(e.target.value)} style={inputStyle}>
+          <Select value={eventTypeSelect} onChange={(e) => setEventTypeSelect(e.target.value)}>
             <option value="">— {t('common.select')} —</option>
             <optgroup label={t('notificationRules.eventGroupStandard')}>
               {STANDARD_EVENTS.map((e) => <option key={e} value={e}>{e}</option>)}
@@ -169,17 +165,16 @@ export function NewRuleDialog({
               </optgroup>
             )}
             <option value={CUSTOM_SENTINEL}>{t('notificationRules.customEvent')}</option>
-          </select>
+          </Select>
         </label>
 
         {isCustom && (
           <label style={labelStyle}>
             <span style={labelTextStyle}>{t('notificationRules.customEventType')}</span>
-            <input
+            <Input
               value={customEventType}
               onChange={(e) => setCustomEventType(e.target.value)}
               placeholder={t('notificationRules.customEventPlaceholder')}
-              style={inputStyle}
               // eslint-disable-next-line jsx-a11y/no-autofocus -- campo montato quando l'utente sceglie "evento custom": il focus segue la scelta
               autoFocus
             />
@@ -189,22 +184,21 @@ export function NewRuleDialog({
         {/* Title key */}
         <label style={labelStyle}>
           <span style={labelTextStyle}>{t('notificationRules.titleKey')}</span>
-          <input
+          <Input
             value={titleKey}
             onChange={(e) => setTitleKey(e.target.value)}
             placeholder={t('notificationRules.titleKeyPlaceholder')}
-            style={inputStyle}
           />
         </label>
 
         {/* Severity */}
         <label style={labelStyle}>
           <span style={labelTextStyle}>{t('notificationRules.header.severity')}</span>
-          <select value={severity} onChange={(e) => setSeverity(e.target.value)} style={{ ...inputStyle, color: lookupOrError(SEVERITY_COLOR, severity, 'SEVERITY_COLOR', 'var(--color-slate)'), fontWeight: fontWeight.medium }}>
+          <Select value={severity} onChange={(e) => setSeverity(e.target.value)} style={{ fontWeight: fontWeight.medium }}>
             {SEVERITY_OPTIONS.map((s) => (
               <option key={s} value={s} style={{ color: SEVERITY_COLOR[s] }}>{t(`notificationRules.severity.${s}`)}</option>
             ))}
-          </select>
+          </Select>
         </label>
 
         {/* Channels: only the ones the dispatcher can route for the chosen event type */}
@@ -229,11 +223,11 @@ export function NewRuleDialog({
         {/* Target */}
         <label style={labelStyle}>
           <span style={labelTextStyle}>{t('notificationRules.header.target')}</span>
-          <select value={target} onChange={(e) => setTarget(e.target.value)} style={{ ...inputStyle, color: 'var(--color-slate)' }}>
+          <Select value={target} onChange={(e) => setTarget(e.target.value)}>
             {withCurrent(targetOptions, target).map(({ value, label }) => (
               <option key={value} value={value}>{label}</option>
             ))}
-          </select>
+          </Select>
         </label>
 
         {/* Restringimento della regola di passo: scopo (vocabolario chiuso) o
@@ -244,20 +238,20 @@ export function NewRuleDialog({
           <>
             <label style={labelStyle}>
               <span style={labelTextStyle}>{t('notificationRules.stepPurpose')}</span>
-              <select value={stepPurpose} onChange={(e) => { setStepPurpose(e.target.value); if (e.target.value) setStepCategory('') }} style={inputStyle}>
+              <Select value={stepPurpose} onChange={(e) => { setStepPurpose(e.target.value); if (e.target.value) setStepCategory('') }}>
                 <option value="">{t('notificationRules.stepNarrowingAny')}</option>
                 {WORKFLOW_STEP_PURPOSES.map((p) => (
                   <option key={p} value={p}>{t(`workflow.purposeOption.${p}`)}</option>
                 ))}
-              </select>
+              </Select>
             </label>
             {!stepPurpose && (
               <label style={labelStyle}>
                 <span style={labelTextStyle}>{t('notificationRules.stepCategory')}</span>
-                <select value={stepCategory} onChange={(e) => setStepCategory(e.target.value)} style={inputStyle}>
+                <Select value={stepCategory} onChange={(e) => setStepCategory(e.target.value)}>
                   <option value="">{t('notificationRules.stepNarrowingAny')}</option>
                   {stepCategories.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
+                </Select>
               </label>
             )}
             <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{t('notificationRules.stepNarrowingHint')}</span>
@@ -269,11 +263,11 @@ export function NewRuleDialog({
           <>
             <label style={labelStyle}>
               <span style={labelTextStyle}>{t('notificationRules.escalationDelay')}</span>
-              <input type="number" min={1} value={escalationDelay} onChange={e => setEscalationDelay(e.target.value)} style={inputStyle} placeholder="30" />
+              <Input type="number" min={1} value={escalationDelay} onChange={e => setEscalationDelay(e.target.value)} placeholder="30" />
             </label>
             <label style={labelStyle}>
               <span style={labelTextStyle}>{t('notificationRules.escalationMessage')}</span>
-              <input value={escalationMessage} onChange={e => setEscalationMessage(e.target.value)} style={inputStyle} placeholder={t('notificationRules.escalationMessagePlaceholder')} />
+              <Input value={escalationMessage} onChange={e => setEscalationMessage(e.target.value)} placeholder={t('notificationRules.escalationMessagePlaceholder')} />
             </label>
           </>
         )}
@@ -282,42 +276,10 @@ export function NewRuleDialog({
         {isDigest && (
           <label style={labelStyle}>
             <span style={labelTextStyle}>{t('notificationRules.digestTime')}</span>
-            <input type="time" value={digestTime} onChange={e => setDigestTime(e.target.value)} style={inputStyle} />
+            <Input type="time" value={digestTime} onChange={e => setDigestTime(e.target.value)} />
           </label>
         )}
 
-        {/* Actions */}
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
-          <button type="button"
-            onClick={onClose}
-            style={{
-              padding: '8px 18px', borderRadius: 6, border: `1px solid ${colors.border}`,
-              fontSize: 'var(--font-size-body)', cursor: 'pointer', background: palette.neutral.surface1, color: 'var(--color-slate)',
-            }}
-          >
-            {t('notificationRules.cancel')}
-          </button>
-          <button type="button"
-            onClick={() => onSave({
-              eventType, titleKey: titleKey.trim(), severityOverride: severity, channels: chosenChannels, target, enabled: true,
-              stepPurpose:  isStepEntered ? stepPurpose  || undefined : undefined,
-              stepCategory: isStepEntered && !stepPurpose ? stepCategory || undefined : undefined,
-              escalationDelayMinutes: isEscalation && escalationDelay ? Number(escalationDelay) : undefined,
-              escalationMessage: isEscalation ? escalationMessage || undefined : undefined,
-              digestTime: isDigest ? digestTime || undefined : undefined,
-            })}
-            disabled={!canSave || saving}
-            style={{
-              padding: '8px 18px', borderRadius: 6, border: 'none', fontSize: 'var(--font-size-body)', fontWeight: fontWeight.semibold,
-              cursor: canSave && !saving ? 'pointer' : 'not-allowed',
-              background: canSave && !saving ? colors.brand : colors.border,
-              color: canSave && !saving ? colors.white : 'var(--color-slate-light)',
-            }}
-          >
-            {saving ? '…' : t('notificationRules.save')}
-          </button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

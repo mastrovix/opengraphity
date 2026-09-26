@@ -1,3 +1,4 @@
+import { Pill } from '@/components/ui/Pill'
 import { lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { PreviewData } from './useWidgetConfig'
@@ -48,9 +49,9 @@ export function WidgetPreview({ widgetType, color, title, previewData: rawPrevie
             {title || t('pages.dashboard.widgetTitlePlaceholder')}
           </span>
           {timeRange && timeRange !== 'all' && timeRangeKey && (
-            <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 5px', borderRadius: 4, background: colors.slateBg, color: 'var(--color-slate-light)' }}>
+            <Pill bg={colors.slateBg} color="var(--color-slate-light)" radius={4} style={{ fontSize: 'var(--font-size-label)' }}>
               {t(timeRangeKey)}
-            </span>
+            </Pill>
           )}
         </div>
 

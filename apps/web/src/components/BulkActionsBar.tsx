@@ -46,7 +46,7 @@ export function BulkActionsBar({ count, onClear, children }: BulkActionsBarProps
         variant="ghost"
         size="xs"
         onClick={onClear}
-        style={{ marginLeft: 'auto', color: 'var(--color-slate)', fontSize: 'var(--font-size-body)', textDecoration: 'underline' }}
+        style={{ marginLeft: 'auto', fontSize: 'var(--font-size-body)' }}
       >
         {t('bulk.clear')}
       </Button>

@@ -107,17 +107,8 @@ export function ChangeListPage() {
   // Campi del cliente (verifica «Cosa resta cablato», ondata 4): una colonna per campo.
   const customColumns = useCustomFieldColumns<ChangeRow>('change')
   const baseColumns: ColumnDef<ChangeRow>[] = [
-    {
-      key:      'code',
-      label:    t('pages.changes.code'),
-      width:    '140px',
-      sortable: true,
-      render:   (v) => (
-        <span style={{ fontWeight: 600, color: 'var(--color-slate-dark)' }}>
-          {String(v ?? '')}
-        </span>
-      ),
-    },
+    // Plain, like the number in the incident, problem and request lists (26 Sep 2026: it was the only bold one).
+    { key: 'code', label: t('pages.changes.code'), width: '140px', sortable: true },
     { key: 'title', label: t('pages.changes.title_col'), sortable: true },
     {
       key:    'workflowInstance',

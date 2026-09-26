@@ -68,9 +68,9 @@ const firstRow = async () => {
 }
 
 describe('CIHealthPage — links inside a row win over the row click', () => {
-  it('the name opens the CI detail', async () => {
+  it('the row opens the CI detail', async () => {
     renderPage()
-    await userEvent.click(within(await firstRow()).getByRole('link', { name: 'db-01' }))
+    await userEvent.click(within(await firstRow()).getByText('db-01'))
     await attendiURL('/ci/server/ci-1')
   })
 

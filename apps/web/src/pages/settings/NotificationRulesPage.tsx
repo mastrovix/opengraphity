@@ -1,3 +1,5 @@
+import { Loading } from '@/components/ui/Loading'
+import { Button } from '@/components/Button'
 import { useCallback, useState } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { useMutationWithToast } from '@/hooks/useMutationWithToast'
@@ -112,24 +114,18 @@ export default function NotificationRulesPage() {
             {t('notificationRules.description')}
           </p>
         </div>
-        <button type="button"
+        <Button variant="primary"
           onClick={() => setShowDialog(true)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: colors.white,
-            border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500,
-            cursor: 'pointer', transition: 'background-color 150ms',
-          }}
         >
           <Plus size={14} />
           {t('notificationRules.addRule')}
-        </button>
+        </Button>
       </div>
 
       {routingQuery.error ? (
         <QueryError message={routingQuery.error.message} onRetry={() => void routingQuery.refetch()} />
       ) : (loading && !data) || !routing ? (
-        <div style={{ color: 'var(--color-slate-light)', fontSize: fontSize.body }}>{t('common.loading')}</div>
+        <Loading />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
           {RULE_CATEGORIES.map(({ key, events }) => {

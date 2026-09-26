@@ -13,6 +13,7 @@
  * Il rifiuto dell'API (versione cambiata, validazione) è una riga
  * `role="alert"` con «Ricarica».
  */
+import { Loading } from '@/components/ui/Loading'
 import { useId, useState } from 'react'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
@@ -103,7 +104,7 @@ export function ServiceMapScopeDialog({ map, onClose, onReload }: Props) {
           <legend style={{ display: 'block', fontSize: 'var(--font-size-label)', fontWeight: 500, color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4, padding: 0 }}>
             {t('monitoring.services.scope.relationships')}
           </legend>
-          {relLoading && !relData && <p role="status" style={hint}>{t('common.loading')}</p>}
+          {relLoading && !relData && <Loading />}
           {relError && <p role="alert" style={{ ...hint, color: colors.danger }}>{t('monitoring.services.scope.relationshipsError', { error: relError.message })}</p>}
           {declared && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px' }}>

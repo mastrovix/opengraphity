@@ -5,6 +5,7 @@
  * many of its roots in service are complete; choosing one opens it in the
  * editor. The chosen chain lives in the URL (`?chain=`, `new` for a new one).
  */
+import { Loading } from '@/components/ui/Loading'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
@@ -55,7 +56,7 @@ export function CmdbChainsTab({ coverage, canEdit }: { coverage: readonly ChainC
             {t('pages.cmdbHealth.chains.newChain')}
           </Button>
         )}
-        {loading && !data && <span style={{ color: colors.slateLight }}>{t('common.loading')}</span>}
+        {loading && !data && <Loading inline />}
       </div>
       {data && !chains.length && (
         <p role="status" style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-warning-text)' }}>{t('pages.cmdbHealth.chains.noChains')}</p>

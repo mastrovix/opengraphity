@@ -51,7 +51,7 @@ function NotificationItem({ notif, onClose }: { notif: InAppNotification; onClos
   }
 
   return (
-    <div
+    <div className="hover-bg"
       role="button"
       tabIndex={0}
       onClick={handleClick}
@@ -69,8 +69,6 @@ function NotificationItem({ notif, onClose }: { notif: InAppNotification; onClos
         borderBottom:    `1px solid ${palette.neutral.borderLight}`,
         transition:      'background 0.15s',
       }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = 'var(--color-slate-bg)' }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = notif.read ? colors.white : palette.info.light }}
     >
       {/* Icon */}
       <div style={{ flexShrink: 0, marginTop: 2 }}>
@@ -185,12 +183,14 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
               alignItems:      'center',
               gap:             4,
               fontSize:        12,
-              color:           'var(--color-trigger-manual)',
+              color: 'var(--color-link)',
               background:      'none',
               border:          'none',
               cursor:          'pointer',
               padding:         '2px 4px',
               borderRadius:    4,
+              textDecoration: 'underline',
+              textUnderlineOffset: 2,
             }}
           >
             <CheckCheck size={13} />

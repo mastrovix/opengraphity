@@ -1,3 +1,4 @@
+import { DetailTitle } from '@/components/ui/BackLink'
 import { StrictMode, Suspense, lazy, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ApolloProvider } from '@apollo/client/react'
@@ -119,13 +120,13 @@ function RouteError() {
       background:     'var(--color-slate-bg)',
     }}>
       <div style={{ fontSize: 48 }} aria-hidden="true">⚠️</div>
-      <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>
+      <DetailTitle>
         {error?.status === 404 ? t('routeError.notFound') : t('routeError.unexpected')}
-      </h1>
+      </DetailTitle>
       <p style={{ color: 'var(--color-slate-light)', margin: 0 }}>
         {error?.statusText ?? t('routeError.generic')}
       </p>
-      <a href="/dashboard" style={{ color: 'var(--color-brand)', textDecoration: 'none', fontSize: 'var(--font-size-body)' }}>
+      <a href="/dashboard" style={{ color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, fontSize: 'var(--font-size-body)' }}>
         {t('routeError.backToDashboard')}
       </a>
     </div>

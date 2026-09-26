@@ -1,11 +1,15 @@
+import { SearchBox } from '@/components/ui/SearchBox'
+import { Loading } from '@/components/ui/Loading'
+import { Button } from '@/components/Button'
 import { useState } from 'react'
 import { gql } from '@apollo/client'
 import { useQuery } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
+import { PageTitle } from '@/components/PageTitle'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { useMe } from '@/hooks/useMe'
-import { BookOpen, Search, Eye, ThumbsUp, Tag } from 'lucide-react'
+import { BookOpen, Eye, ThumbsUp, Tag } from 'lucide-react'
 import { EmptyState } from '@/components/EmptyState'
 import { Pagination } from '@/components/ui/Pagination'
 import { QueryError } from '@/components/QueryError'
@@ -74,12 +78,8 @@ export function KnowledgeBasePage() {
     <PageContainer>
       {/* Header */}
       <div style={{ textAlign: 'center', paddingBottom: 32, borderBottom: `1px solid ${colors.border}`, marginBottom: 32 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 12 }}>
-          <BookOpen size={28} color="var(--color-brand)" />
-          <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--color-slate-dark)', margin: 0 }}>
-            {t('pages.kb.title')}
-          </h1>
-        </div>
+        {/* The app's page title (26 Sep 2026: it was a 28px h1 of its own), centred over the search. */}
+        <PageTitle icon={<BookOpen />} style={{ justifyContent: 'center', marginBottom: 12 }}>{t('pages.kb.title')}</PageTitle>
         <p style={{ fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate)', margin: '0 0 24px' }}>{t('pages.kb.subtitle')}</p>
         {canWrite && (
           <Link to="/admin/knowledge-base?new=1" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 20, padding: '8px 14px', borderRadius: 8, background: 'var(--color-brand)', color: colors.white, fontSize: 'var(--font-size-body)', fontWeight: 600, textDecoration: 'none' }}>
@@ -87,22 +87,10 @@ export function KnowledgeBasePage() {
           </Link>
         )}
         <form onSubmit={handleSearch} style={{ display: 'flex', gap: 8, maxWidth: 500, margin: '0 auto' }}>
-          <div style={{ position: 'relative', flex: 1 }}>
-            <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-slate-light)' }} />
-            <input
-              type="text"
-              value={inputVal}
-              onChange={(e) => setInputVal(e.target.value)}
-              placeholder={t('pages.kb.searchPlaceholder')}
-              aria-label={t('pages.kb.searchPlaceholder')}
-              style={{ width: '100%', padding: '10px 12px 10px 36px', borderRadius: 8, border: `2px solid ${colors.border}`, fontSize: 'var(--font-size-body)', boxSizing: 'border-box', outline: 'none' }}
-              onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--color-brand)' }}
-              onBlur={(e)  => { e.currentTarget.style.borderColor = colors.border }}
-            />
-          </div>
-          <button type="submit" style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: colors.white, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}>
+          <SearchBox value={inputVal} onChange={setInputVal} placeholder={t('pages.kb.searchPlaceholder')} ariaLabel={t('pages.kb.searchPlaceholder')} style={{ flex: 1 }} />
+          <Button variant="primary" type="submit">
             {t('common.search')}
-          </button>
+          </Button>
           {(search || category) && (
             <button
               type="button"
@@ -168,7 +156,7 @@ export function KnowledgeBasePage() {
         ) : (
           <>
             {loading ? (
-              <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center', padding: 32 }}>{t('common.loading')}</div>
+              <Loading padded />
             ) : articles.length === 0 ? (
               <EmptyState icon={<BookOpen size={32} color="var(--color-slate-light)" />} title={t('pages.kb.noArticles')} />
             ) : (
@@ -197,9 +185,9 @@ export function KnowledgeBasePage() {
                           {categoryLabel(a.category)}
                         </Pill>
                         {a.tags.slice(0, 3).map((tag) => (
-                          <span key={tag} style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 8, background: colors.slateBg, color: 'var(--color-slate)' }}>
+                          <Pill bg={colors.slateBg} color="var(--color-slate)" radius={8} key={tag} style={{ fontSize: 'var(--font-size-label)' }}>
                             <Tag size={8} style={{ verticalAlign: 'middle' }} /> {tag}
-                          </span>
+                          </Pill>
                         ))}
                       </div>
                       <h3 style={{ margin: '0 0 4px', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slateDark }}>{a.title}</h3>

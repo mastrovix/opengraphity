@@ -73,7 +73,7 @@ export function TeamsPage() {
 
   const COLUMNS: ColumnDef<Team>[] = [
     { key: 'name',        label: t('pages.teams.name'),        sortable: true },
-    { key: 'description', label: t('pages.teams.description'), sortable: false },
+    { key: 'description', label: t('pages.teams.description') },
     {
       key:    'type',
       label:  t('pages.teams.type'),

@@ -6,6 +6,7 @@
  *  - `workflow_step`: azioni enter/exit degli step di workflow
  *    (packages/workflow) — stessi controlli, parametri persistiti invariati.
  */
+import { Pill } from '@/components/ui/Pill'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { useQuery } from '@apollo/client/react'
@@ -21,8 +22,7 @@ import { useEntityFieldMetas, useFormFieldMetas, type FieldMeta } from '@/hooks/
 import { isStepFieldWritable, AUTOMATION_NOTIFICATION_CHANNELS } from '@opengraphity/types'
 import { useTargetOptions, withCurrent, CHANNEL_LABEL_KEY } from '@/pages/settings/NotificationRuleList'
 import { fieldTypeKey } from '@/lib/automationOperators'
-import { inputS, selectS } from '@/pages/settings/shared/designerStyles'
-import { Input, Select } from '@/components/ui/FormControls'
+import { Input, Select, Textarea } from '@/components/ui/FormControls'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useRoles } from '@/hooks/useRoles'
@@ -42,8 +42,6 @@ interface Props {
   compitiFratelli?: readonly string[]
 }
 
-const textareaS: React.CSSProperties = { ...inputS, minHeight: 60, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }
-const monoS: React.CSSProperties     = { ...inputS, minHeight: 80, resize: 'vertical', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-body)', lineHeight: 1.5 }
 const labelS: React.CSSProperties    = { fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em' }
 
 function Labeled({ label, children }: { label: string; children: React.ReactNode }) {
@@ -110,12 +108,12 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
 
   const text = (key: string, label: string, placeholder = '', type = 'text') => (
     <Labeled key={key} label={label}>
-      <Input type={type} style={inputS} placeholder={placeholder} value={params[key] ?? ''} onChange={e => onChange(key, e.target.value)} />
+      <Input type={type} placeholder={placeholder} value={params[key] ?? ''} onChange={e => onChange(key, e.target.value)} />
     </Labeled>
   )
   const choice = (key: string, label: string, options: { value: string; label?: string }[], fallback: string) => (
     <Labeled key={key} label={label}>
-      <Select style={selectS} value={params[key] ?? fallback} onChange={e => onChange(key, e.target.value)}>
+      <Select value={params[key] ?? fallback} onChange={e => onChange(key, e.target.value)}>
         {options.map(o => <option key={o.value} value={o.value}>{o.label ?? o.value}</option>)}
       </Select>
     </Labeled>
@@ -125,7 +123,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
     // ── Vocabolario automation (actionExecutor) ───────────────────────────────
     case 'assign_team':
       return (
-        <Select style={{ ...selectS, flex: 1 }} value={params['team_id'] ?? ''} onChange={e => onChange('team_id', e.target.value)}>
+        <Select style={{ flex: 1 }} value={params['team_id'] ?? ''} onChange={e => onChange('team_id', e.target.value)}>
           <option value="">{t('automation.params.selectTeam')}</option>
           {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
         </Select>
@@ -139,7 +137,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
 
     case 'transition_workflow':
       return (
-        <Select style={{ ...selectS, flex: 1 }} value={params['to_step'] ?? ''} onChange={e => onChange('to_step', e.target.value)}>
+        <Select style={{ flex: 1 }} value={params['to_step'] ?? ''} onChange={e => onChange('to_step', e.target.value)}>
           <option value="">{t('automation.params.selectStep')}</option>
           {steps.map(s => <option key={s.name} value={s.name}>{s.label || s.name}</option>)}
         </Select>
@@ -147,7 +145,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
 
     case 'set_priority':
       return (
-        <Select style={{ ...selectS, flex: 1 }} value={params['priority'] ?? ''} onChange={e => onChange('priority', e.target.value)}>
+        <Select style={{ flex: 1 }} value={params['priority'] ?? ''} onChange={e => onChange('priority', e.target.value)}>
           <option value="">{t('automation.params.selectPriority')}</option>
           {/*
             L'etichetta del vocabolario che si sta offrendo davvero: `priority`
@@ -166,8 +164,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
       return (
         <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
           {/* Field dropdown */}
-          <Select
-            style={{ ...selectS, width: 160 }}
+          <Select style={{ width: 160 }}
             value={params['field'] ?? ''}
             onChange={e => { onChange('field', e.target.value); onChange('value', '') }}
           >
@@ -186,35 +183,35 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
       // e non si poteva dire a chi.
       return (
         <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
-          <Select style={{ ...selectS, width: 180 }} aria-label={t('automation.params.notificationTarget')} value={params['target'] ?? 'all'} onChange={e => onChange('target', e.target.value)}>
+          <Select style={{ width: 180 }} aria-label={t('automation.params.notificationTarget')} value={params['target'] ?? 'all'} onChange={e => onChange('target', e.target.value)}>
             {withCurrent(targetOptions, params['target'] ?? 'all').map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </Select>
-          <Select style={{ ...selectS, width: 140 }} aria-label={t('automation.params.notificationChannel')} value={params['channel'] ?? 'in_app'} onChange={e => onChange('channel', e.target.value)}>
+          <Select style={{ width: 140 }} aria-label={t('automation.params.notificationChannel')} value={params['channel'] ?? 'in_app'} onChange={e => onChange('channel', e.target.value)}>
             {AUTOMATION_NOTIFICATION_CHANNELS.map(c => <option key={c} value={c}>{t(CHANNEL_LABEL_KEY[c] ?? c)}</option>)}
           </Select>
-          <textarea aria-label={t('automation.params.notificationMessage')} style={{ ...textareaS, flex: 1, minWidth: 200 }} placeholder={t('automation.params.notificationMessage')} value={params['message'] ?? ''} onChange={e => onChange('message', e.target.value)} />
+          <Textarea aria-label={t('automation.params.notificationMessage')} placeholder={t('automation.params.notificationMessage')} value={params['message'] ?? ''} onChange={e => onChange('message', e.target.value)} style={{ flex: 1, minWidth: 200 }} />
         </div>
       )
 
     case 'create_comment':
       return (
-        <textarea aria-label={t('automation.params.commentText')} style={{ ...textareaS, flex: 1 }} placeholder={t('automation.params.commentText')} value={params['text'] ?? ''} onChange={e => onChange('text', e.target.value)} />
+        <Textarea aria-label={t('automation.params.commentText')} placeholder={t('automation.params.commentText')} value={params['text'] ?? ''} onChange={e => onChange('text', e.target.value)} style={{ flex: 1 }} />
       )
 
     case 'execute_script':
       return (
-        <textarea aria-label={t('a11y.scriptCode')} style={{ ...monoS, flex: 1 }} placeholder="// JavaScript (isolated-vm, timeout 5s)..." value={params['code'] ?? ''} onChange={e => onChange('code', e.target.value)} />
+        <Textarea aria-label={t('a11y.scriptCode')} placeholder="// JavaScript (isolated-vm, timeout 5s)..." value={params['code'] ?? ''} onChange={e => onChange('code', e.target.value)} style={{ flex: 1, fontFamily: 'var(--font-mono)', minHeight: 80 }} />
       )
 
     case 'call_webhook':
       return (
         <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
-          <Select style={{ ...selectS, width: 90 }} value={params['method'] ?? 'POST'} onChange={e => onChange('method', e.target.value)}>
+          <Select style={{ width: 90 }} value={params['method'] ?? 'POST'} onChange={e => onChange('method', e.target.value)}>
             <option value="POST">POST</option>
             <option value="PUT">PUT</option>
             <option value="GET">GET</option>
           </Select>
-          <Input style={{ ...inputS, flex: 1, minWidth: 200 }} placeholder="https://..." value={params['url'] ?? ''} onChange={e => onChange('url', e.target.value)} />
+          <Input style={{ flex: 1, minWidth: 200 }} placeholder="https://..." value={params['url'] ?? ''} onChange={e => onChange('url', e.target.value)} />
           {vocabulary === 'workflow_step' && text('payload_template', 'payload_template (JSON)', '{}')}
         </div>
       )
@@ -222,8 +219,8 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
     case 'set_sla':
       return (
         <div style={{ display: 'flex', gap: 6, flex: 1 }}>
-          <Input style={{ ...inputS, width: 100 }} type="number" placeholder={t('automation.params.responseMinutes')} value={params['response_minutes'] ?? ''} onChange={e => onChange('response_minutes', e.target.value)} />
-          <Input style={{ ...inputS, width: 100 }} type="number" placeholder={t('automation.params.resolveMinutes')} value={params['resolve_minutes'] ?? ''} onChange={e => onChange('resolve_minutes', e.target.value)} />
+          <Input style={{ width: 100 }} type="number" placeholder={t('automation.params.responseMinutes')} value={params['response_minutes'] ?? ''} onChange={e => onChange('response_minutes', e.target.value)} />
+          <Input style={{ width: 100 }} type="number" placeholder={t('automation.params.resolveMinutes')} value={params['resolve_minutes'] ?? ''} onChange={e => onChange('resolve_minutes', e.target.value)} />
         </div>
       )
 
@@ -239,7 +236,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
           {/* Una change nasce solo con un tipo del vocabolario del cliente: non c'è un default (verifica «Cosa resta cablato», ondata 1). */}
           {params['entity_type'] === 'change' && (
             <Labeled label="change_type">
-              <Select style={selectS} value={params['change_type'] ?? ''} onChange={e => onChange('change_type', e.target.value)}>
+              <Select value={params['change_type'] ?? ''} onChange={e => onChange('change_type', e.target.value)}>
                 <option value="">{t('automation.params.selectChangeType')}</option>
                 {(entriesOf('change_type') ?? []).map((e) => <option key={e.value} value={e.value}>{e.label}</option>)}
               </Select>
@@ -261,7 +258,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
               <UserIdPicker value={params['target_id'] ?? ''} onChange={(id) => onChange('target_id', id)}
                 permission={TICKET_ASSIGNABLE_PERMISSION} hint={t('pickers.users.assignable')} label={t('pickers.users.label')} />
             ) : (
-              <Select style={selectS} value={params['target_id'] ?? ''} onChange={e => onChange('target_id', e.target.value)}>
+              <Select value={params['target_id'] ?? ''} onChange={e => onChange('target_id', e.target.value)}>
                 <option value="">{t('automation.params.teamOption')}</option>
                 {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </Select>
@@ -283,7 +280,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
               motore restano fuori: configurarli qui faceva divergere lo stato
               del ticket dal passo del processo (B-9).
             */}
-            <Select style={selectS} value={params['field'] ?? ''} onChange={e => { onChange('field', e.target.value); onChange('value', '') }}>
+            <Select value={params['field'] ?? ''} onChange={e => { onChange('field', e.target.value); onChange('value', '') }}>
               <option value="">{t('automation.params.pickField')}</option>
               {updatableFields.map(f => (
                 <option key={f.name} value={f.name}>{f.label} ({t(fieldTypeKey(f.fieldType))})</option>
@@ -298,7 +295,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
               Dizionario; gli altri accettano anche un segnaposto ({title}). */}
           {updateMeta?.fieldType === 'enum' && updateMeta.enumValues.length > 0 ? (
             <Labeled label="value">
-              <Select style={selectS} value={params['value'] ?? ''} onChange={e => onChange('value', e.target.value)}>
+              <Select value={params['value'] ?? ''} onChange={e => onChange('value', e.target.value)}>
                 <option value="">{t('automation.params.selectValue')}</option>
                 {updateMeta.enumValues.map(v => (
                   <option key={v} value={v} title={v}>{(updateMeta.enumTypeName ? labelOf(updateMeta.enumTypeName, v) : null) ?? v}</option>
@@ -323,7 +320,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
         <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
           {text('title_template', 'title_template', t('workflow.actionParams.taskTitleExample'))}
           <Labeled label="team_id">
-            <Select style={selectS} value={params['team_id'] ?? ''} onChange={(e) => onChange('team_id', e.target.value)}>
+            <Select value={params['team_id'] ?? ''} onChange={(e) => onChange('team_id', e.target.value)}>
               <option value="">{t('automation.params.selectTeam')}</option>
               {teams.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </Select>
@@ -335,7 +332,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
           */}
           {campiSquadra.length > 0 && (
             <Labeled label={t('workflow.actionParams.taskTeamFromField')}>
-              <Select style={selectS} value={params['team_from_field'] ?? ''} onChange={(e) => onChange('team_from_field', e.target.value)}>
+              <Select value={params['team_from_field'] ?? ''} onChange={(e) => onChange('team_from_field', e.target.value)}>
                 <option value="">{t('workflow.actionParams.taskTeamFromFieldNone')}</option>
                 {campiSquadra.map((f) => <option key={f.name} value={f.name}>{f.label || f.name}</option>)}
               </Select>
@@ -356,7 +353,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
           */}
           {compitiFratelli.length > 0 && (
             <Labeled label={t('workflow.actionParams.taskAfter')}>
-              <Select style={selectS} value={params['after'] ?? ''} onChange={(e) => onChange('after', e.target.value)}>
+              <Select value={params['after'] ?? ''} onChange={(e) => onChange('after', e.target.value)}>
                 <option value="">{t('workflow.actionParams.taskAfterNone')}</option>
                 {compitiFratelli.map((titolo) => <option key={titolo} value={titolo}>{titolo}</option>)}
               </Select>
@@ -413,8 +410,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
             />
           </Labeled>
           <Labeled label="approver_team_ids">
-            <Select
-              style={{ ...selectS, flex: 1 }}
+            <Select style={{ flex: 1 }}
               value=""
               onChange={(e) => {
                 if (!e.target.value) return
@@ -440,7 +436,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
       )
 
     default:
-      return <Input style={{ ...inputS, flex: 1 }} placeholder={t('automation.params.generic')} value={params['value'] ?? ''} onChange={e => onChange('value', e.target.value)} />
+      return <Input style={{ flex: 1 }} placeholder={t('automation.params.generic')} value={params['value'] ?? ''} onChange={e => onChange('value', e.target.value)} />
   }
 }
 
@@ -452,11 +448,11 @@ function renderFieldValue(
   labelOf: (vocabolario: string, valore: string) => string | null,
   t: TFunction,
 ) {
-  if (!field) return <Input style={{ ...inputS, flex: 1 }} placeholder={t('automation.params.pickField')} disabled />
+  if (!field) return <Input style={{ flex: 1 }} placeholder={t('automation.params.pickField')} disabled />
 
   if (field.fieldType === 'enum' && field.enumValues.length > 0) {
     return (
-      <Select style={{ ...selectS, flex: 1 }} value={value} onChange={e => onValue(e.target.value)}>
+      <Select style={{ flex: 1 }} value={value} onChange={e => onValue(e.target.value)}>
         <option value="">{t('automation.params.selectValue')}</option>
         {field.enumValues.map(v => (
           <option key={v} value={v} title={v}>
@@ -476,7 +472,7 @@ function renderFieldValue(
 
   if (field.fieldType === 'team') {
     return (
-      <Select style={{ ...selectS, flex: 1 }} value={value} onChange={e => onValue(e.target.value)}>
+      <Select style={{ flex: 1 }} value={value} onChange={e => onValue(e.target.value)}>
         <option value="">{t('automation.params.teamOption')}</option>
         {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
       </Select>
@@ -485,7 +481,7 @@ function renderFieldValue(
 
   if (field.fieldType === 'boolean') {
     return (
-      <Select style={{ ...selectS, flex: 1 }} value={value} onChange={e => onValue(e.target.value)}>
+      <Select style={{ flex: 1 }} value={value} onChange={e => onValue(e.target.value)}>
         <option value="">{t('automation.params.selectValue')}</option>
         <option value="true">{t('common.yes')}</option>
         <option value="false">{t('common.no')}</option>
@@ -494,14 +490,14 @@ function renderFieldValue(
   }
 
   if (field.fieldType === 'date') {
-    return <Input type="date" style={{ ...inputS, flex: 1 }} value={value} onChange={e => onValue(e.target.value)} />
+    return <Input type="date" style={{ flex: 1 }} value={value} onChange={e => onValue(e.target.value)} />
   }
 
   if (field.fieldType === 'number') {
-    return <Input type="number" style={{ ...inputS, flex: 1 }} placeholder={t('automation.params.value')} value={value} onChange={e => onValue(e.target.value)} />
+    return <Input type="number" style={{ flex: 1 }} placeholder={t('automation.params.value')} value={value} onChange={e => onValue(e.target.value)} />
   }
 
-  return <Input style={{ ...inputS, flex: 1 }} placeholder={t('automation.params.value')} value={value} onChange={e => onValue(e.target.value)} />
+  return <Input style={{ flex: 1 }} placeholder={t('automation.params.value')} value={value} onChange={e => onValue(e.target.value)} />
 }
 
 /**
@@ -515,7 +511,7 @@ function ElencoScelti({ ids, nomeDi, onChange }: { ids: string; nomeDi: (id: str
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
       {elenco.map((id) => (
-        <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--color-slate-bg)', borderRadius: 4, padding: '1px 6px', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-dark)' }}>
+        <Pill bg="var(--color-slate-bg)" color="var(--color-slate-dark)" radius={4} key={id} style={{ gap: 4, fontSize: 'var(--font-size-table)' }}>
           {nomeDi(id)}
           <button
             type="button"
@@ -525,7 +521,7 @@ function ElencoScelti({ ids, nomeDi, onChange }: { ids: string; nomeDi: (id: str
           >
             ×
           </button>
-        </span>
+        </Pill>
       ))}
     </div>
   )

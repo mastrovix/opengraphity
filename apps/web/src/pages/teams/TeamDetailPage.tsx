@@ -1,3 +1,6 @@
+import { SearchBox } from '@/components/ui/SearchBox'
+import { Loading } from '@/components/ui/Loading'
+import { BackLink, DetailTitle } from '@/components/ui/BackLink'
 import { useState } from 'react'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { useRoles } from '@/hooks/useRoles'
@@ -8,7 +11,7 @@ import { PageContainer } from '@/components/PageContainer'
 import { QueryError } from '@/components/QueryError'
 import { Modal } from '@/components/Modal'
 import { Button } from '@/components/Button'
-import { Users, UsersRound, X, Search } from 'lucide-react'
+import { Users, UsersRound, X } from 'lucide-react'
 import { DetailField } from '@/components/ui/DetailField'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { Pill } from '@/components/ui/Pill'
@@ -95,7 +98,7 @@ function CITable({ items, onRowClick, emptyMsg }: { items: CIRef[]; onRowClick: 
   const columns: SimpleColumn<CIRef>[] = [
     { key: 'name',        label: t('pages.cmdb.name'),        render: (v) => <span style={{ fontWeight: 500 }}>{String(v)}</span> },
     // F-23: l'etichetta del tipo dal metamodello, non il nome «umanizzato».
-    { key: 'type',        label: t('pages.teams.type'),       render: (v) => <span style={{ color: 'var(--color-slate)' }}>{ciLabels.typeLabel(String(v))}</span> },
+    { key: 'type',        label: t('pages.teams.type'),       sortValue: (ci) => ciLabels.typeLabel(String(ci.type)), render: (v) => <span style={{ color: 'var(--color-slate)' }}>{ciLabels.typeLabel(String(v))}</span> },
     { key: 'environment', label: t('pages.cmdb.environment'), render: (v) => <EnvBadge environment={v as string | null} /> },
     { key: 'status',      label: t('pages.cmdb.status'),      render: (v) => <StatusBadge value={String(v)} /> },
   ]
@@ -178,7 +181,7 @@ export function TeamDetailPage() {
   const teamMembers = team?.members ?? []
 
   if (loading && !team) {
-    return <div style={{ padding: '32px 40px', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</div>
+    return <Loading padded />
   }
 
   if (error && !data) {
@@ -197,12 +200,10 @@ export function TeamDetailPage() {
     <PageContainer>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <Link to="/teams" style={{ display: 'inline-block', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 4, textDecoration: 'none' }}>
-          ← {t('pages.teams.title')}
-        </Link>
+        <BackLink to="/teams">{t('pages.teams.title')}</BackLink>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <UsersRound size={22} color="var(--color-icon-accent)" />
-          <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{team.name}</h1>
+          <DetailTitle>{team.name}</DetailTitle>
         </div>
         <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4 }}>
           {t('detail.createdAt')} {formatDate(team.createdAt)}
@@ -269,9 +270,9 @@ export function TeamDetailPage() {
             <DetailField label={t('pages.teamDetail.manager')} value={
               team.manager ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Link to={`/users/${team.manager.id}`} style={{ color: 'var(--color-brand)', fontWeight: 500, textDecoration: 'none' }}>{team.manager.name}</Link>
-                  <Button variant="ghost" onClick={() => { setManagerSearch(''); setPendingManagerUser(null); setShowManagerModal(true) }} style={{ color: 'var(--color-brand)', fontWeight: 500, fontSize: 'var(--font-size-table)', padding: 0 }}>{t('pages.teams.changeManager')}</Button>
-                  <button
+                  <Link to={`/users/${team.manager.id}`} style={{ color: 'var(--color-link)', fontWeight: 500, textDecoration: 'underline', textUnderlineOffset: 2 }}>{team.manager.name}</Link>
+                  <Button variant="ghost" onClick={() => { setManagerSearch(''); setPendingManagerUser(null); setShowManagerModal(true) }} style={{ fontWeight: 500, fontSize: 'var(--font-size-table)' }}>{t('pages.teams.changeManager')}</Button>
+                  <button className="hover-danger"
                     type="button"
                     // F-43: si CHIEDE conferma, come per ogni altra rimozione
                     // della pagina. Un clic per sbaglio lasciava il team senza
@@ -280,14 +281,12 @@ export function TeamDetailPage() {
                     style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', borderRadius: 4 }}
                     title={t('pages.teams.removeManager')}
                     aria-label={t('pages.teams.removeManager')}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-danger-bg)' }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none' }}
                   >
                     <X size={12} color={colors.danger} />
                   </button>
                 </div>
               ) : (
-                <Button variant="ghost" onClick={() => { setManagerSearch(''); setPendingManagerUser(null); setShowManagerModal(true) }} style={{ color: 'var(--color-brand)', fontWeight: 500, padding: 0 }}>+ {t('pages.teams.assignManager')}</Button>
+                <Button variant="ghost" onClick={() => { setManagerSearch(''); setPendingManagerUser(null); setShowManagerModal(true) }} style={{ fontWeight: 500 }}>+ {t('pages.teams.assignManager')}</Button>
               )
             } />
             <DetailField label={t('pages.teams.description')} value={team.description} />
@@ -362,17 +361,8 @@ export function TeamDetailPage() {
                 {/* Search */}
                 {!pendingManagerUser && (
                   <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px' }}>
-                      <Search size={14} color="var(--color-slate-light)" />
-                      <input aria-label={t('pages.teamDetail.searchMember')}
-                        // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management del dialogo di ricerca aperto dall'utente (Modal)
-                        autoFocus
-                        value={managerSearch}
-                        onChange={e => setManagerSearch(e.target.value)}
-                        placeholder={t('pages.teamDetail.searchMember')}
-                        style={{ border: 'none', outline: 'none', flex: 1, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}
-                      />
-                    </div>
+                    {/* eslint-disable-next-line jsx-a11y/no-autofocus -- the search of a dialog the user just opened: the focus goes there */}
+                    <SearchBox value={managerSearch} onChange={setManagerSearch} ariaLabel={t('pages.teamDetail.searchMember')} placeholder={t('pages.teamDetail.searchMember')} autoFocus />
                   </div>
                 )}
 
@@ -428,8 +418,8 @@ export function TeamDetailPage() {
                 { key: 'name',  label: t('pages.users.name'),  render: (v) => <span style={{ fontWeight: 500 }}>{String(v)}</span> },
                 { key: 'email', label: t('pages.users.email'), render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
                 // F-29: il nome del ruolo dell'organizzazione, non la chiave tecnica.
-                { key: 'role',  label: t('pages.users.role'),  render: (v) => <span style={{ color: 'var(--color-slate)' }}>{roleLabel(String(v))}</span> },
-                { key: 'id',    label: '', width: '48px', render: (_v, m) => (
+                { key: 'role',  label: t('pages.users.role'),  sortValue: (m) => roleLabel(String(m.role)), render: (v) => <span style={{ color: 'var(--color-slate)' }}>{roleLabel(String(v))}</span> },
+                { key: 'id',    label: '', width: '48px', sortable: false, render: (_v, m) => (
                   <button
                     type="button"
                     disabled={savingMember}
@@ -455,21 +445,11 @@ export function TeamDetailPage() {
             .filter((u) => !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
           return (
             <Modal open onClose={() => setShowMemberModal(false)} title={t('pages.teamDetail.addMemberTitle', { team: team.name })} width={440}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px', marginBottom: 12 }}>
-                <Search size={14} color="var(--color-slate-light)" />
-                <input
-                  // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management del dialogo di ricerca aperto dall'utente (Modal)
-                  autoFocus
-                  value={memberSearch}
-                  onChange={(e) => setMemberSearch(e.target.value)}
-                  placeholder={t('pages.teamDetail.searchUser')}
-                  aria-label={t('pages.teamDetail.searchUser')}
-                  style={{ border: 'none', outline: 'none', flex: 1, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}
-                />
-              </div>
+              {/* eslint-disable-next-line jsx-a11y/no-autofocus -- the search of a dialog the user just opened: the focus goes there */}
+              <SearchBox value={memberSearch} onChange={setMemberSearch} ariaLabel={t('pages.teamDetail.searchUser')} placeholder={t('pages.teamDetail.searchUser')} autoFocus style={{ marginBottom: 12 }} />
               <div style={{ overflowY: 'auto', maxHeight: 'calc(70vh - 160px)' }}>
                 {!usersData ? (
-                  <div style={{ padding: 20, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center' }}>{t('common.loading')}</div>
+                  <Loading padded />
                 ) : candidates.length === 0 ? (
                   <div style={{ padding: 20, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center' }}>{t('pages.teamDetail.noUserToAdd')}</div>
                 ) : candidates.map((u) => (

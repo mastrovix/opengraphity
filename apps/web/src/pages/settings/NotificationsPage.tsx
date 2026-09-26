@@ -1,3 +1,7 @@
+import { Pill } from '@/components/ui/Pill'
+import { Chip } from '@/components/ui/Chip'
+import { Input } from '@/components/ui/FormControls'
+import { Button } from '@/components/Button'
 import { useId, useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
@@ -180,12 +184,11 @@ export default function NotificationsPage() {
         <PageTitle icon={<Bell size={22} color="var(--color-icon-accent)" />}>
           {t('sidebar.notifications')}
         </PageTitle>
-        <button type="button"
+        <Button variant="primary"
           onClick={openCreate}
-          style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.white, background: 'var(--color-brand)', border: 'none', borderRadius: 6, padding: '8px 16px', cursor: 'pointer' }}
         >
           + {t('pages.notifications.addChannel')}
-        </button>
+        </Button>
       </div>
 
       {channels.length === 0 ? (
@@ -199,18 +202,18 @@ export default function NotificationsPage() {
             const tr = testResult[ch.id]
             return (
               <div key={ch.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '14px 16px', background: colors.white, display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', padding: '2px 8px', borderRadius: 4, background: pb.bg, color: pb.color }}>
+                <Pill bg={pb.bg} color={pb.color} radius={4} style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   {ch.platform}
-                </span>
+                </Pill>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{ch.name}</div>
                   <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 2 }}>{ch.eventTypes.join(', ')}</div>
                 </div>
                 {tr === true  && <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-success)' }}>{t('pages.notifications.testSent')}</span>}
                 {tr === false && <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>{t('pages.notifications.testFailed')}</span>}
-                <button type="button" onClick={() => void handleTest(ch.id)}   style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', background: 'none', border: '1px solid var(--border)', borderRadius: 5, padding: '5px 10px', cursor: 'pointer' }}>{t('pages.notifications.test')}</button>
-                <button type="button" onClick={() => openEdit(ch)}              style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', background: 'none', border: '1px solid var(--border)', borderRadius: 5, padding: '5px 10px', cursor: 'pointer' }}>{t('common.edit')}</button>
-                <button type="button" onClick={() => void handleDelete(ch.id)}  style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)', background: 'none', border: `1px solid ${palette.danger.tint}`, borderRadius: 5, padding: '5px 10px', cursor: 'pointer' }}>{t('common.delete')}</button>
+                <Button variant="secondary" onClick={() => handleTest(ch.id)}>{t('pages.notifications.test')}</Button>
+                <Button variant="secondary" onClick={() => openEdit(ch)}>{t('common.edit')}</Button>
+                <Button variant="danger" onClick={() => handleDelete(ch.id)}>{t('common.delete')}</Button>
               </div>
             )
           })}
@@ -223,8 +226,8 @@ export default function NotificationsPage() {
         title={t(editingId ? 'pages.notifications.editChannel' : 'pages.notifications.addChannel')}
         footer={
           <>
-            <button type="button" onClick={() => setDialogOpen(false)} style={{ fontSize: 'var(--font-size-card-title)', padding: '8px 16px', border: '1px solid var(--border)', borderRadius: 6, background: colors.white, color: 'var(--color-slate)', cursor: 'pointer' }}>{t('common.cancel')}</button>
-            <button type="button" onClick={() => void handleSave()} style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, padding: '8px 16px', border: 'none', borderRadius: 6, background: 'var(--color-brand)', color: colors.white, cursor: 'pointer' }}>{t('common.save')}</button>
+            <Button variant="secondary" onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>
+            <Button variant="primary" onClick={() => handleSave()}>{t('common.save')}</Button>
           </>
         }
       >
@@ -232,25 +235,19 @@ export default function NotificationsPage() {
           <div id={`${fid}-platform`} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>{t('pages.notifications.platform')}</div>
           <div role="group" aria-labelledby={`${fid}-platform`} style={{ display: 'flex', gap: 8 }}>
             {['slack', 'teams'].map((p) => (
-              <button type="button"
-                key={p}
-                aria-pressed={form.platform === p}
-                onClick={() => setForm((f) => ({ ...f, platform: p }))}
-                style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, padding: '6px 18px', borderRadius: 6, cursor: 'pointer', border: '2px solid', borderColor: form.platform === p ? 'var(--color-brand)' : 'var(--border)', background: form.platform === p ? palette.info.bg : colors.white, color: form.platform === p ? 'var(--color-brand)' : 'var(--color-slate)' }}
-              >
+              <Chip pressed={form.platform === p} key={p} onClick={() => setForm((f) => ({ ...f, platform: p }))}>
                 {p.charAt(0).toUpperCase() + p.slice(1)}
-              </button>
+              </Chip>
             ))}
           </div>
         </div>
 
         <div style={{ marginBottom: 14 }}>
           <label htmlFor={`${fid}-name`} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>{t('common.name')}</label>
-          <input
+          <Input
             id={`${fid}-name`}
             value={form.name}
             onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-            style={{ width: '100%', fontSize: 'var(--font-size-card-title)', padding: '8px 10px', border: `1px solid ${palette.neutral.borderStrong}`, borderRadius: 6, boxSizing: 'border-box' }}
           />
         </div>
 
@@ -258,24 +255,22 @@ export default function NotificationsPage() {
           <>
             <div style={{ marginBottom: 14 }}>
               <label htmlFor={`${fid}-slack-webhook`} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>{t('pages.notifications.webhookUrl')}</label>
-              <input
+              <Input
                 id={`${fid}-slack-webhook`}
                 value={form.webhookUrl}
                 onChange={(e) => setForm((f) => ({ ...f, webhookUrl: e.target.value }))}
                 placeholder="https://hooks.slack.com/services/..."
-                style={{ width: '100%', fontSize: 'var(--font-size-card-title)', padding: '8px 10px', border: `1px solid ${palette.neutral.borderStrong}`, borderRadius: 6, boxSizing: 'border-box' }}
               />
             </div>
             <div style={{ marginBottom: 14 }}>
               <label htmlFor={`${fid}-channel-id`} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>
                 {t('pages.notifications.channelId')} <span style={{ fontWeight: 400, color: 'var(--color-slate-light)' }}>{t('pages.notifications.channelIdProtocol')}</span>
               </label>
-              <input
+              <Input
                 id={`${fid}-channel-id`}
                 value={form.channelId}
                 onChange={(e) => setForm((f) => ({ ...f, channelId: e.target.value }))}
                 placeholder="C0XXXXXXXXX"
-                style={{ width: '100%', fontSize: 'var(--font-size-card-title)', padding: '8px 10px', border: `1px solid ${palette.neutral.borderStrong}`, borderRadius: 6, boxSizing: 'border-box' }}
               />
               <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4 }}>{t('pages.notifications.slackHint')}</div>
             </div>
@@ -285,12 +280,11 @@ export default function NotificationsPage() {
         {form.platform === 'teams' && (
           <div style={{ marginBottom: 14 }}>
             <label htmlFor={`${fid}-teams-webhook`} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>{t('pages.notifications.webhookUrlRequired')}</label>
-            <input
+            <Input
               id={`${fid}-teams-webhook`}
               value={form.webhookUrl}
               onChange={(e) => setForm((f) => ({ ...f, webhookUrl: e.target.value }))}
               placeholder="https://outlook.office.com/webhook/..."
-              style={{ width: '100%', fontSize: 'var(--font-size-card-title)', padding: '8px 10px', border: `1px solid ${palette.neutral.borderStrong}`, borderRadius: 6, boxSizing: 'border-box' }}
             />
           </div>
         )}

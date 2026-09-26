@@ -177,7 +177,7 @@ describe('ReportDetailView — the sections', () => {
     const { user } = renderWithProviders(<ReportDetailView {...p} />)
     await user.click(within(sectionBlock('Beta')).getByRole('button', { name: '✏ Edit section' }))
     expect(p.startEditSection).toHaveBeenCalledWith(expect.objectContaining({ id: 'b', title: 'Beta' }))
-    await user.click(within(sectionBlock('Gamma')).getByRole('button', { name: '🗑' }))
+    await user.click(within(sectionBlock('Gamma')).getByRole('button', { name: 'Delete' }))
     expect(p.handleRemoveSection).toHaveBeenCalledWith('r1', 'c')
   })
 

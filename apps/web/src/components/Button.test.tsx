@@ -68,6 +68,13 @@ describe('Button', () => {
     expect(screen.getByRole('button', { name: 'X' })).toHaveStyle(style)
   })
 
+  // 26 Sep 2026, the owner: «non si capisce che si può cliccare».
+  it('ghost with words is drawn as a link; icon-only it stays an icon', () => {
+    render(<><Button variant="ghost">Change</Button><Button variant="ghost" aria-label="Remove" icon={<svg />} /></>)
+    expect(screen.getByRole('button', { name: 'Change' })).toHaveStyle({ color: 'var(--color-link)', textDecoration: 'underline' })
+    expect(screen.getByRole('button', { name: 'Remove' }).style.textDecoration).toBe('')
+  })
+
   // 26 Sep 2026: a size smaller — the buttons were 36-38 px tall with 12-13 px text.
   it('size xs riduce il padding (4px 12px) rispetto a sm (6px 14px)', () => {
     render(<><Button size="xs">A</Button><Button size="sm">B</Button></>)

@@ -165,12 +165,13 @@ describe('NewRuleDialog — escalation and digest settings', () => {
 
 describe('NewRuleDialog — closing and saving state', () => {
   it('closes from the X, from Cancel and from the backdrop, but not from a click inside the panel', async () => {
-    const { onClose, container } = setup()
+    const { onClose } = setup()
     await userEvent.click(screen.getByRole('dialog'))
     expect(onClose).not.toHaveBeenCalled()
     await userEvent.click(screen.getByRole('button', { name: 'Close' }))
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-    await userEvent.click(container.firstChild as HTMLElement)
+    // The backdrop: the app's Modal lives in a portal, around the dialog.
+    await userEvent.click(screen.getByRole('dialog').parentElement!)
     expect(onClose).toHaveBeenCalledTimes(3)
   })
 

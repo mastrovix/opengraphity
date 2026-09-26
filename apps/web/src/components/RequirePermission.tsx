@@ -1,3 +1,4 @@
+import { DetailTitle } from '@/components/ui/BackLink'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -43,13 +44,13 @@ function Forbidden() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 12, textAlign: 'center', padding: 24 }}>
       <ShieldOff size={36} color={colors.danger} aria-hidden="true" />
-      <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>
+      <DetailTitle>
         {t('auth.forbiddenTitle')}
-      </h1>
+      </DetailTitle>
       <p style={{ color: 'var(--color-slate-light)', margin: 0, maxWidth: 480 }}>
         {t('auth.forbiddenBody')}
       </p>
-      <Link to="/dashboard" style={{ color: 'var(--color-brand)', textDecoration: 'none', fontSize: 'var(--font-size-body)' }}>
+      <Link to="/dashboard" style={{ color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, fontSize: 'var(--font-size-body)' }}>
         {t('auth.backHome')}
       </Link>
     </div>

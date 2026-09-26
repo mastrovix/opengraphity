@@ -2,6 +2,7 @@
  * I campi personalizzati in un form di creazione o di modifica (ondata 4).
  * Stile passato da chi lo usa, così ogni pagina resta coerente con sé stessa.
  */
+import { Input, Select } from '@/components/ui/FormControls'
 import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
@@ -41,18 +42,18 @@ export function CustomFieldsForm({ defs, values, onChange, rules = {}, errors = 
               {d.label}{required && <span style={{ color: 'var(--color-trigger-sla-breach)', marginLeft: 3 }}>*</span>}
             </label>
             {d.fieldType === 'enum' ? (
-              <select id={id} value={value} onChange={(e) => onChange(d.name, e.target.value)} style={style}>
+              <Select id={id} value={value} onChange={(e) => onChange(d.name, e.target.value)} style={style}>
                 <option value="">{t('customFields.chooseValue')}</option>
                 {d.enumValues.map((v) => <option key={v} value={v}>{(d.enumTypeName ? labelOf(d.enumTypeName, v) : null) ?? v}</option>)}
-              </select>
+              </Select>
             ) : d.fieldType === 'boolean' ? (
-              <select id={id} value={value} onChange={(e) => onChange(d.name, e.target.value)} style={style}>
+              <Select id={id} value={value} onChange={(e) => onChange(d.name, e.target.value)} style={style}>
                 <option value="">{t('customFields.chooseValue')}</option>
                 <option value="true">{t('common.yes')}</option>
                 <option value="false">{t('common.no')}</option>
-              </select>
+              </Select>
             ) : (
-              <input
+              <Input
                 id={id}
                 type={d.fieldType === 'number' ? 'number' : d.fieldType === 'date' ? 'date' : 'text'}
                 value={d.fieldType === 'date' ? value.slice(0, 10) : value}

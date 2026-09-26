@@ -29,6 +29,8 @@
  * campo che non esiste vorrebbe dire un modulo che non si può salvare, e la
  * spiegazione arriverebbe dieci minuti dopo.
  */
+import { Pill } from '@/components/ui/Pill'
+import { Textarea } from '@/components/ui/FormControls'
 import { useState } from 'react'
 import { useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
@@ -235,16 +237,13 @@ export function ModaleProgettoAI({ itemId, nomeVoce, etichettaDi, onChiudi, onAp
           <label htmlFor="ai-description" style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate)' }}>
             {t('pages.catalogForms.ai.promptLabel')}
           </label>
-          <textarea
+          <Textarea
             id="ai-description"
             value={descrizione}
             onChange={(e) => { setDescrizione(e.target.value) }}
             rows={6}
             placeholder={t('pages.catalogForms.ai.promptPlaceholder')}
-            style={{
-              width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${colors.border}`,
-              fontSize: 'var(--font-size-body)', fontFamily: 'inherit', resize: 'vertical',
-            }}
+            style={{ resize: 'vertical' }}
           />
           <p style={{ margin: 0, fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
             {t('pages.catalogForms.ai.promptHelp')}
@@ -398,15 +397,10 @@ function Pillola({ tipo }: { tipo: 'library' | 'new' }) {
   const { t } = useTranslation()
   const riuso = tipo === 'library'
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 6px', borderRadius: 999,
-      fontSize: 'var(--font-size-table)',
-      background: riuso ? 'var(--color-surface-2)' : 'var(--color-brand-a13)',
-      color: riuso ? 'var(--color-slate)' : 'var(--color-brand)',
-    }}>
+    <Pill bg={riuso ? 'var(--color-surface-2)' : 'var(--color-brand-a13)'} color={riuso ? 'var(--color-slate)' : 'var(--color-brand)'} radius={999} style={{ gap: 3, fontSize: 'var(--font-size-table)' }}>
       {riuso ? <Recycle size={11} /> : <Plus size={11} />}
       {riuso ? t('pages.catalogForms.ai.reused') : t('pages.catalogForms.ai.new')}
-    </span>
+    </Pill>
   )
 }
 

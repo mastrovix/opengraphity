@@ -1,3 +1,6 @@
+import { Pill } from '@/components/ui/Pill'
+import { Input, Select } from '@/components/ui/FormControls'
+import { Button } from '@/components/Button'
 import { memo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Handle, Position, BaseEdge, EdgeLabelRenderer, getSmoothStepPath } from '@xyflow/react'
@@ -103,9 +106,9 @@ export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: s
       <div className="node-drag-handle" style={{ padding: '8px 10px', borderBottom: `1px solid ${palette.neutral.borderLight}`, display: 'flex', alignItems: 'center', gap: 4, cursor: 'grab' }}>
         <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate-dark)', flex: 1, whiteSpace: 'nowrap' }}>{d.label}</span>
         {d.isRoot && (
-          <span style={{ fontSize: 'var(--font-size-label)', background: palette.purple.tint, color: palette.purple.base, borderRadius: 4, padding: '1px 6px', fontWeight: 600 }}>
+          <Pill bg={palette.purple.tint} color={palette.purple.base} radius={4} style={{ fontSize: 'var(--font-size-label)', fontWeight: 600 }}>
             {t('reportBuilder.root')}
-          </span>
+          </Pill>
         )}
         {/* `nodrag`: React Flow's own drag listener sits on the node and runs
             before React's stopPropagation, so the star in the drag handle
@@ -139,13 +142,13 @@ export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: s
           <div style={{ marginBottom: 6 }}>
             {d.filters.map((f: FilterState, i: number) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                <select
+                <Select
                   aria-label={t('a11y.reportFilterField')}
                   className="nodrag nopan"
                   onMouseDown={e => e.stopPropagation()}
                   value={f.field}
                   onChange={e => d.onFilterChange(i, 'field', e.target.value)}
-                  style={{ fontSize: 'var(--font-size-body)', padding: '3px 6px', border: `1px solid ${colors.border}`, borderRadius: 4, flex: 1 }}
+                  style={{ flex: 1 }}
                 >
                   <option value="">{t('automation.params.selectFieldOption')}</option>
                   {/* TUTTI i campi, non solo scelte e date: con gli operatori
@@ -156,33 +159,33 @@ export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: s
                   {(d.fields as NavigableField[]).map(fld => (
                     <option key={fld.name} value={fld.name}>{navigableLabel(t, fld)}</option>
                   ))}
-                </select>
-                <select
+                </Select>
+                <Select
                   className="nodrag nopan"
                   aria-label={t('reportBuilder.filterOperator')}
                   onMouseDown={e => e.stopPropagation()}
                   value={f.operator}
                   onChange={e => d.onFilterChange(i, 'operator', e.target.value)}
-                  style={{ fontSize: 'var(--font-size-body)', padding: '3px 6px', border: `1px solid ${colors.border}`, borderRadius: 4 }}
                 >
                   {REPORT_FILTER_OPERATORS.map(op => (
                     <option key={op} value={op}>{t(`reportBuilder.op.${op}`)}</option>
                   ))}
-                </select>
+                </Select>
                 {(() => {
                   const fld = (d.fields as NavigableField[]).find(x => x.name === f.field)
-                  const stile = { fontSize: 'var(--font-size-body)', padding: '3px 6px', border: `1px solid ${colors.border}`, borderRadius: 4, flex: 1, minWidth: 60 }
                   // Niente valore da mostrare: «è vuoto» non confronta niente.
                   if (REPORT_OPERATORS_WITHOUT_VALUE.includes(f.operator)) return null
                   if (f.operator === 'last_n_days') {
                     return (
-                      <input
-                        className="nodrag nopan" type="number" min={1}
+                      <Input
+                        className="nodrag nopan"
+                        type="number"
+                        min={1}
                         aria-label={t('reportBuilder.op.last_n_days')}
                         onMouseDown={e => e.stopPropagation()}
                         value={typeof f.value === 'number' ? f.value : String(f.value)}
                         onChange={e => d.onFilterChange(i, 'value', e.target.value)}
-                        style={{ ...stile, width: 70, flex: '0 0 auto' }}
+                        style={{ width: 70, flex: '0 0 auto' }}
                       />
                     )
                   }
@@ -190,42 +193,40 @@ export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: s
                     // I valori separati da virgola: si leggono e si correggono,
                     // che è quello che serve a chi rivede una proposta.
                     return (
-                      <input
+                      <Input
                         className="nodrag nopan"
                         aria-label={t('reportBuilder.op.in')}
                         onMouseDown={e => e.stopPropagation()}
                         value={Array.isArray(f.value) ? f.value.join(', ') : String(f.value)}
                         onChange={e => d.onFilterChange(i, 'value', e.target.value)}
                         placeholder={t('reportBuilder.valuesPlaceholder')}
-                        style={stile}
                       />
                     )
                   }
                   if (fld?.fieldType === 'enum') {
                     return (
-                      <select
+                      <Select
                         aria-label={t('a11y.reportFilterValue')}
                         className="nodrag nopan"
                         onMouseDown={e => e.stopPropagation()}
                         value={String(f.value)}
                         onChange={e => d.onFilterChange(i, 'value', e.target.value)}
-                        style={stile}
                       >
                         <option value="">{t('automation.params.selectValue')}</option>
                         {(fld.enumValues ?? []).map(v => (
                           <option key={v} value={v}>{(fld.enumTypeName ? labelOf(fld.enumTypeName, v) : null) ?? v}</option>
                         ))}
-                      </select>
+                      </Select>
                     )
                   }
                   return (
-                    <input aria-label={t('reportBuilder.valuePlaceholder')}
+                    <Input
+                      aria-label={t('reportBuilder.valuePlaceholder')}
                       className="nodrag nopan"
                       onMouseDown={e => e.stopPropagation()}
                       value={String(f.value)}
                       onChange={e => d.onFilterChange(i, 'value', e.target.value)}
                       placeholder={t('reportBuilder.valuePlaceholder')}
-                      style={stile}
                     />
                   )
                 })()}
@@ -251,15 +252,14 @@ export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: s
         >
           {t('reportBuilder.addFilter')}
         </button>
-        <button
-          type="button"
+        <Button variant="secondary"
           className="nodrag nopan"
           onMouseDown={e => e.stopPropagation()}
           onClick={d.onConnect}
-          style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-brand)', background: 'none', border: `1px solid ${palette.purple.border}`, borderRadius: 6, padding: '5px 10px', cursor: 'pointer', width: '100%' }}
+          style={{ width: '100%' }}
         >
           + {t('reportBuilder.connectTo')}
-        </button>
+        </Button>
       </div>
     </div>
   )

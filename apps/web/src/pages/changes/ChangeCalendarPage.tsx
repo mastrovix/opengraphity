@@ -20,6 +20,8 @@
  * - I piani con date inservibili non si possono disegnare, quindi si DICONO in
  *   testa: un calendario che li tace si legge come completo.
  */
+import { Loading } from '@/components/ui/Loading'
+import { Chip } from '@/components/ui/Chip'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
@@ -37,8 +39,7 @@ import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { useCILabels } from '@/hooks/useCILabels'
 import { ModalOverlay } from './components/shared'
 import { riepilogoRilascio } from './releasePlanSummary'
-import { readableWindow } from './readableWindow'
-import { Pill } from '@/components/ui/Pill'
+import { PlanTable } from './components/ReleasePlanCard'
 import type { DeployStep } from '@/types/change'
 import {
   intervallo, scorri, conSovrapposizioni, riassunto, barreDellaSettimana, settimane, soloDelTipo, soloDelloStato,
@@ -163,7 +164,7 @@ function AnteprimaChange({ changeId, onClose }: { changeId: string; onClose: () 
   return (
     <ModalOverlay title={c ? `${c.code} · ${c.title}` : t('pages.changeCalendar.preview')} onClose={onClose}>
       {error && <QueryError message={error.message} />}
-      {loading && !c && <p style={{ color: colors.slateLight, margin: 0 }}>{t('common.loading')}</p>}
+      {loading && !c && <Loading />}
       {c && (
         <>
           <Campo etichetta={t('pages.changeDetail.why')} valore={c.why} />
@@ -198,30 +199,7 @@ function AnteprimaChange({ changeId, onClose }: { changeId: string; onClose: () 
             {piano.voci.length === 0 ? (
               <span style={{ color: colors.slateLight, fontSize: 'var(--font-size-body)' }}>{t('pages.changeCalendar.noPlan')}</span>
             ) : (
-              <div className="og-scroll-x">
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-label)' }}>
-                  <tbody>
-                    {piano.voci.map((v, i) => (
-                      <tr key={`${v.taskCode ?? v.ciId}-${v.tipo}-${i}`} style={{ borderTop: i === 0 ? 'none' : '1px solid var(--color-border-light)' }}>
-                        <td style={{ padding: '5px 8px 5px 0', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', color: 'var(--color-slate-dark)' }}>
-                          {readableWindow(v.start, v.end)}
-                        </td>
-                        <td style={{ padding: '5px 8px' }}>
-                          <Pill
-                            bg={v.tipo === 'release' ? palette.purple.tint : palette.info.tint}
-                            color={v.tipo === 'release' ? palette.purple.text : palette.info.text}
-                            radius={10}
-                          >
-                            {t(v.tipo === 'release' ? 'pages.changeCalendar.typeRelease' : 'pages.changeCalendar.typeValidation')}
-                          </Pill>
-                        </td>
-                        <td style={{ padding: '5px 8px', color: 'var(--color-slate-dark)' }}>{v.stepTitle}</td>
-                        <td style={{ padding: '5px 0 5px 8px', color: 'var(--color-slate)' }}>{v.ciName}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <PlanTable voci={piano.voci} withTask={false} />
             )}
             {/* I piani senza una data non si possono mettere in fila: si dicono,
                 col codice del task da reclamare. */}
@@ -260,20 +238,9 @@ function Segmenti<T extends string>({ valore, scelte, onScegli }: {
   return (
     <div style={{ display: 'inline-flex', border: '1px solid var(--color-border)', borderRadius: 6, overflow: 'hidden' }}>
       {scelte.map((s) => (
-        <button
-          key={s.v}
-          type="button"
-          onClick={() => onScegli(s.v)}
-          aria-pressed={valore === s.v}
-          style={{
-            border: 'none', cursor: 'pointer', padding: '5px 12px', fontSize: 'var(--font-size-label)',
-            background: valore === s.v ? 'var(--color-brand)' : 'var(--color-surface)',
-            color: valore === s.v ? 'var(--color-white)' : 'var(--color-slate-dark)',
-            fontWeight: valore === s.v ? 600 : 400,
-          }}
-        >
+        <Chip pressed={valore === s.v} key={s.v} onClick={() => onScegli(s.v)}>
           {s.etichetta}
-        </button>
+        </Chip>
       ))}
     </div>
   )

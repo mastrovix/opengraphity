@@ -1,3 +1,4 @@
+import { Button } from '@/components/Button'
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
@@ -406,21 +407,13 @@ export function AnomalyPage() {
             <SlidersHorizontal size={14} aria-hidden="true" /> {t('pages.anomalies.configureRules')}
           </Link>
         )}
-        <button
-          type="button"
-          onClick={() => void handleRunScanner()}
+        <Button variant="secondary"
+          onClick={() => handleRunScanner()}
           disabled={scannerLoading}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '7px 16px', borderRadius: 6,
-            border: `1px solid ${colors.border}`, background: 'var(--surface)',
-            fontSize: 'var(--font-size-body)', fontWeight: 600, cursor: scannerLoading ? 'not-allowed' : 'pointer',
-            color: colors.slate,
-          }}
         >
           <RefreshCw size={14} aria-hidden="true" style={{ animation: scannerLoading ? 'spin 1s linear infinite' : undefined }} />
           {t('pages.anomalies.runScanner')}
-        </button>
+        </Button>
         </div>
       </div>
 

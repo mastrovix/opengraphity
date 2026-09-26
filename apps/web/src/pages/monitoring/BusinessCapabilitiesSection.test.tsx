@@ -26,7 +26,7 @@ const CAPS = [
 ]
 
 const render = (mock: GqlMock) => renderWithProviders(<BusinessCapabilitiesSection />, { mocks: [mock] })
-const rows = () => screen.getAllByTestId('capability-row')
+const rows = () => within(screen.getByRole('table', { name: 'Business capabilities' })).getAllByRole('row').slice(1)
 
 describe('BusinessCapabilitiesSection', () => {
   it('una riga per capacità: salute peggiore, servizi giù/degradati e servizi collegati come link', async () => {

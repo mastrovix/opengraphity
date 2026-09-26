@@ -85,7 +85,6 @@ export function IncidentListPage() {
       key:      'slaStatus',
       label:    t('sla.title'),
       width:    '140px',
-      sortable: false,
       render:   (v) => <SlaBadge sla={v as SlaStatusInfo | null} compact />,
     },
     {

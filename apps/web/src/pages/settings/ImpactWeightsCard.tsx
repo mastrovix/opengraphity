@@ -4,6 +4,7 @@
  * fascia di rischio dichiarata qui sopra, quindi la card lo dice invece di
  * mostrare una scala sua.
  */
+import { Loading } from '@/components/ui/Loading'
 import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
@@ -77,7 +78,7 @@ export function ImpactWeightsCard() {
       <p style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight, marginTop: 0 }}>
         {t('pages.domainMatrices.impactWeights.help')}
       </p>
-      {loading && !data && <p>{t('common.loading')}</p>}
+      {loading && !data && <Loading />}
       {error && <p style={{ color: 'var(--color-danger-text)' }}>{error.message}</p>}
       {saved && current && (
         <>

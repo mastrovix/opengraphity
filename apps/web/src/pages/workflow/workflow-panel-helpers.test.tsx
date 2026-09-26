@@ -14,7 +14,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {
-  actionLabel, paramsToRaw, buildActionParams, saveButtonStyle,
+  actionLabel, paramsToRaw, buildActionParams,
   PanelHeader, PanelField, ActionBadge, titoliCompitiOffribili,
 } from './workflow-panel-helpers'
 
@@ -164,10 +164,6 @@ describe('titoliCompitiOffribili', () => {
 })
 
 describe('panel pieces', () => {
-  it('the save button looks disabled when it is', () => {
-    expect(saveButtonStyle(true).cursor).toBe('not-allowed')
-    expect(saveButtonStyle(false).cursor).toBe('pointer')
-  })
 
   it('PanelHeader shows the title and its close button is named and works', async () => {
     const onClose = vi.fn()

@@ -13,7 +13,7 @@
  *  - «Logout» really logs out, back to the application root.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { screen, fireEvent, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import { renderWithProviders, attendiURL } from '@/test/utils'
 import { apolloFinto } from '@/test/apolloFinto'
 import { mockKeycloak } from '@/test/mocks/keycloak'
@@ -149,14 +149,9 @@ describe('Breadcrumb — the bits the menu tests do not touch', () => {
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
   })
 
-  it('a crumb link darkens on hover and returns muted after', () => {
+  it('a crumb link darkens on hover and on keyboard focus (the .hover-strong rule, 26 Sep 2026)', () => {
     renderWithProviders(<Breadcrumb />, { route: '/some-page/123' })
-    const link = screen.getByRole('link', { name: 'Some-page' })
-    const muted = link.style.color
-    fireEvent.mouseEnter(link)
-    expect(link.style.color).not.toBe(muted)
-    fireEvent.mouseLeave(link)
-    expect(link.style.color).toBe(muted)
+    expect(screen.getByRole('link', { name: 'Some-page' })).toHaveClass('hover-strong')
     // A numeric id is a «Detail», not a raw number.
     expect(screen.getByText('Detail')).toHaveAttribute('aria-current', 'page')
   })

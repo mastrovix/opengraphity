@@ -13,7 +13,7 @@
  *  - only custom rules can be deleted: a seeded rule is part of the product.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {
   RuleRow, routableFor, targetsFor, targetOptionsFor, withCurrent,
@@ -104,10 +104,8 @@ describe('RuleRow — what the row shows', () => {
     const { onDelete } = renderRow(rule({ isSeed: false }))
     expect(screen.getByTitle('Custom rule')).toBeInTheDocument()
     const bin = screen.getByTitle('Delete rule')
-    fireEvent.mouseEnter(bin)
-    expect(bin.style.color).toBe('var(--color-danger)')
-    fireEvent.mouseLeave(bin)
-    expect(bin.style.color).toBe('var(--color-slate-light)')
+    // It lights up on hover and on keyboard focus: the .hover-danger-text rule (26 Sep 2026).
+    expect(bin).toHaveClass('hover-danger-text')
     await userEvent.setup().click(bin)
     expect(onDelete).toHaveBeenCalledWith('r1')
   })

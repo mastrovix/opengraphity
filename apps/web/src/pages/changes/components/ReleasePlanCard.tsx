@@ -9,12 +9,15 @@
  * Si popola task per task: ogni piano compilato aggiunge le sue voci al posto
  * giusto nella cronologia, senza aspettare gli altri.
  */
+import { Chip } from '@/components/ui/Chip'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle } from 'lucide-react'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { StatusLabel } from '@/components/ui/badges'
 import { Pill } from '@/components/ui/Pill'
+import { SimpleTable, type SimpleColumn } from '@/components/ui/SimpleTable'
+import { Tabs } from '@/components/ui/Tabs'
 import { formatDate } from '@/lib/datetime'
 import { colors, palette } from '@/lib/tokens'
 import type { AffectedCI } from '@/types/change'
@@ -36,6 +39,24 @@ function TipoPill({ tipo }: { tipo: TipoFinestra }) {
       {t(tipo === 'release' ? 'pages.releasePlan.typeRelease' : 'pages.releasePlan.typeValidation')}
     </Pill>
   )
+}
+
+/**
+ * The plan as a list: when, what kind, which step, which task, which CI. The
+ * app's small table (26 Sep 2026), the same here and in the change calendar,
+ * which leaves out the task column.
+ */
+export function PlanTable({ voci, withTask = true }: { voci: readonly VoceDiPiano[]; withTask?: boolean }) {
+  const { t } = useTranslation()
+  type Row = VoceDiPiano & { id: string }
+  const columns: SimpleColumn<Row>[] = [
+    { key: 'start', label: t('pages.releasePlan.when'), render: (_v, v) => <span style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{readableWindow(v.start, v.end)}</span> },
+    { key: 'ciId', label: t('pages.releasePlan.type'), render: (_v, v) => <TipoPill tipo={v.tipo} /> },
+    { key: 'stepTitle', label: t('pages.releasePlan.step') },
+    ...(withTask ? [{ key: 'taskCode', label: t('pages.releasePlan.task'), render: (_v: unknown, v: Row) => <span style={{ whiteSpace: 'nowrap' }}>{v.taskCode ?? '—'}</span> } as SimpleColumn<Row>] : []),
+    { key: 'ciName', label: t('pages.releasePlan.ci') },
+  ]
+  return <SimpleTable<Row> columns={columns} rows={voci.map((v, i) => ({ ...v, id: `${v.taskCode ?? v.ciId}-${v.tipo}-${String(i)}` }))} />
 }
 
 function Riquadro({ label, children, color }: { label: string; children: React.ReactNode; color?: string }) {
@@ -200,27 +221,13 @@ export function ReleasePlanCard({ affected }: { affected: readonly AffectedCI[] 
 
       {r.voci.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap', marginBottom: 12, borderBottom: '1px solid var(--color-border-light)' }}>
-        <div role="tablist" aria-label={t('pages.releasePlan.views')}
-          style={{ display: 'flex', gap: 4 }}>
-          {(['list', 'gantt'] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              role="tab"
-              aria-selected={vista === v}
-              onClick={() => setVista(v)}
-              style={{
-                border: 'none', background: 'none', cursor: 'pointer', padding: '6px 12px',
-                fontSize: 'var(--font-size-body)', fontWeight: vista === v ? 600 : 400,
-                color: vista === v ? 'var(--color-brand)' : 'var(--color-slate)',
-                borderBottom: `2px solid ${vista === v ? 'var(--color-brand)' : 'transparent'}`,
-                marginBottom: -1,
-              }}
-            >
-              {t(v === 'list' ? 'pages.releasePlan.tabList' : 'pages.releasePlan.tabGantt')}
-            </button>
-          ))}
-        </div>
+        <Tabs<'list' | 'gantt'>
+          ariaLabel={t('pages.releasePlan.views')}
+          items={[{ key: 'list', label: t('pages.releasePlan.tabList') }, { key: 'gantt', label: t('pages.releasePlan.tabGantt') }]}
+          value={vista}
+          onChange={setVista}
+          style={{ borderBottom: 'none', marginBottom: 0 }}
+        />
 
         {/* IL FILTRO: le stesse tinte delle barre e delle pill, così l'opzione
             e quello che seleziona si riconoscono senza leggere. Ogni opzione
@@ -231,28 +238,14 @@ export function ReleasePlanCard({ affected }: { affected: readonly AffectedCI[] 
           {(['all', 'release', 'validation'] as const).map((f) => {
             // «Entrambi» non ha una tinta sua: prende quella del marchio,
             // perché le due tinte sono dei due mestieri, non delle opzioni.
-            const stile = f === 'all' ? null : f === 'release' ? palette.purple : palette.info
             const scelto = filtro === f
             return (
-              <button
-                key={f}
-                type="button"
-                aria-pressed={scelto}
-                onClick={() => { setFiltro(f) }}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
-                  padding: '3px 10px', borderRadius: 999,
-                  fontSize: 'var(--font-size-label)', fontWeight: scelto ? 600 : 400,
-                  border: `1px solid ${scelto ? (stile?.border ?? 'var(--color-brand)') : 'var(--color-border-light)'}`,
-                  background: scelto ? (stile?.tint ?? 'var(--color-surface-2)') : 'transparent',
-                  color: scelto ? (stile?.text ?? 'var(--color-brand)') : 'var(--color-slate)',
-                }}
-              >
+              <Chip pressed={scelto} key={f} onClick={() => { setFiltro(f) }}>
                 {t(f === 'all' ? 'pages.releasePlan.filterBoth'
                   : f === 'release' ? 'pages.releasePlan.typeRelease'
                   : 'pages.releasePlan.typeValidation')}
                 <span style={{ fontVariantNumeric: 'tabular-nums', opacity: 0.7, fontWeight: 400 }}>{conti[f]}</span>
-              </button>
+              </Chip>
             )
           })}
         </div>
@@ -270,32 +263,7 @@ export function ReleasePlanCard({ affected }: { affected: readonly AffectedCI[] 
       {voci.length > 0 && vista === 'gantt' && <GanttDelPiano voci={voci} />}
 
       {voci.length > 0 && vista === 'list' && (
-        <div className="og-scroll-x">
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: 'left', padding: '6px 10px' }}>{t('pages.releasePlan.when')}</th>
-                <th style={{ textAlign: 'left', padding: '6px 10px' }}>{t('pages.releasePlan.type')}</th>
-                <th style={{ textAlign: 'left', padding: '6px 10px' }}>{t('pages.releasePlan.step')}</th>
-                <th style={{ textAlign: 'left', padding: '6px 10px' }}>{t('pages.releasePlan.task')}</th>
-                <th style={{ textAlign: 'left', padding: '6px 10px' }}>{t('pages.releasePlan.ci')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {voci.map((v, i) => (
-                <tr key={`${v.taskCode ?? v.ciId}-${v.tipo}-${i}`} style={{ borderTop: '1px solid var(--color-border-light)' }}>
-                  <td style={{ padding: '8px 10px', fontSize: 'var(--font-size-label)', color: 'var(--color-slate-dark)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
-                    {readableWindow(v.start, v.end)}
-                  </td>
-                  <td style={{ padding: '8px 10px' }}><TipoPill tipo={v.tipo} /></td>
-                  <td style={{ padding: '8px 10px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{v.stepTitle}</td>
-                  <td style={{ padding: '8px 10px', fontSize: 'var(--font-size-label)', color: 'var(--color-slate)', whiteSpace: 'nowrap' }}>{v.taskCode ?? '—'}</td>
-                  <td style={{ padding: '8px 10px', fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>{v.ciName}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <PlanTable voci={voci} />
       )}
 
       {/* I piani senza una data non si possono mettere in fila, e stanno fuori

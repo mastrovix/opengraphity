@@ -6,9 +6,8 @@
  * exist for the remaining places that spread a style onto a raw element or
  * need a pinpoint override on top of a FormControl.
  *
- * `btnPrimary` / `btnSecondary` / `btnDanger` are kept ONLY for consumers that
- * cannot yet render `<Button>` (they mirror its variants exactly). New code
- * must use `<Button variant="…">`.
+ * There are no button styles here any more (26 Sep 2026): every button is a
+ * `<Button variant="…">` (guard: __tests__/handMadeButtons.test.ts).
  */
 import type { CSSProperties } from 'react'
 import { colors, palette } from '@/lib/tokens'
@@ -51,19 +50,7 @@ export const labelS: CSSProperties = {
   display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate)', marginBottom: 4,
 }
 
-/** @deprecated use `<Button variant="primary">` */
-export const btnPrimary: CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 6,
-  padding: '8px 16px', border: 'none', borderRadius: 6, background: 'var(--color-brand)',
-  color: colors.white, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms',
-}
 
-/** @deprecated use `<Button variant="secondary">` */
-export const btnSecondary: CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 6,
-  padding: '7px 14px', border: '1px solid var(--border)', borderRadius: 6, background: colors.white,
-  color: 'var(--color-slate)', fontSize: 'var(--font-size-body)', cursor: 'pointer',
-}
 
 /** @deprecated use `<Button variant="danger">` */
 export const btnDanger: CSSProperties = {

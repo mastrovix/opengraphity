@@ -10,6 +10,8 @@
  * places (owner: «se premo collega finisce sotto la scheda dei problem
  * collegati»).
  */
+import { Loading } from '@/components/ui/Loading'
+import { Pill } from '@/components/ui/Pill'
 import { useTranslation } from 'react-i18next'
 import { gql } from '@apollo/client'
 import { useMutation, useQuery } from '@apollo/client/react'
@@ -81,7 +83,7 @@ export function ProblemSuggestionsCard({ incidentId, canLink }: { incidentId: st
           {t('components.problemSuggestions.failed', { reason: error.message })}
         </div>
       ) : loading && !data ? (
-        <p style={muted}>{t('common.loading')}</p>
+        <Loading />
       ) : items.length === 0 ? (
         <p style={muted}>{t('components.problemSuggestions.empty')}</p>
       ) : (
@@ -89,26 +91,26 @@ export function ProblemSuggestionsCard({ incidentId, canLink }: { incidentId: st
           {items.map((p) => (
             <li key={p.id} style={{ padding: '10px 12px', border: `1px solid ${colors.border}`, borderRadius: 8, background: colors.white }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <Link to={`/problems/${p.id}`} style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', textDecoration: 'none' }}>
+                <Link to={`/problems/${p.id}`} style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2 }}>
                   {p.number || p.id.slice(0, 8)}
                 </Link>
                 {/* A known error says so, in green; its step would only say it again (demo: «Known Error (KEDB)»).
                     Any other problem shows its step as the workflow names it. */}
                 {p.knownError ? (
-                  <span title={labelFor(p.status)} style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: palette.success.tint, color: palette.success.text, textTransform: 'uppercase' }}>
+                  <Pill bg={palette.success.tint} color={palette.success.text} radius={4} title={labelFor(p.status)} style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase' }}>
                     {t('components.problemSuggestions.knownError')}
-                  </span>
+                  </Pill>
                 ) : (
-                  <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: colors.slateBg, color: 'var(--color-slate)', textTransform: 'uppercase' }}>
+                  <Pill bg={colors.slateBg} color="var(--color-slate)" radius={4} style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase' }}>
                     {labelFor(p.status)}
-                  </span>
+                  </Pill>
                 )}
                 <span style={{ flex: 1 }} />
                 {canLink && (
                   <Button size="xs" onClick={() => linkTo(p.id)}>{t('components.problemSuggestions.link')}</Button>
                 )}
               </div>
-              <Link to={`/problems/${p.id}`} style={{ display: 'block', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', fontWeight: 500, margin: '4px 0', textDecoration: 'none' }}>
+              <Link to={`/problems/${p.id}`} style={{ display: 'block', fontSize: 'var(--font-size-body)', color: 'var(--color-link)', fontWeight: 500, margin: '4px 0', textDecoration: 'underline', textUnderlineOffset: 2 }}>
                 {p.title}
               </Link>
               <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>

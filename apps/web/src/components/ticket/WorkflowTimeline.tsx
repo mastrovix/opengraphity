@@ -8,6 +8,7 @@
  * colore diverso dalle altre schede della stessa pagina. Qui il riquadro è
  * CONTROLLATO dal chiamante (`timelineOpen`/`onToggle`), come prima.
  */
+import { Pill } from '@/components/ui/Pill'
 import { useTranslation } from 'react-i18next'
 import { timeAgo, formatDuration } from '@/lib/datetime'
 import { alpha, colors } from '@/lib/tokens'
@@ -67,9 +68,9 @@ export function WorkflowTimeline({ historyDesc, timelineOpen, onToggle, entityTy
                   {/* Spostato dalla scadenza del passo precedente (ondata 3): lo si dice, non lo si lascia indovinare. */}
                   {exec.triggeredBy === STEP_DEADLINE_ACTOR && (
                     <div style={{ marginTop: 3 }}>
-                      <span style={{ display: 'inline-block', fontSize: 'var(--font-size-label)', color: 'var(--color-brand)', background: 'var(--color-brand-light)', borderRadius: 4, padding: '1px 6px' }}>
+                      <Pill bg="var(--color-brand-light)" color="var(--color-brand)" radius={4} style={{ fontSize: 'var(--font-size-label)' }}>
                         {t('components.workflowTimeline.movedByDeadline')}
-                      </span>
+                      </Pill>
                     </div>
                   )}
                   {exec.notes && <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', marginTop: 2, fontStyle: 'italic' }}>{exec.notes}</div>}

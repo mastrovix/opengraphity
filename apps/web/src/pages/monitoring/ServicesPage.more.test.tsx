@@ -2,7 +2,7 @@
  * Services page: the row as a whole opens the service, paging, and "Refresh".
  *
  * Why these behaviours matter to an operator: clicking anywhere on a service
- * row must open that service (the name link is only the keyboard target);
+ * row must open that service (the row is also the keyboard target);
  * with more than one page of services, Next/Prev must move the query offset
  * AND the URL, so a shared link lands on the same page; and "Refresh" must
  * really ask the server again, or a status board shows stale health.
@@ -44,23 +44,23 @@ function renderPage(seen: Vars[], opts: { total?: number; route?: string } = {})
 describe('ServicesPage — row, paging, refresh', () => {
   it('a click anywhere on the row opens the service', async () => {
     const { user } = renderPage([])
-    const link = await screen.findByRole('link', { name: 'Enterprise Billing' })
-    const row = link.closest('tr')!
+    const row = (await screen.findByText('Enterprise Billing')).closest('tr')!
     // Click a cell that is not the link: the whole row is the target for the mouse.
     await user.click(within(row).getAllByRole('cell')[1]!)
     await attendiURL('/monitoring/services/map-1')
   })
 
-  it('the name link, the keyboard target, opens the service too', async () => {
+  it('the row is the keyboard target: Enter opens the service', async () => {
     const { user } = renderPage([])
-    await user.click(await screen.findByRole('link', { name: 'Enterprise Billing' }))
+    ;(await screen.findByText('Enterprise Billing')).closest('tr')!.focus()
+    await user.keyboard('{Enter}')
     await attendiURL('/monitoring/services/map-1')
   })
 
   it('Next and Prev move the offset and keep the page in the URL', async () => {
     const seen: Vars[] = []
     const { user } = renderPage(seen, { total: 60 })
-    await screen.findByRole('link', { name: 'Enterprise Billing' })
+    await screen.findByText('Enterprise Billing')
     await user.click(screen.getByRole('button', { name: 'Next →' }))
     await attendiURL('/monitoring/services', { page: '2' })
     await waitFor(() => expect(seen.at(-1)).toMatchObject({ offset: 50, limit: 50 }))
@@ -74,7 +74,7 @@ describe('ServicesPage — row, paging, refresh', () => {
   it('"Refresh" asks the server again', async () => {
     const seen: Vars[] = []
     const { user } = renderPage(seen)
-    await screen.findByRole('link', { name: 'Enterprise Billing' })
+    await screen.findByText('Enterprise Billing')
     const before = seen.length
     await user.click(screen.getByRole('button', { name: 'Refresh' }))
     await waitFor(() => expect(seen.length).toBeGreaterThan(before))

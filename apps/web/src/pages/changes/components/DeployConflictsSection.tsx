@@ -113,7 +113,7 @@ export function DeployConflictsSection({ conflitti, illeggibili = [] }: {
                 >
                   <Link
                     to={`/changes/${c.changeId}`}
-                    style={{ fontWeight: 600, color: 'var(--color-brand-hover)', textDecoration: 'none' }}
+                    style={{ fontWeight: 600, color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2 }}
                   >
                     {c.code}
                   </Link>

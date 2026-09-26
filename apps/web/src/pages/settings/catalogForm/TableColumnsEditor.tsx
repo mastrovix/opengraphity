@@ -12,11 +12,11 @@
  * contratto in @opengraphity/types, e l'API rifiuta quello che non sta in
  * piedi (zero colonne, nomi doppi, una scelta senza vocabolario).
  */
+import { Button } from '@/components/Button'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2 } from 'lucide-react'
 import { FORM_TABLE_COLUMN_TYPES, FORM_TABLE_VERSION, type FormTableColumn, type FormTableDefinition } from '@opengraphity/types'
 import { Input, Select } from '@/components/ui/FormControls'
-import { colors } from '@/lib/tokens'
 
 const cella: React.CSSProperties = { padding: '4px 6px', verticalAlign: 'top' }
 const intestazione: React.CSSProperties = {
@@ -146,14 +146,12 @@ export function TableColumnsEditor({ definizione, onChange, vocabolari }: TableC
         </table>
       </div>
 
-      <button type="button" onClick={addColumn}
-        style={{
-          marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 8,
-          border: `1px solid ${colors.border}`, background: colors.white,
-          fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', cursor: 'pointer',
-        }}>
+      <Button variant="secondary"
+        onClick={addColumn}
+        style={{ marginTop: 8 }}
+      >
         <Plus size={14} /> {t('pages.catalogForms.library.addColumn')}
-      </button>
+      </Button>
     </div>
   )
 }

@@ -6,9 +6,10 @@
  * Colori: solo token (lib/eventPalette), niente esadecimali.
  */
 import { useTranslation } from 'react-i18next'
+import { XCircle, AlertTriangle, CheckCircle2, type LucideIcon } from 'lucide-react'
 import type { TFunction } from 'i18next'
 import { Pill } from '@/components/ui/Pill'
-import { lookupOrError } from '@/lib/tokens'
+import { lookupOrError, palette } from '@/lib/tokens'
 import { TINT_CRITICAL, TINT_WARNING, TINT_SUCCESS, TINT_NEUTRAL, TINT_FLAPPING, TINT_BROKEN, ACCENT, type Tint } from '@/lib/eventPalette'
 import { EVENT_MATCH_REASONS, RESOURCE_KINDS, type MonitoringEvent, type CIHealth, type EventMatchReason, type ResourceKind } from '@/types/events'
 import { useValueStyle } from '@/hooks/useValueStyle'
@@ -111,6 +112,36 @@ export const CI_HEALTH_ACCENT: Record<CIHealth, string> = {
   operational: ACCENT.success,
   degraded:    ACCENT.warning,
   down:        ACCENT.critical,
+}
+
+/** The tint behind the icon, as on the tiles of the CI health page. */
+export const CI_HEALTH_TINT: Record<CIHealth, string> = {
+  operational: palette.success.tint,
+  degraded:    palette.warning.tint,
+  down:        palette.danger.tint,
+}
+
+/** The icon of a health: the tiles of the CI health page and the rows use this one. */
+export const CI_HEALTH_ICON: Record<CIHealth, LucideIcon> = {
+  operational: CheckCircle2,
+  degraded:    AlertTriangle,
+  down:        XCircle,
+}
+
+/**
+ * The health as an icon beside a name (26 Sep 2026, the owner: «meglio mettere
+ * un'icona» instead of a coloured stripe along the row). Decorative: the
+ * health column says it in words. `data-tone` keeps its colour in the tables,
+ * which grey the text.
+ */
+export function CIHealthIcon({ health }: { health: CIHealth }) {
+  const Icon = lookupOrError(CI_HEALTH_ICON, health, 'CI_HEALTH_ICON', XCircle)
+  // The tile's drawing, smaller: the icon in its colour on a circle of its tint.
+  return (
+    <span data-tone={health} aria-hidden="true" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: 999, flexShrink: 0, background: lookupOrError(CI_HEALTH_TINT, health, 'CI_HEALTH_TINT', palette.danger.tint), color: lookupOrError(CI_HEALTH_ACCENT, health, 'CI_HEALTH_ACCENT', ACCENT.critical) }}>
+      <Icon size={15} />
+    </span>
+  )
 }
 
 /**

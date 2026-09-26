@@ -8,6 +8,8 @@
  * risposta pubblica, e chi scrive sceglie; la scelta di partenza è la nota
  * interna, così un testo dello staff non arriva all'utente per distrazione.
  */
+import { Pill } from '@/components/ui/Pill'
+import { Button } from '@/components/Button'
 import { useState } from 'react'
 import { useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
@@ -123,16 +125,9 @@ export function CommentsSection({ comments, onAdd, adding, defaultOpen = false, 
                           : c.authorKind === 'automation' ? (c.authorLabel ? t('detail.commentByAutomation', { name: c.authorLabel }) : t('detail.commentByAutomationUnnamed'))
                           : t('detail.unknownUser'))}</span>
                       <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>{timeAgo(c.createdAt)}</span>
-                      <span
-                        data-testid="comment-visibility"
-                        style={{
-                          fontSize: 'var(--font-size-table)', fontWeight: 600, padding: '1px 8px', borderRadius: 9999,
-                          backgroundColor: c.isInternal ? 'var(--surface-2)' : 'var(--color-brand-light)',
-                          color: c.isInternal ? 'var(--text-muted)' : 'var(--accent)',
-                        }}
-                      >
+                      <Pill bg={c.isInternal ? 'var(--surface-2)' : 'var(--color-brand-light)'} color={c.isInternal ? 'var(--text-muted)' : 'var(--accent)'} radius={9999} data-testid="comment-visibility" style={{ fontSize: 'var(--font-size-table)', fontWeight: 600 }}>
                         {c.isInternal ? t('detail.commentInternal') : t('detail.commentPublic')}
-                      </span>
+                      </Pill>
                       {canChangeComment(c, me, moderates) && editing?.id !== c.id && (
                         <span style={{ marginLeft: 'auto', display: 'flex', gap: 2 }}>
                           <button type="button" aria-label={t('detail.editComment')} title={t('detail.editComment')} onClick={() => setEditing({ id: c.id, text: c.text })}
@@ -154,15 +149,17 @@ export function CommentsSection({ comments, onAdd, adding, defaultOpen = false, 
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         <MentionInput value={editing.text} onChange={(v) => setEditing({ id: c.id, text: v })} rows={3} placeholder={t('detail.commentPlaceholder')} />
                         <div style={{ display: 'flex', gap: 8 }}>
-                          <button type="button" disabled={updating || editing.text.trim() === ''}
-                            onClick={() => void updateComment({ variables: { id: c.id, body: editing.text.trim() } })}
-                            style={{ padding: '5px 12px', backgroundColor: 'var(--accent)', color: colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
+                          <Button variant="primary"
+                            disabled={updating || editing.text.trim() === ''}
+                            onClick={() => updateComment({ variables: { id: c.id, body: editing.text.trim() } })}
+                          >
                             {t('common.save')}
-                          </button>
-                          <button type="button" onClick={() => setEditing(null)}
-                            style={{ padding: '5px 12px', background: 'none', border: '1px solid var(--border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                          </Button>
+                          <Button variant="secondary"
+                            onClick={() => setEditing(null)}
+                          >
                             {t('common.cancel')}
-                          </button>
+                          </Button>
                         </div>
                       </div>
                     ) : (

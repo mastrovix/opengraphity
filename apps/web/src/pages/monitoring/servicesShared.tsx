@@ -14,6 +14,7 @@
  * Colori: solo token (lib/tokens, lib/eventPalette), niente esadecimali.
  */
 import { useTranslation } from 'react-i18next'
+import { XCircle, AlertTriangle, CheckCircle2, Wrench, HelpCircle, type LucideIcon } from 'lucide-react'
 import type { TFunction } from 'i18next'
 import { Pill } from '@/components/ui/Pill'
 import { lookupOrError, palette } from '@/lib/tokens'
@@ -74,6 +75,27 @@ export function serviceHealthLabel(t: TFunction, value: string): string {
 
 export function serviceHealthFamily(health: string): HealthFamily {
   return lookupOrError(SERVICE_HEALTH_FAMILY as Record<string, HealthFamily>, health, 'SERVICE_HEALTH_FAMILY', BROKEN_FAMILY)
+}
+
+/** The icon of a service's health (the tiles and the rows use this one); out of the vocabulary → the «down» icon in the broken colour, never a plausible one. */
+export const SERVICE_HEALTH_ICON: Record<ServiceHealth, LucideIcon> = {
+  down:        XCircle,
+  degraded:    AlertTriangle,
+  operational: CheckCircle2,
+  maintenance: Wrench,
+  unknown:     HelpCircle,
+}
+
+/** The health as an icon beside a name (26 Sep 2026: instead of a stripe along the row). Decorative: the health column says it. */
+export function ServiceHealthIcon({ health }: { health: string }) {
+  const Icon = lookupOrError(SERVICE_HEALTH_ICON as Record<string, LucideIcon>, health, 'SERVICE_HEALTH_ICON', XCircle)
+  const fam = serviceHealthFamily(health)
+  // The tile's drawing, smaller: the icon in its colour on a circle of its tint.
+  return (
+    <span data-tone={health} aria-hidden="true" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: 999, flexShrink: 0, background: fam.tint, color: fam.accent }}>
+      <Icon size={15} />
+    </span>
+  )
 }
 
 export function ServiceHealthBadge({ health }: { health: ServiceHealth }) {

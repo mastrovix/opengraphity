@@ -1,13 +1,10 @@
+import { Button } from '@/components/Button'
 import { useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Modal } from '@/components/Modal'
 import { toast } from 'sonner'
 import { CIIcon } from '@/lib/ciIcon'
 import { CI_ICON_KEYS } from '@/lib/ciIconPaths'
-import {
-  inputS, selectS,
-  btnPrimary, btnSecondary,
-} from '../shared/designerStyles'
 import { Input, Select } from '@/components/ui/FormControls'
 import { FormField } from './CIFieldInlineEditor'
 import { checkCITypeName, type KnownCIType } from '@/lib/ciTypeNames'
@@ -49,21 +46,23 @@ export function CreateTypeDialog({
     <Modal open={open} onClose={onClose} title={t('citypeDesigner.newCIType')} width={440}
       footer={
         <>
-          <button type="button" style={btnSecondary} onClick={onClose}>{t('common.cancel')}</button>
-          <button type="button" style={{ ...btnPrimary, opacity: saving || !!nameError ? 0.6 : 1 }} disabled={saving || !!nameError}
+          <Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button>
+          <Button variant="primary"
+            disabled={saving || !!nameError}
             onClick={async () => {
               if (!form.name || !form.label) { toast.error(t('toast.citype.nameLabelRequired')); return }
               // A name already taken never gets here: the button is disabled and the field says why.
               setSaving(true)
               // onSave rigetta su errore (toast già mostrato): il dialog resta aperto.
               try { await onSave(form); onClose() } catch { /* errore già notificato */ } finally { setSaving(false) }
-            }}>
+            }}
+          >
             {saving ? t('common.creating') : t('citypeDesigner.createType')}
-          </button>
+          </Button>
         </>
       }>
       <FormField label={t('citypeDesigner.field.slugNameSnake')} htmlFor={`${id}-name`}>
-        <Input id={`${id}-name`} style={inputS} value={form.name} placeholder={t('citypeDesigner.field.slugNamePlaceholder')}
+        <Input id={`${id}-name`} value={form.name} placeholder={t('citypeDesigner.field.slugNamePlaceholder')}
           aria-invalid={nameError ? true : undefined}
           aria-describedby={nameError ? `${id}-name-error` : undefined}
           onChange={(e) => set('name', e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))} />
@@ -74,12 +73,12 @@ export function CreateTypeDialog({
         )}
       </FormField>
       <FormField label={t('citypeDesigner.field.displayLabel')} htmlFor={`${id}-label`}>
-        <Input id={`${id}-label`} style={inputS} value={form.label} placeholder={t('citypeDesigner.labelPlaceholder')}
+        <Input id={`${id}-label`} value={form.label} placeholder={t('citypeDesigner.labelPlaceholder')}
           onChange={(e) => set('label', e.target.value)} />
       </FormField>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, marginBottom: 14 }}>
         <FormField label={t('citypeDesigner.icon')} htmlFor={`${id}-icon`}>
-          <Select id={`${id}-icon`} style={selectS} value={form.icon} onChange={(e) => set('icon', e.target.value)}>
+          <Select id={`${id}-icon`} value={form.icon} onChange={(e) => set('icon', e.target.value)}>
             {CI_ICON_KEYS.map((i) => <option key={i} value={i}>{i}</option>)}
           </Select>
         </FormField>

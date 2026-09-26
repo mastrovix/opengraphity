@@ -81,10 +81,10 @@ describe('SectionCard', () => {
     expect(screen.getByText('corpo')).toBeInTheDocument()
   })
 
-  it('intestazione aperta: tinta del turchese e testo scuro, non il turchese pieno con testo bianco', () => {
+  it('open header: the section colors from the tokens (26 Sep 2026: sugar-paper blue, navy title)', () => {
     render(<SectionCard title="Info" defaultOpen><p>corpo</p></SectionCard>)
     const header = screen.getByRole('button', { name: 'Info' }).parentElement!
-    expect(header).toHaveStyle({ background: 'var(--color-brand-a32)' })
-    expect(screen.getByText('Info')).toHaveStyle({ color: 'var(--color-brand-hover)' })
+    expect(header).toHaveStyle({ background: 'var(--color-section-head)' })
+    expect(screen.getByText('Info')).toHaveStyle({ color: 'var(--color-section-head-text)' })
   })
 })

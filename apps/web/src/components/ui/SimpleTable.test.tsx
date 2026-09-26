@@ -52,3 +52,22 @@ describe('SimpleTable', () => {
     expect(onRowClick).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('SimpleTable — every column sorts (26 Sep 2026)', () => {
+  type R = { id: string; name: string; count: number }
+  const rows: R[] = [{ id: '1', name: 'bravo', count: 10 }, { id: '2', name: 'alpha', count: 2 }, { id: '3', name: 'charlie', count: 5 }]
+  const names = () => screen.getAllByRole('row').slice(1).map((r) => r.textContent)
+
+  it('a header sorts up, then down; a column of buttons does not sort', async () => {
+    const user = userEvent.setup()
+    render(<SimpleTable<R> columns={[{ key: 'name', label: 'Name' }, { key: 'count', label: 'Count' }, { key: 'id', label: 'Actions', sortable: false, render: () => <button type="button">x</button> }]} rows={rows} />)
+    await user.click(screen.getByRole('button', { name: /Name/ }))
+    expect(names()).toEqual(['alpha2x', 'bravo10x', 'charlie5x'])
+    expect(screen.getByRole('columnheader', { name: /Name/ })).toHaveAttribute('aria-sort', 'ascending')
+    await user.click(screen.getByRole('button', { name: /Count/ }))
+    expect(names()).toEqual(['alpha2x', 'charlie5x', 'bravo10x'])
+    await user.click(screen.getByRole('button', { name: /Count/ }))
+    expect(names()).toEqual(['bravo10x', 'charlie5x', 'alpha2x'])
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).not.toHaveAttribute('aria-sort')
+  })
+})

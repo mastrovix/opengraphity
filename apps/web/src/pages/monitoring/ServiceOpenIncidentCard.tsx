@@ -64,7 +64,7 @@ export function ServiceOpenIncidentCard({ incident, openIncidentFrom, problem }:
           <Link
             to={`/incidents/${incident.id}`}
             title={t('monitoring.services.openIncident.open', { number: incident.number })}
-            style={{ color: colors.brand, textDecoration: 'none', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            style={{ color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}
           >
             {incident.number}<ArrowRight size={11} aria-hidden="true" />
           </Link>

@@ -49,7 +49,8 @@
     "showAllCount_other": "Show all ({{count}})",
     "any": "any",
     "number": "Number",
-    "searching": "Searching…"
+    "searching": "Searching…",
+    "sortPageOnly": "Sorts the page on screen: the other pages stay as they are"
   },
   "bulk": {
     "selected_one": "{{count}} selected",
@@ -1087,7 +1088,8 @@
       "viewPath": "View path",
       "summaryImpact": "If {{target}} becomes unavailable: impacted CIs {{cis}}, services {{services}}, teams {{teams}}. Risk {{risk}}/100.",
       "summaryRemove": "If {{target}} is removed: impacted CIs {{cis}}, services {{services}}, teams {{teams}}. Risk {{risk}}/100.",
-      "filterNotApplied": "This filter cannot be applied to the impacted CIs: {{reason}}. Change it, or press «Reset»."
+      "filterNotApplied": "This filter cannot be applied to the impacted CIs: {{reason}}. Change it, or press «Reset».",
+      "tabsLabel": "Impact by kind"
     },
     "ci": {
       "navigationLockedWhileEditing": "Save or cancel your edits before opening another CI",
@@ -1978,7 +1980,8 @@
       "update": "Update",
       "notifyOnEnter": "Notify when the step is entered",
       "deleteStep": "Delete the step",
-      "tabDeadline": "Deadline"
+      "tabDeadline": "Deadline",
+      "tabsLabel": "Step sections"
     },
     "slaPolicies": {
       "newPolicy": "New policy",
@@ -3491,7 +3494,8 @@
       "noWorkflow": "This ticket type has no workflow: the field is always shown and editable.",
       "chooseAtLeastOne": "Choose at least one step.",
       "onlyIn": "only {{workflows}}"
-    }
+    },
+    "tabsLabel": "Ticket type sections"
   },
   "ciTypeDesigner": {
     "chain": "Chain",

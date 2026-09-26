@@ -272,7 +272,7 @@ describe('ChangeCalendarPage — the preview of a change', () => {
     expect(within(dialog).getByText('Affected CIs (3)')).toBeInTheDocument()
     // Each environment with its Dictionary label, not the internal value.
     expect(within(dialog).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['db-prod · Production', 'cache-01', 'mq-01 · Staging'])
-    expect(within(dialog).getAllByRole('row').map((r) => within(r).getAllByRole('cell').map((c) => c.textContent))).toEqual([
+    expect(within(dialog).getAllByRole('row').slice(1).map((r) => within(r).getAllByRole('cell').map((c) => c.textContent))).toEqual([
       ['22 Sept 2026, 20:00 → 21:00', 'Validation', 'Deploy 16', 'db-prod'],
       ['22 Sept 2026, 22:00 → 23:30', 'Deploy', 'Deploy 16', 'db-prod'],
     ])

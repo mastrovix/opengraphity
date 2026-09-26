@@ -1,3 +1,4 @@
+import { Pill } from '@/components/ui/Pill'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { LucideIcon } from 'lucide-react'
@@ -93,12 +94,9 @@ export function NavItem({ to, label, icon: Icon, collapsed, isActive, badge = 0 
       <Icon size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
       {!collapsed && <span style={{ flex: 1 }}>{label}</span>}
       {!collapsed && badge > 0 && (
-        <span
-          aria-label={t('sidebar.pendingBadge', { count: badge })}
-          style={{ fontSize: 'var(--font-size-label)', fontWeight: 700, lineHeight: 1, padding: '2px 5px', borderRadius: 8, background: 'var(--danger)', color: colors.white }}
-        >
+        <Pill bg="var(--danger)" color={colors.white} radius={8} aria-label={t('sidebar.pendingBadge', { count: badge })} style={{ fontSize: 'var(--font-size-label)', fontWeight: 700 }}>
           {badge}
-        </span>
+        </Pill>
       )}
     </Link>
   )

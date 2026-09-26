@@ -24,6 +24,7 @@
  * proposta. Ogni scrittura porta `expectedVersion`; il rifiuto dell'API è una
  * riga `role="alert"`, mai un silenzio.
  */
+import { Loading } from '@/components/ui/Loading'
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
@@ -182,7 +183,7 @@ export function UpdateServiceMapDialog({ map, open, onClose }: Props) {
           {map.autoSync ? t('monitoring.services.update.introLive') : t('monitoring.services.update.intro')}
         </p>
 
-        {loading && !data && <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: colors.slateLight }}>{t('common.loading')}</p>}
+        {loading && !data && <Loading />}
         {error && (
           <p role="alert" style={{ margin: 0, fontSize: 'var(--font-size-body)', color: colors.danger, fontWeight: 500 }}>
             {t('monitoring.services.update.loadFailed', { error: error.message })}

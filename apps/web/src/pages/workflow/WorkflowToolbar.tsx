@@ -1,7 +1,9 @@
+import { Chip } from '@/components/ui/Chip'
+import { BackLink } from '@/components/ui/BackLink'
+import { Input } from '@/components/ui/FormControls'
 import { UnsavedChangesGuard } from '@/components/UnsavedChangesGuard'
 import { useConfirm } from '@/hooks/useConfirm'
 import { useState } from 'react'
-import { ArrowLeft } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
@@ -93,28 +95,10 @@ export function WorkflowToolbar({
     }}>
       <div>
         <UnsavedChangesGuard when={dirty} title={t('workflow.designer.discardTitle')} body={t('workflow.designer.discardBody', { count: pendingCount })} confirmLabel={t('workflow.designer.leave')} />
-        <button
-          type="button"
-          onClick={async () => {
+        <BackLink onClick={async () => {
             if (dirty && !(await confirm({ title: t('workflow.designer.discardTitle'), body: t('workflow.designer.discardBody', { count: pendingCount }), confirmLabel: t('workflow.designer.leave'), danger: true }))) return
             navigate('/workflow', { state: { leaveConfirmed: true } })
-          }}
-          style={{
-            display:      'inline-flex',
-            alignItems:   'center',
-            gap:          6,
-            marginBottom: 8,
-            background:   'none',
-            border:       'none',
-            cursor:       'pointer',
-            color:        'var(--color-slate-light)',
-            fontSize:     12,
-            padding:      0,
-          }}
-        >
-          <ArrowLeft size={13} aria-hidden="true" />
-          {t('pages.workflow.title')}
-        </button>
+          }}>{t('pages.workflow.title')}</BackLink>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <h1 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>
@@ -133,13 +117,11 @@ export function WorkflowToolbar({
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         {def && (
-          <button
-            type="button"
+          <Button variant="secondary"
             onClick={() => setShowAddStep(true)}
-            style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid var(--color-border)', background: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}
           >
             + {t('workflow.addStep')}
-          </button>
+          </Button>
         )}
         <button
           type="button"
@@ -161,16 +143,9 @@ export function WorkflowToolbar({
         >
           {t('common.saveChanges')}
           {pendingCount > 0 && (
-            <span style={{
-              fontSize:        11,
-              fontWeight:      700,
-              padding:         '1px 7px',
-              borderRadius:    100,
-              backgroundColor: colors.brand,
-              color:           colors.white,
-            }}>
+            <Pill bg={colors.brand} color={colors.white} radius={100} style={{ fontSize:        11, fontWeight:      700 }}>
               {pendingCount}
-            </span>
+            </Pill>
           )}
         </button>
       </div>
@@ -218,15 +193,15 @@ export function WorkflowToolbar({
               <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>{t('common.type').toUpperCase()}</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {SPECIAL_STEP_TYPES.map(s => (
-                  <button type="button" key={s.type} aria-pressed={stepType === s.type} onClick={() => setStepType(s.type)} style={{ padding: '6px 12px', borderRadius: 6, border: `1px solid ${stepType === s.type ? accentColor : 'var(--color-border)'}`, background: stepType === s.type ? 'var(--color-brand-a08)' : colors.white, color: stepType === s.type ? accentColor : 'var(--color-slate)', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
+                  <Chip pressed={stepType === s.type} key={s.type} onClick={() => setStepType(s.type)}>
                     {s.glyph} {t(s.labelKey)}
-                  </button>
+                  </Chip>
                 ))}
               </div>
             </div>
             <div>
               <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>{t('common.label')}</div>
-              <input aria-label={t(stepType === 'standard' ? 'pages.workflowStep.labelPlaceholder' : 'pages.workflowStep.labelPlaceholderTimer')} value={stepLabel} onChange={e => setStepLabel(e.target.value)} placeholder={t(stepType === 'standard' ? 'pages.workflowStep.labelPlaceholder' : 'pages.workflowStep.labelPlaceholderTimer')} style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }} />
+              <Input aria-label={t(stepType === 'standard' ? 'pages.workflowStep.labelPlaceholder' : 'pages.workflowStep.labelPlaceholderTimer')} value={stepLabel} onChange={e => setStepLabel(e.target.value)} placeholder={t(stepType === 'standard' ? 'pages.workflowStep.labelPlaceholder' : 'pages.workflowStep.labelPlaceholderTimer')} />
             </div>
             {stepType === 'standard' && (
               <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', lineHeight: 1.45 }}>
@@ -236,7 +211,7 @@ export function WorkflowToolbar({
             {stepType === 'timer_wait' && (
               <div>
                 <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>{t('pages.workflowStep.timerDelay')}</div>
-                <input aria-label={t('workflow.timerMinutesPlaceholder')} type="number" min={1} value={timerMins} onChange={e => setTimerMins(e.target.value)} placeholder={t('workflow.timerMinutesPlaceholder')} style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }} />
+                <Input aria-label={t('workflow.timerMinutesPlaceholder')} type="number" min={1} value={timerMins} onChange={e => setTimerMins(e.target.value)} placeholder={t('workflow.timerMinutesPlaceholder')} />
               </div>
             )}
           </div>

@@ -1,10 +1,12 @@
+import { BackLink, DetailTitle } from '@/components/ui/BackLink'
+import { Input, Select, Textarea } from '@/components/ui/FormControls'
+import { Button } from '@/components/Button'
 import { useId, useMemo, useState } from 'react'
 import { UserPicker } from '@/components/pickers/UserPicker'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { CREATE_SERVICE_REQUEST } from '@/graphql/mutations'
 import { GET_SERVICE_CATALOG_ADMIN } from '@/graphql/queries'
@@ -46,15 +48,6 @@ const inputBase: React.CSSProperties = {
   transition:      'border-color 150ms, box-shadow 150ms',
 }
 
-const selectBase: React.CSSProperties = {
-  ...inputBase,
-  appearance:         'none',
-  backgroundImage:    'var(--select-arrow)',
-  backgroundRepeat:   'no-repeat',
-  backgroundPosition: 'right 12px center',
-  paddingRight:       36,
-  cursor:             'pointer',
-}
 
 function focusHandlers(hasError: boolean) {
   return {
@@ -477,22 +470,13 @@ export function CreateServiceRequestPage() {
     <PageContainer>
 
       {/* Back link */}
-      <button
-        type="button"
-        onClick={() => navigate('/requests')}
-        style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 32, padding: 0 }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-brand)' }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-slate-light)' }}
-      >
-        <ArrowLeft size={14} />
-        {t('pages.createRequest.back')}
-      </button>
+      <BackLink onClick={() => navigate('/requests')}>{t('pages.createRequest.back')}</BackLink>
 
       {/* Page header */}
       <div style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.02em', margin: 0 }}>
+        <DetailTitle>
           {t('pages.createRequest.title')}
-        </h1>
+        </DetailTitle>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 6, marginBottom: 0 }}>
           {t('pages.createRequest.subtitle')}
         </p>
@@ -507,11 +491,10 @@ export function CreateServiceRequestPage() {
             <label htmlFor={ids.catalog} style={{ display: 'block', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6, letterSpacing: '0.01em' }}>
               {t('pages.createRequest.catalogItem')} <span style={{ fontWeight: 400, color: 'var(--color-slate-light)' }}>{t('pages.createRequest.recommended')}</span>
             </label>
-            <select
+            <Select
               id={ids.catalog}
               value={catalogItemId}
               onChange={(e) => onSelectCatalogItem(e.target.value)}
-              style={selectBase}
               {...focusHandlers(false)}
             >
               <option value="">{t('pages.createRequest.genericItem')}</option>
@@ -525,7 +508,7 @@ export function CreateServiceRequestPage() {
               {catalogItems.map((it) => (
                 <option key={it.id} value={it.id}>{it.category ? `${labelOf('category', it.category) ?? it.category} · ` : ''}{it.name}</option>
               ))}
-            </select>
+            </Select>
             {selectedItem?.requiresApproval && (
               <p style={{ margin: '6px 0 0', fontSize: 'var(--font-size-body)', color: palette.warning.text }}>
                 {t('pages.createRequest.needsApproval')}
@@ -538,14 +521,14 @@ export function CreateServiceRequestPage() {
             <label htmlFor={ids.title} style={{ display: 'block', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6, letterSpacing: '0.01em' }}>
               {t('pages.createRequest.titleLabel')} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
-            <input
+            <Input
               id={ids.title}
               type="text"
               value={title}
               onChange={(e) => { setTitle(e.target.value); if (submitted) setSubmitted(false) }}
               placeholder={t('pages.createRequest.titlePlaceholder')}
-              style={{ ...inputBase, borderColor: titleError ? 'var(--color-trigger-sla-breach)' : colors.border }}
               {...focusHandlers(!!titleError)}
+              style={{ borderColor: titleError ? 'var(--color-trigger-sla-breach)' : colors.border }}
             />
             {titleError && (
               <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>{titleError}</p>
@@ -588,14 +571,14 @@ export function CreateServiceRequestPage() {
                   * (incident, problem) già distinguevano il vuoto: qui no.
                   */}
                 <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', width: 8, height: 8, borderRadius: '50%', backgroundColor: priority === '' ? 'var(--color-border)' : styleOf('priority', priority).accent, pointerEvents: 'none', zIndex: 1 }} />
-                <select
+                <Select
                   id={ids.priority}
                   value={priority}
                   onChange={(e) => { setPriority(e.target.value); if (submitted) setSubmitted(false) }}
                   disabled={priorityLoading}
                   aria-invalid={priorityError ? true : undefined}
-                  style={{ ...selectBase, paddingLeft: 30, borderColor: priorityError ? 'var(--color-trigger-sla-breach)' : colors.border }}
                   {...focusHandlers(!!priorityError)}
+                  style={{ paddingLeft: 30, borderColor: priorityError ? 'var(--color-trigger-sla-breach)' : colors.border }}
                 >
                   {priorityLoading
                     ? <option value="">{t('common.loading')}</option>
@@ -606,7 +589,7 @@ export function CreateServiceRequestPage() {
                         ))}
                       </>
                   }
-                </select>
+                </Select>
               </div>
               {priorityError && (
                 <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>{priorityError}</p>
@@ -618,13 +601,12 @@ export function CreateServiceRequestPage() {
               <label htmlFor={ids.dueDate} style={{ display: 'block', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6, letterSpacing: '0.01em' }}>
                 {t('detail.dueDate')}{requiredMark('dueDate')}
               </label>
-              <input
+              <Input
                 id={ids.dueDate}
                 type="date"
                 value={dueDate}
                 aria-invalid={customErrors['dueDate'] ? true : undefined}
                 onChange={(e) => { setDueDate(e.target.value); clearError('dueDate') }}
-                style={inputBase}
                 {...focusHandlers(false)}
               />
               {ruleError('dueDate')}
@@ -637,15 +619,15 @@ export function CreateServiceRequestPage() {
             <label htmlFor={ids.description} style={{ display: 'block', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6, letterSpacing: '0.01em' }}>
               {t('common.description')}{requiredMark('description')}
             </label>
-            <textarea
+            <Textarea
               id={ids.description}
               value={description}
               aria-invalid={customErrors['description'] ? true : undefined}
               onChange={(e) => { setDescription(e.target.value); clearError('description') }}
               placeholder={t('pages.createRequest.descriptionPlaceholder')}
               rows={4}
-              style={{ ...inputBase, minHeight: 120, resize: 'vertical' }}
               {...focusHandlers(false)}
+              style={{ minHeight: 120, resize: 'vertical' }}
             />
             {ruleError('description')}
           </div>}
@@ -704,24 +686,17 @@ export function CreateServiceRequestPage() {
 
           {/* Footer */}
           <div style={{ borderTop: `1px solid ${palette.neutral.borderLight}`, marginTop: 32, paddingTop: 24, display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-            <button
-              type="button"
+            <Button variant="secondary"
               onClick={() => navigate('/requests')}
-              style={{ padding: '8px 20px', border: `1px solid ${colors.border}`, backgroundColor: colors.white, borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', color: 'var(--color-slate)' }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = palette.neutral.surface2 }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = colors.white }}
             >
               {t('common.cancel')}
-            </button>
-            <button
+            </Button>
+            <Button variant="primary"
               type="submit"
               disabled={loading || checkingSla}
-              style={{ padding: '8px 20px', backgroundColor: 'var(--color-brand)', color: colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: loading || checkingSla ? 'not-allowed' : 'pointer', opacity: loading || checkingSla ? 0.8 : 1 }}
-              onMouseEnter={(e) => { if (!loading) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-hover)' }}
-              onMouseLeave={(e) => { if (!loading) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
             >
               {loading ? t('common.creating') : t('pages.createRequest.submit')}
-            </button>
+            </Button>
           </div>
 
         </form>

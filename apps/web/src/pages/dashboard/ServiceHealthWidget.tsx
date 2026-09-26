@@ -68,7 +68,7 @@ export function ServiceHealthWidget({ color, large = false }: { color: string; l
           </Link>
         ))}
       </div>
-      <Link to="/monitoring/services" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 10, fontSize: 'var(--font-size-table)', color, textDecoration: 'none', fontWeight: 600 }}>
+      <Link to="/monitoring/services" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 10, fontSize: 'var(--font-size-table)', color, textDecoration: 'underline', textUnderlineOffset: 2, fontWeight: 600 }}>
         <Boxes size={12} aria-hidden="true" />{t('monitoring.widget.openServices')}
       </Link>
     </div>

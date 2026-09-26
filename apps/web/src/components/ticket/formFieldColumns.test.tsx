@@ -77,11 +77,11 @@ describe('useFormFieldColumns', () => {
     expect(within(rowOf('No form')).getAllByRole('cell').map((c) => c.textContent)).toEqual(['No form', '—', '—'])
   })
 
-  it('the form columns are not sortable (only the product fields are, on the server)', () => {
+  it('the form columns sort too, on the server by their `ff:` key (26 Sep 2026: every column sorts)', () => {
     render(<RequestList rows={[]} />)
     const envHeader = screen.getByRole('columnheader', { name: 'Environment' })
-    expect(within(envHeader).queryByRole('button')).not.toBeInTheDocument()
-    expect(envHeader).not.toHaveAttribute('aria-sort')
+    expect(within(envHeader).getByRole('button')).toBeInTheDocument()
+    expect(envHeader).toHaveAttribute('aria-sort', 'none')
   })
 
   it('an answer to a field that is not in the list is kept off screen', () => {

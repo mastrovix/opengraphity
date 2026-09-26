@@ -9,6 +9,7 @@
  * La barra dice quanto manca prima dell'errore: un tetto che si scopre solo
  * quando ti ferma è un tetto mal spiegato.
  */
+import { Button } from '@/components/Button'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery } from '@apollo/client/react'
@@ -16,7 +17,7 @@ import { toast } from 'sonner'
 import { GET_CATALOG_FORM_LIMITS } from '@/graphql/queries'
 import { SET_CATALOG_FORM_LIMITS } from '@/graphql/mutations'
 import { showError } from '@/lib/showError'
-import { colors, fontWeight } from '@/lib/tokens'
+import { colors } from '@/lib/tokens'
 import { Input } from '@/components/ui/FormControls'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
@@ -93,10 +94,11 @@ export function LimitsCard() {
             {t('pages.catalogForms.limits.help')}
           </p>
         </div>
-        <button type="button" onClick={() => setAperto(!aperto)}
-          style={{ padding: '5px 12px', borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.white, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', cursor: 'pointer' }}>
+        <Button variant="secondary"
+          onClick={() => setAperto(!aperto)}
+        >
           {aperto ? t('common.cancel') : t('pages.catalogForms.limits.change')}
-        </button>
+        </Button>
       </div>
 
       <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -134,10 +136,12 @@ export function LimitsCard() {
             </span>
             <Input type="number" min={tetti.min} max={tetti.max} value={righeTabella} onChange={(e) => setRigheTabella(e.target.value)} />
           </label>
-          <button type="button" onClick={() => void conferma()} disabled={loading}
-            style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: colors.white, fontSize: 'var(--font-size-body)', fontWeight: fontWeight.medium, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}>
+          <Button variant="primary"
+            onClick={() => conferma()}
+            disabled={loading}
+          >
             {t('common.save')}
-          </button>
+          </Button>
           <p style={{ flexBasis: '100%', margin: 0, fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', maxWidth: '70ch' }}>
             {t('pages.catalogForms.limits.range', { min: tetti.min, max: tetti.max })}
           </p>

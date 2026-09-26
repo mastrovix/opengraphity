@@ -101,9 +101,9 @@ describe('WhatIfPage — the analysis', () => {
   it('the services and teams tabs: an empty list says so, a team shows how many of its CIs are hit', async () => {
     apolloFinto.risposte['WhatIfAnalysis'] = { whatIfAnalysis: RESULT }
     const { user } = renderWithProviders(<WhatIfPage />)
-    await user.click(screen.getByRole('button', { name: 'Services (0)' }))
+    await user.click(screen.getByRole('tab', { name: /^Services/ }))
     expect(screen.getByText('No impacted services')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Teams (1)' }))
+    await user.click(screen.getByRole('tab', { name: /^Teams/ }))
     const team = screen.getByRole('row', { name: /DBA/ })
     expect(within(team).getByText('2')).toBeInTheDocument()
   })

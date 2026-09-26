@@ -12,6 +12,7 @@
  * compare spento con il motivo, e il Salva resta spento finché la bozza non è
  * completa. L'API resta l'autorità.
  */
+import { Toggle } from '@/components/ui/Toggle'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
@@ -122,24 +123,7 @@ export function StepDeadlineEditor({ stepLabel, entityType, sourcePurpose, targe
       </p>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: sourceProtected && !draft.enabled ? 'not-allowed' : 'pointer' }}>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={draft.enabled}
-          aria-label={t('workflow.deadline.enable')}
-          disabled={sourceProtected && !draft.enabled}
-          onClick={() => set({ enabled: !draft.enabled })}
-          style={{
-            width: 36, height: 20, borderRadius: 10, border: 'none', padding: 0, position: 'relative', flexShrink: 0,
-            cursor: 'inherit', transition: 'background 200ms',
-            backgroundColor: draft.enabled ? colors.brand : palette.neutral.borderStrong,
-          }}
-        >
-          <span style={{
-            position: 'absolute', top: 2, left: draft.enabled ? 18 : 2, width: 16, height: 16, borderRadius: '50%',
-            background: colors.white, transition: 'left 200ms', boxShadow: '0 1px 3px var(--color-black-a20)',
-          }} />
-        </button>
+        <Toggle checked={draft.enabled} onChange={(v) => set({ enabled: v })} label={t('workflow.deadline.enable')} disabled={sourceProtected && !draft.enabled} />
         <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', fontWeight: 600 }}>
           {t('workflow.deadline.enable')}
         </span>
@@ -157,17 +141,16 @@ export function StepDeadlineEditor({ stepLabel, entityType, sourcePurpose, targe
                 type="number" min={1} step={1} inputMode="numeric"
                 aria-label={t('workflow.deadline.amount')}
                 value={draft.after}
-                onChange={(e) => set({ after: e.target.value })}
-                style={{ ...panelInputStyle, width: 80 }}
+                onChange={(e) => set({ after: e.target.value })} style={{ width: 80 }}
               />
-              <Select aria-label={t('workflow.deadline.unit')} value={draft.unit} onChange={(e) => set({ unit: e.target.value as StepDeadlineUnit })} style={{ ...panelInputStyle, flex: 1 }}>
+              <Select aria-label={t('workflow.deadline.unit')} value={draft.unit} onChange={(e) => set({ unit: e.target.value as StepDeadlineUnit })} style={{ flex: 1 }}>
                 {STEP_DEADLINE_UNITS.map((u) => <option key={u} value={u}>{t(`workflow.deadline.units.${u}`)}</option>)}
               </Select>
             </div>
           </PanelField>
 
           <PanelField label={t('serviceTargets.timeCounting')}>
-            <Select aria-label={t('serviceTargets.timeCounting')} value={draft.calendar} onChange={(e) => set({ calendar: e.target.value })} style={panelInputStyle}>
+            <Select aria-label={t('serviceTargets.timeCounting')} value={draft.calendar} onChange={(e) => set({ calendar: e.target.value })}>
               <option value={ALWAYS_ON}>{t('serviceTargets.alwaysOn')}</option>
               {calendars.map((c) => <option key={c.id} value={c.id}>{t('serviceTargets.calendarOption', { name: c.name })}</option>)}
             </Select>
@@ -180,7 +163,7 @@ export function StepDeadlineEditor({ stepLabel, entityType, sourcePurpose, targe
             {targets.length === 0 ? (
               <div role="note" style={noteStyle}>{t('workflow.deadline.noArcs', { step: stepLabel })}</div>
             ) : (
-              <Select aria-label={t('workflow.deadline.moveTo')} value={draft.toStep} onChange={(e) => set({ toStep: e.target.value })} style={panelInputStyle}>
+              <Select aria-label={t('workflow.deadline.moveTo')} value={draft.toStep} onChange={(e) => set({ toStep: e.target.value })}>
                 <option value="">{t('workflow.deadline.chooseStep')}</option>
                 {targets.map((x) => (
                   <option key={x.name} value={x.name} disabled={isProtectedTarget(x, entityType)}>
@@ -199,8 +182,7 @@ export function StepDeadlineEditor({ stepLabel, entityType, sourcePurpose, targe
                     <Select
                       aria-label={t('workflow.deadline.field')}
                       value={f.field}
-                      onChange={(e) => set({ fields: draft.fields.map((x, j) => (j === i ? { field: e.target.value, value: '' } : x)) })}
-                      style={{ ...panelInputStyle, flex: 1, minWidth: 0 }}
+                      onChange={(e) => set({ fields: draft.fields.map((x, j) => (j === i ? { field: e.target.value, value: '' } : x)) })} style={{ flex: 1, minWidth: 0 }}
                     >
                       <option value="">{t('workflow.deadline.chooseField')}</option>
                       {writable.map((m) => <option key={m.name} value={m.name}>{m.label}</option>)}

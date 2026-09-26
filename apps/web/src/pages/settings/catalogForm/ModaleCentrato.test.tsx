@@ -48,7 +48,7 @@ describe('ModaleCentrato', () => {
     const onClose = vi.fn()
     render(<ModaleCentrato titolo="New field" onChiudi={onClose}><input aria-label="Label" /></ModaleCentrato>)
     const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    await user.click(screen.getByRole('button', { name: 'Close' }))
     expect(onClose).toHaveBeenCalledTimes(1)
     // Typing in a box of the dialog, Enter included, is not a way out.
     await user.type(screen.getByRole('textbox', { name: 'Label' }), 'Due date{Enter}')
@@ -88,7 +88,7 @@ describe('ModaleCentrato', () => {
       <ModaleCentrato titolo="Field properties" onChiudi={vi.fn()}><input aria-label="Label" /></ModaleCentrato>
       <button type="button">Urgent</button>
     </>)
-    const close = screen.getByRole('button', { name: 'Cancel' })
+    const close = screen.getByRole('button', { name: 'Close' })
     const label = screen.getByRole('textbox', { name: 'Label' })
     await waitFor(() => expect(close).toHaveFocus())
     await user.tab()

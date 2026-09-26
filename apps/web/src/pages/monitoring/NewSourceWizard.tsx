@@ -18,12 +18,13 @@
  * Collegamento per rileggere il token (D·1.9); "Fine" o l'uscita chiedono
  * conferma se il token non è stato copiato e azzerano il token dallo stato (D·1.17).
  */
+import { BackLink } from '@/components/ui/BackLink'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useLazyQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Check, Loader2, Send, Radar, AlertTriangle, RefreshCw } from 'lucide-react'
+import { Check, Loader2, Send, Radar, AlertTriangle, RefreshCw } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
 import { Button } from '@/components/Button'
@@ -188,9 +189,7 @@ export function NewSourceWizard({ sampleCheckDelayMs = SAMPLE_CHECK_DELAY_MS }: 
 
   return (
     <PageContainer>
-      <Link to="/monitoring/sources" onClick={(e) => { if (created && !tokenCopied) { e.preventDefault(); void leave() } }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 12, color: 'var(--text-muted)', textDecoration: 'none', fontSize: 'var(--font-size-card-title)' }}>
-        <ArrowLeft size={14} aria-hidden="true" />{t('monitoring.wizard.back')}
-      </Link>
+      <BackLink to="/monitoring/sources" onClick={(e) => { if (created && !tokenCopied) { e.preventDefault(); void leave() } }}>{t('monitoring.wizard.back')}</BackLink>
       <PageTitle icon={<Radar size={22} color="var(--color-icon-accent)" />}>{t('monitoring.wizard.title')}</PageTitle>
 
       <WizardProgress current={stepIdx} kind={kind} />

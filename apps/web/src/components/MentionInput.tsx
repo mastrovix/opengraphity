@@ -1,3 +1,4 @@
+import { Textarea } from '@/components/ui/FormControls'
 import React, { useRef, useState, useEffect, useCallback } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { SEARCH_USERS } from '@/graphql/queries'
@@ -125,7 +126,7 @@ export function MentionInput({ value, onChange, placeholder, label, onSubmit, ro
 
   return (
     <div style={{ position: 'relative', ...style }}>
-      <textarea
+      <Textarea
         ref={textareaRef}
         value={display}
         onChange={handleChange}
@@ -133,7 +134,7 @@ export function MentionInput({ value, onChange, placeholder, label, onSubmit, ro
         placeholder={placeholder}
         aria-label={label ?? placeholder}
         rows={rows}
-        style={{ width: '100%', padding: 8, borderRadius: 6, border: `1px solid ${palette.neutral.borderStrong}`, resize: 'vertical', fontFamily: 'inherit', fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }}
+        style={{ resize: 'vertical' }}
       />
       {mentionState.active && users.length > 0 && (
         <div role="listbox" style={{

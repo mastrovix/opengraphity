@@ -131,7 +131,7 @@ describe('ServiceRequestDetailPage: what it shows', () => {
     expect(screen.getByText('No SLA')).toBeInTheDocument()
     // Excluded CI types reach the CI list, so it never proposes them.
     expect(screen.getByTestId('ci-list')).toHaveAttribute('data-excluded', 'network')
-    await user.click(screen.getByRole('button', { name: /← Requests/ }))
+    await user.click(screen.getByRole('button', { name: /Requests/ }))
     await attendiURL('/requests')
   })
 

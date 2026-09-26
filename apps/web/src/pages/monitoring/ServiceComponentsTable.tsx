@@ -23,7 +23,7 @@
  * nessuna parte.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -31,6 +31,7 @@ import { Ban, Loader2, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/Button'
 import { Input, Select } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
+import { RowLink, rowOpens } from '@/components/ui/RowLink'
 import { useConfirm } from '@/hooks/useConfirm'
 import { errorMessage } from '@/hooks/useMutationWithToast'
 import { APPLY_SERVICE_MAP_PROPOSAL, UPDATE_SERVICE_MAP_NODES } from '@/graphql/mutations'
@@ -48,7 +49,6 @@ import {
 interface NodeDraft { propagate: string; weight: number; critical: boolean }
 type Drafts = Record<string, NodeDraft>
 
-const linkStyle = { color: colors.brand, textDecoration: 'none', fontWeight: 500 } as const
 const TH: React.CSSProperties = { textAlign: 'left', padding: '6px 8px', color: colors.slateLight, fontWeight: 500, fontSize: 'var(--font-size-label)', textTransform: 'uppercase', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap' }
 const TD: React.CSSProperties = { padding: '6px 8px', color: colors.slateDark, borderBottom: '1px solid var(--color-border-light)', fontSize: 'var(--font-size-body)', verticalAlign: 'middle' }
 
@@ -74,6 +74,7 @@ interface Props {
 }
 
 export function ServiceComponentsTable({ map, canEdit, ciTypeLabel, onReload }: Props) {
+  const navigate = useNavigate()
   const { t } = useTranslation()
   const confirm = useConfirm()
   const [update, { loading: saving }] = useMutation<{ updateServiceMapNodes: ServiceMapDetail }>(UPDATE_SERVICE_MAP_NODES)
@@ -245,8 +246,8 @@ export function ServiceComponentsTable({ map, canEdit, ciTypeLabel, onReload }: 
               const d = drafts[n.ci.id] ?? draftOf(n)
               const badWeight = canEdit && weightInvalid(d)
               return (
-                <tr key={n.ci.id} data-testid="component-row" data-ci-id={n.ci.id}>
-                  <td style={TD}><Link to={ciPath(n.ci)} style={linkStyle}>{n.ci.name}</Link></td>
+                <tr key={n.ci.id} data-testid="component-row" data-ci-id={n.ci.id} {...rowOpens(() => navigate(ciPath(n.ci)))}>
+                  <td style={TD}><RowLink to={ciPath(n.ci)}>{n.ci.name}</RowLink></td>
                   <td style={TD}>{ciTypeLabel(n.ci.type)}</td>
                   <td style={{ ...TD, fontVariantNumeric: 'tabular-nums' }}>{n.level}</td>
                   <td style={TD}>{roleLabel(t, n.role)}</td>

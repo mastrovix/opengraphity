@@ -89,7 +89,7 @@ export function SLAReportPage() {
           { key: 'breached', label: t('pages.slaReport.breached'), sortable: true, render: (v) => <span style={{ color: palette.danger.text }}>{String(v)}</span> },
           { key: 'paused', label: t('pages.slaReport.pausedShort'), sortable: true },
           { key: 'complianceTarget', label: t('serviceTargets.targetColumn'), sortable: true, render: (v) => v == null ? '—' : `${String(v)}%` },
-          { key: 'id', label: t('pages.slaReport.compliance'), sortable: false, render: (_v, r) => <PctCell pct={compliance(r.met, r.breached)} target={r.complianceTarget} warning={r.complianceWarning} /> },
+          { key: 'id', label: t('pages.slaReport.compliance'), sortValue: (r) => compliance(r.met, r.breached), render: (_v, r) => <PctCell pct={compliance(r.met, r.breached)} target={r.complianceTarget} warning={r.complianceWarning} /> },
         ]
         const policyRows = report.sla.byPolicy.map((r, i) => ({ ...r, id: r.policyId ?? `${r.setByRule ?? 'none'}-${i}` }))
 
@@ -98,7 +98,7 @@ export function SLAReportPage() {
           { key: 'total', label: t('pages.slaReport.total'), sortable: true },
           { key: 'met', label: t('pages.slaReport.met'), sortable: true, render: (v) => <span style={{ color: palette.success.text }}>{String(v)}</span> },
           { key: 'breached', label: t('pages.slaReport.breached'), sortable: true, render: (v) => <span style={{ color: palette.danger.text }}>{String(v)}</span> },
-          { key: 'id', label: t('pages.slaReport.compliance'), sortable: false, render: (_v, r) => <PctCell pct={compliance(r.met, r.breached)} /> },
+          { key: 'id', label: t('pages.slaReport.compliance'), sortValue: (r) => compliance(r.met, r.breached), render: (_v, r) => <PctCell pct={compliance(r.met, r.breached)} /> },
         ]
         const priorityRows = report.sla.byPriority.map((r) => ({ ...r, id: r.priority }))
 

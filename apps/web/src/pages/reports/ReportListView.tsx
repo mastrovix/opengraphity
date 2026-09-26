@@ -1,3 +1,6 @@
+import { Loading } from '@/components/ui/Loading'
+import { Pill } from '@/components/ui/Pill'
+import { Input, Select, Textarea } from '@/components/ui/FormControls'
 import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LayoutGrid } from 'lucide-react'
@@ -10,7 +13,7 @@ import { lookupOrError, colors } from '@/lib/tokens'
 import {
   type ReportTemplate,
   VIS_LABEL_KEYS, VIS_COLORS,
-  inputStyle, labelStyle, btnPrimary, btnGhost,
+  labelStyle,
 } from './useCustomReports'
 
 import { getReportIcon } from './reportIcons'
@@ -80,13 +83,11 @@ export function ReportListView(props: ReportListViewProps) {
               {listKnown ? t('pages.reportBuilder.count', { count: templates.length }) : '—'}
             </p>
           </div>
-          {canWrite && <button
-            type="button"
+          {canWrite && <Button variant="primary"
             onClick={() => setShowNewDialog(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
           >
             {t('pages.reportBuilder.new')}
-          </button>}
+          </Button>}
         </div>
 
         {/* Not read yet, or not readable: said as such, never as «no reports» (review of 23 Sep 2026). */}
@@ -97,7 +98,7 @@ export function ReportListView(props: ReportListViewProps) {
           <StaleDataBanner message={templatesError.message} onRetry={onRetryTemplates} />
         )}
         {!templatesError && templatesLoading && templates.length === 0 && (
-          <p role="status" style={{ color: 'var(--color-slate-light)' }}>{t('common.loading')}</p>
+          <Loading />
         )}
 
         {/* Empty state */}
@@ -161,9 +162,9 @@ export function ReportListView(props: ReportListViewProps) {
 
                   {/* Subtitle row */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 6px', borderRadius: 3, background: vc.bg, color: vc.fg }}>
+                    <Pill bg={vc.bg} color={vc.fg} radius={3} style={{ fontSize: 'var(--font-size-label)', fontWeight: 600 }}>
                       {t(lookupOrError(VIS_LABEL_KEYS, tpl.visibility, 'VIS_LABEL_KEYS', tpl.visibility))}
-                    </span>
+                    </Pill>
                     {tpl.createdBy && (
                       <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>· {tpl.createdBy.name}</span>
                     )}
@@ -172,16 +173,14 @@ export function ReportListView(props: ReportListViewProps) {
 
                 {/* Card footer */}
                 <div style={{ padding: '8px 14px', borderTop: '1px solid var(--color-border-light)', display: 'flex', gap: 6 }}>
-                  <button
-                    type="button"
+                  <Button variant="secondary" size="xs"
                     onClick={() => handleExecuteAndGoToDetail(tpl)}
-                    style={{ ...btnGhost, flex: 1, fontSize: 'var(--font-size-body)', padding: '4px 10px' }}
-                  >&#x25B6; {t('pages.reportBuilder.execute')}</button>
-                  <button
-                    type="button"
+                    style={{ flex: 1 }}
+                  >&#x25B6; {t('pages.reportBuilder.execute')}</Button>
+                  <Button variant="primary" size="xs"
                     onClick={() => goToDetail(tpl)}
-                    style={{ ...btnPrimary, flex: 1, fontSize: 'var(--font-size-body)', padding: '4px 10px' }}
-                  >{canWrite ? <>&#x270F; {t('pages.reportBuilder.modify')}</> : t('pages.reportBuilder.open')}</button>
+                    style={{ flex: 1 }}
+                  >{canWrite ? <>&#x270F; {t('pages.reportBuilder.modify')}</> : t('pages.reportBuilder.open')}</Button>
                 </div>
               </div>
             )
@@ -198,9 +197,8 @@ export function ReportListView(props: ReportListViewProps) {
           width={440}
           footer={
             <>
-              <Button variant="secondary" onClick={() => { setShowNewDialog(false); resetNew() }} style={btnGhost}>{t('common.cancel')}</Button>
-              <Button disabled={!newName || creating} onClick={() => handleCreateTemplate()}
-                style={{ ...btnPrimary, opacity: !newName || creating ? 0.6 : 1 }}>
+              <Button variant="secondary" onClick={() => { setShowNewDialog(false); resetNew() }}>{t('common.cancel')}</Button>
+              <Button disabled={!newName || creating} onClick={() => handleCreateTemplate()}>
                 {creating ? t('pages.reports.creating') : t('pages.reports.create')}
               </Button>
             </>
@@ -208,19 +206,19 @@ export function ReportListView(props: ReportListViewProps) {
         >
             <div style={{ marginBottom: 14 }}>
               <label htmlFor={ids.name} style={labelStyle}>{t('pages.slaReport.nameRequired')}</label>
-              <input id={ids.name} value={newName} onChange={e => setNewName(e.target.value)} style={inputStyle} placeholder={t('pages.reports.namePlaceholder')} />
+              <Input id={ids.name} value={newName} onChange={e => setNewName(e.target.value)} placeholder={t('pages.reports.namePlaceholder')} />
             </div>
             <div style={{ marginBottom: 14 }}>
               <label htmlFor={ids.desc} style={labelStyle}>{t('common.description')}</label>
-              <textarea id={ids.desc} value={newDesc} onChange={e => setNewDesc(e.target.value)} style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }} />
+              <Textarea id={ids.desc} value={newDesc} onChange={e => setNewDesc(e.target.value)} style={{ minHeight: 60, resize: 'vertical' }} />
             </div>
             <div style={{ marginBottom: 20 }}>
               <label htmlFor={ids.vis} style={labelStyle}>{t('pages.reports.visibility.label')}</label>
-              <select id={ids.vis} value={newVis} onChange={e => setNewVis(e.target.value)} style={{ ...inputStyle, background: colors.white }}>
+              <Select id={ids.vis} value={newVis} onChange={e => setNewVis(e.target.value)}>
                 <option value="private">{t('pages.reports.visibility.private')}</option>
                 <option value="groups">{t('pages.reports.visibility.selectedGroups')}</option>
                 <option value="all">{t('common.all')}</option>
-              </select>
+              </Select>
             </div>
             {newVis === 'groups' && teamsError && (
               <p role="alert" style={{ color: 'var(--color-danger)', fontSize: 'var(--font-size-body)' }}>{t('pages.reportSchedule.teamsError', { message: teamsError.message })}</p>

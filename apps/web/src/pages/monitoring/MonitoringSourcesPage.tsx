@@ -10,7 +10,7 @@
  * un secondo refetch arriva qualche secondo dopo, quando il job ha elaborato.
  */
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -148,7 +148,7 @@ export function MonitoringSourcesPage({ sampleRefetchDelayMs = SAMPLE_REFETCH_DE
         return (
           <div>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <Link to={`/monitoring/sources/${row.id}`} onClick={(e) => e.stopPropagation()} style={{ color: colors.brand, textDecoration: 'none', fontWeight: 600 }}>{row.name}</Link>
+              <span style={{ fontWeight: 600 }}>{row.name}</span>
               {storm && <StormBadge storm={storm} />}
             </span>
             {!row.enabled && <div style={{ fontSize: 'var(--font-size-table)', color: colors.slateLight, marginTop: 2 }}>{t('monitoring.sources.disabledHint')}</div>}
@@ -189,7 +189,7 @@ export function MonitoringSourcesPage({ sampleRefetchDelayMs = SAMPLE_REFETCH_DE
         ),
     },
     {
-      key: 'id', label: t('monitoring.sources.columns.actions'), width: '180px',
+      key: 'id', label: t('monitoring.sources.columns.actions'), sortable: false, width: '180px',
       render: (_v, row) => (
         <div style={{ display: 'flex', gap: 4 }}>
           <Button variant="icon" size="xs" title={t('monitoring.sources.edit')} aria-label={t('monitoring.sources.editAria', { name: row.name })} onClick={() => navigate(`/monitoring/sources/${row.id}`)}><Pencil size={13} aria-hidden="true" /></Button>
@@ -227,6 +227,8 @@ export function MonitoringSourcesPage({ sampleRefetchDelayMs = SAMPLE_REFETCH_DE
           data={sources}
           loading={loading && !data}
           label={t('monitoring.sources.title')}
+          // The row opens the source, from the mouse and the keyboard (26 Sep 2026).
+          onRowClick={(row) => navigate(`/monitoring/sources/${row.id}`)}
           emptyComponent={
             <EmptyState
               icon={<Radar size={32} />}

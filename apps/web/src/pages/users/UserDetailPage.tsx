@@ -1,5 +1,7 @@
+import { Loading } from '@/components/ui/Loading'
+import { BackLink, DetailTitle } from '@/components/ui/BackLink'
 import { useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
@@ -16,6 +18,7 @@ import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { useMe } from '@/hooks/useMe'
 import { Select } from '@/components/ui/FormControls'
 import { Button } from '@/components/Button'
+import { RowLink, rowOpens } from '@/components/ui/RowLink'
 import { useRoles } from '@/hooks/useRoles'
 import { colors, palette } from '@/lib/tokens'
 import { formatDate } from '@/lib/datetime'
@@ -59,6 +62,7 @@ function TeamTypePill({ type }: { type: string }) {
 }
 
 export function UserDetailPage() {
+  const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const { t } = useTranslation()
   const [showAddTeam, setShowAddTeam] = useState(false)
@@ -93,7 +97,7 @@ export function UserDetailPage() {
   const availableTeams = allTeams.filter(team => !userTeamIds.includes(team.id))
 
   if (loading && !user) {
-    return <div style={{ padding: '32px 40px', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</div>
+    return <Loading padded />
   }
 
   if (error && !data) {
@@ -112,12 +116,10 @@ export function UserDetailPage() {
     <PageContainer>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <Link to="/users" style={{ display: 'inline-block', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 4, textDecoration: 'none' }}>
-          ← {t('pages.users.backToList')}
-        </Link>
+        <BackLink to="/users">{t('pages.users.backToList')}</BackLink>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <User size={22} color="var(--color-icon-accent)" />
-          <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{user.name}</h1>
+          <DetailTitle>{user.name}</DetailTitle>
           <RoleBadge role={user.role} name={user.roleName} />
           {!user.active && <Pill bg={palette.neutral.borderLight} color="var(--color-slate-dark)">{t('pages.users.inactive')}</Pill>}
           {me?.id !== user.id && (
@@ -171,25 +173,23 @@ export function UserDetailPage() {
             ) : (
               <div style={{ marginBottom: 12 }}>
                 {user.teams.map((team, i) => (
-                  <div key={team.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: i < user.teams.length - 1 ? `1px solid ${palette.neutral.borderLight}` : 'none' }}>
+                  <div key={team.id} {...rowOpens(() => navigate(`/teams/${team.id}`))} className="hover-bg" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: i < user.teams.length - 1 ? `1px solid ${palette.neutral.borderLight}` : 'none' }}>
                     <div style={{ width: 28, height: 28, borderRadius: 6, background: palette.info.tint, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       <Users size={14} color="var(--color-brand)" />
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Link to={`/teams/${team.id}`} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)', textDecoration: 'none' }}>{team.name}</Link>
+                        <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600 }}><RowLink to={`/teams/${team.id}`}>{team.name}</RowLink></span>
                         {/* Il tipo di team è un vocabolario del cliente: stile ed
                             etichetta vengono da lui, non da due nomi cablati
                             (revisione totale · F-9). */}
                         {team.type && <TeamTypePill type={team.type} />}
                       </div>
                     </div>
-                    <button type="button"
+                    <button className="hover-danger" type="button"
                       onClick={() => void setMembership({ variables: { teamId: team.id, userId: user.id, member: false } })}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', borderRadius: 4 }}
                       title={t('pages.userDetail.removeFromTeam')}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-danger-bg)' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none' }}
                     >
                       <X size={14} color={colors.danger} />
                     </button>
@@ -202,7 +202,7 @@ export function UserDetailPage() {
             {!showAddTeam ? (
               <button type="button"
                 onClick={() => setShowAddTeam(true)}
-                style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0 }}
+                style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-size-body)', color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0 }}
               >
                 <Plus size={14} /> {t('pages.users.addToTeam')}
               </button>
@@ -210,7 +210,7 @@ export function UserDetailPage() {
               <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 8 }}>
                 <div style={{ padding: '6px 12px', background: 'var(--color-slate-bg)', borderBottom: '1px solid var(--border)', fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span>{t('pages.userDetail.availableTeams')}</span>
-                  <button type="button" onClick={() => setShowAddTeam(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{t('common.close')}</button>
+                  <button type="button" onClick={() => setShowAddTeam(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-table)', color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{t('common.close')}</button>
                 </div>
                 {availableTeams.length === 0 ? (
                   <div style={{ padding: '12px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center' }}>{t('pages.userDetail.noOtherTeams')}</div>

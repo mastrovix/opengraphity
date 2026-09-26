@@ -3,11 +3,12 @@
  * to the change. The caller re-fetches the affected/impacted CI lists on
  * success.
  */
+import { SearchBox } from '@/components/ui/SearchBox'
+import { Pill } from '@/components/ui/Pill'
 import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Search } from 'lucide-react'
 import { Modal } from '@/components/Modal'
 import { GET_ALL_CIS } from '@/graphql/queries'
 import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
@@ -45,16 +46,8 @@ export function AddCIModal({ changeId, existingCIIds, onClose, refetchAffected, 
 
   return (
     <Modal open onClose={onClose} title={t('pages.addCI.title')} width={560}>
-        <div style={{ position: 'relative', marginBottom: 12 }}>
-          <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-slate-light)' }} />
-          <input aria-label={t('pages.createChange.searchCI')}
-            type="text" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder={t('pages.createChange.searchCI')}
-            // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: campo di ricerca del modal aperto dall'utente
-            autoFocus
-            style={{ width: '100%', padding: '8px 12px 8px 30px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }}
-          />
-        </div>
+        {/* eslint-disable-next-line jsx-a11y/no-autofocus -- the search of a dialog the user just opened: the focus goes there */}
+        <SearchBox value={search} onChange={setSearch} ariaLabel={t('pages.createChange.searchCI')} placeholder={t('pages.createChange.searchCI')} autoFocus style={{ marginBottom: 12 }} />
         <div style={{ overflowY: 'auto', maxHeight: 400 }}>
           {search.length < 2 && <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', margin: 0 }}>{t('pages.addCI.typeTwoChars')}</p>}
           {search.length >= 2 && results.length === 0 && <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', margin: 0 }}>{t('pages.addCI.noCIFound')}</p>}
@@ -68,8 +61,8 @@ export function AddCIModal({ changeId, existingCIIds, onClose, refetchAffected, 
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 500, color: 'var(--color-slate-dark)', fontSize: 'var(--font-size-body)' }}>{ci.name}</div>
                   <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
-                    {ci.type && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 4px', borderRadius: 3, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.typeLabel(ci.type)}</span>}
-                    {ci.environment && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 4px', borderRadius: 3, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.environmentLabel(ci.environment)}</span>}
+                    {ci.type && <Pill bg={colors.slateBg} color="var(--color-slate)" radius={3} style={{ fontSize: 'var(--font-size-label)' }}>{ciLabels.typeLabel(ci.type)}</Pill>}
+                    {ci.environment && <Pill bg={colors.slateBg} color="var(--color-slate)" radius={3} style={{ fontSize: 'var(--font-size-label)' }}>{ciLabels.environmentLabel(ci.environment)}</Pill>}
                   </div>
                   <div style={{ display: 'flex', gap: 12, marginTop: 3, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
                     <span><span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', backgroundColor: hasOwner ? 'var(--color-success)' : 'var(--color-danger)', marginRight: 4, verticalAlign: 'middle' }} />{t('pages.addCIModal.owner', { name: ci.ownerGroup?.name ?? '—' })}</span>

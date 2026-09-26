@@ -1,3 +1,5 @@
+import { Loading } from '@/components/ui/Loading'
+import { Input } from '@/components/ui/FormControls'
 import { useState, useCallback, useEffect, useMemo, useRef, useId } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import { useQuery, useLazyQuery } from '@apollo/client/react'
@@ -69,10 +71,6 @@ const WIZARD_STEPS: { n: 1 | 2 | 3 | 4; labelKey: string }[] = [
   { n: 4, labelKey: 'reportBuilder.wizard.titleAndSave' },
 ]
 
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '8px 12px', borderRadius: 6,
-  border: `1px solid ${palette.neutral.borderStrong}`, fontSize: 'var(--font-size-body)', boxSizing: 'border-box',
-}
 const labelStyle: React.CSSProperties = {
   fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase',
   letterSpacing: '0.05em', marginBottom: 6, display: 'block',
@@ -561,15 +559,15 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
   ) => (
     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
       {onBack ? (
-        <button type="button" onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
+        <Button variant="secondary" onClick={onBack}>
           <ChevronLeft size={18} /> {t('pages.reportSchedule.back')}
-        </button>
+        </Button>
       ) : <div />}
       <div style={{ display: 'flex', gap: 10 }}>
         {isLastStep && (
-          <button type="button" onClick={onCancel} style={{ padding: '10px 16px', borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
+          <Button variant="secondary" onClick={onCancel}>
             {t('common.cancel')}
-          </button>
+          </Button>
         )}
         <button type="button" onClick={onNext} disabled={nextDisabled} style={{
           display: 'flex', alignItems: 'center', gap: 6, padding: '10px 24px',
@@ -626,7 +624,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
               </button>
             </div>
             {reachableLoading ? (
-              <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', textAlign: 'center' }}>{t('common.loading')}</p>
+              <Loading />
             ) : (reachableData?.reachableEntities ?? []).length === 0 ? (
               <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', textAlign: 'center' }}>{t('reportBuilder.noConnection')}</p>
             ) : (
@@ -685,9 +683,9 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
           <div style={{ flex: '0 0 300px' }}>
             <div style={{ marginBottom: 20 }}>
               <label htmlFor={titleInputId} style={labelStyle}>{t('reportBuilder.sectionTitle')}</label>
-              <input id={titleInputId} value={title} onChange={e => setTitle(e.target.value)} style={inputStyle} placeholder={t('reportBuilder.titlePlaceholder')} />
+              <Input id={titleInputId} value={title} onChange={e => setTitle(e.target.value)} placeholder={t('reportBuilder.titlePlaceholder')} />
               {suggestedTitle && title !== suggestedTitle && (
-                <button type="button" onClick={() => setTitle(suggestedTitle)} style={{ marginTop: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-brand)', fontSize: 'var(--font-size-body)', padding: 0 }}>
+                <button type="button" onClick={() => setTitle(suggestedTitle)} style={{ marginTop: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, fontSize: 'var(--font-size-body)', padding: 0 }}>
                   {t('reportBuilder.useSuggested', { title: suggestedTitle })}
                 </button>
               )}

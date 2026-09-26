@@ -11,6 +11,7 @@
  * Aperta di default solo se la salute è nota (health ≠ null). Ogni query ha
  * il suo errore visibile: un errore sugli ultimi allarmi non diventa "nessun allarme".
  */
+import { Loading } from '@/components/ui/Loading'
 import { useId, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
@@ -86,7 +87,7 @@ export function CIHealthSection({ ciId, ciName }: { ciId: string; ciName: string
       headerRight={info?.health ? <CIHealthBadge health={info.health} /> : undefined}
     >
       {error && !data && <QueryError message={error.message} onRetry={() => void refetch()} />}
-      {loading && !data && <p style={hint}>{t('common.loading')}</p>}
+      {loading && !data && <Loading />}
       {info && (
         <>
           {info.health === null && <p style={{ ...hint, fontSize: 'var(--font-size-body)' }}>{t('monitoring.ciHealth.noHealth')}</p>}
@@ -100,7 +101,7 @@ export function CIHealthSection({ ciId, ciName }: { ciId: string; ciName: string
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                   <strong style={{ color: info.firingEvents > 0 ? colors.danger : colors.slateDark }}>{info.firingEvents}</strong>
                   {/* Link interno alla console: freccia, non l'icona "nuova finestra". */}
-                  <Link to={consoleLink} style={{ color: colors.brand, textDecoration: 'none', fontSize: 'var(--font-size-table)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <Link to={consoleLink} style={{ color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, fontSize: 'var(--font-size-table)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                     {t('monitoring.ciHealth.viewEvents')} <ArrowRight size={11} aria-hidden="true" />
                   </Link>
                 </span>
@@ -134,20 +135,20 @@ export function CIHealthSection({ ciId, ciName }: { ciId: string; ciName: string
       <div style={{ paddingTop: 12, borderTop: `1px solid ${colors.border}` }}>
         <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>{t('monitoring.ciHealth.recentEvents')}</div>
         {eventsError && !eventsData && <QueryError message={eventsError.message} onRetry={() => void refetchEvents()} />}
-        {!eventsError && !eventsData && <p style={hint}>{t('common.loading')}</p>}
+        {!eventsError && !eventsData && <Loading />}
         {eventsData && events.length === 0 && <p style={hint}>{t('monitoring.ciHealth.noEvents')}</p>}
         {events.length > 0 && (
           <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
             {events.map((ev) => (
               <li key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)' }}>
                 <EventStatusBadge status={ev.status} severity={ev.severity} />
-                <Link to={`/events/${ev.id}`} style={{ color: colors.brand, textDecoration: 'none', fontWeight: 500, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.title}</Link>
+                <Link to={`/events/${ev.id}`} style={{ color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, fontWeight: 500, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.title}</Link>
                 <span style={{ color: colors.slateLight, whiteSpace: 'nowrap' }} title={formatDateTime(ev.lastSeenAt)}>{timeAgo(ev.lastSeenAt)}</span>
               </li>
             ))}
           </ul>
         )}
-        {events.length > 0 && <Button variant="ghost" size="xs" onClick={() => refetchEvents()} style={{ marginTop: 6, color: colors.slateLight, fontSize: 'var(--font-size-table)' }}>{t('monitoring.console.refresh')}</Button>}
+        {events.length > 0 && <Button variant="ghost" size="xs" onClick={() => refetchEvents()} style={{ marginTop: 6, fontSize: 'var(--font-size-table)' }}>{t('monitoring.console.refresh')}</Button>}
       </div>
     </SectionCard>
   )

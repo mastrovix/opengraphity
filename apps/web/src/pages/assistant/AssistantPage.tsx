@@ -4,6 +4,9 @@
  * Truth-telling: gli errori compaiono in chat col messaggio reale; l'attività
  * dei tool è mostrata mentre avviene.
  */
+import { Pill } from '@/components/ui/Pill'
+import { Input } from '@/components/ui/FormControls'
+import { Button } from '@/components/Button'
 import { useAIFeature } from '@/hooks/useAIFeature'
 import { AIDisabledNotice } from '@/components/ai/AIDisabledNotice'
 import { useState, useRef, useEffect } from 'react'
@@ -153,16 +156,15 @@ export function AssistantPage() {
     <PageContainer style={{ display: 'flex', flexDirection: 'column', height: 'calc(var(--vh-app) - 56px)' }}>
       <div style={{ maxWidth: 780, width: '100%', margin: '0 auto', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 0 12px' }}>
-          {/* Il titolo passa da PageTitle come le altre pagine: era un <h1> scritto a mano, con l'icona piu piccola e di un altro colore. */}
+          {/* Il titolo passa da PageTitle come le altre pagine: era un h1 scritto a mano, con l'icona piu piccola e di un altro colore. */}
           <PageTitle icon={<Sparkles size={22} color="var(--color-icon-accent)" />}>{t('sidebar.assistant')}</PageTitle>
           {messages.length > 0 && (
-            <button type="button"
+            <Button variant="secondary"
               onClick={() => setMessages([])}
               disabled={streaming}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', background: colors.white, color: 'var(--color-slate)', fontSize: 'var(--font-size-body)', cursor: 'pointer' }}
             >
               <Trash2 size={13} /> {t('pages.reportsAI.newConversation')}
-            </button>
+            </Button>
           )}
         </div>
 
@@ -221,9 +223,9 @@ export function AssistantPage() {
               {activeTools.length > 0 && (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {activeTools.map((tool, i) => (
-                    <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '3px 8px', borderRadius: 10, background: palette.info.light, border: `1px solid ${palette.info.border}`, color: 'var(--color-brand)' }}>
+                    <Pill bg={palette.info.light} color="var(--color-brand)" radius={10} key={i} style={{ gap: 4, fontSize: 11, border: `1px solid ${palette.info.border}` }}>
                       <Search size={10} /> {TOOL_LABEL_KEY[tool] ? t(TOOL_LABEL_KEY[tool]) : tool}
-                    </span>
+                    </Pill>
                   ))}
                 </div>
               )}
@@ -237,7 +239,7 @@ export function AssistantPage() {
 
         {/* Input */}
         <div style={{ display: 'flex', gap: 8, padding: '12px 0 20px' }}>
-          <input
+          <Input
             type="text"
             value={input}
             onChange={e => setInput(e.target.value)}
@@ -245,7 +247,7 @@ export function AssistantPage() {
             placeholder={t('pages.assistant.placeholder')}
             aria-label={t('pages.assistant.placeholder')}
             disabled={streaming}
-            style={{ flex: 1, padding: '11px 16px', borderRadius: 10, border: '1px solid var(--border)', fontSize: 'var(--font-size-body)', outline: 'none', background: colors.white }}
+            style={{ flex: 1 }}
           />
           <button type="button"
             onClick={() => void send(input)}

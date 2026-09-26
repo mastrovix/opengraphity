@@ -15,6 +15,8 @@
  * spedisce (`pages.createChange.typeHelp.*`); per un tipo del cliente non
  * inventiamo una descrizione che non conosciamo.
  */
+import { Loading } from '@/components/ui/Loading'
+import { Pill } from '@/components/ui/Pill'
 import { useTranslation } from 'react-i18next'
 import { ShieldCheck } from 'lucide-react'
 import { Modal } from '@/components/Modal'
@@ -56,7 +58,7 @@ export function ChangeTypeModal({ open, types, preApproved, onPick, onCancel }: 
       </p>
 
       {types === null && (
-        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{t('common.loading')}</p>
+        <Loading />
       )}
 
       {/*
@@ -91,15 +93,10 @@ export function ChangeTypeModal({ open, types, preApproved, onPick, onCancel }: 
               <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{label}</span>
                 {preApprovato && (
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 4,
-                    padding: '2px 8px', borderRadius: 999,
-                    fontSize: 'var(--font-size-label)', fontWeight: 600,
-                    background: palette.success.tint, color: palette.success.dark,
-                  }}>
+                  <Pill bg={palette.success.tint} color={palette.success.dark} radius={999} style={{ gap: 4, fontSize: 'var(--font-size-label)', fontWeight: 600 }}>
                     <ShieldCheck size={12} aria-hidden="true" />
                     {t('pages.createChange.preApprovedBadge')}
-                  </span>
+                  </Pill>
                 )}
               </span>
               {aiuto && (

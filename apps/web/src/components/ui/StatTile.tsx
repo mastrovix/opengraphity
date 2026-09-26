@@ -25,14 +25,22 @@ export interface StatTileProps {
   icon?:    ReactNode
   /** Una riga di contesto sotto, in grigio. */
   context?: ReactNode
+  /** Tooltip dell'intero riquadro. */
+  hint?:    string
+  /** Contenuto sotto il contesto (es. un link). */
+  extra?:   ReactNode
+  /**
+   * A tile that filters the list below (26 Sep 2026: the CI health, services
+   * and alarms pages drew their own): it is a button, pressed while its filter
+   * is on, and then tinted with its colour.
+   */
+  onClick?: () => void
+  pressed?: boolean
 }
 
-export function StatTile({ label, value, accent, tint, icon, context }: StatTileProps) {
-  return (
-    <div style={{
-      textAlign: 'left', padding: '14px 16px', borderRadius: 12, minWidth: 0,
-      background: 'var(--color-white)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-card)',
-    }}>
+export function StatTile({ label, value, accent, tint, icon, context, hint, extra, onClick, pressed = false }: StatTileProps) {
+  const body = (
+    <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         {icon && (
           <span aria-hidden="true" style={{
@@ -52,8 +60,20 @@ export function StatTile({ label, value, accent, tint, icon, context }: StatTile
         </div>
       </div>
       {context && <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 10 }}>{context}</div>}
-    </div>
+      {extra}
+    </>
   )
+  const style: React.CSSProperties = {
+    textAlign: 'left', font: 'inherit', padding: '14px 16px', borderRadius: 12, minWidth: 0,
+    background: pressed ? (tint ?? 'var(--color-slate-bg)') : 'var(--color-white)',
+    border: pressed ? `2px solid ${accent ?? 'var(--color-slate)'}` : '1px solid var(--border)',
+    boxShadow: 'var(--shadow-card)',
+    cursor: onClick ? 'pointer' : 'default',
+    transition: 'background-color 150ms, border-color 150ms',
+  }
+  return onClick
+    ? <button type="button" onClick={onClick} aria-pressed={pressed} title={hint} style={style}>{body}</button>
+    : <div title={hint} style={style}>{body}</div>
 }
 
 /** La griglia dei box: stessa di Monitoraggio, si adatta alla larghezza senza lasciare un box da solo su una riga lunga. */

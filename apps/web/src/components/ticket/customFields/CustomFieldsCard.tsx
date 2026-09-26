@@ -3,6 +3,7 @@
  * le etichette del Dizionario e si modificano sul posto. Se il tipo non ha
  * campi del cliente la scheda non c'è.
  */
+import { Button } from '@/components/Button'
 import { useState } from 'react'
 import { useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
@@ -74,7 +75,7 @@ export function CustomFieldsCard({ entityType, ticketId, fields: allFields, canE
           onClick={(e) => { e.stopPropagation(); startEdit() }}
           aria-label={t('customFields.edit')}
           title={t('customFields.edit')}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-brand)', fontSize: 'var(--font-size-body)', fontWeight: 600 }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, fontSize: 'var(--font-size-body)', fontWeight: 600 }}
         >
           <Pencil size={13} aria-hidden="true" /> {t('customFields.edit')}
         </button>
@@ -100,12 +101,12 @@ export function CustomFieldsCard({ entityType, ticketId, fields: allFields, canE
             </dl>
           )}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button type="button" onClick={() => setEditing(false)} style={{ padding: '7px 14px', borderRadius: 6, border: `1px solid ${colors.border}`, background: colors.white, color: 'var(--color-slate)', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
+            <Button variant="secondary" onClick={() => setEditing(false)}>
               {t('common.cancel')}
-            </button>
-            <button type="button" onClick={submit} disabled={loading} style={{ padding: '7px 16px', borderRadius: 6, border: 'none', background: 'var(--color-brand)', color: colors.white, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1, fontSize: 'var(--font-size-body)', fontWeight: 600 }}>
+            </Button>
+            <Button variant="primary" onClick={submit} disabled={loading}>
               {loading ? t('common.saving') : t('common.save')}
-            </button>
+            </Button>
           </div>
         </div>
       ) : (

@@ -1,3 +1,5 @@
+import { Select } from '@/components/ui/FormControls'
+import { Button } from '@/components/Button'
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -151,16 +153,6 @@ export function TopologyPage() {
     setSelectedNode(node)
   }, [])
 
-  const selectStyle = {
-    fontSize:     12,
-    color:        'var(--color-slate-dark)',
-    border:       '1px solid var(--color-border)',
-    borderRadius: 6,
-    padding:      '5px 10px',
-    background:   colors.white,
-    cursor:       'pointer',
-    outline:      'none',
-  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -181,12 +173,12 @@ export function TopologyPage() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           {/* Type filter */}
-          <select aria-label={t('pages.cmdb.type')} value={filters.type} onChange={(e) => changeType(e.target.value)} style={selectStyle}>
+          <Select aria-label={t('pages.cmdb.type')} value={filters.type} onChange={(e) => changeType(e.target.value)}>
             <option value="">{t('pages.topology.allTypes')}</option>
             {ciTypeOptions.map(ct => (
               <option key={ct.name} value={ct.name}>{ct.label}</option>
             ))}
-          </select>
+          </Select>
 
           {/* The CI to start from — always there (tour of 24 Sep 2026): with «All
               types» it searches every type; a type only narrows the search. It
@@ -206,30 +198,29 @@ export function TopologyPage() {
           {focusNodeId && (
             <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
               <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>{t('pages.topology.depth')}</span>
-              <select
+              <Select
                 value={maxHops ?? 'all'}
                 onChange={(e) => setMaxHops(e.target.value === 'all' ? null : Number(e.target.value))}
-                style={selectStyle}
               >
                 {[1, 2, 3, 4, 5].map((n) => (
                   <option key={n} value={n}>{t('pages.topology.hops', { count: n })}</option>
                 ))}
                 <option value="all">{t('pages.topology.allHops')}</option>
-              </select>
+              </Select>
             </label>
           )}
 
           {/* Environment filter */}
-          <select aria-label={t('pages.cmdb.environment')} value={filters.environment} onChange={(e) => setFilters((f) => ({ ...f, environment: e.target.value }))} style={selectStyle} title={baseEnums.error ?? undefined}>
+          <Select aria-label={t('pages.cmdb.environment')} value={filters.environment} onChange={(e) => setFilters((f) => ({ ...f, environment: e.target.value }))} title={baseEnums.error ?? undefined}>
             <option value="">{t('pages.topology.allEnvironments')}</option>
             {baseEnums.environments.map((v) => <option key={v} value={v}>{ciLabels.environmentLabel(v)}</option>)}
-          </select>
+          </Select>
 
           {/* Status filter */}
-          <select aria-label={t('pages.cmdb.status')} value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))} style={selectStyle} title={baseEnums.error ?? undefined}>
+          <Select aria-label={t('pages.cmdb.status')} value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))} title={baseEnums.error ?? undefined}>
             <option value="">{t('pages.topology.allStatuses')}</option>
             {baseEnums.statuses.map((v) => <option key={v} value={v}>{ciLabels.statusLabel(v)}</option>)}
-          </select>
+          </Select>
           {baseEnums.error && (
             <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-danger)' }} title={baseEnums.error}>
               {t('pages.topology.enumsUnavailable')}
@@ -466,24 +457,12 @@ export function TopologyPage() {
 
             {/* Actions */}
             <div style={{ marginTop: 20 }}>
-              <button
-                type="button"
+              <Button variant="primary"
                 onClick={() => navigate(`/ci/${selectedNode.type}/${selectedNode.id}`)}
-                style={{
-                  width:        '100%',
-                  padding:      '8px 0',
-                  background:   'var(--color-brand)',
-                  color:        colors.white,
-                  border:       'none',
-                  borderRadius: 6,
-                  fontSize:     13,
-                  fontWeight:   600,
-                  cursor:       'pointer',
-                  fontFamily,
-                }}
+                style={{ width:        '100%' }}
               >
                 {t('pages.topology.goToDetail')}
-              </button>
+              </Button>
             </div>
           </div>
         )}

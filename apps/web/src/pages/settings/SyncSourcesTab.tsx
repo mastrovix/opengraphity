@@ -1,9 +1,11 @@
+import { Loading } from '@/components/ui/Loading'
+import { Pill } from '@/components/ui/Pill'
 import { useId, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Play, Clock, Upload, X } from 'lucide-react'
 import type { SyncSource, ConnectorField, ConnectorInfo } from './useSyncPage'
-import { formatMs, StatusBadge, inputStyle, labelStyle, btnStyle } from './syncShared'
-import { Input, Select } from '@/components/ui/FormControls'
+import { formatMs, StatusBadge, labelStyle, btnStyle } from './syncShared'
+import { Input, Select, Textarea } from '@/components/ui/FormControls'
 import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
 import { colors, palette } from '@/lib/tokens'
@@ -110,12 +112,12 @@ function TextareaFileField({ id, fieldName, value, onChange, required }: Textare
       </div>
 
       {mode === 'inline' ? (
-        <textarea
+        <Textarea
           id={id}
-          style={{ ...inputStyle, height: 140, resize: 'vertical', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-body)' }}
           value={value}
           onChange={e => onChange(e.target.value)}
           required={required}
+          style={{ height: 140, resize: 'vertical', fontFamily: 'var(--font-mono)' }}
         />
       ) : (
         <div>
@@ -127,10 +129,11 @@ function TextareaFileField({ id, fieldName, value, onChange, required }: Textare
                 <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: colors.slateDark }}>{fileName}</div>
                 {fileSize != null && <div style={{ fontSize: 'var(--font-size-table)', color: colors.slate, marginTop: 2 }}>{formatBytes(fileSize)}</div>}
               </div>
-              <button type="button" onClick={handleRemove}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', fontWeight: 500, border: `1px solid ${palette.danger.borderStrong}`, borderRadius: 6, background: colors.white, color: 'var(--color-trigger-sla-breach)', cursor: 'pointer' }}>
+              <Button variant="danger" size="xs"
+                onClick={handleRemove}
+              >
                 <X size={12} /> {t('pages.sync.fileRemove')}
-              </button>
+              </Button>
             </div>
           ) : (
             <div
@@ -270,17 +273,16 @@ export function SyncSourcesTab({
   }
 
   // G-18: era «Loading...» letterale, in inglese anche nel prodotto italiano.
-  if (loading) return <div style={{ padding: 24, color: colors.slate }}>{t('common.loading')}</div>
+  if (loading) return <Loading padded />
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-        <button type="button"
+        <Button variant="primary"
           onClick={() => setShowCreate(true)}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, backgroundColor: 'var(--color-brand)', color: colors.white, border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
         >
           <Plus size={14} />{t('sync.addSource')}
-        </button>
+        </Button>
       </div>
 
       {/* Sources list */}
@@ -295,7 +297,7 @@ export function SyncSourcesTab({
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', color: colors.slateDark }}>{s.name}</span>
-                <span style={{ fontSize: 'var(--font-size-table)', color: colors.slate, background: 'var(--color-border-light)', borderRadius: 4, padding: '2px 6px' }}>{s.connectorType}</span>
+                <Pill bg="var(--color-border-light)" color={colors.slate} radius={4} style={{ fontSize: 'var(--font-size-table)' }}>{s.connectorType}</Pill>
                 <span style={{ fontSize: 'var(--font-size-table)', color: s.enabled ? 'var(--color-success)' : colors.slate }}>{s.enabled ? t('pages.sync.sourceEnabled') : t('pages.sync.sourceDisabled')}</span>
               </div>
               <div style={{ fontSize: 'var(--font-size-body)', color: colors.slate, marginTop: 2 }}>
@@ -339,13 +341,13 @@ export function SyncSourcesTab({
           }
         >
           <label htmlFor={`${fid}-sched-preset`} style={labelStyle}>{t('pages.sync.cronPreset')}</label>
-          <Select id={`${fid}-sched-preset`} style={inputStyle} value={schedPreset} onChange={e => setSchedPreset(e.target.value)}>
+          <Select id={`${fid}-sched-preset`} value={schedPreset} onChange={e => setSchedPreset(e.target.value)}>
             {CRON_PRESETS.map(p => <option key={p.value} value={p.value}>{t(p.labelKey)}</option>)}
           </Select>
           {schedPreset === '__custom__' && (
             <>
               <label htmlFor={`${fid}-sched-custom`} style={{ ...labelStyle, marginTop: 8 }}>{t('pages.sync.customCron')}</label>
-              <Input id={`${fid}-sched-custom`} style={inputStyle} value={schedCustom} onChange={e => setSchedCustom(e.target.value)} placeholder={t('pages.sync.schedulePreset.placeholder')} />
+              <Input id={`${fid}-sched-custom`} value={schedCustom} onChange={e => setSchedCustom(e.target.value)} placeholder={t('pages.sync.schedulePreset.placeholder')} />
             </>
           )}
         </Modal>
@@ -368,10 +370,10 @@ export function SyncSourcesTab({
           }
         >
               <label htmlFor={`${fid}-name`} style={labelStyle}>{t('common.name')}</label>
-              <Input id={`${fid}-name`} style={inputStyle} value={name} onChange={e => setName(e.target.value)} required />
+              <Input id={`${fid}-name`} value={name} onChange={e => setName(e.target.value)} required />
 
               <label htmlFor={`${fid}-connector`} style={labelStyle}>{t('pages.sync.connectorType')}</label>
-              <Select id={`${fid}-connector`} style={inputStyle} value={selectedType} onChange={e => { setSelectedType(e.target.value); setForm({}); setCredForm({}) }} required>
+              <Select id={`${fid}-connector`} value={selectedType} onChange={e => { setSelectedType(e.target.value); setForm({}); setCredForm({}) }} required>
                 <option value="">{t('pages.sync.selectConnector')}</option>
                 {connectors.map(c => <option key={c.type} value={c.type}>{c.displayName}</option>)}
               </Select>
@@ -386,7 +388,6 @@ export function SyncSourcesTab({
                           <label htmlFor={`${fid}-cred-${f.name}`} style={labelStyle}>{f.label}{f.required && <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>}</label>
                           <Input
                             id={`${fid}-cred-${f.name}`}
-                            style={inputStyle}
                             type={f.type === 'password' ? 'password' : 'text'}
                             placeholder={f.placeholder ?? ''}
                             value={credForm[f.name] ?? ''}
@@ -405,7 +406,7 @@ export function SyncSourcesTab({
                         <div key={f.name}>
                           <label htmlFor={`${fid}-cfg-${f.name}`} style={labelStyle}>{f.label}{f.required && <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>}</label>
                           {f.options ? (
-                            <Select id={`${fid}-cfg-${f.name}`} style={inputStyle} value={shownConfigValue(f, form)} onChange={e => setForm(c => ({ ...c, [f.name]: e.target.value }))}>
+                            <Select id={`${fid}-cfg-${f.name}`} value={shownConfigValue(f, form)} onChange={e => setForm(c => ({ ...c, [f.name]: e.target.value }))}>
                               {f.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                             </Select>
                           ) : f.type === 'textarea' ? (
@@ -419,7 +420,6 @@ export function SyncSourcesTab({
                           ) : (
                             <Input
                               id={`${fid}-cfg-${f.name}`}
-                              style={inputStyle}
                               value={shownConfigValue(f, form)}
                               onChange={e => setForm(c => ({ ...c, [f.name]: e.target.value }))}
                               required={f.required}
@@ -432,7 +432,7 @@ export function SyncSourcesTab({
                   )}
                   <div style={{ marginTop: 8 }}>
                     <label htmlFor={`${fid}-schedule`} style={labelStyle}>{t('sync.scheduleCron')}</label>
-                    <Input id={`${fid}-schedule`} style={inputStyle} placeholder={t('sync.scheduleCronPlaceholder')} value={form['scheduleCron'] ?? ''} onChange={e => setForm(c => ({ ...c, scheduleCron: e.target.value }))} />
+                    <Input id={`${fid}-schedule`} placeholder={t('sync.scheduleCronPlaceholder')} value={form['scheduleCron'] ?? ''} onChange={e => setForm(c => ({ ...c, scheduleCron: e.target.value }))} />
                   </div>
                 </>
               )}

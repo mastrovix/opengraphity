@@ -1,3 +1,4 @@
+import { Button } from '@/components/Button'
 import { useState } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { Modal } from '@/components/Modal'
@@ -5,17 +6,15 @@ import { GET_ENUM_TYPES } from '@/graphql/queries'
 import type { CIFieldDef } from '@/contexts/MetamodelContext'
 import { Trans, useTranslation } from 'react-i18next'
 import {
-  inputS, selectS, textareaS, labelS,
-  btnPrimary, btnSecondary,
+  labelS,
   FIELD_TYPES, enumOptionLabel,
 } from '../shared/designerStyles'
-import { Input, LabelledField, Select } from '@/components/ui/FormControls'
+import { Input, LabelledField, Select, Textarea } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
 import type { EnumTypeRef } from '../shared/designerStyles'
 import { palette } from '@/lib/tokens'
 
 // Re-export shared button styles for any remaining consumers (E-09: one definition, in ui/styles).
-export { btnPrimary, btnSecondary, btnDanger } from '@/components/ui/styles'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -95,27 +94,29 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
     <Modal open={open} onClose={onClose} title={initial ? t('citypeDesigner.field.editTitle', { name: initial.name }) : t('citypeDesigner.addField')} width={560}
       footer={
         <>
-          <button type="button" style={btnSecondary} onClick={onClose}>{t('common.cancel')}</button>
-          <button type="button" style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }} disabled={saving}
+          <Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button>
+          <Button variant="primary"
+            disabled={saving}
             onClick={async () => {
               setSaving(true)
               try { await onSave(form) } finally { setSaving(false) }
-            }}>
+            }}
+          >
             {saving ? t('common.saving') : t('common.save')}
-          </button>
+          </Button>
         </>
       }>
 
       <div className="og-pair">
         <Field label={t('citypeDesigner.field.slugName')}>
-          <Input style={inputS} value={form.name} disabled={!!initial}
+          <Input value={form.name} disabled={!!initial}
             onChange={(e) => set('name', e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))} />
         </Field>
         <Field label={`${t('common.label')} *`}>
-          <Input style={inputS} value={form.label} onChange={(e) => set('label', e.target.value)} />
+          <Input value={form.label} onChange={(e) => set('label', e.target.value)} />
         </Field>
         <Field label={t('common.type')}>
-          <Select style={selectS} value={form.fieldType}
+          <Select value={form.fieldType}
             // The type of an existing field does not change (review of 23 Sep 2026).
             disabled={!!initial} title={initial ? t('citypeDesigner.field.typeFixed') : undefined}
             onChange={(e) => {
@@ -126,7 +127,7 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
           </Select>
         </Field>
         <Field label={t('common.order')}>
-          <Input style={inputS} type="number" value={form.order} onChange={(e) => set('order', Number(e.target.value))} />
+          <Input type="number" value={form.order} onChange={(e) => set('order', Number(e.target.value))} />
         </Field>
       </div>
 
@@ -137,7 +138,7 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
 
       {form.fieldType === 'enum' && (
         <Field label={t('citypeDesigner.field.enumRef')}>
-          <Select style={selectS} value={form.enumTypeId ?? ''} onChange={(e) => set('enumTypeId', e.target.value || null)}>
+          <Select value={form.enumTypeId ?? ''} onChange={(e) => set('enumTypeId', e.target.value || null)}>
             <option value="">{t('citypeDesigner.field.selectEnum')}</option>
             {enumTypes.map((e) => (
               <option key={e.id} value={e.id}>{enumOptionLabel(e, t)}</option>
@@ -156,7 +157,7 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
       )}
 
       <Field label={t('citypeDesigner.field.defaultValue')}>
-        <Input style={inputS} value={form.defaultValue} onChange={(e) => set('defaultValue', e.target.value)} />
+        <Input value={form.defaultValue} onChange={(e) => set('defaultValue', e.target.value)} />
       </Field>
 
       {/* Script tabs */}
@@ -178,9 +179,13 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
             <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
               <Trans i18nKey="citypeDesigner.field.validationHint" components={{ code: <code /> }} />
             </p>
-            <textarea aria-label={t('citypeDesigner.field.validationPlaceholder')} style={{ ...textareaS, minHeight: 100 }} value={form.validationScript}
+            <Textarea
+              aria-label={t('citypeDesigner.field.validationPlaceholder')}
+              value={form.validationScript}
               onChange={(e) => set('validationScript', e.target.value)}
-              placeholder={t('citypeDesigner.field.validationPlaceholder')} />
+              placeholder={t('citypeDesigner.field.validationPlaceholder')}
+              style={{ minHeight: 100 }}
+            />
           </div>
         )}
         {scriptTab === 'visibility' && (
@@ -188,9 +193,13 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
             <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
               <Trans i18nKey="citypeDesigner.field.visibilityHint" components={{ code: <code /> }} />
             </p>
-            <textarea aria-label={t('citypeDesigner.field.visibilityPlaceholder')} style={{ ...textareaS, minHeight: 100 }} value={form.visibilityScript}
+            <Textarea
+              aria-label={t('citypeDesigner.field.visibilityPlaceholder')}
+              value={form.visibilityScript}
               onChange={(e) => set('visibilityScript', e.target.value)}
-              placeholder={t('citypeDesigner.field.visibilityPlaceholder')} />
+              placeholder={t('citypeDesigner.field.visibilityPlaceholder')}
+              style={{ minHeight: 100 }}
+            />
           </div>
         )}
         {scriptTab === 'default' && (
@@ -198,9 +207,13 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
             <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
               <Trans i18nKey="citypeDesigner.field.defaultHint" components={{ code: <code /> }} />
             </p>
-            <textarea aria-label={t('citypeDesigner.field.defaultPlaceholder')} style={{ ...textareaS, minHeight: 100 }} value={form.defaultScript}
+            <Textarea
+              aria-label={t('citypeDesigner.field.defaultPlaceholder')}
+              value={form.defaultScript}
               onChange={(e) => set('defaultScript', e.target.value)}
-              placeholder={t('citypeDesigner.field.defaultPlaceholder')} />
+              placeholder={t('citypeDesigner.field.defaultPlaceholder')}
+              style={{ minHeight: 100 }}
+            />
           </div>
         )}
       </div>

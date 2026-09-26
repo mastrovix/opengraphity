@@ -1,3 +1,4 @@
+import { Chip } from '@/components/ui/Chip'
 import { useId } from 'react'
 import { InvalidFilterNotice } from '@/components/InvalidFilterNotice'
 import { useQuery, useMutation } from '@apollo/client/react'
@@ -21,7 +22,7 @@ import {
 import { ConditionRowEditor } from '@/components/ConditionRowEditor'
 import { ActionParamsEditor } from '@/components/ActionParamsEditor'
 import { AutomationPreview } from '@/components/AutomationPreview'
-import { selectS, labelS } from '@/components/ui/styles'
+import { labelS } from '@/components/ui/styles'
 import { Input, Select, Textarea } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
 import { Toggle } from '@/components/ui/Toggle'
@@ -55,7 +56,7 @@ type RuleDraft = {
 import { ITIL_ENTITY_TYPES as ENTITY_TYPES } from '@/constants'
 import { eventOptionKey, automationActionKey } from '@/lib/automationOperators'
 import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
-import { colors, palette } from '@/lib/tokens'
+import { palette } from '@/lib/tokens'
 import { RULE_EVENT_TYPES, automationEventSupported } from '@opengraphity/types'
 import { showError } from '@/lib/showError'
 /** Dalla tabella condivisa con l'API: le pagine offrono solo le combinazioni evento × ticket che girano (AU-1). */
@@ -259,7 +260,7 @@ export function BusinessRulesPage() {
     { key: 'enabled', label: t('admin.rules.active'), sortable: true, render: (_v, row) => (
       <Toggle checked={row.enabled} onChange={() => void handleToggleEnabled(row)} label={t('admin.rules.toggleLabel', { name: row.name })} />
     ) },
-    { key: 'id', label: t('common.actions'), sortable: true, render: (_v, row) => (
+    { key: 'id', label: t('common.actions'), sortable: false, render: (_v, row) => (
       <div style={{ display: 'flex', gap: 6 }}>
         <Button variant="icon" size="xs" title={t('common.edit')} onClick={() => openEdit(row)}><Pencil size={13} aria-hidden="true" /></Button>
         <Button variant="icon" size="xs" title={t('common.delete')} onClick={() => handleDelete(row)} style={{ color: 'var(--color-danger)', borderColor: palette.danger.border }}><Trash2 size={13} aria-hidden="true" /></Button>
@@ -358,13 +359,13 @@ export function BusinessRulesPage() {
           <div className="og-pair" style={{ marginBottom: 16 }}>
             <div>
               <label htmlFor={ids.entityType} style={labelS}>{t('pages.businessRules.entityType')}</label>
-              <Select id={ids.entityType} style={selectS} value={draft.entityType} onChange={e => patch({ entityType: e.target.value, ...(automationEventSupported(draft.eventType, e.target.value) ? {} : { eventType: 'on_create' }) })} disabled={modal.isEditing}>
+              <Select id={ids.entityType} value={draft.entityType} onChange={e => patch({ entityType: e.target.value, ...(automationEventSupported(draft.eventType, e.target.value) ? {} : { eventType: 'on_create' }) })} disabled={modal.isEditing}>
                 {ENTITY_TYPES.map(et => <option key={et} value={et}>{labelOf(et)}</option>)}
               </Select>
             </div>
             <div>
               <label htmlFor={ids.eventType} style={labelS}>{t('pages.businessRules.event')}</label>
-              <Select id={ids.eventType} style={selectS} value={draft.eventType} onChange={e => patch({ eventType: e.target.value })}>
+              <Select id={ids.eventType} value={draft.eventType} onChange={e => patch({ eventType: e.target.value })}>
                 {EVENT_TYPES.filter(et => automationEventSupported(et, draft.entityType)).map(et => <option key={et} value={et}>{t(eventOptionKey(et))}</option>)}
               </Select>
             </div>
@@ -375,12 +376,7 @@ export function BusinessRulesPage() {
             <div style={labelS}>{t('pages.businessRules.conditionLogic')}</div>
             <div role="group" aria-label={t('pages.businessRules.conditionLogic')} style={{ display: 'flex', gap: 0 }}>
               {CONDITION_LOGICS.map(v => (
-                <button key={v} type="button" aria-pressed={draft.conditionLogic === v} onClick={() => patch({ conditionLogic: v })} style={{
-                  padding: '6px 18px', fontSize: 'var(--font-size-body)', fontWeight: 600, cursor: 'pointer',
-                  border: '1px solid var(--border)', background: draft.conditionLogic === v ? 'var(--color-brand)' : colors.white,
-                  color: draft.conditionLogic === v ? colors.white : 'var(--color-slate)',
-                  borderRadius: v === 'and' ? '6px 0 0 6px' : '0 6px 6px 0',
-                }}>{v.toUpperCase()}</button>
+                <Chip pressed={draft.conditionLogic === v} key={v} onClick={() => patch({ conditionLogic: v })}>{v.toUpperCase()}</Chip>
               ))}
             </div>
           </div>
@@ -406,7 +402,7 @@ export function BusinessRulesPage() {
             <div style={{ ...labelS, marginBottom: 8 }}>{t('common.actions')}</div>
             {draft.actions.map((a, i) => (
               <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginBottom: 8 }}>
-                <Select style={{ ...selectS, width: 170 }} value={a.type} onChange={e => updateAction(i, { type: e.target.value, params: {} })}>
+                <Select style={{ width: 170 }} value={a.type} onChange={e => updateAction(i, { type: e.target.value, params: {} })}>
                   {ACTION_TYPES.map(at => <option key={at} value={at}>{t(automationActionKey(at))}</option>)}
                 </Select>
                 <ActionParamsEditor

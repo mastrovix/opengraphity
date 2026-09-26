@@ -43,12 +43,13 @@
  * l'API lo accetta anche da ferma; il pannello del nodo dice «da dove si
  * arriva» (`via`) come link che seleziona il predecessore.
  */
+import { BackLink, DetailTitle } from '@/components/ui/BackLink'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Boxes, RotateCcw, Pause, Play, Trash2, AlertTriangle, Focus, Info, Star, Loader2, ArrowRight, GitCompareArrows, RefreshCw, Pencil } from 'lucide-react'
+import { Boxes, RotateCcw, Pause, Play, Trash2, AlertTriangle, Focus, Info, Star, Loader2, ArrowRight, GitCompareArrows, RefreshCw, Pencil } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageLoader } from '@/components/PageLoader'
 import { QueryError, StaleDataBanner } from '@/components/QueryError'
@@ -86,7 +87,7 @@ import type { ServiceMapDetail, ServiceMapNode, ImpactCause, ServiceMapStatus, S
 import { showError } from '@/lib/showError'
 
 const POLL_MS = 15_000
-const linkStyle = { color: colors.brand, textDecoration: 'none', fontWeight: 500 } as const
+const linkStyle = { color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, fontWeight: 500 } as const
 
 /** I tre marcatori della sonda del polling (C-8). */
 interface ServiceMapProbe { id: string; version: number; evaluatedAt: string | null; syncedAt: string | null }
@@ -268,12 +269,9 @@ export function ServiceDetailPage() {
       {/* The latest read failed: what is below is the evaluation read before (review of 23 Sep 2026). */}
       {error && <StaleDataBanner message={error.message} onRetry={() => void refetch()} />}
       <div style={{ marginBottom: 24 }}>
-        <button type="button" onClick={() => navigate('/monitoring/services')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 12, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-card-title)', padding: 0 }}>
-          <ArrowLeft size={14} aria-hidden="true" />
-          {t('monitoring.services.detail.back')}
-        </button>
+        <BackLink onClick={() => navigate('/monitoring/services')}>{t('monitoring.services.detail.back')}</BackLink>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
-          <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: colors.slateDark, letterSpacing: '-0.01em', margin: 0 }}>{map.name}</h1>
+          <DetailTitle>{map.name}</DetailTitle>
           <ServiceHealthBadge health={map.health} />
           <ServiceStatusPill status={map.status} />
           <ServiceSyncModePill autoSync={map.autoSync} />
@@ -445,7 +443,7 @@ function CauseRow({ cause, serviceName, typeLabel, onSelect }: { cause: ImpactCa
     <li data-testid="why-cause" data-ci-id={cause.ci.id} style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 10px', borderRadius: 8, background: palette.neutral.surface1, border: `1px solid ${colors.border}` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 'var(--font-size-body)' }}>
         {/* Il nome accessibile contiene il testo visibile («Evidenzia db-01 sulla mappa»): il title da solo non conterebbe. */}
-        <button type="button" onClick={() => onSelect(cause.ci.id)} aria-label={t('monitoring.services.why.select', { name: cause.ci.name })} title={t('monitoring.services.why.select', { name: cause.ci.name })} style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', fontWeight: 600, color: colors.brand, cursor: 'pointer' }}>
+        <button type="button" onClick={() => onSelect(cause.ci.id)} aria-label={t('monitoring.services.why.select', { name: cause.ci.name })} title={t('monitoring.services.why.select', { name: cause.ci.name })} style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', fontWeight: 600, color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, cursor: 'pointer' }}>
           {cause.ci.name}
         </button>
         <span style={{ color: colors.slateLight }}>{typeLabel}</span>
@@ -502,7 +500,7 @@ function NodePanel({ node, typeLabel, via, viaMissing, isolated, onIsolate, onSe
           label={t('monitoring.services.detail.nodeFields.via')}
           value={via
             ? (
-              <button type="button" data-testid="node-via" onClick={() => onSelect(via.id)} title={t('monitoring.services.why.select', { name: via.name })} style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', fontWeight: 500, color: colors.brand, cursor: 'pointer' }}>
+              <button type="button" data-testid="node-via" onClick={() => onSelect(via.id)} title={t('monitoring.services.why.select', { name: via.name })} style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', fontWeight: 500, color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, cursor: 'pointer' }}>
                 {via.name}
               </button>
             )

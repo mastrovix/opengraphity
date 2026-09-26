@@ -110,8 +110,8 @@ describe('EventsPage', () => {
     expect(screen.getByText('3 alarms')).toBeInTheDocument()
 
     // contatori da eventStats
-    expect(screen.getByRole('button', { name: /Active\s*4/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Resolved 24h\s*7/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /4\s*Active/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /7\s*Resolved 24h/ })).toBeInTheDocument()
 
     const rows = bodyRows()
     expect(rows).toHaveLength(3)
@@ -129,7 +129,7 @@ describe('EventsPage', () => {
 
   it('readable at 1280px: the title keeps its width, the incident sits by the CI, the actions stay pinned (D36)', async () => {
     renderPage('operator')
-    const title = await screen.findByRole('link', { name: 'CPU high on web-01' })
+    const title = await screen.findByText('CPU high on web-01')
     expect(title.parentElement).toHaveStyle({ minWidth: '240px' })
     await waitFor(() => expect(screen.getByRole('columnheader', { name: 'Actions' })).toHaveClass('sft-sticky-end'))
     const headers = screen.getAllByRole('columnheader').map((h) => h.textContent)
@@ -152,7 +152,7 @@ describe('EventsPage', () => {
     await screen.findByText('CPU high on web-01')
     expect(seen[0]).toEqual({ filter: null, limit: 50, offset: 0 })
 
-    const tile = screen.getByRole('button', { name: /Critical\s*2/ })
+    const tile = screen.getByRole('button', { name: /2\s*Critical/ })
     await user.click(tile)
     expect(tile).toHaveAttribute('aria-pressed', 'true')
     await waitFor(() => expect(seen.at(-1)).toEqual({ filter: { status: ['firing'], severity: ['critical'] }, limit: 50, offset: 0 }))
@@ -184,7 +184,7 @@ describe('EventsPage — prestazioni (ondata 3)', () => {
     expect(await screen.findByText('CPU high on web-01')).toBeInTheDocument()
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: /Critical\s*2/ }))
+    await user.click(screen.getByRole('button', { name: /2\s*Critical/ }))
     // in attesa della nuova pagina: righe vecchie ancora visibili + indicatore discreto
     expect(await screen.findByRole('status')).toHaveTextContent('Updating…')
     expect(screen.getByText('CPU high on web-01')).toBeInTheDocument()
@@ -375,7 +375,7 @@ describe('EventsPage — sorgenti di monitoraggio', () => {
     await user.selectOptions(select, 'wh2')
     await waitFor(() => expect(seen.at(-1)?.filter).toEqual({ sourceId: 'wh2' }))
     // il contatore conserva la sorgente scelta
-    await user.click(screen.getByRole('button', { name: /Critical\s*2/ }))
+    await user.click(screen.getByRole('button', { name: /2\s*Critical/ }))
     await waitFor(() => expect(seen.at(-1)?.filter).toEqual({ status: ['firing'], severity: ['critical'], sourceId: 'wh2' }))
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
@@ -385,7 +385,7 @@ describe('EventsPage — sorgenti di monitoraggio', () => {
     renderPage('operator', seen, { route: '/events?sourceId=wh1&stat=orphan' })
     await screen.findByText('CPU high on web-01')
     expect(seen[0]?.filter).toEqual({ orphan: true, sourceId: 'wh1' })
-    expect(screen.getByRole('button', { name: /No CI\s*1/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /1\s*No CI/ })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('nessuna sorgente (admin): banner con link alla procedura guidata', async () => {
@@ -460,7 +460,7 @@ describe('EventsPage — filtri nell\'URL (ondata 5)', () => {
     await attendiURL('/events', { status: 'resolved', q: 'cpu' }, { timeout: 15_000 })
     await waitFor(() => expect(seen.at(-1)?.filter).toEqual({ status: ['resolved'], search: 'cpu' }))
 
-    await user.click(screen.getByRole('button', { name: /Critical\s*2/ }))
+    await user.click(screen.getByRole('button', { name: /2\s*Critical/ }))
     await attendiURL('/events', { q: 'cpu', stat: 'critical' })
     await waitFor(() => expect(seen.at(-1)?.filter).toEqual({ status: ['firing'], severity: ['critical'], search: 'cpu' }))
   // Tre interazioni con 300 ms di debounce in mezzo: il tempo si dichiara,
@@ -482,7 +482,7 @@ describe('EventsPage — filtri nell\'URL (ondata 5)', () => {
     const ageMs = Date.now() - Date.parse(f.resolvedSince)
     expect(ageMs).toBeGreaterThan(24 * 3_600_000 - 5_000)
     expect(ageMs).toBeLessThan(24 * 3_600_000 + 5_000)
-    expect(screen.getByRole('button', { name: /Resolved 24h\s*7/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /7\s*Resolved 24h/ })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('?incidentId= e ?changeId=: chip di contesto e variabili incidentId / suppressedByChangeId', async () => {
@@ -567,12 +567,12 @@ describe('EventsPage — filtri nell\'URL (ondata 5)', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Sources not loaded: sources down')
   })
 
-  it('il titolo della riga è un link al dettaglio (tastiera), la riga non è focalizzabile', async () => {
+  it('la riga apre il dettaglio anche da tastiera, come in ogni lista (26 Sep 2026: il titolo non è più un link)', async () => {
     renderPage('viewer')
     await screen.findByText('CPU high on web-01')
     const rows = bodyRows()
-    expect(rows[0]).not.toHaveAttribute('tabindex')
-    expect(within(rows[0]!).getByRole('link', { name: 'CPU high on web-01' })).toHaveAttribute('href', '/events/e1')
+    expect(rows[0]).toHaveAttribute('tabindex', '0')
+    expect(within(rows[0]!).queryByRole('link', { name: 'CPU high on web-01' })).toBeNull()
     // colonna "Ricorrenze" e data completa nel title di "Ultimo visto"
     expect(screen.getByRole('columnheader', { name: 'Occurrences' })).toBeInTheDocument()
     expect(within(rows[0]!).getByText('just now')).toHaveAttribute('title', formatDateTime(EVENTS[0]!.lastSeenAt))

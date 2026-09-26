@@ -1,3 +1,5 @@
+import { Loading } from '@/components/ui/Loading'
+import { BackLink, DetailTitle } from '@/components/ui/BackLink'
 import { gql } from '@apollo/client'
 import { useMutation } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
@@ -7,7 +9,7 @@ import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { remarkUnderline } from '@opengraphity/web-core'
-import { BookOpen, Eye, ThumbsUp, ThumbsDown, Tag, ArrowLeft, User, Calendar } from 'lucide-react'
+import { BookOpen, Eye, ThumbsUp, ThumbsDown, Tag, User, Calendar } from 'lucide-react'
 import { toast } from 'sonner'
 import { EmptyState } from '@/components/EmptyState'
 import { QueryError } from '@/components/QueryError'
@@ -84,7 +86,7 @@ export function KBArticlePage() {
 
   const related = relData?.kbRelatedArticles ?? []
 
-  if (loading && !data) return <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', padding: 32 }}>{t('common.loading')}</div>
+  if (loading && !data) return <Loading padded />
   // A failed request (network, 500, auth) is NOT "article not found" (F-09).
   if (error) {
     return (
@@ -100,9 +102,7 @@ export function KBArticlePage() {
       <DetailLayout sideWidth={280} gap={32}>
         {/* Main content */}
         <div>
-          <Link to="/knowledge-base" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--color-slate)', textDecoration: 'none', fontSize: 'var(--font-size-body)', marginBottom: 20 }}>
-            <ArrowLeft size={14} /> {t('pages.kb.backToList')}
-          </Link>
+          <BackLink to="/knowledge-base">{t('pages.kb.backToList')}</BackLink>
 
           <div style={{ marginBottom: 12 }}>
             <Pill bg={styleOf('kb_category', article.category).bg} color={styleOf('kb_category', article.category).color} radius={12} style={{ fontSize: 'var(--font-size-body)', padding: '3px 10px' }}>
@@ -115,9 +115,9 @@ export function KBArticlePage() {
             )}
           </div>
 
-          <h1 style={{ fontSize: 26, fontWeight: 700, color: colors.slateDark, margin: '0 0 16px', lineHeight: 1.3 }}>
+          <DetailTitle style={{ margin: '0 0 16px' }}>
             {article.title}
-          </h1>
+          </DetailTitle>
 
           <div style={{ display: 'flex', gap: 16, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 24, flexWrap: 'wrap' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -146,9 +146,9 @@ export function KBArticlePage() {
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 24, paddingTop: 16, borderTop: `1px solid ${colors.border}` }}>
               <Tag size={13} color={colors.slateLight} />
               {article.tags.map((tag) => (
-                <span key={tag} style={{ padding: '2px 8px', borderRadius: 8, background: colors.slateBg, color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>
+                <Pill bg={colors.slateBg} color="var(--color-slate)" radius={8} key={tag} style={{ fontSize: 'var(--font-size-body)' }}>
                   {tag}
-                </span>
+                </Pill>
               ))}
             </div>
           )}

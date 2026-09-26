@@ -13,8 +13,10 @@
  * between CIs are admitted (owner, 24 Sep 2026). Three checks come from the
  * chains: outside every chain, incomplete chains, relations not admitted.
  */
+import { Loading } from '@/components/ui/Loading'
+import { Button } from '@/components/Button'
 import { useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useApolloClient, useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { CheckCircle2, Download, HeartPulse } from 'lucide-react'
@@ -24,6 +26,7 @@ import { QueryError } from '@/components/QueryError'
 import { Pagination } from '@/components/ui/Pagination'
 import { Tabs } from '@/components/ui/Tabs'
 import { Select } from '@/components/ui/FormControls'
+import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { GET_CMDB_HEALTH, GET_CMDB_HEALTH_ITEMS } from '@/graphql/queries'
 import { useCILabels } from '@/hooks/useCILabels'
 import { useCIBaseEnums } from '@/lib/ciEnums'
@@ -51,6 +54,8 @@ interface HealthItem {
 }
 interface HealthSummary { checks: HealthCheck[]; retiredStatuses: string[]; chainCount: number; chainCoverage: ChainCoverage[] }
 interface HealthItems { total: number; population: number; items: HealthItem[] }
+/** A row of a check's list: its id is the CI with the relation, `ciId` the CI it opens. */
+type HealthRow = HealthItem & { ciId: string }
 
 export function CmdbHealthPage() {
   const { t } = useTranslation()
@@ -101,7 +106,7 @@ export function CmdbHealthPage() {
           {(health?.checks ?? []).map((c) => (
             <CheckCard key={c.key} check={c} active={c.key === chosen} onClick={() => choose(c.key)} />
           ))}
-          {loading && !health && <p style={{ color: colors.slateLight }}>{t('common.loading')}</p>}
+          {loading && !health && <Loading />}
         </div>
       )}
 
@@ -190,6 +195,7 @@ function detailOf(check: string, item: HealthItem, t: (k: string, o?: Record<str
 
 /** The CIs one check finds, filtered by type and environment, a page at a time, and all of them in the CSV. */
 function CheckList({ check }: { check: string }) {
+  const navigate = useNavigate()
   const { t } = useTranslation()
   const client = useApolloClient()
   const ciLabels = useCILabels()
@@ -235,7 +241,21 @@ function CheckList({ check }: { check: string }) {
     }
   }
 
-  const cell: React.CSSProperties = { padding: '8px 12px', fontSize: 'var(--font-size-body)', borderBottom: '1px solid var(--border)', textAlign: 'left' }
+  const columns: ColumnDef<HealthRow>[] = [
+    { key: 'name', label: t('pages.cmdbHealth.col.name'), sortable: true },
+    { key: 'type', label: t('pages.cmdbHealth.col.type'), sortValue: (i) => ciLabels.typeLabel(i.type), render: (_v, i) => ciLabels.typeLabel(i.type) },
+    { key: 'environment', label: t('pages.cmdbHealth.col.environment'), sortValue: (i) => (i.environment ? ciLabels.environmentLabel(i.environment) : null), render: (_v, i) => i.environment ? ciLabels.environmentLabel(i.environment) : '—' },
+    { key: 'status', label: t('pages.cmdbHealth.col.status'), sortValue: (i) => (i.status ? ciLabels.statusLabel(i.status) : null), render: (_v, i) => i.status ? ciLabels.statusLabel(i.status) : '—' },
+    { key: 'id', label: t('pages.cmdbHealth.col.detail'), sortValue: (i) => detailOf(check, i, t, words) || null, render: (_v, i) => (
+      <>
+        {detailOf(check, i, t, words) || '—'}
+        {/* The related CI is somewhere else than the row: a real link. */}
+        {i.relatedId && i.relatedType && (
+          <> · <Link to={`/ci/${i.relatedType}/${i.relatedId}`} style={{ color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{t('pages.cmdbHealth.detail.openRelated')}</Link></>
+        )}
+      </>
+    ) },
+  ]
   return (
     <section aria-label={t(`pages.cmdbHealth.checks.${check}.title`)} className="card-border" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -251,13 +271,12 @@ function CheckList({ check }: { check: string }) {
           <option value="">{t('pages.cmdbHealth.allEnvironments')}</option>
           {environments.map((v) => <option key={v} value={v}>{ciLabels.environmentLabel(v)}</option>)}
         </Select>
-        <button type="button" onClick={() => void exportCsv()} disabled={exporting || total === 0}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)',
-            background: colors.white, color: colors.slate, fontSize: 'var(--font-size-body)', cursor: exporting || total === 0 ? 'not-allowed' : 'pointer',
-          }}>
+        <Button variant="secondary"
+          onClick={() => exportCsv()}
+          disabled={exporting || total === 0}
+        >
           <Download size={14} aria-hidden="true" /> {t('pages.cmdbHealth.exportCsv')}
-        </button>
+        </Button>
       </div>
 
       {error && !list ? (
@@ -267,37 +286,17 @@ function CheckList({ check }: { check: string }) {
           {type || environment ? t('pages.cmdbHealth.emptyFiltered') : t('pages.cmdbHealth.emptyCheck')}
         </p>
       ) : (
-        // Wide lists scroll inside their box; the header's look is index.css's (`table thead th`).
-        <div className="og-scroll-x">
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              {(['name', 'type', 'environment', 'status', 'detail'] as const).map((c) => (
-                <th key={c} scope="col" style={{ padding: '8px 12px', textAlign: 'left' }}>
-                  {t(`pages.cmdbHealth.col.${c}`)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {(list?.items ?? []).map((i) => (
-              // A CI with two relations not admitted is on two rows.
-              <tr key={`${i.id}|${i.relation ?? ''}|${i.relatedId ?? ''}`}>
-                <td style={cell}><Link to={`/ci/${i.type}/${i.id}`} style={{ color: 'var(--color-brand-hover)', textDecoration: 'none', fontWeight: 500 }}>{i.name}</Link></td>
-                <td style={cell}>{ciLabels.typeLabel(i.type)}</td>
-                <td style={cell}>{i.environment ? ciLabels.environmentLabel(i.environment) : '—'}</td>
-                <td style={cell}>{i.status ? ciLabels.statusLabel(i.status) : '—'}</td>
-                <td style={{ ...cell, color: 'var(--color-slate)' }}>
-                  {detailOf(check, i, t, words) || '—'}
-                  {i.relatedId && i.relatedType && (
-                    <> · <Link to={`/ci/${i.relatedType}/${i.relatedId}`} style={{ color: 'var(--color-brand-hover)', textDecoration: 'none' }}>{t('pages.cmdbHealth.detail.openRelated')}</Link></>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
+        // The app's table (26 Sep 2026: it was hand-made). A CI with two relations
+        // not admitted is on two rows, so the row id is the CI with the relation.
+        <SortableFilterTable<HealthRow>
+          label={t(`pages.cmdbHealth.checks.${check}.title`)}
+          columns={columns}
+          data={(list?.items ?? []).map((i) => ({ ...i, ciId: i.id, id: `${i.id}|${i.relation ?? ''}|${i.relatedId ?? ''}` }))}
+          loading={loading && !list}
+          // The server pages the check's CIs: a column sorts the page on screen, and says so.
+          sortHint={t('common.sortPageOnly')}
+          onRowClick={(i) => navigate(`/ci/${i.type}/${i.ciId}`)}
+       />
       )}
 
       <Pagination currentPage={page + 1} totalPages={totalPages} onPrev={() => setPage((p) => p - 1)} onNext={() => setPage((p) => p + 1)} />

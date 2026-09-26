@@ -213,10 +213,10 @@ describe('the list of articles', () => {
   it('pages of 20: Next asks the API for the next page, Prev comes back', async () => {
     list([article()], 45)
     const { user } = mount()
-    expect(lastListCall()).toEqual({ page: 1, pageSize: 20, status: null, category: null, search: null })
+    expect(lastListCall()).toEqual({ page: 1, pageSize: 20, status: null, category: null, search: null, sortField: null, sortDirection: null })
     expect(screen.getByText('1 / 3')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Next →' }))
-    expect(lastListCall()).toEqual({ page: 2, pageSize: 20, status: null, category: null, search: null })
+    expect(lastListCall()).toEqual({ page: 2, pageSize: 20, status: null, category: null, search: null, sortField: null, sortDirection: null })
     expect(screen.getByText('2 / 3')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '← Prev' }))
     expect(lastListCall()).toMatchObject({ page: 1 })
@@ -224,6 +224,15 @@ describe('the list of articles', () => {
 })
 
 // ── Filters ──────────────────────────────────────────────────────────────────
+
+describe('sorting the articles (26 Sep 2026: every column sorts)', () => {
+  it('a column asks the server to sort the whole list, from page 1', async () => {
+    list([article()], 45)
+    const { user } = mount()
+    await user.click(within(screen.getByRole('columnheader', { name: /Title/ })).getByRole('button'))
+    expect(lastListCall()).toMatchObject({ page: 1, sortField: 'title', sortDirection: 'asc' })
+  })
+})
 
 describe('the filters the API can honour', () => {
   it('offers the steps of the workflow and the categories of the Dictionary', async () => {
@@ -249,7 +258,7 @@ describe('the filters the API can honour', () => {
       { field: 'category', value: 'network' },
       { field: 'title', value: '  vpn  ' },
     ])
-    expect(lastListCall()).toEqual({ page: 1, pageSize: 20, status: 'review', category: 'network', search: 'vpn' })
+    expect(lastListCall()).toEqual({ page: 1, pageSize: 20, status: 'review', category: 'network', search: 'vpn', sortField: null, sortDirection: null })
     expect(toast.error).not.toHaveBeenCalled()
   })
 
@@ -281,7 +290,7 @@ describe('the filters the API can honour', () => {
     const { user } = mount()
     await applyFilters(user, rules, connector)
     expect(toast.error).toHaveBeenCalledWith(message)
-    expect(lastListCall()).toEqual({ page: 1, pageSize: 20, status: null, category: null, search: null })
+    expect(lastListCall()).toEqual({ page: 1, pageSize: 20, status: null, category: null, search: null, sortField: null, sortDirection: null })
   })
 })
 

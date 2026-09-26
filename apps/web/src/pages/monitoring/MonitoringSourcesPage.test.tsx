@@ -51,7 +51,7 @@ beforeEach(() => { vi.mocked(toast.success).mockClear(); vi.mocked(toast.error).
 describe('MonitoringSourcesPage', () => {
   it('elenca le sorgenti con strumento, stato, contatori e ultimo errore in chiaro', async () => {
     renderWithProviders(<MonitoringSourcesPage />, { route: '/monitoring/sources', mocks: [sourcesMock(), statsMock()] })
-    expect(await screen.findByRole('link', { name: 'Prometheus prod' })).toHaveAttribute('href', '/monitoring/sources/s1')
+    expect((await screen.findByText('Prometheus prod')).closest('tr')).toHaveAttribute('tabindex', '0')
     expect(screen.getByText('2 sources', { exact: false })).toBeInTheDocument()
 
     const rows = bodyRows()
@@ -72,7 +72,7 @@ describe('MonitoringSourcesPage', () => {
   it('D·1.11 — "Aggiorna" rilegge l\'elenco', async () => {
     let calls = 0
     const { user } = renderWithProviders(<MonitoringSourcesPage />, { route: '/monitoring/sources', mocks: [sourcesMock(SOURCES, () => { calls++ }), statsMock()] })
-    await screen.findByRole('link', { name: 'Prometheus prod' })
+    await screen.findByText('Prometheus prod')
     expect(calls).toBe(1)
     await user.click(screen.getByRole('button', { name: 'Refresh' }))
     await waitFor(() => expect(calls).toBe(2))
@@ -81,7 +81,7 @@ describe('MonitoringSourcesPage', () => {
   it('badge "Tempesta" sulla sorgente in tempesta (da eventStats.stormSources), con tooltip E descrizione accessibile (D·3.1)', async () => {
     const storms: StormSource[] = [{ sourceId: 's2', sourceName: 'Zabbix DC', ratePerMinute: 64, since: '2026-09-09T08:00:00Z', incidentId: 'inc9', incidentNumber: 'INC-0099' }]
     renderWithProviders(<MonitoringSourcesPage />, { route: '/monitoring/sources', mocks: [sourcesMock(), statsMock(storms)] })
-    await screen.findByRole('link', { name: 'Prometheus prod' })
+    await screen.findByText('Prometheus prod')
     const badge = await screen.findByText('Storm')
     const rows = bodyRows()
     expect(within(rows[1]!).getByText('Storm')).toBe(badge)

@@ -103,11 +103,8 @@ describe('KnowledgeBasePage — navigation', () => {
 
   it('the search box and the category tiles show where the pointer and the focus are', () => {
     renderWithProviders(<KnowledgeBasePage />, { route: '/knowledge-base' })
-    const box = screen.getByRole('textbox', { name: 'Search articles...' })
-    fireEvent.focus(box)
-    expect(box.style.borderColor).toBe('var(--color-brand)')
-    fireEvent.blur(box)
-    expect(box.style.borderColor).toBe(colors.border)
+    // The box lights up with the focus: it is the app's field, lit by .og-field:focus (26 Sep 2026).
+    expect(screen.getByRole('textbox', { name: 'Search articles...' })).toHaveClass('og-field')
 
     const tile = screen.getByRole('button', { name: /^faq/ })
     fireEvent.mouseEnter(tile)

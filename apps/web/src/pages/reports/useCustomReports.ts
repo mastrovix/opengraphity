@@ -22,7 +22,7 @@ import {
 import { toast } from 'sonner'
 import { downloadFile } from '@/lib/downloadPdf'
 import type { ReportSectionInput } from '@/components/ReportSectionBuilder'
-import { colors, palette } from '@/lib/tokens'
+import { palette } from '@/lib/tokens'
 import { showError } from '@/lib/showError'
 import { reloadQueries } from '@/lib/reloadQueries'
 import { useMe } from '@/hooks/useMe'
@@ -71,10 +71,7 @@ const GET_TEAMS_SLIM    = gql`query GetTeamsSlim { teams { id name } }`
 
 // ── Styles (shared) ────────────────────────────────────────────────────────────
 
-export const inputStyle: React.CSSProperties = { width: '100%', padding: '6px 10px', borderRadius: 5, border: '1px solid var(--color-border-strong)', fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }
 export const labelStyle: React.CSSProperties = { fontSize: 'var(--font-size-body)', fontWeight: 600 as const, color: 'var(--color-slate)', textTransform: 'uppercase' as const, marginBottom: 4, display: 'block' as const }
-export const btnPrimary: React.CSSProperties = { padding: '8px 18px', borderRadius: 7, border: 'none', background: 'var(--color-brand)', color: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 600 }
-export const btnGhost: React.CSSProperties  = { padding: '8px 14px', borderRadius: 7, border: '1px solid var(--color-border)', background: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }
 
 // ── Parts of the hook: the run, the settings ───────────────────────────────────
 

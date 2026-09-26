@@ -481,7 +481,7 @@ describe('designing with AI', () => {
     await user.click(screen.getAllByRole('button', { name: 'Section with no title' })[1]!)
     const props = screen.getByRole('dialog', { name: 'Section properties' })
     await user.type(within(props).getByRole('textbox', { name: 'Section title (EN)' }), 'Extra')
-    await user.click(within(props).getByRole('button', { name: 'Cancel' }))
+    await user.click(within(props).getByRole('button', { name: 'Close' }))
 
     const modal = await designWithAI(user, 'Add fields with AI')
     await user.click(within(modal).getByRole('button', { name: 'Add to the form' }))
@@ -591,7 +591,7 @@ describe('designing with AI', () => {
     const itemDialog = await screen.findByRole('dialog', { name: 'New service request' })
     expect(within(itemDialog).getByRole('textbox', { name: 'Name' })).toHaveValue('')
     expect(within(itemDialog).getByRole('checkbox', { name: 'Needs an approval' })).not.toBeChecked()
-    await user.click(within(itemDialog).getAllByRole('button', { name: 'Cancel' })[0]!)
+    await user.click(within(itemDialog).getByRole('button', { name: 'Close' }))
     expect(screen.queryByRole('dialog', { name: 'New service request' })).toBeNull()
     expect(toast.info).not.toHaveBeenCalled()
     expect(apolloFinto.chiamate['CreateFormField']).toBeUndefined()

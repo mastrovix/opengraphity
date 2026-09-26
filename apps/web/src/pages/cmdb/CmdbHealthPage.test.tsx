@@ -118,12 +118,12 @@ describe('CmdbHealthPage — the cards', () => {
 })
 
 describe('CmdbHealthPage — the list of a check', () => {
-  it('each CI links to its detail, with type, environment, status in the product\'s words', () => {
+  it('each CI is a row that opens it, with type, environment, status in the product\'s words', () => {
     mount('/cmdb/health?check=chain_orphan')
     const list = screen.getByRole('region', { name: 'Outside every chain' })
     expect(within(list).getByText('· 1 CI')).toBeInTheDocument()
-    expect(within(list).getByRole('link', { name: 'srv-01' })).toHaveAttribute('href', '/ci/server/ci-1')
-    const row = within(list).getByRole('link', { name: 'srv-01' }).closest('tr')!
+    const row = within(list).getByText('srv-01').closest('tr')!
+    expect(row).toHaveAttribute('tabindex', '0')
     expect(within(row).getByText('Server')).toBeInTheDocument()
     // A check with nothing more to say shows a dash in the detail.
     expect(within(row).getAllByText('—')).toHaveLength(1)

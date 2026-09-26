@@ -86,12 +86,9 @@ describe('NotificationPanel — read and unread', () => {
 
     expect(item('msg new')).toHaveStyle({ backgroundColor: 'var(--color-info-light)' })
     expect(item('msg old')).toHaveStyle({ backgroundColor: 'var(--color-white)' })
-    for (const [message, own] of [['msg new', 'var(--color-info-light)'], ['msg old', 'var(--color-white)']] as const) {
-      fireEvent.mouseEnter(item(message))
-      expect(item(message)).toHaveStyle({ backgroundColor: 'var(--color-slate-bg)' })
-      fireEvent.mouseLeave(item(message))
-      expect(item(message)).toHaveStyle({ backgroundColor: own })
-    }
+    // Hovering highlights both, over their own background: the .hover-bg rule (26 Sep 2026).
+    expect(item('msg new')).toHaveClass('hover-bg')
+    expect(item('msg old')).toHaveClass('hover-bg')
   })
 })
 

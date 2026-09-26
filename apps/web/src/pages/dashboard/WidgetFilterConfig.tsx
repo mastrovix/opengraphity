@@ -1,3 +1,5 @@
+import { Chip } from '@/components/ui/Chip'
+import { Input, Select } from '@/components/ui/FormControls'
 import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { FieldMeta, WidgetCatalogEntity } from './useWidgetConfig'
@@ -5,7 +7,7 @@ import {
   METRICS, TIME_RANGES, SIZE_OPTIONS, presetColors, widgetTint,
   FIELD_TYPE_LABEL_KEYS,
 } from './useWidgetConfig'
-import { colors, palette } from '@/lib/tokens'
+import { palette } from '@/lib/tokens'
 import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useCILabels } from '@/hooks/useCILabels'
@@ -93,7 +95,7 @@ export function WidgetFilterConfig({
       {/* Entity */}
       <div>
         <label htmlFor={ids.entity} style={labelStyle}>{t('pages.dashboard.entityLabel')}</label>
-        <select id={ids.entity} value={entityType} onChange={(e) => onEntityChange(e.target.value)} style={selectStyle}>
+        <Select id={ids.entity} value={entityType} onChange={(e) => onEntityChange(e.target.value)}>
           {entities.length === 0 && <option value={entityType}>{entityType}</option>}
           {itsm.length > 0 && (
             <optgroup label={t('pages.dashboard.entityGroupItsm')}>
@@ -105,25 +107,25 @@ export function WidgetFilterConfig({
               {cmdb.map((e) => <option key={e.entityType} value={e.entityType}>{entityLabel(e)}</option>)}
             </optgroup>
           )}
-        </select>
+        </Select>
       </div>
 
       {/* Metric */}
       <div>
         <label htmlFor={ids.metric} style={labelStyle}>{t('pages.dashboard.metricLabel')}</label>
-        <select id={ids.metric} value={metric} onChange={(e) => onMetricChange(e.target.value)} style={selectStyle}>
+        <Select id={ids.metric} value={metric} onChange={(e) => onMetricChange(e.target.value)}>
           {METRICS.map((m) => <option key={m.value} value={m.value}>{t(m.labelKey)}</option>)}
-        </select>
+        </Select>
       </div>
 
       {/* Group by — only when needed */}
       {needsGroupBy && (
         <div>
           <label htmlFor={ids.groupBy} style={labelStyle}>{t('pages.dashboard.groupByField')}</label>
-          <select id={ids.groupBy} value={groupByField} onChange={(e) => onGroupByChange(e.target.value)} style={selectStyle}>
+          <Select id={ids.groupBy} value={groupByField} onChange={(e) => onGroupByChange(e.target.value)}>
             <option value="">{t('pages.dashboard.selectField')}</option>
             {groupByFields.map((f) => <option key={f.name} value={f.name}>{fieldOptionLabel(f.name)}</option>)}
-          </select>
+          </Select>
           {groupByFields.length === 0 && (
             <p role="note" style={{ margin: '6px 0 0', fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
               {t(metric === 'count_by_field' ? 'pages.dashboard.noGroupableField' : 'pages.dashboard.noNumericField')}
@@ -136,10 +138,10 @@ export function WidgetFilterConfig({
       <div>
         <label htmlFor={ids.filter} style={labelStyle}>{t('pages.dashboard.filterOptional')}</label>
         <div className="og-pair">
-          <select id={ids.filter} value={filterField} onChange={(e) => onFilterFieldChange(e.target.value)} style={selectStyle}>
+          <Select id={ids.filter} value={filterField} onChange={(e) => onFilterFieldChange(e.target.value)}>
             <option value="">{t('pages.dashboard.noFilter')}</option>
             {filterFields.map((f) => <option key={f.name} value={f.name}>{fieldOptionLabel(f.name)}</option>)}
-          </select>
+          </Select>
           <FilterValueInput
             meta={selectedFilterMeta}
             value={filterValue}
@@ -155,20 +157,9 @@ export function WidgetFilterConfig({
         <div id={ids.period} style={labelStyle}>{t('pages.dashboard.period')}</div>
         <div role="group" aria-labelledby={ids.period} style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {TIME_RANGES.map(({ value, labelKey }) => (
-            <button
-              type="button"
-              key={value}
-              onClick={() => onTimeRangeChange(value)}
-              aria-pressed={timeRange === value}
-              style={{
-                padding: '5px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500,
-                border: timeRange === value ? `1.5px solid ${color}` : '1.5px solid var(--color-border)',
-                background: timeRange === value ? widgetTint(color) : colors.white,
-                color: timeRange === value ? color : 'var(--color-slate)',
-              }}
-            >
+            <Chip pressed={timeRange === value} key={value} onClick={() => onTimeRangeChange(value)} accent={color} tint={widgetTint(color)}>
               {t(labelKey)}
-            </button>
+            </Chip>
           ))}
         </div>
       </div>
@@ -246,16 +237,16 @@ function FilterValueInput({ meta, value, onChange, disabled, color }: {
 
   // No field selected — disabled text input
   if (!meta || disabled) {
-    return <input aria-label={valueLabel} value={value} onChange={(e) => onChange(e.target.value)} placeholder={t('pages.dashboard.filterValuePlaceholder')} disabled style={{ ...inputStyle, ...opacityStyle }} />
+    return <Input aria-label={valueLabel} value={value} onChange={(e) => onChange(e.target.value)} placeholder={t('pages.dashboard.filterValuePlaceholder')} disabled style={{ ...opacityStyle }} />
   }
 
   // Enum — dropdown with values
   if (meta.fieldType === 'enum' && meta.enumValues.length > 0) {
     return (
-      <select aria-label={valueLabel} value={value} onChange={(e) => onChange(e.target.value)} style={selectStyle}>
+      <Select aria-label={valueLabel} value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="">{t('pages.dashboard.allValues')}</option>
         {meta.enumValues.map((v) => <option key={v} value={v}>{(meta.enumTypeName && labelOf(meta.enumTypeName, v)) || v}</option>)}
-      </select>
+      </Select>
     )
   }
 
@@ -264,20 +255,9 @@ function FilterValueInput({ meta, value, onChange, disabled, color }: {
     return (
       <div role="group" aria-label={valueLabel} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         {['true', 'false'].map((v) => (
-          <button
-            type="button"
-            key={v}
-            onClick={() => onChange(value === v ? '' : v)}
-            aria-pressed={value === v}
-            style={{
-              flex: 1, padding: '7px 0', borderRadius: 7, cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600, textAlign: 'center',
-              border: value === v ? `1.5px solid ${color}` : '1.5px solid var(--color-border)',
-              background: value === v ? widgetTint(color) : colors.white,
-              color: value === v ? color : 'var(--color-slate)',
-            }}
-          >
+          <Chip pressed={value === v} key={v} onClick={() => onChange(value === v ? '' : v)} accent={color} tint={widgetTint(color)}>
             {v === 'true' ? t('common.yes') : t('common.no')}
-          </button>
+          </Chip>
         ))}
       </div>
     )
@@ -285,16 +265,16 @@ function FilterValueInput({ meta, value, onChange, disabled, color }: {
 
   // Date — date picker
   if (meta.fieldType === 'date') {
-    return <input aria-label={valueLabel} type="date" value={value} onChange={(e) => onChange(e.target.value)} style={inputStyle} />
+    return <Input aria-label={valueLabel} type="date" value={value} onChange={(e) => onChange(e.target.value)} />
   }
 
   // Number — numeric input
   if (meta.fieldType === 'number') {
-    return <input aria-label={valueLabel} type="number" value={value} onChange={(e) => onChange(e.target.value)} placeholder={t('pages.dashboard.numberPlaceholder')} style={inputStyle} />
+    return <Input aria-label={valueLabel} type="number" value={value} onChange={(e) => onChange(e.target.value)} placeholder={t('pages.dashboard.numberPlaceholder')} />
   }
 
   // Default (string) — text input
-  return <input aria-label={valueLabel} value={value} onChange={(e) => onChange(e.target.value)} placeholder={t('pages.dashboard.filterValuePlaceholder')} style={inputStyle} />
+  return <Input aria-label={valueLabel} value={value} onChange={(e) => onChange(e.target.value)} placeholder={t('pages.dashboard.filterValuePlaceholder')} />
 }
 
 // ── Styles ───────────────────────────────────────────────────────────────────
@@ -305,15 +285,4 @@ const labelStyle: React.CSSProperties = {
   letterSpacing: 0.3, textTransform: 'uppercase',
 }
 
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '8px 10px', borderRadius: 7,
-  border: '1.5px solid var(--color-border)', fontSize: 'var(--font-size-body)',
-  boxSizing: 'border-box', color: 'var(--color-slate-dark)',
-  outline: 'none',
-}
 
-const selectStyle: React.CSSProperties = {
-  width: '100%', padding: '8px 10px', borderRadius: 7,
-  border: '1.5px solid var(--color-border)', fontSize: 'var(--font-size-body)',
-  background: colors.white, color: 'var(--color-slate-dark)',
-}

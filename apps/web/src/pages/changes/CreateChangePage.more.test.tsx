@@ -172,21 +172,13 @@ describe('CreateChangePage — writing a change from scratch', () => {
     await attendiURL('/changes/new')
   })
 
-  it('fields highlight while focused and return to normal after', async () => {
+  it('fields highlight while focused: they are the app\'s fields, lit by the .og-field:focus rule (26 Sep 2026)', async () => {
     const { user } = page()
     await pickType(user)
     for (const label of [/^Title/, /^Why/, /^What/]) {
-      const el = screen.getByLabelText(label)
-      fireEvent.focus(el)
-      expect(el.style.borderColor).toBe('var(--color-brand)')
-      fireEvent.blur(el)
-      expect(el.style.borderColor).not.toBe('var(--color-brand)')
+      expect(screen.getByLabelText(label)).toHaveClass('og-field')
     }
-    const search = screen.getByPlaceholderText('Search a CI by name...')
-    fireEvent.focus(search)
-    expect(search.style.borderColor).toBe('var(--color-brand)')
-    fireEvent.blur(search)
-    expect(search.style.borderColor).not.toBe('var(--color-brand)')
+    expect(screen.getByPlaceholderText('Search a CI by name...')).toHaveClass('og-field')
   })
 })
 
@@ -211,7 +203,7 @@ describe('CreateChangePage — leaving and the type modal', () => {
   it('the back link and Cancel both return to the list', async () => {
     const first = page()
     await pickType(first.user)
-    await first.user.click(screen.getByRole('button', { name: '← Changes' }))
+    await first.user.click(screen.getByRole('button', { name: 'Changes' }))
     await attendiURL('/changes')
     first.unmount()
     const second = page()

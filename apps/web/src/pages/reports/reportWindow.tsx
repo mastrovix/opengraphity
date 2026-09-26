@@ -6,12 +6,13 @@
  * modo di calcolare il rispetto. Qui una volta sola, invece di due copie che
  * derivano.
  */
+import { Chip } from '@/components/ui/Chip'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { PageTitle } from '@/components/PageTitle'
 import { useMe } from '@/hooks/useMe'
 import { routePermissions } from '@/lib/routePermissions'
-import { colors, palette } from '@/lib/tokens'
+import { palette } from '@/lib/tokens'
 
 export const REPORT_WINDOWS = [7, 30, 90] as const
 
@@ -54,15 +55,9 @@ export function WindowSelector({ value, onChange }: { value: number; onChange: (
   return (
     <div style={{ display: 'flex', gap: 6 }}>
       {REPORT_WINDOWS.map((w) => (
-        <button
-          key={w}
-          type="button"
-          aria-pressed={value === w}
-          onClick={() => onChange(w)}
-          style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid var(--color-border-light)', background: value === w ? 'var(--color-brand)' : colors.white, color: value === w ? colors.white : 'var(--color-slate)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
-        >
+        <Chip pressed={value === w} key={w} onClick={() => onChange(w)}>
           {t('pages.slaReport.windowDays', { count: w })}
-        </button>
+        </Chip>
       ))}
     </div>
   )
@@ -93,7 +88,7 @@ export function ReportHeader({ icon, title, manageTo, manageLabel, windowDays, o
       <PageTitle icon={icon}>{title}</PageTitle>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
         {can(...routePermissions(manageTo)) && (
-          <Link to={manageTo} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', fontWeight: 500 }}>
+          <Link to={manageTo} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, fontWeight: 500 }}>
             {manageLabel}
           </Link>
         )}

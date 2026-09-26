@@ -1,8 +1,9 @@
+import { Button } from '@/components/Button'
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Lightbulb } from 'lucide-react'
 import { colors, palette } from '@/lib/tokens'
-import { Textarea, FieldLabel } from '@/components/ui/FormControls'
+import { Textarea, FieldLabel, Select } from '@/components/ui/FormControls'
 import { RULE_SUGGESTION_KEYS } from './AnomalyPage'
 import type { Anomaly } from '@/types/anomaly'
 
@@ -60,23 +61,17 @@ export function ResolutionForm({
         <FieldLabel htmlFor={ids.action} style={{ fontSize: 'var(--font-size-table)', letterSpacing: '0.04em', marginBottom: 6 }}>
           {t('pages.anomalies.actionLabel')}
         </FieldLabel>
-        <select
+        <Select
           id={ids.action}
           value={resolutionStatus}
           onChange={(e) => setResolutionStatus(e.target.value)}
-          style={{
-            width: '100%', height: 36, fontSize: 'var(--font-size-body)',
-            border: `1px solid ${colors.border}`, borderRadius: 6,
-            padding: '0 10px', background: 'var(--surface)',
-            color: resolutionStatus ? colors.slateDark : colors.slateLight,
-            cursor: 'pointer', appearance: 'auto',
-          }}
+          style={{ height: 36, cursor: 'pointer', appearance: 'auto' }}
         >
           <option value="" disabled>{t('pages.anomalies.actionPlaceholder')}</option>
           {resolutionOptions.map(opt => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}
-        </select>
+        </Select>
       </div>
 
       {/* Note textarea */}
@@ -120,18 +115,12 @@ export function ResolutionForm({
         >
           {loading ? t('pages.anomalies.saving') : t('pages.anomalies.confirmResolution')}
         </button>
-        <button
-          type="button"
+        <Button variant="secondary"
           onClick={onCancel}
           disabled={loading}
-          style={{
-            padding: '9px 14px', borderRadius: 6,
-            border: `1px solid ${colors.border}`, background: 'transparent',
-            color: colors.slate, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: 'pointer',
-          }}
         >
           {t('common.cancel')}
-        </button>
+        </Button>
       </div>
     </div>
   )

@@ -1,7 +1,8 @@
+import { Loading } from '@/components/ui/Loading'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { SyncSource, SyncRun } from './useSyncPage'
-import { formatMs, StatusBadge, inputStyle } from './syncShared'
+import { formatMs, StatusBadge } from './syncShared'
 import { Select } from '@/components/ui/FormControls'
 import { colors, palette } from '@/lib/tokens'
 import { formatDateTime } from '@/lib/datetime'
@@ -35,7 +36,7 @@ export function SyncHistoryTab({
       <div style={{ marginBottom: 16 }}>
         {/* No visible label here: the list carries its own name, or a screen
             reader announced a nameless list (tour of 23 Sep 2026). */}
-        <Select aria-label={t('pages.sync.historySource')} style={{ ...inputStyle, width: 240 }} value={selected} onChange={e => handleChange(e.target.value)}>
+        <Select aria-label={t('pages.sync.historySource')} style={{ width: 240 }} value={selected} onChange={e => handleChange(e.target.value)}>
           <option value="">{t('pages.sync.selectSource')}</option>
           {sources.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </Select>
@@ -47,7 +48,7 @@ export function SyncHistoryTab({
         </div>
       )}
 
-      {selected && loading && <div style={{ padding: 24, color: colors.slate }}>{t('common.loading')}</div>}
+      {selected && loading && <Loading padded />}
 
       {selected && !loading && (
         <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>

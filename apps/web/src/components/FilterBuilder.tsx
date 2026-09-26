@@ -1,3 +1,6 @@
+import { Pill } from '@/components/ui/Pill'
+import { Input, Select } from '@/components/ui/FormControls'
+import { Button } from '@/components/Button'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, X, ChevronDown, ChevronRight } from 'lucide-react'
@@ -111,28 +114,7 @@ function makeRule(): FilterRule {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-const SEL: React.CSSProperties = {
-  height:          28,
-  padding:         '0 6px',
-  borderRadius:    4,
-  border:          `1px solid ${colors.border}`,
-  fontSize:        12,
-  color:           'var(--color-slate-dark)',
-  backgroundColor: colors.white,
-  outline:         'none',
-  cursor:          'pointer',
-}
 
-const INP: React.CSSProperties = {
-  height:          28,
-  padding:         '0 8px',
-  borderRadius:    4,
-  border:          `1px solid ${colors.border}`,
-  fontSize:        12,
-  color:           'var(--color-slate-dark)',
-  backgroundColor: colors.white,
-  outline:         'none',
-}
 
 // ── ValueInput ────────────────────────────────────────────────────────────────
 
@@ -156,20 +138,18 @@ function ValueInput({
   if (rule.operator === 'between') {
     return (
       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-        <input
+        <Input
           type="date"
           aria-label={t('filter.valueFromAria', { n })}
           value={typeof rule.value === 'string' ? rule.value : ''}
           onChange={(e) => onChange({ value: e.target.value })}
-          style={INP}
         />
         <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{t('filter.betweenAnd')}</span>
-        <input
+        <Input
           type="date"
           aria-label={t('filter.valueToAria', { n })}
           value={rule.value2 ?? ''}
           onChange={(e) => onChange({ value2: e.target.value })}
-          style={INP}
         />
       </div>
     )
@@ -218,40 +198,40 @@ function ValueInput({
 
   if (type === 'enum') {
     return (
-      <select
+      <Select
         aria-label={t('filter.valueAria', { n })}
         value={typeof rule.value === 'string' ? rule.value : ''}
         onChange={(e) => onChange({ value: e.target.value })}
-        style={{ ...SEL, minWidth: 140 }}
+        style={{ minWidth: 140 }}
       >
         <option value="">{t('common.select')}</option>
         {(fieldCfg.options ?? []).map((opt) => (
           <option key={opt.value} value={opt.value}>{opt.label}</option>
         ))}
-      </select>
+      </Select>
     )
   }
 
   if (type === 'date') {
     return (
-      <input
+      <Input
         type="date"
         aria-label={t('filter.valueAria', { n })}
         value={typeof rule.value === 'string' ? rule.value : ''}
         onChange={(e) => onChange({ value: e.target.value })}
-        style={{ ...INP, minWidth: 140 }}
+        style={{ minWidth: 140 }}
       />
     )
   }
 
   return (
-    <input
+    <Input
       type="text"
       aria-label={t('filter.valueAria', { n })}
       value={typeof rule.value === 'string' ? rule.value : ''}
       onChange={(e) => onChange({ value: e.target.value })}
       placeholder={t('filter.valuePlaceholderText')}
-      style={{ ...INP, minWidth: 160 }}
+      style={{ minWidth: 160 }}
     />
   )
 }
@@ -385,69 +365,34 @@ export function FilterBuilder({ fields, onApply, initialRules }: FilterBuilderPr
           {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
           {t('filter.advancedFilters')}
           {activeCount > 0 && (
-            <span style={{
-              fontSize: 'var(--font-size-label)', fontWeight: 700, lineHeight: 1,
-              padding: '1px 5px', borderRadius: 8,
-              background: 'var(--color-brand)', color: colors.white,
-            }}>
+            <Pill bg="var(--color-brand)" color={colors.white} radius={8} style={{ fontSize: 'var(--font-size-label)', fontWeight: 700 }}>
               {activeCount}
-            </span>
+            </Pill>
           )}
         </button>
 
         {open && (
           <>
-            <button type="button"
+            <Button variant="secondary" size="xs"
               onClick={addRule}
-              style={{
-                display:         'flex',
-                alignItems:      'center',
-                gap:             4,
-                padding:         '4px 10px',
-                borderRadius:    6,
-                border:          `1px solid ${colors.border}`,
-                backgroundColor: colors.white,
-                color:           'var(--color-slate)',
-                fontSize:        12,
-                cursor:          'pointer',
-              }}
             >
               <Plus size={13} />
               {t('filter.addFilter')}
-            </button>
+            </Button>
 
             <div style={{ flex: 1 }} />
 
-            <button type="button"
+            <Button variant="primary" size="xs"
               onClick={handleApply}
-              style={{
-                padding:         '4px 14px',
-                borderRadius:    6,
-                border:          `1px solid ${colors.brand}`,
-                backgroundColor: 'var(--color-brand)',
-                color:           colors.white,
-                fontSize:        12,
-                fontWeight:      600,
-                cursor:          'pointer',
-              }}
             >
               {t('common.apply')}
-            </button>
+            </Button>
 
-            <button type="button"
+            <Button variant="secondary" size="xs"
               onClick={handleReset}
-              style={{
-                padding:         '4px 14px',
-                borderRadius:    6,
-                border:          `1px solid ${colors.border}`,
-                backgroundColor: colors.white,
-                color:           'var(--color-slate)',
-                fontSize:        12,
-                cursor:          'pointer',
-              }}
             >
               {t('common.reset')}
-            </button>
+            </Button>
           </>
         )}
       </div>
@@ -484,30 +429,30 @@ export function FilterBuilder({ fields, onApply, initialRules }: FilterBuilderPr
                     backgroundColor: colors.white,
                   }}>
                     {/* Field selector */}
-                    <select
+                    <Select
                       aria-label={t('filter.fieldAria', { n: idx + 1 })}
                       value={rule.field}
                       onChange={(e) => updateRule(rule.id, { field: e.target.value })}
-                      style={{ ...SEL, minWidth: 140, color: rule.field ? 'var(--color-slate-dark)' : 'var(--color-slate-light)' }}
+                      style={{ minWidth: 140, color: rule.field ? 'var(--color-slate-dark)' : 'var(--color-slate-light)' }}
                     >
                       <option value="">{t('filter.selectField')}</option>
                       {fields.map((f) => (
                         <option key={f.key} value={f.key}>{f.label}</option>
                       ))}
-                    </select>
+                    </Select>
 
                     {/* Operator selector — visibile solo dopo aver scelto il campo */}
                     {rule.field && (
-                      <select
+                      <Select
                         aria-label={t('filter.operatorAria', { n: idx + 1 })}
                         value={rule.operator}
                         onChange={(e) => updateRule(rule.id, { operator: e.target.value as FilterOperator })}
-                        style={{ ...SEL, minWidth: 140 }}
+                        style={{ minWidth: 140 }}
                       >
                         {operators.map((op) => (
                           <option key={op.value} value={op.value}>{t(op.labelKey)}</option>
                         ))}
-                      </select>
+                      </Select>
                     )}
 
                     {/* Value input — visibile solo dopo aver scelto campo e operatore */}
@@ -523,7 +468,7 @@ export function FilterBuilder({ fields, onApply, initialRules }: FilterBuilderPr
                     )}
 
                     {/* Remove */}
-                    <button type="button"
+                    <button className="hover-danger" type="button"
                       aria-label={t('filter.removeAria', { n: idx + 1 })}
                       onClick={() => removeRule(rule.id)}
                       style={{
@@ -539,8 +484,6 @@ export function FilterBuilder({ fields, onApply, initialRules }: FilterBuilderPr
                         cursor:          'pointer',
                         flexShrink:      0,
                       }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-danger-bg)' }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = colors.white }}
                     >
                       <X size={13} />
                     </button>

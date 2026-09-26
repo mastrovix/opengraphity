@@ -6,6 +6,7 @@
  * (`variant="inline"`: sotto-sezione con titolo e aiuto). Prima erano due
  * copie identiche da tenere allineate.
  */
+import { Loading } from '@/components/ui/Loading'
 import { useId, useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
@@ -96,7 +97,7 @@ export function CIAliasesSection({ ci, canEdit, variant }: Props) {
   const body = (
     <>
       {error && <QueryError message={error.message} onRetry={() => void refetch()} />}
-      {!error && loading && !data && <p style={emptyStyle}>{t('common.loading')}</p>}
+      {!error && loading && !data && <Loading />}
       {!error && data && aliases.length === 0 && <p style={emptyStyle}>{t('events.aliases.empty')}</p>}
       {aliases.length > 0 && (
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>

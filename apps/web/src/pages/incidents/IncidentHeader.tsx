@@ -1,5 +1,6 @@
+import { BackLink, DetailTitle } from '@/components/ui/BackLink'
+import { Button } from '@/components/Button'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft } from 'lucide-react'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { TicketStatusBadge } from '@/components/StatusBadge'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
@@ -75,31 +76,13 @@ export function IncidentHeader({
   return (
     <div style={{ marginBottom: 24 }}>
       {/* Row 1 — back */}
-      <button
-        type="button"
-        onClick={onBack}
-        style={{
-          display:      'inline-flex',
-          alignItems:   'center',
-          gap:          6,
-          marginBottom: 12,
-          background:   'none',
-          border:       'none',
-          cursor:       'pointer',
-          color:        'var(--text-muted)',
-          fontSize:     13,
-          padding:      0,
-        }}
-      >
-        <ArrowLeft size={14} />
-        {t('common.back')}
-      </button>
+      <BackLink onClick={onBack}>{t('common.back')}</BackLink>
 
       {/* Row 2 — number + badges */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
-        <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.01em', margin: 0 }}>
+        <DetailTitle>
           {incident.number}
-        </h1>
+        </DetailTitle>
         <SeverityBadge value={incident.severity} />
         <TicketStatusBadge value={incident.status} entityType="incident" />
       </div>
@@ -124,13 +107,11 @@ export function IncidentHeader({
             </button>
           ))}
           {canRequestChange && (
-            <button
-              type="button"
+            <Button variant="secondary"
               onClick={onRequestChange ?? undefined}
-              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent)', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}
             >
               {t('pages.incidents.requestChange')}
-            </button>
+            </Button>
           )}
         </div>
       )}

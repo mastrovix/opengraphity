@@ -97,9 +97,9 @@ describe('ProblemHeader', () => {
     expect(screen.getByRole('button', { name: 'Known error' })).not.toHaveStyle({ backgroundColor: 'var(--color-danger)' })
   })
 
-  it('a transition towards a step the workflow does not describe keeps the plain action style', () => {
+  it('a transition towards a step the workflow does not describe keeps the plain action style (sugar-paper, 26 Sep 2026)', () => {
     mount({ transitions: [{ toStep: 'escalated_to_vendor', label: 'Escalate', requiresInput: false, inputField: null, condition: null }] })
-    expect(screen.getByRole('button', { name: 'Escalate' })).toHaveStyle({ backgroundColor: 'var(--color-brand)' })
+    expect(screen.getByRole('button', { name: 'Escalate' })).toHaveStyle({ backgroundColor: 'var(--color-section-head)' })
   })
 
   it('while a transition runs, none can be pressed', () => {

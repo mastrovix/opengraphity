@@ -87,7 +87,7 @@ const AUTO_ICON: Partial<Record<EventCorrelation, { Icon: typeof Zap; key: strin
   auto_resolved: { Icon: CheckCircle2, key: 'events.correlation.auto.auto_resolved' },
 }
 
-const linkStyle = { color: colors.brand, textDecoration: 'none', fontWeight: 500 } as const
+const linkStyle = { color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, fontWeight: 500 } as const
 const chipFont  = { fontSize: 'var(--font-size-label)' } as const
 /** Stessa palette dei badge di stato (eventShared): viola = sfarfallio, ambra = tempesta. */
 const FLAP_CHIP  = TINT_FLAPPING

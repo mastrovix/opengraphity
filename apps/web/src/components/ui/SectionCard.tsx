@@ -1,7 +1,7 @@
 import { useId, useState, type ReactNode, type CSSProperties } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { CountBadge } from './CountBadge'
-import { alpha, colors } from '@/lib/tokens'
+import { colors } from '@/lib/tokens'
 
 interface SectionCardProps {
   title:         ReactNode
@@ -25,12 +25,11 @@ export function SectionCard({
   title,
   collapsible = true,
   defaultOpen = false,
-  // Intestazione aperta: TINTA del turchese (32 %), non il turchese pieno. Il
-  // pieno con testo bianco pesava come una barra di navigazione e, con molti
-  // riquadri aperti, la pagina diventava una scala di fasce colorate; le tinte
-  // più chiare (13 %, 20 %) lasciavano la testata troppo timida.
-  activeColor = alpha.brand32,
-  activeTextColor = colors.brandHover,
+  // Intestazione aperta: carta da zucchero col titolo blu notte (26 set 2026,
+  // il proprietario, dopo un arancio che non gli è piaciuto). Prima era la
+  // TINTA del turchese (32 %) col titolo blu; i colori stanno nei token.
+  activeColor = colors.sectionHead,
+  activeTextColor = colors.sectionHeadText,
   open: controlledOpen,
   onToggle,
   count,

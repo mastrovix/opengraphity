@@ -1,3 +1,4 @@
+import { Loading } from '@/components/ui/Loading'
 import { useId, useState } from 'react'
 import { TicketOLACard } from '@/components/ticket/ola/TicketOLACard'
 import { CustomFieldsCard } from '@/components/ticket/customFields/CustomFieldsCard'
@@ -399,7 +400,7 @@ export function IncidentDetailPage() {
         <button
           type="button"
           onClick={() => navigate('/incidents')}
-          style={{ color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}
+          style={{ color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}
         >
           {t('detail.backToList')}
         </button>
@@ -769,13 +770,11 @@ export function IncidentDetailPage() {
         width={480}
         footer={
           <>
-            <button
-              type="button"
+            <Button variant="secondary"
               onClick={() => { setIsTransitionDialogOpen(false); setTransitionNotes(''); setNotesError('') }}
-              style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500 }}
             >
               {t('common.cancel')}
-            </button>
+            </Button>
             <button
               type="button"
               disabled={transitioning || transitionNotes.trim().length < 10}
@@ -819,8 +818,7 @@ export function IncidentDetailPage() {
                 ? t('pages.incidentDetail.rootCauseHint')
                 : t('pages.incidentDetail.transitionNoteHint')}
             </p>
-            <button
-              type="button"
+            <Button variant="secondary"
               disabled={draftLoading || postIncidentOn !== true}
               title={postIncidentOn === false ? postIncidentOffText : undefined}
               onClick={() => {
@@ -833,10 +831,10 @@ export function IncidentDetailPage() {
                   (err: unknown) => showError(err, t('toast.incident.aiDraftFailed', { error: errorMessage(err) })),
                 )
               }}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginBottom: 8, padding: '5px 12px', borderRadius: 7, border: '1px solid var(--color-brand)', background: 'transparent', color: 'var(--color-brand)', fontSize: 'var(--font-size-label)', fontWeight: 500, cursor: draftLoading ? 'wait' : 'pointer' }}
+              style={{ marginBottom: 8 }}
             >
               <Sparkles size={12} /> {draftLoading ? t('pages.incidentDetail.aiDraftRunning') : t('pages.incidentDetail.aiDraft')}
-            </button>
+            </Button>
             <Textarea
               value={transitionNotes}
               onChange={(e) => { setTransitionNotes(e.target.value); setNotesError('') }}
@@ -938,7 +936,7 @@ function IncidentAssignment({ incident, usersData, usersError, onAssigned }: {
         <button
           type="button"
           onClick={() => { setShowReassign(true); setAwaitingUserAssign(false) }}
-          style={{ marginTop: 4, background: 'none', border: 'none', padding: 0, fontSize: 'var(--font-size-body)', color: 'var(--accent)', cursor: 'pointer', textAlign: 'left' }}
+          style={{ marginTop: 4, background: 'none', border: 'none', padding: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, cursor: 'pointer', textAlign: 'left' }}
         >
           {t('detail.reassign')}
         </button>
@@ -1005,7 +1003,7 @@ function IncidentAssignment({ incident, usersData, usersError, onAssigned }: {
           {t('detail.assigneesUnavailable', { error: usersError.message })}
         </span>
       ) : !usersData ? (
-        <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--text-muted)' }}>{t('common.loading')}</span>
+        <Loading inline />
       ) : !selectedUserId && (
         <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--text-muted)' }}>
           {teamUsers.length === 0 ? t('detail.noTeamMembers') : t('detail.chooseUserToAssign')}
@@ -1049,7 +1047,7 @@ function ImpactedApplicationsSection({ applications }: { applications: ImpactedA
             {applications.map((a) => (
               <div key={a.ci.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8 }}>
                 <div style={{ minWidth: 0 }}>
-                  <Link to={ciPath(a.ci)} style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--accent)', textDecoration: 'none' }}>
+                  <Link to={ciPath(a.ci)} style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2 }}>
                     {a.ci.name}
                   </Link>
                   <div style={{ fontSize: 'var(--font-size-caption)', color: 'var(--text-muted)', marginTop: 2 }}>
@@ -1064,14 +1062,12 @@ function ImpactedApplicationsSection({ applications }: { applications: ImpactedA
                       totale · F-33): con un `ci_status` in italiano la card dei CI
                       colpiti mostrava ancora «in_service». */}
                   {a.ci.status && <Pill bg="var(--color-brand-light)" color="var(--color-brand)" radius={100} style={{ fontSize: 'var(--font-size-caption)' }}>{ciLabels.statusLabel(a.ci.status)}</Pill>}
-                  <button
-                    type="button"
+                  <Button variant="secondary" size="xs"
                     onClick={() => setPathModal(a)}
                     title={t('pages.incidents.impactedApplications.pathButtonHint')}
-                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface-1)', color: 'var(--accent)', fontSize: 'var(--font-size-caption)', fontWeight: 500, cursor: 'pointer' }}
                   >
                     <Network size={13} /> {t('pages.incidents.impactedApplications.pathButton')}
-                  </button>
+                  </Button>
                 </div>
               </div>
             ))}

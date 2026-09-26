@@ -9,7 +9,6 @@ import { GET_TEAMS } from '@/graphql/queries'
 import { UserIdPicker } from '@/components/pickers/UserIdPicker'
 import { useEntityFieldMetas, useFormFieldMetas, type FieldMeta } from '@/hooks/useEntityFields'
 import { fieldTypeKey, operatorsForFieldType, NO_VALUE_OPERATORS, CHANGED_OPERATOR } from '@/lib/automationOperators'
-import { inputS, selectS } from '@/pages/settings/shared/designerStyles'
 import { Input, Select } from '@/components/ui/FormControls'
 import { X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -68,8 +67,7 @@ export function ConditionRowEditor({ condition, entityType, onChange, onRemove, 
   const unknownOperator = condition.operator !== '' && !operators.some(op => op.value === condition.operator)
 
   const fieldSelect = (
-    <Select
-      style={{ ...selectS, ...(stack ? { flex: 1 } : { width: 160 }), ...(unknownField ? { borderColor: 'var(--color-danger)', color: 'var(--color-danger)' } : {}) }}
+    <Select style={{ ...(stack ? { flex: 1 } : { width: 160 }), ...(unknownField ? { borderColor: 'var(--color-danger)', color: 'var(--color-danger)' } : {}) }}
       value={condition.field}
       onChange={e => onChange({ field: e.target.value, value: '' })}
       title={unknownField ? t('conditionEditor.unknownField', { field: condition.field }) : undefined}
@@ -83,8 +81,7 @@ export function ConditionRowEditor({ condition, entityType, onChange, onRemove, 
   )
 
   const operatorSelect = (
-    <Select
-      style={{ ...selectS, ...(stack ? {} : { width: 110 }), ...(unknownOperator ? { borderColor: 'var(--color-danger)', color: 'var(--color-danger)' } : {}) }}
+    <Select style={{ ...(stack ? {} : { width: 110 }), ...(unknownOperator ? { borderColor: 'var(--color-danger)', color: 'var(--color-danger)' } : {}) }}
       value={condition.operator}
       onChange={e => onChange({ operator: e.target.value })}
       title={unknownOperator ? t('conditionEditor.unknownOperator', { operator: condition.operator }) : undefined}
@@ -136,7 +133,7 @@ function renderValueInput(
   labelOf: (vocabolario: string, valore: string) => string | null,
 ) {
   if (!field) {
-    return <Input style={{ ...inputS, flex: 1, minWidth: 80 }} placeholder={i18n.t('conditionEditor.value')} value={condition.value} onChange={e => onChange({ value: e.target.value })} />
+    return <Input style={{ flex: 1, minWidth: 80 }} placeholder={i18n.t('conditionEditor.value')} value={condition.value} onChange={e => onChange({ value: e.target.value })} />
   }
 
   // User → a search among the people who can be given tickets (review of 23
@@ -151,7 +148,7 @@ function renderValueInput(
   // Team → dropdown with teams
   if (field.fieldType === 'team') {
     return (
-      <Select style={{ ...selectS, flex: 1 }} value={condition.value} onChange={e => onChange({ value: e.target.value })}>
+      <Select style={{ flex: 1 }} value={condition.value} onChange={e => onChange({ value: e.target.value })}>
         <option value="">{i18n.t('conditionEditor.teamPlaceholder')}</option>
         {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
       </Select>
@@ -167,7 +164,7 @@ function renderValueInput(
    */
   if ((field.fieldType === 'enum' || field.fieldType === 'multi_enum') && field.enumValues.length > 0) {
     return (
-      <Select style={{ ...selectS, flex: 1 }} value={condition.value} onChange={e => onChange({ value: e.target.value })}>
+      <Select style={{ flex: 1 }} value={condition.value} onChange={e => onChange({ value: e.target.value })}>
         <option value="">{i18n.t('conditionEditor.valuePlaceholder')}</option>
         {/* L'etichetta del valore, col valore nel title: è il valore che finisce nella condizione. */}
         {field.enumValues.map(v => (
@@ -182,7 +179,7 @@ function renderValueInput(
   // Boolean → Sì/No dropdown
   if (field.fieldType === 'boolean') {
     return (
-      <Select style={{ ...selectS, flex: 1 }} value={condition.value} onChange={e => onChange({ value: e.target.value })}>
+      <Select style={{ flex: 1 }} value={condition.value} onChange={e => onChange({ value: e.target.value })}>
         <option value="">{i18n.t('conditionEditor.valuePlaceholder')}</option>
         <option value="true">{i18n.t('common.yes')}</option>
         <option value="false">{i18n.t('common.no')}</option>
@@ -192,14 +189,14 @@ function renderValueInput(
 
   // Date → date picker
   if (field.fieldType === 'date') {
-    return <Input type="date" style={{ ...inputS, flex: 1 }} value={condition.value} onChange={e => onChange({ value: e.target.value })} />
+    return <Input type="date" style={{ flex: 1 }} value={condition.value} onChange={e => onChange({ value: e.target.value })} />
   }
 
   // Number → numeric input
   if (field.fieldType === 'number') {
-    return <Input type="number" style={{ ...inputS, flex: 1, minWidth: 80 }} placeholder={i18n.t('conditionEditor.value')} value={condition.value} onChange={e => onChange({ value: e.target.value })} />
+    return <Input type="number" style={{ flex: 1, minWidth: 80 }} placeholder={i18n.t('conditionEditor.value')} value={condition.value} onChange={e => onChange({ value: e.target.value })} />
   }
 
   // String → text input
-  return <Input style={{ ...inputS, flex: 1, minWidth: 80 }} placeholder={i18n.t('conditionEditor.value')} value={condition.value} onChange={e => onChange({ value: e.target.value })} />
+  return <Input style={{ flex: 1, minWidth: 80 }} placeholder={i18n.t('conditionEditor.value')} value={condition.value} onChange={e => onChange({ value: e.target.value })} />
 }

@@ -30,7 +30,6 @@ export function useCustomFieldColumns<T>(entityType: TicketEntityType): ColumnDe
     key:      cell(d.name) as keyof T,
     label:    d.label,
     width:    '150px',
-    sortable: false,
     render:   (v: unknown) => (
       <span style={{ color: v == null || v === '' ? 'var(--color-slate-light)' : undefined }}>
         {customFieldDisplay({ fieldType: d.fieldType, enumTypeName: d.enumTypeName, value: v == null ? null : String(v) }, labelOf, t)}

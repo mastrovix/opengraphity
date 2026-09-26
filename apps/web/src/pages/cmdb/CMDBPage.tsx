@@ -1,3 +1,4 @@
+import { Button } from '@/components/Button'
 import { useState, useEffect, useId } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
@@ -18,7 +19,6 @@ import { CI_HEALTHS, type CIHealth } from '@/types/events'
 import { Pagination } from '@/components/ui/Pagination'
 import { formatDate } from '@/lib/datetime'
 import { toEnumOptions, useCIBaseEnums } from '@/lib/ciEnums'
-import { colors } from '@/lib/tokens'
 import { useCILabels, CI_STATUS_VOCABULARY, CI_ENVIRONMENT_VOCABULARY } from '@/hooks/useCILabels'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useMetamodel } from '@/contexts/MetamodelContext'
@@ -177,13 +177,11 @@ export function CMDBPage() {
         {/* La creazione richiede un tipo CI (form dinamica per tipo): con un
             tipo in URL si va alla sua lista, altrimenti nessun bottone morto. */}
         {typeFromUrl && (
-          <button
-            type="button"
+          <Button variant="primary"
             onClick={() => navigate(`/ci/${typeFromUrl}`)}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}
           >
             {t('common.create')}
-          </button>
+          </Button>
         )}
       </div>
 

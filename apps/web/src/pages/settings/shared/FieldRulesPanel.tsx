@@ -1,3 +1,4 @@
+import { Button } from '@/components/Button'
 import { useId, useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
@@ -14,7 +15,7 @@ import {
   SET_FIELD_REQUIREMENT,
   DELETE_FIELD_REQUIREMENT,
 } from '@/graphql/mutations'
-import { inputS, selectS, labelS, btnPrimary, btnSecondary, btnDanger } from './designerStyles'
+import { labelS } from './designerStyles'
 import { Input, Select } from '@/components/ui/FormControls'
 import { colors, palette } from '@/lib/tokens'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
@@ -163,9 +164,9 @@ function VisibilityRulesSection({ entityType, fields }: { entityType: string; fi
           </div>
           <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 2 }}>{t('fieldRules.visibility.subtitle')}</div>
         </div>
-        <button type="button" style={btnPrimary} onClick={() => { setAdding(true); setForm(emptyVisForm(fields)) }} disabled={adding}>
+        <Button variant="primary" onClick={() => { setAdding(true); setForm(emptyVisForm(fields)) }} disabled={adding}>
           <Plus size={13} /> {t('fieldRules.visibility.add')}
-        </button>
+        </Button>
       </div>
 
       {/* Add form */}
@@ -207,12 +208,14 @@ function VisibilityRulesSection({ entityType, fields }: { entityType: string; fi
             <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
               {/* G-15: le due icone non avevano nome accessibile: da screen
                   reader erano «pulsante», «pulsante». */}
-              <button type="button" style={{ ...btnSecondary, padding: '4px 8px' }}
+              <Button variant="secondary" size="xs"
                 aria-label={t('fieldRules.visibility.editRule', { field: rule.targetField })}
-                onClick={() => startEdit(rule)}><Edit2 size={12} aria-hidden="true" /></button>
-              <button type="button" style={btnDanger}
+                onClick={() => startEdit(rule)}
+              ><Edit2 size={12} aria-hidden="true" /></Button>
+              <Button variant="danger" size="xs"
                 aria-label={t('fieldRules.visibility.deleteRule', { field: rule.targetField })}
-                onClick={() => { void deleteRule({ variables: { id: rule.id } }) }}><Trash2 size={12} aria-hidden="true" /></button>
+                onClick={() => { void deleteRule({ variables: { id: rule.id } }) }}
+              ><Trash2 size={12} aria-hidden="true" /></Button>
             </div>
           </div>
         )
@@ -243,31 +246,31 @@ function VisibilityRuleForm({ form, fields, isEnumTrigger, triggerField, onChang
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px 1fr', gap: 10, marginBottom: 10 }}>
         <div>
           <label htmlFor={`${ids}-trigger-field`} style={labelS}>{t('fieldRules.visibility.triggerField')}</label>
-          <Select id={`${ids}-trigger-field`} style={selectS} value={form.triggerField} onChange={(e) => onChange({ triggerField: e.target.value, triggerValue: '' })}>
+          <Select id={`${ids}-trigger-field`} value={form.triggerField} onChange={(e) => onChange({ triggerField: e.target.value, triggerValue: '' })}>
             {fields.map((f) => <option key={f.name} value={f.name}>{f.label || f.name}</option>)}
           </Select>
         </div>
         <div>
           <label htmlFor={`${ids}-trigger-value`} style={labelS}>{t('fieldRules.visibility.triggerValue')}</label>
           {isEnumTrigger && triggerField?.enumValues.length ? (
-            <Select id={`${ids}-trigger-value`} style={selectS} value={form.triggerValue} onChange={(e) => onChange({ triggerValue: e.target.value })}>
+            <Select id={`${ids}-trigger-value`} value={form.triggerValue} onChange={(e) => onChange({ triggerValue: e.target.value })}>
               <option value="">{t('pages.taskView.choose')}</option>
               {triggerField.enumValues.map((v) => <option key={v} value={v}>{(triggerField.enumTypeName && labelOf(triggerField.enumTypeName, v)) || v}</option>)}
             </Select>
           ) : (
-            <Input id={`${ids}-trigger-value`} style={inputS} value={form.triggerValue} onChange={(e) => onChange({ triggerValue: e.target.value })} placeholder={t('fieldRules.visibility.triggerValuePlaceholder')} />
+            <Input id={`${ids}-trigger-value`} value={form.triggerValue} onChange={(e) => onChange({ triggerValue: e.target.value })} placeholder={t('fieldRules.visibility.triggerValuePlaceholder')} />
           )}
         </div>
         <div>
           <label htmlFor={`${ids}-action`} style={labelS}>{t('fieldRules.visibility.action')}</label>
-          <Select id={`${ids}-action`} style={selectS} value={form.action} onChange={(e) => onChange({ action: e.target.value as 'show' | 'hide' })}>
+          <Select id={`${ids}-action`} value={form.action} onChange={(e) => onChange({ action: e.target.value as 'show' | 'hide' })}>
             <option value="show">{t('fieldRules.show')}</option>
             <option value="hide">{t('fieldRules.hide')}</option>
           </Select>
         </div>
         <div>
           <label htmlFor={`${ids}-target-field`} style={labelS}>{t('fieldRules.visibility.targetField')}</label>
-          <Select id={`${ids}-target-field`} style={selectS} value={targetOf(fields, form)} onChange={(e) => onChange({ targetField: e.target.value })}
+          <Select id={`${ids}-target-field`} value={targetOf(fields, form)} onChange={(e) => onChange({ targetField: e.target.value })}
             aria-describedby={noTarget ? `${ids}-no-target` : undefined}>
             {targets.map((f) => <option key={f.name} value={f.name}>{f.label || f.name}</option>)}
           </Select>
@@ -279,9 +282,12 @@ function VisibilityRuleForm({ form, fields, isEnumTrigger, triggerField, onChang
         </p>
       )}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-        <button type="button" style={btnSecondary} onClick={onCancel}><X size={13} /> {t('common.cancel')}</button>
-        <button type="button" style={{ ...btnPrimary, opacity: noTarget ? 0.6 : 1 }} disabled={noTarget}
-          aria-describedby={noTarget ? `${ids}-no-target` : undefined} onClick={onSave}><Check size={13} /> {t('common.save')}</button>
+        <Button variant="secondary" onClick={onCancel}><X size={13} /> {t('common.cancel')}</Button>
+        <Button variant="primary"
+          disabled={noTarget}
+          aria-describedby={noTarget ? `${ids}-no-target` : undefined}
+          onClick={onSave}
+        ><Check size={13} /> {t('common.save')}</Button>
       </div>
     </div>
   )

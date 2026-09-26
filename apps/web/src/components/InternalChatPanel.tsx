@@ -1,3 +1,6 @@
+import { Pill } from '@/components/ui/Pill'
+import { Textarea } from '@/components/ui/FormControls'
+import { Button } from '@/components/Button'
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
@@ -122,12 +125,9 @@ export function InternalChatPanel({ entityType, entityId, currentUserId }: Props
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: `1px solid ${palette.orange.border}` }}>
         <Lock size={15} color={palette.warning.strong} aria-hidden="true" />
         <span style={{ fontWeight: 700, fontSize: 'var(--font-size-body)', color: palette.warning.strong }}>{t('internalChat.title')}</span>
-        <span style={{
-          marginLeft: 'auto', fontSize: 'var(--font-size-table)', fontWeight: 600, color: palette.warning.strong,
-          background: palette.warning.tint, padding: '2px 8px', borderRadius: 9999,
-        }}>
+        <Pill bg={palette.warning.tint} color={palette.warning.strong} radius={9999} style={{ marginLeft: 'auto', fontSize: 'var(--font-size-table)', fontWeight: 600 }}>
           {t('internalChat.agentsOnly')}
-        </span>
+        </Pill>
       </div>
 
       {/* Messages */}
@@ -175,11 +175,17 @@ export function InternalChatPanel({ entityType, entityId, currentUserId }: Props
                   </div>
                   {editingId === msg.id ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <textarea value={editBody} onChange={(e) => setEditBody(e.target.value)} rows={2} aria-label={t('common.edit')}
-                        style={{ width: '100%', border: '1px solid var(--border-strong)', borderRadius: 6, padding: 6, fontSize: 'var(--font-size-body)', resize: 'vertical', boxSizing: 'border-box' }} />
+                      <Textarea
+                        value={editBody}
+                        onChange={(e) => setEditBody(e.target.value)}
+                        rows={2}
+                        aria-label={t('common.edit')}
+                        style={{ resize: 'vertical' }}
+                      />
                       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                        <button type="button" onClick={() => { setEditingId(null); setEditBody('') }}
-                          style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 'var(--font-size-table)' }}>{t('common.cancel')}</button>
+                        <Button variant="secondary" size="xs"
+                          onClick={() => { setEditingId(null); setEditBody('') }}
+                        >{t('common.cancel')}</Button>
                         <button type="button" disabled={editing || !editBody.trim()} onClick={() => void editMessage({ variables: { messageId: msg.id, body: editBody.trim() } })}
                           style={{ background: 'var(--accent-hover)', color: colors.white, border: 'none', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 'var(--font-size-table)', fontWeight: 600, opacity: (editing || !editBody.trim()) ? 0.6 : 1 }}>{t('common.save')}</button>
                       </div>

@@ -1,3 +1,4 @@
+import { Pill } from '@/components/ui/Pill'
 import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { Hash, BarChart2, PieChart, TrendingUp, Table, Gauge, Activity, X, Radar, Boxes } from 'lucide-react'
@@ -108,9 +109,9 @@ export function CustomWidgetCard({ widget, editMode, onEdit, onRemove }: Props) 
         {widget.title}
       </span>
       {widget.timeRange && widget.timeRange !== 'all' && (
-        <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 5px', borderRadius: 4, background: colors.slateBg, color: 'var(--color-slate-light)' }}>
+        <Pill bg={colors.slateBg} color="var(--color-slate-light)" radius={4} style={{ fontSize: 'var(--font-size-label)' }}>
           {timeLabelKey ? t(timeLabelKey) : widget.timeRange}
-        </span>
+        </Pill>
       )}
       {editMode && (
         <div style={{ display: 'flex', gap: 4, marginLeft: 4 }}>

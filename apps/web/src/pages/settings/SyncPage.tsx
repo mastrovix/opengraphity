@@ -2,13 +2,13 @@ import { useTranslation } from 'react-i18next'
 import { Activity } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
+import { Tabs } from '@/components/ui/Tabs'
 import { useSyncPage, TABS } from './useSyncPage'
 import { StatsBar } from './syncShared'
 import { SyncSourcesTab } from './SyncSourcesTab'
 import { SyncHistoryTab } from './SyncHistoryTab'
 import { SyncConflictsTab } from './SyncConflictsTab'
 import { ImportTab } from './ImportTab'
-import { colors } from '@/lib/tokens'
 
 export function SyncPage() {
   const { t } = useTranslation()
@@ -27,24 +27,12 @@ export function SyncPage() {
 
       {hook.stats && <StatsBar stats={hook.stats} />}
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: colors.slateBg, padding: 4, borderRadius: 8, width: 'fit-content' }}>
-        {TABS.map(tab => (
-          <button type="button"
-            key={tab}
-            aria-pressed={hook.tab === tab}
-            onClick={() => hook.setTab(tab)}
-            style={{
-              padding: '8px 20px', borderRadius: 6, border: 'none', cursor: 'pointer',
-              fontSize: 'var(--font-size-body)', fontWeight: 500,
-              background: hook.tab === tab ? 'var(--color-brand)' : 'transparent',
-              color: hook.tab === tab ? colors.white : 'var(--color-slate)',
-            }}
-          >
-            {t(`pages.sync.tab.${tab}`)}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        ariaLabel={t('sync.title')}
+        items={TABS.map((tab) => ({ key: tab, label: t(`pages.sync.tab.${tab}`) }))}
+        value={hook.tab}
+        onChange={hook.setTab}
+      />
 
       {hook.tab === 'Sources' && (
         <SyncSourcesTab

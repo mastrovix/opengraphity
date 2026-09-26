@@ -1,12 +1,12 @@
+import { Button } from '@/components/Button'
 import { useId, useState } from 'react'
 import { X, Check } from 'lucide-react'
 import { Trans, useTranslation } from 'react-i18next'
 import {
-  inputS, selectS, textareaS, labelS,
-  btnPrimary, btnSecondary,
+  labelS,
   FIELD_TYPES, enumOptionLabel,
 } from '../shared/designerStyles'
-import { Input, LabelledField, Select } from '@/components/ui/FormControls'
+import { Input, LabelledField, Select, Textarea } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
 import type { EnumTypeRef } from '../shared/designerStyles'
 import type { FieldForm } from './CIFieldEditor'
@@ -75,9 +75,8 @@ export function CIFieldInlineEditor({
       <div className="og-pair" style={{ marginBottom: 12 }}>
         <div>
           <label htmlFor={`${id}-name`} style={labelS}>{t('citypeDesigner.field.technicalName')}</label>
-          <input
+          <Input
             id={`${id}-name`}
-            style={{ ...inputS, background: isSystem || !!initial ? colors.slateBg : colors.white }}
             value={form.name}
             disabled={isSystem || !!initial}
             aria-invalid={nameError ? true : undefined}
@@ -95,7 +94,7 @@ export function CIFieldInlineEditor({
         </div>
         <div>
           <label htmlFor={`${id}-label`} style={labelS}>{t('common.label')} *</label>
-          <Input id={`${id}-label`} style={inputS} value={form.label} onChange={(e) => set('label', e.target.value)} placeholder={t('citypeDesigner.field.labelPlaceholder')} />
+          <Input id={`${id}-label`} value={form.label} onChange={(e) => set('label', e.target.value)} placeholder={t('citypeDesigner.field.labelPlaceholder')} />
         </div>
       </div>
 
@@ -104,8 +103,7 @@ export function CIFieldInlineEditor({
         <div>
           <label htmlFor={`${id}-type`} style={labelS}>{t('common.type')}</label>
           <Select
-            id={`${id}-type`}
-            style={{ ...selectS, background: isSystem || !!initial ? colors.slateBg : colors.white }}
+            id={`${id}-type`} style={{ background: isSystem || !!initial ? colors.slateBg : colors.white }}
             value={form.fieldType}
             // The type of an existing field does not change: the API keeps it, and
             // «Field saved» with the old type still there was a lie (review of 23 Sep 2026).
@@ -118,7 +116,7 @@ export function CIFieldInlineEditor({
         </div>
         <div>
           <label htmlFor={`${id}-order`} style={labelS}>{t('common.order')}</label>
-          <Input id={`${id}-order`} style={inputS} type="number" value={form.order} onChange={(e) => set('order', Number(e.target.value))} />
+          <Input id={`${id}-order`} type="number" value={form.order} onChange={(e) => set('order', Number(e.target.value))} />
         </div>
         <div style={{ paddingTop: 20 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', cursor: isSystem ? 'default' : 'pointer' }}>
@@ -134,7 +132,6 @@ export function CIFieldInlineEditor({
           <label htmlFor={`${id}-enum`} style={labelS}>{t('citypeDesigner.field.enumRef')}</label>
           <Select
             id={`${id}-enum`}
-            style={selectS}
             value={form.enumTypeId ?? ''}
             onChange={(e) => set('enumTypeId', e.target.value || null)}
           >
@@ -158,7 +155,7 @@ export function CIFieldInlineEditor({
       {/* default value */}
       <div style={{ marginBottom: 12 }}>
         <label htmlFor={`${id}-default`} style={labelS}>{t('citypeDesigner.field.defaultValue')}</label>
-        <Input id={`${id}-default`} style={inputS} value={form.defaultValue} onChange={(e) => set('defaultValue', e.target.value)} />
+        <Input id={`${id}-default`} value={form.defaultValue} onChange={(e) => set('defaultValue', e.target.value)} />
       </div>
 
       {/* scripts (collapsible) */}
@@ -183,9 +180,13 @@ export function CIFieldInlineEditor({
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
                 <Trans i18nKey="citypeDesigner.field.validationHint" components={{ code: <code /> }} />
               </p>
-              <textarea aria-label={t('citypeDesigner.field.validationPlaceholder')} style={{ ...textareaS, minHeight: 90 }} value={form.validationScript}
+              <Textarea
+                aria-label={t('citypeDesigner.field.validationPlaceholder')}
+                value={form.validationScript}
                 onChange={(e) => set('validationScript', e.target.value)}
-                placeholder={t('citypeDesigner.field.validationPlaceholder')} />
+                placeholder={t('citypeDesigner.field.validationPlaceholder')}
+                style={{ minHeight: 90 }}
+              />
             </div>
           )}
           {scriptTab === 'visibility' && (
@@ -193,9 +194,13 @@ export function CIFieldInlineEditor({
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
                 <Trans i18nKey="citypeDesigner.field.visibilityHint" components={{ code: <code /> }} />
               </p>
-              <textarea aria-label={t('citypeDesigner.field.visibilityPlaceholder')} style={{ ...textareaS, minHeight: 90 }} value={form.visibilityScript}
+              <Textarea
+                aria-label={t('citypeDesigner.field.visibilityPlaceholder')}
+                value={form.visibilityScript}
                 onChange={(e) => set('visibilityScript', e.target.value)}
-                placeholder={t('citypeDesigner.field.visibilityPlaceholder')} />
+                placeholder={t('citypeDesigner.field.visibilityPlaceholder')}
+                style={{ minHeight: 90 }}
+              />
             </div>
           )}
           {scriptTab === 'default' && (
@@ -203,9 +208,13 @@ export function CIFieldInlineEditor({
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
                 <Trans i18nKey="citypeDesigner.field.defaultHint" components={{ code: <code /> }} />
               </p>
-              <textarea aria-label={t('citypeDesigner.field.defaultPlaceholder')} style={{ ...textareaS, minHeight: 90 }} value={form.defaultScript}
+              <Textarea
+                aria-label={t('citypeDesigner.field.defaultPlaceholder')}
+                value={form.defaultScript}
                 onChange={(e) => set('defaultScript', e.target.value)}
-                placeholder={t('citypeDesigner.field.defaultPlaceholder')} />
+                placeholder={t('citypeDesigner.field.defaultPlaceholder')}
+                style={{ minHeight: 90 }}
+              />
             </div>
           )}
         </div>
@@ -213,13 +222,15 @@ export function CIFieldInlineEditor({
 
       {/* actions */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-        <button type="button" style={btnSecondary} onClick={onCancel}>
+        <Button variant="secondary" onClick={onCancel}>
           <X size={13} /> {t('common.cancel')}
-        </button>
-        <button type="button" style={{ ...btnPrimary, opacity: nameError ? 0.6 : 1 }} disabled={!!nameError}
-          onClick={() => onSave(form)}>
+        </Button>
+        <Button variant="primary"
+          disabled={!!nameError}
+          onClick={() => onSave(form)}
+        >
           <Check size={13} /> {t('common.save')}
-        </button>
+        </Button>
       </div>
     </div>
   )

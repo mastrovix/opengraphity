@@ -28,7 +28,7 @@ export function AIDisabledNotice({ feature }: { feature: AIFeature }) {
       <span>
         {t('components.aiDisabled.text', { feature: name })}{' '}
         {mayTurnOn
-          ? <Link to="/settings/organization?tab=ai" style={{ color: 'var(--color-brand)' }}>{t('components.aiDisabled.adminLink')}</Link>
+          ? <Link to="/settings/organization?tab=ai" style={{ color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{t('components.aiDisabled.adminLink')}</Link>
           : t('components.aiDisabled.askAdmin')}
       </span>
     </div>

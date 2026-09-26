@@ -281,7 +281,7 @@ describe('ChangeDetailPage — header', () => {
 
   it('the way back leads to the list of changes', async () => {
     const { user } = mount()
-    await user.click(screen.getByRole('button', { name: '← Changes' }))
+    await user.click(screen.getByRole('button', { name: 'Changes' }))
     await attendiURL('/changes')
   })
 
@@ -848,7 +848,7 @@ describe('ChangeDetailPage — the CIs involved', () => {
   it('the affected CIs are listed once each, with the labels of type and environment', async () => {
     const { user } = mount('ciRelease')
     await open(user, /^CIs involved/)
-    expect(screen.getByRole('button', { name: /CI Affected/ })).toHaveTextContent('CI Affected2')
+    expect(screen.getByRole('tab', { name: /CI Affected/ })).toHaveTextContent('CI Affected2')
     const db = screen.getByText('orders-db', { selector: 'span' }).parentElement as HTMLElement
     expect(db).toHaveTextContent('orders-dbDatabaseProduction')
     const app = screen.getByText('orders-app', { selector: 'span' }).parentElement as HTMLElement
@@ -868,10 +868,8 @@ describe('ChangeDetailPage — the CIs involved', () => {
     const { user } = mount('ciRelease')
     await open(user, /^CIs involved/)
     const remove = within(screen.getByText('orders-db', { selector: 'span' }).parentElement as HTMLElement).getByRole('button')
-    await user.hover(remove)
-    expect(remove.style.color).toBe('var(--color-danger)')
-    await user.unhover(remove)
-    expect(remove.style.color).toBe('var(--color-slate-light)')
+    // It turns red on hover and on keyboard focus: the .hover-danger-text rule (26 Sep 2026).
+    expect(remove).toHaveClass('hover-danger-text')
     await user.click(remove)
     let dialog = screen.getByRole('dialog', { name: 'Remove the CI' })
     expect(dialog).toHaveTextContent('Remove orders-db from the change? Every task attached to it will be deleted.')
@@ -925,8 +923,8 @@ describe('ChangeDetailPage — the CIs involved', () => {
       apolloFinto.risposte['GetChangeImpactedCIs'] = { changeImpactedCIs: IMPACTED }
       const { user } = mount('ciRelease')
       await open(user, /^CIs involved/)
-      await user.click(screen.getByRole('button', { name: /CI Impacted/ }))
-      expect(screen.getByRole('button', { name: /CI Impacted/ })).toHaveTextContent('CI Impacted3')
+      await user.click(screen.getByRole('tab', { name: /CI Impacted/ }))
+      expect(screen.getByRole('tab', { name: /CI Impacted/ })).toHaveTextContent('CI Impacted3')
       const row = (name: string) => screen.getAllByText(name, { selector: 'span' }).at(-1)!.parentElement as HTMLElement
       expect(row('web-01')).toHaveTextContent('web-01ApplicationProduction1 hoporders-db')
       expect(row('lb-01')).toHaveTextContent('lb-012 hopsorders-db')
@@ -944,7 +942,7 @@ describe('ChangeDetailPage — the CIs involved', () => {
     it('a different depth asks the server again', async () => {
       const { user } = mount('ciRelease')
       await open(user, /^CIs involved/)
-      await user.click(screen.getByRole('button', { name: /CI Impacted/ }))
+      await user.click(screen.getByRole('tab', { name: /CI Impacted/ }))
       await user.selectOptions(screen.getByRole('combobox', { name: 'Depth' }), '3')
       expect(apolloFinto.chiamata('GetChangeImpactedCIs')).toEqual({ changeId: 'chg-1', depth: 3 })
       expect(screen.getByText('No CI impacted at depth 3.')).toBeInTheDocument()
@@ -954,7 +952,7 @@ describe('ChangeDetailPage — the CIs involved', () => {
       apolloFinto.risposte['GetChangeImpactedCIs'] = { changeImpactedCIs: IMPACTED }
       const { user } = mount('ciRelease')
       await open(user, /^CIs involved/)
-      await user.click(screen.getByRole('button', { name: /CI Impacted/ }))
+      await user.click(screen.getByRole('tab', { name: /CI Impacted/ }))
       await user.click(screen.getAllByTitle('Move to affected CIs')[0]!)
       expect(apolloFinto.chiamata('AddCIToChange')).toEqual({ changeId: 'chg-1', ciId: 'ci-web' })
       await waitFor(() => expect(toast.success).toHaveBeenCalledWith('CI added to affected'))
@@ -966,34 +964,34 @@ describe('ChangeDetailPage — the CIs involved', () => {
       apolloFinto.risposte['GetChangeImpactedCIs'] = { changeImpactedCIs: IMPACTED }
       const { user, unmount } = mount('ciRelease')
       await open(user, /^CIs involved/)
-      await user.click(screen.getByRole('button', { name: /CI Impacted/ }))
+      await user.click(screen.getByRole('tab', { name: /CI Impacted/ }))
       await user.click(screen.getAllByTitle('Move to affected CIs')[0]!)
       await waitFor(() => expect(toast.error).toHaveBeenCalledWith('no owner group'))
       unmount()
       onStep('scheduled')
       const second = mount('ciRelease')
       await open(second.user, /^CIs involved/)
-      await second.user.click(screen.getByRole('button', { name: /CI Impacted/ }))
+      await second.user.click(screen.getByRole('tab', { name: /CI Impacted/ }))
       expect(screen.queryByTitle('Move to affected CIs')).not.toBeInTheDocument()
     })
 
     it('no impacted CI says so; a failed computation says why and can be retried', async () => {
       const { user, unmount } = mount('ciRelease')
       await open(user, /^CIs involved/)
-      await user.click(screen.getByRole('button', { name: /CI Impacted/ }))
+      await user.click(screen.getByRole('tab', { name: /CI Impacted/ }))
       expect(screen.getByText('No impacted CI')).toBeInTheDocument()
       expect(screen.getByText('No CI impacted at depth 1.')).toBeInTheDocument()
       unmount()
       apolloFinto.erroriQuery['GetChangeImpactedCIs'] = new Error('graph timeout')
       const second = mount('ciRelease')
       await open(second.user, /^CIs involved/)
-      await second.user.click(screen.getByRole('button', { name: /CI Impacted/ }))
+      await second.user.click(screen.getByRole('tab', { name: /CI Impacted/ }))
       expect(screen.getByText(/Error computing the affected CIs: graph timeout/)).toBeInTheDocument()
       expect(screen.queryByText('No impacted CI')).not.toBeInTheDocument()
       await second.user.click(screen.getByRole('button', { name: 'Try again' }))
       expect(apolloFinto.refetch).toHaveBeenCalled()
       // Back to the affected tab.
-      await second.user.click(screen.getByRole('button', { name: /CI Affected/ }))
+      await second.user.click(screen.getByRole('tab', { name: /CI Affected/ }))
       expect(screen.getByText('orders-db', { selector: 'span' })).toBeInTheDocument()
     })
   })

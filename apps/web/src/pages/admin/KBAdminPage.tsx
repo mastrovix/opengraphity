@@ -1,3 +1,5 @@
+import { Pill } from '@/components/ui/Pill'
+import { Input, Select } from '@/components/ui/FormControls'
 import { useId, useState, useRef } from 'react'
 import { gql } from '@apollo/client'
 import { useQuery, useMutation } from '@apollo/client/react'
@@ -11,11 +13,12 @@ import {
   CheckCircle, Archive, Clock, Send,
 } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
+import { Button } from '@/components/Button'
 import { toast } from 'sonner'
 import { EmptyState } from '@/components/EmptyState'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import { Pagination } from '@/components/ui/Pagination'
-import { inputS } from '@/components/ui/styles'
+import { SimpleTable, type SimpleColumn } from '@/components/ui/SimpleTable'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { styleForCategory } from '@/lib/workflowStepStyle'
 import { colors } from '@/lib/tokens'
@@ -27,11 +30,11 @@ import { showError } from '@/lib/showError'
 
 // ── GraphQL ───────────────────────────────────────────────────────────────────
 
-// `kbArticles` accepts exactly search/category/status (+ paging), ordered by
-// updated_at DESC server-side: no sortField/filters JSON exists for it (E-03).
+// `kbArticles` accepts search/category/status (+ paging) and, since 26 Sep 2026,
+// the column to sort on: the list is paged on the server, which sorts all of it.
 const GET_ARTICLES = gql`
-  query AdminKBArticles($page: Int, $pageSize: Int, $status: String, $category: String, $search: String) {
-    kbArticles(page: $page, pageSize: $pageSize, status: $status, category: $category, search: $search) {
+  query AdminKBArticles($page: Int, $pageSize: Int, $status: String, $category: String, $search: String, $sortField: String, $sortDirection: String) {
+    kbArticles(page: $page, pageSize: $pageSize, status: $status, category: $category, search: $search, sortField: $sortField, sortDirection: $sortDirection) {
       items {
         id title slug body category tags status authorName views helpfulCount audience
         createdAt updatedAt publishedAt workflowInstanceId currentStep version
@@ -111,40 +114,21 @@ function VersionHistory({ articleId, onRestored }: { articleId: string; onRestor
   if (loading && !data) return <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', margin: '12px 0 0' }}>{t('pages.kbAdmin.loadingHistory')}</p>
   if (versions.length === 0) return <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', margin: '12px 0 0' }}>{t('pages.kbAdmin.noVersions')}</p>
 
+  // The app's small table (26 Sep 2026: it was hand-made).
+  const columns: SimpleColumn<KBVersion & { id: string }>[] = [
+    { key: 'version', label: t('pages.kbAdmin.colVersion'), render: (_v, v) => `v${v.version}` },
+    { key: 'title', label: t('common.title') },
+    { key: 'editedByName', label: t('pages.kbAdmin.editedBy'), render: (_v, v) => v.editedByName ?? '—' },
+    { key: 'editedAt', label: t('pages.kbAdmin.date'), render: (_v, v) => formatDateTime(v.editedAt) },
+    { key: 'id', label: t('common.actions'), align: 'right', sortable: false, render: (_v, v) => (
+      <Button variant="secondary" size="xs" disabled={restoring} onClick={() => restore({ variables: { articleId, version: v.version } })}>
+        {t('pages.kbAdmin.restore')}
+      </Button>
+    ) },
+  ]
   return (
-    <div style={{ marginTop: 8, border: `1px solid ${colors.border}`, overflow: 'hidden' }}>
-      <div className="og-scroll-x">
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-table)' }}>
-        <thead>
-          <tr style={{ textAlign: 'left' }}>
-            <th style={{ padding: '7px 12px' }}>{t('pages.kbAdmin.colVersion')}</th>
-            <th style={{ padding: '7px 12px' }}>{t('common.title')}</th>
-            <th style={{ padding: '7px 12px' }}>{t('pages.kbAdmin.editedBy')}</th>
-            <th style={{ padding: '7px 12px' }}>{t('pages.kbAdmin.date')}</th>
-            <th style={{ padding: '7px 12px', textAlign: 'right' }}></th>
-          </tr>
-        </thead>
-        <tbody>
-          {versions.map((v) => (
-            <tr key={v.version} style={{ borderTop: `1px solid ${colors.border}`, background: colors.white }}>
-              <td style={{ padding: '7px 12px', color: 'var(--color-slate)' }}>v{v.version}</td>
-              <td style={{ padding: '7px 12px', color: 'var(--color-slate-dark)' }}>{v.title}</td>
-              <td style={{ padding: '7px 12px', color: 'var(--color-slate)' }}>{v.editedByName ?? '—'}</td>
-              <td style={{ padding: '7px 12px', color: 'var(--color-slate-light)' }}>{formatDateTime(v.editedAt)}</td>
-              <td style={{ padding: '7px 12px', textAlign: 'right' }}>
-                <button type="button"
-                  disabled={restoring}
-                  onClick={() => restore({ variables: { articleId, version: v.version } })}
-                  style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${colors.border}`, background: colors.white, color: 'var(--color-brand)', cursor: restoring ? 'default' : 'pointer', fontSize: 'var(--font-size-table)', fontWeight: 600, opacity: restoring ? 0.6 : 1 }}
-                >
-                  {t('pages.kbAdmin.restore')}
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <div style={{ marginTop: 8 }}>
+      <SimpleTable<KBVersion & { id: string }> columns={columns} rows={versions.map((v) => ({ ...v, id: String(v.version) }))} />
     </div>
   )
 }
@@ -229,10 +213,10 @@ function StatusBadge({ status, label, category }: {
 }) {
   const s = styleForCategory(category)
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 10px', borderRadius: 10, fontSize: 'var(--font-size-table)', fontWeight: 600, backgroundColor: s.bg, color: s.color }}>
+    <Pill bg={s.bg} color={s.color} radius={10} style={{ gap: 4, fontSize: 'var(--font-size-table)', fontWeight: 600 }}>
       <CategoryIcon category={category} />
       {label || status}
-    </span>
+    </Pill>
   )
 }
 
@@ -285,12 +269,15 @@ export function KBAdminPage() {
       showError(e)
     }
   }
+  // The column sorted on (the server sorts the whole list); a new order starts from page 1.
+  const [sort, setSort] = useState<{ field: string; dir: 'asc' | 'desc' } | null>(null)
   const { data, loading, refetch } = useQuery<{ kbArticles: { items: KBArticle[]; total: number } }>(
     GET_ARTICLES,
     {
       variables: {
         page: page + 1, pageSize: PAGE_SIZE,
         status: listFilter.status ?? null, category: listFilter.category ?? null, search: listFilter.search ?? null,
+        sortField: sort?.field ?? null, sortDirection: sort?.dir ?? null,
       },
       fetchPolicy: 'cache-and-network',
     },
@@ -398,13 +385,12 @@ export function KBAdminPage() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const isBusy     = creating || updating || transitioning
 
-  // No `sortable`: the API orders by updated_at DESC and paginates server-side,
-  // a client-side sort would only reorder the current page.
+  // Every column sorts on the server, which pages the list (26 Sep 2026); the actions do not.
   const articleColumns: ColumnDef<KBArticle>[] = [
     // The title opens the article in the form, as the pencil does (tour G10).
     { key: 'title', label: t('common.title'), render: (v, row) => (
       <button type="button" onClick={() => startEdit(row)}
-        style={{ fontWeight: 500, color: 'var(--color-brand)', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', font: 'inherit' }}>
+        style={{ fontWeight: 500, color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', font: 'inherit' }}>
         {String(v)}
       </button>
     ) },
@@ -420,13 +406,13 @@ export function KBAdminPage() {
     { key: 'authorName', label: t('pages.kbAdmin.colAuthor'), render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
     { key: 'views', label: t('pages.kbAdmin.colViews'), render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
     { key: 'updatedAt', label: t('pages.kbAdmin.colUpdated'), render: (v) => <span style={{ color: 'var(--color-slate-light)' }}>{formatDate(String(v))}</span> },
-    { key: 'id', label: t('common.actions'), render: (_v, row) => (
+    { key: 'id', label: t('common.actions'), sortable: false, render: (_v, row) => (
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-        <button type="button" onClick={() => startEdit(row)} style={{ color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} title={t('common.edit')}><Pencil size={14} /></button>
+        <button type="button" onClick={() => startEdit(row)} style={{ color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} title={t('common.edit')}><Pencil size={14} /></button>
         {deleteId === row.id ? (
           <div style={{ display: 'flex', gap: 4 }}>
             <button type="button" onClick={() => void deleteArticle({ variables: { id: row.id } })} style={{ padding: '2px 6px', fontSize: 'var(--font-size-table)', borderRadius: 4, border: 'none', background: 'var(--color-danger)', color: colors.white, cursor: 'pointer' }}>{t('common.confirm')}</button>
-            <button type="button" onClick={() => setDeleteId(null)} style={{ padding: '2px 6px', fontSize: 'var(--font-size-table)', borderRadius: 4, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer' }}>{t('common.cancel')}</button>
+            <Button variant="secondary" size="xs" onClick={() => setDeleteId(null)}>{t('common.cancel')}</Button>
           </div>
         ) : (
           <button type="button" onClick={() => setDeleteId(row.id)} style={{ color: 'var(--color-slate-light)', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} title={t('common.delete')}><Trash2 size={14} /></button>
@@ -435,7 +421,6 @@ export function KBAdminPage() {
     ) },
   ]
 
-  const inputStyle: React.CSSProperties = inputS
   const uid = useId()
   const ids = { title: `${uid}-title`, category: `${uid}-category`, tags: `${uid}-tags`, audience: `${uid}-audience` }
 
@@ -451,12 +436,11 @@ export function KBAdminPage() {
             {loading ? '—' : t('pages.kbAdmin.articleCount', { count: total })}
           </p>
         </div>
-        <button type="button"
+        <Button variant="primary"
           onClick={() => { closeForm(); setShowForm(true) }}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
         >
           <Plus size={14} /> {t('pages.kbAdmin.new')}
-        </button>
+        </Button>
       </div>
 
       {/* ── Article form ── */}
@@ -477,28 +461,28 @@ export function KBAdminPage() {
           <div className="og-pair" style={{ marginBottom: 12 }}>
             <div style={{ gridColumn: '1 / -1' }}>
               <label htmlFor={ids.title} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>{t('common.title')} *</label>
-              <input id={ids.title} value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} style={inputStyle} placeholder={t('pages.kbAdmin.titlePlaceholder')} />
+              <Input id={ids.title} value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} placeholder={t('pages.kbAdmin.titlePlaceholder')} />
             </div>
             <div>
               <label htmlFor={ids.category} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>{t('pages.kbAdmin.categoryRequired')}</label>
-              <select id={ids.category} value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} style={inputStyle}>
+              <Select id={ids.category} value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}>
                 <option value="" disabled>{t('pages.kbAdmin.chooseCategory')}</option>
                 {CATEGORY_ENTRIES.map((c) => <option key={c.value} value={c.value}>{c.label ?? c.value}</option>)}
                 {/* Una categoria che il vocabolario non ha più resta visibile, invece di sparire dal campo. */}
                 {form.category && !CATEGORY_ENTRIES.some((c) => c.value === form.category) && (
                   <option value={form.category}>{labelOf('kb_category', form.category) ?? form.category}</option>
                 )}
-              </select>
+              </Select>
             </div>
             <div>
               <label htmlFor={ids.tags} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>{t('pages.kbAdmin.tags')}</label>
-              <input id={ids.tags} value={form.tags} onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))} style={inputStyle} placeholder={t('pages.kbAdmin.tagsPlaceholder')} />
+              <Input id={ids.tags} value={form.tags} onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))} placeholder={t('pages.kbAdmin.tagsPlaceholder')} />
             </div>
             <div style={{ gridColumn: '1 / -1' }}>
               <label htmlFor={ids.audience} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>{t('pages.kbAdmin.audience')}</label>
-              <select id={ids.audience} value={form.audience} onChange={(e) => setForm((f) => ({ ...f, audience: e.target.value as KbAudience }))} style={inputStyle} aria-describedby={`${ids.audience}-hint`}>
+              <Select id={ids.audience} value={form.audience} onChange={(e) => setForm((f) => ({ ...f, audience: e.target.value as KbAudience }))} aria-describedby={`${ids.audience}-hint`}>
                 {KB_AUDIENCES.map((a) => <option key={a} value={a}>{t(`pages.kbAdmin.audienceValue.${a}`)}</option>)}
-              </select>
+              </Select>
               <div id={`${ids.audience}-hint`} style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 4 }}>{t('pages.kbAdmin.audienceHint')}</div>
             </div>
           </div>
@@ -519,41 +503,38 @@ export function KBAdminPage() {
           {/* ── Action buttons ── */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             {/* Save (content only) */}
-            <button type="button"
+            <Button variant="primary"
               onClick={handleSave}
               disabled={isBusy}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: 'var(--color-brand)', color: colors.white, cursor: isBusy ? 'not-allowed' : 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, opacity: isBusy ? 0.7 : 1, transition: 'background-color 150ms' }}
             >
               {creating || updating ? t('common.loading') : t('common.save')}
-            </button>
+            </Button>
 
             {/* In revisione: la pubblicazione si approva nella pagina Approvazioni. Prima qui non c'era nessuna indicazione. */}
             {editId && editArticle && editArticle.status !== kbInitialStep?.name && kbStepByName.get(editArticle.status)?.category !== 'published' && (
               <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
-                {t('pages.kbAdmin.awaitingApproval')} <Link to="/approvals" style={{ color: 'var(--color-brand)' }}>{t('pages.kbAdmin.openApprovals')}</Link>
+                {t('pages.kbAdmin.awaitingApproval')} <Link to="/approvals" style={{ color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{t('pages.kbAdmin.openApprovals')}</Link>
               </span>
             )}
 
             {/* Publish — only when editing an existing draft */}
             {editId && editArticle?.status === kbInitialStep?.name && (
-              <button type="button"
+              <Button variant="primary"
                 onClick={handlePublish}
                 disabled={isBusy}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: 'var(--color-brand)', color: colors.white, cursor: isBusy ? 'not-allowed' : 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, opacity: isBusy ? 0.7 : 1, transition: 'background-color 150ms' }}
               >
                 <Send size={14} />
                 {t('pages.kbAdmin.submitForReview')}
-              </button>
+              </Button>
             )}
 
             <div style={{ flex: 1 }} />
 
-            <button type="button"
+            <Button variant="secondary"
               onClick={closeForm}
-              style={{ display: 'inline-flex', alignItems: 'center', padding: '8px 16px', borderRadius: 6, border: `1px solid ${colors.border}`, background: colors.white, color: 'var(--color-slate)', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500 }}
             >
               {t('common.cancel')}
-            </button>
+            </Button>
           </div>
 
           {/* Info note — only when editing an existing draft */}
@@ -588,6 +569,9 @@ export function KBAdminPage() {
       {/* ── Table ── */}
       <SortableFilterTable<KBArticle>
         columns={articleColumns}
+        onSort={(field, dir) => { setSort({ field, dir }); setPage(0) }}
+        sortField={sort?.field ?? null}
+        sortDir={sort?.dir ?? 'asc'}
         data={articles}
         loading={loading}
         emptyComponent={<EmptyState icon={<BookOpen size={32} color="var(--color-slate-light)" />} title={t('pages.kbAdmin.noArticles')} />}

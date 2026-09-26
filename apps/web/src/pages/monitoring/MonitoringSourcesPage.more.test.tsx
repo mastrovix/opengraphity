@@ -142,9 +142,9 @@ describe('MonitoringSourcesPage — test event and navigation', () => {
     await attendiURL('/events', { sourceId: 's1' })
   })
 
-  it('the name opens the source, as does the edit button; add opens the wizard', async () => {
+  it('the row opens the source, as does the edit button; add opens the wizard', async () => {
     renderWithProviders(<MonitoringSourcesPage />)
-    await userEvent.click(screen.getByRole('link', { name: 'Prom' }))
+    await userEvent.click(screen.getByText('Prom'))
     await attendiURL('/monitoring/sources/s1')
     await userEvent.click(screen.getByRole('button', { name: 'Edit Prom' }))
     await attendiURL('/monitoring/sources/s1')

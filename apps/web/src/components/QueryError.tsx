@@ -1,3 +1,4 @@
+import { Button } from '@/components/Button'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, RotateCw } from 'lucide-react'
 import { colors, palette } from '@/lib/tokens'
@@ -29,13 +30,13 @@ export function QueryError({ message, onRetry }: Props) {
         </div>
       )}
       {onRetry && (
-        <button type="button"
+        <Button variant="secondary"
           onClick={onRetry}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, padding: '7px 16px', backgroundColor: colors.white, border: `1px solid ${palette.neutral.borderStrong}`, borderRadius: 6, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)' }}
+          style={{ marginTop: 6 }}
         >
           <RotateCw size={13} />
           {t('queryError.retry')}
-        </button>
+        </Button>
       )}
     </div>
   )
@@ -66,11 +67,12 @@ export function StaleDataBanner({ message, readAt, onRetry }: StaleProps) {
       <AlertTriangle size={16} color={palette.warning.strong} aria-hidden="true" />
       <span style={{ flex: 1, wordBreak: 'break-word' }}>{text}</span>
       {onRetry && (
-        <button type="button" onClick={onRetry}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 12px', background: colors.white, border: `1px solid ${palette.neutral.borderStrong}`, borderRadius: 6, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)' }}>
+        <Button variant="secondary" size="xs"
+          onClick={onRetry}
+        >
           <RotateCw size={13} aria-hidden="true" />
           {t('queryError.retry')}
-        </button>
+        </Button>
       )}
     </div>
   )

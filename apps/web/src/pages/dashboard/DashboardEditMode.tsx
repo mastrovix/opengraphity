@@ -1,3 +1,5 @@
+import { Select } from '@/components/ui/FormControls'
+import { Button } from '@/components/Button'
 import { lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -103,14 +105,13 @@ function SortableItem({
               <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{widget.reportTemplate.name}</div>
             )}
           </div>
-          <select
+          <Select
             value={widget.colSpan}
             onChange={(e) => onUpdateColSpan(widget.tempId, Number(e.target.value))}
             aria-label={t('pages.dashboard.widthColumns')}
-            style={{ fontSize: 'var(--font-size-table)', padding: '2px 4px', borderRadius: 4, border: '1px solid var(--color-border-strong)', background: colors.white, color: 'var(--color-slate)' }}
           >
             {[2, 3, 4, 6, 12].map((s) => <option key={s} value={s}>{t('pages.dashboard.cols', { count: s })}</option>)}
-          </select>
+          </Select>
           <button
             type="button"
             onClick={() => onRemove(widget.tempId)}
@@ -289,12 +290,11 @@ export function DashboardEditMode({
                       {(template.sections ?? []).map((section) => (
                         <div key={section.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 14px', gap: 8 }}>
                           <span style={{ fontSize: 'var(--font-size-body)', color: palette.neutral.textStrong, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{section.title}</span>
-                          <button
-                            type="button"
+                          <Button variant="secondary" size="xs"
                             onClick={() => onAddWidget(template, section)}
                             aria-label={t('pages.dashboard.addSection', { name: section.title })}
-                            style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid var(--color-brand)', background: 'var(--color-brand-light)', color: 'var(--color-brand)', fontSize: 'var(--font-size-table)', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                          >+ {t('pages.dashboard.add')}</button>
+                            style={{ whiteSpace: 'nowrap' }}
+                          >+ {t('pages.dashboard.add')}</Button>
                         </div>
                       ))}
                     </div>

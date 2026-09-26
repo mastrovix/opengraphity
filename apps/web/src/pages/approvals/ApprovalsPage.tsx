@@ -1,3 +1,6 @@
+import { Loading } from '@/components/ui/Loading'
+import { Pill } from '@/components/ui/Pill'
+import { Button } from '@/components/Button'
 import { useState } from 'react'
 import { gql } from '@apollo/client'
 import { useQuery, useMutation, useLazyQuery } from '@apollo/client/react'
@@ -113,9 +116,9 @@ function StatusBadge({ status }: { status: string }) {
   const { t } = useTranslation()
   const s = lookupOrError(STATUS_COLORS, status, 'STATUS_COLORS', { bg: 'var(--color-danger)', color: colors.white, labelKey: status })
   return (
-    <span style={{ padding: '2px 8px', borderRadius: 12, fontSize: 'var(--font-size-table)', fontWeight: 600, background: s.bg, color: s.color }}>
+    <Pill bg={s.bg} color={s.color} radius={12} style={{ fontSize: 'var(--font-size-table)', fontWeight: 600 }}>
       {i18n.exists(s.labelKey) ? t(s.labelKey) : s.labelKey}
-    </span>
+    </Pill>
   )
 }
 
@@ -133,7 +136,7 @@ function EntityLink({ entityType, entityId }: { entityType: string; entityId: st
   return (
     <Link
       to={`${base}/${entityId}`}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 'var(--font-size-table)', color: 'var(--color-brand)', textDecoration: 'none' }}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 'var(--font-size-table)', color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2 }}
     >
       <Icon size={11} /> {t('pages.approvals.openTicket')} <ExternalLink size={10} />
     </Link>
@@ -163,9 +166,9 @@ function TicketApprovalCard({ item }: { item: PendingTicketApproval }) {
     <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, padding: 16, background: colors.white, marginBottom: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
         <StatusBadge status="pending" />
-        <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', background: colors.slateBg, padding: '2px 6px', borderRadius: 4 }}>
+        <Pill bg={colors.slateBg} color="var(--color-slate-light)" radius={4} style={{ fontSize: 'var(--font-size-table)' }}>
           {entityTypeLabel(item.kind)}
-        </span>
+        </Pill>
         {item.detail && (
           <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
             {t(item.kind === 'change' ? 'pages.approvals.forTeam' : 'pages.approvals.inStep', { value: item.detail })}
@@ -178,9 +181,9 @@ function TicketApprovalCard({ item }: { item: PendingTicketApproval }) {
           * stessa ora — e chi approva non sapeva né cosa né perché due volte.
           */}
         {item.approvalKind && (
-          <span style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-brand)', background: palette.info.light, padding: '2px 6px', borderRadius: 4 }}>
+          <Pill bg={palette.info.light} color="var(--color-brand)" radius={4} style={{ fontSize: 'var(--font-size-table)', fontWeight: 600 }}>
             {t(`changeTasks.approvalKind.${item.approvalKind}`, { defaultValue: item.approvalKind })}
-          </span>
+          </Pill>
         )}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 4px' }}>
@@ -215,26 +218,13 @@ function KBArticlePreviewPanel({ entityId }: { entityId: string }) {
 
   return (
     <div style={{ marginTop: 10 }}>
-      <button type="button"
+      <Button variant="secondary" size="xs"
         onClick={toggle}
-        style={{
-          display:     'inline-flex',
-          alignItems:  'center',
-          gap:         4,
-          padding:     '4px 10px',
-          borderRadius: 6,
-          border:      `1px solid ${colors.border}`,
-          background:  open ? palette.info.light : colors.white,
-          color:       open ? 'var(--color-brand)' : 'var(--color-slate)',
-          fontSize:    12,
-          cursor:      'pointer',
-          fontWeight:  500,
-        }}
       >
         <BookOpen size={13} />
         {t('pages.approvals.articlePreview')}
         {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-      </button>
+      </Button>
 
       {open && (
         <div style={{
@@ -245,7 +235,7 @@ function KBArticlePreviewPanel({ entityId }: { entityId: string }) {
           overflow:     'hidden',
         }}>
           {loading && (
-            <div style={{ padding: '20px 16px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{t('common.loading')}</div>
+            <Loading padded />
           )}
           {error && (
             <div style={{ padding: '12px 16px', fontSize: 'var(--font-size-body)', color: 'var(--color-danger)' }}>
@@ -270,9 +260,9 @@ function KBArticlePreviewPanel({ entityId }: { entityId: string }) {
                   {(article.tags ?? []).length > 0 && (
                     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                       {(article.tags ?? []).map((tag) => (
-                        <span key={tag} style={{ padding: '1px 6px', borderRadius: 8, background: colors.slateBg, color: 'var(--color-slate)', fontSize: 'var(--font-size-table)' }}>
+                        <Pill bg={colors.slateBg} color="var(--color-slate)" radius={8} key={tag} style={{ fontSize: 'var(--font-size-table)' }}>
                           {tag}
-                        </span>
+                        </Pill>
                       ))}
                     </div>
                   )}
@@ -331,9 +321,9 @@ function ApprovalCard({
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
             <StatusBadge status={req.status} />
-            <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', background: colors.slateBg, padding: '2px 6px', borderRadius: 4 }}>
+            <Pill bg={colors.slateBg} color="var(--color-slate-light)" radius={4} style={{ fontSize: 'var(--font-size-table)' }}>
               {entityTypeLabel(req.entityType)}
-            </span>
+            </Pill>
             <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
               {t(req.approvalType === 'any' ? 'pages.approvals.anyApprover'
                 : req.approvalType === 'all' ? 'pages.approvals.allApprovers'
@@ -384,13 +374,12 @@ function ApprovalCard({
         )}
 
         {!showActions && req.status === 'pending' && onCancel && (
-          <button
-            type="button"
-            onClick={() => void handleCancel()}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 6, border: '1px solid var(--color-danger)', background: colors.white, color: 'var(--color-danger)', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500, flexShrink: 0, alignSelf: 'flex-start' }}
+          <Button variant="danger"
+            onClick={() => handleCancel()}
+            style={{ flexShrink: 0, alignSelf: 'flex-start' }}
           >
             <XCircle size={14} /> {t('pages.approvals.cancelRequest')}
-          </button>
+          </Button>
         )}
       </div>
 
@@ -416,12 +405,11 @@ function ApprovalCard({
             >
               {t(noteOpen === 'approve' ? 'pages.approvals.confirmApproval' : 'pages.approvals.confirmRejection')}
             </button>
-            <button type="button"
+            <Button variant="secondary"
               onClick={() => { setNoteOpen(null); setNote('') }}
-              style={{ padding: '6px 12px', borderRadius: 6, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)' }}
             >
               {t('common.cancel')}
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -531,9 +519,9 @@ export function ApprovalsPage() {
         <button type="button" style={tabStyle(tab === 'mine')} onClick={() => setTab('mine')}>
           {t('pages.approvals.tabMine')}
           {mineCount > 0 && (
-            <span style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 10, background: 'var(--color-danger)', color: colors.white, fontSize: 'var(--font-size-table)' }}>
+            <Pill bg="var(--color-danger)" color={colors.white} radius={10} style={{ marginLeft: 6, fontSize: 'var(--font-size-table)' }}>
               {mineCount}
-            </span>
+            </Pill>
           )}
         </button>
         <button type="button" style={tabStyle(tab === 'all')}  onClick={() => setTab('all')}>
@@ -550,7 +538,7 @@ export function ApprovalsPage() {
         (myError && !myData) || (ticketError && !ticketData) ? (
           <QueryError message={(myError ?? ticketError)!.message} onRetry={() => { void refetchMine(); void refetchTickets() }} />
         ) : myLoading && !myData ? (
-          <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</div>
+          <Loading />
         ) : (
           <>
             {mineCount === 0 ? (
@@ -588,7 +576,7 @@ export function ApprovalsPage() {
       ) : (
         <>
           {allLoading ? (
-            <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</div>
+            <Loading />
           ) : allItems.length === 0 ? (
             <EmptyState
               icon={<CheckSquare size={32} color="var(--color-slate-light)" />}

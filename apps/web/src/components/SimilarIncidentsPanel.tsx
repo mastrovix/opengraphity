@@ -1,3 +1,5 @@
+import { Loading } from '@/components/ui/Loading'
+import { Pill } from '@/components/ui/Pill'
 import { useTranslation } from 'react-i18next'
 import { useEffect } from 'react'
 import { gql } from '@apollo/client'
@@ -86,7 +88,7 @@ export function SimilarIncidentsPanel({ incidentId }: { incidentId: string }) {
           {t('components.similar.searchError', { message: error.message })}
         </div>
       ) : loading && !data ? (
-        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>{t('common.loading')}</p>
+        <Loading />
       ) : disabled ? (
         <AIDisabledNotice feature="embeddings" />
       ) : failure !== null ? (
@@ -126,11 +128,11 @@ export function SimilarIncidentsPanel({ incidentId }: { incidentId: string }) {
                   </div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <SeverityBadge value={it.severity} />
-                    <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: closed ? palette.success.tint : colors.slateBg, color: closed ? palette.success.text : 'var(--color-slate)', textTransform: 'uppercase' }}>
+                    <Pill bg={closed ? palette.success.tint : colors.slateBg} color={closed ? palette.success.text : 'var(--color-slate)'} radius={4} style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase' }}>
                       {/* As the workflow names it: a label is shown as written (the underscores were
                           stripped from real labels too), a step nobody labels is made readable by `labelFor`. */}
                       {labelFor(it.status)}
-                    </span>
+                    </Pill>
                   </div>
                 </Link>
               )

@@ -55,7 +55,7 @@ beforeEach(() => {
 })
 
 const show = () => renderWithProviders(<SyncPage />)
-const tab = (name: string) => screen.getByRole('button', { name })
+const tab = (name: string) => screen.getByRole('tab', { name })
 const dialog = () => within(screen.getByRole('dialog'))
 
 describe('SyncPage — the page', () => {
@@ -67,7 +67,7 @@ describe('SyncPage — the page', () => {
     expect(screen.getByText('1/2').parentElement).toHaveTextContent('Sources')
     expect(screen.getByText('1250').parentElement).toHaveTextContent('CIs managed')
     expect(screen.getByText('95%').parentElement).toHaveTextContent('Success rate')
-    expect(tab('Sources')).toHaveAttribute('aria-pressed', 'true')
+    expect(tab('Sources')).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByText('CMDB prod')).toBeInTheDocument()
   })
 
@@ -83,8 +83,8 @@ describe('SyncPage — the page', () => {
   it('each tab shows its own content, and the pressed tab is the one shown', async () => {
     const { user } = show()
     await user.click(tab('History'))
-    expect(tab('History')).toHaveAttribute('aria-pressed', 'true')
-    expect(tab('Sources')).toHaveAttribute('aria-pressed', 'false')
+    expect(tab('History')).toHaveAttribute('aria-selected', 'true')
+    expect(tab('Sources')).toHaveAttribute('aria-selected', 'false')
     expect(screen.getByText('Pick a sync source to see its run history')).toBeInTheDocument()
     await user.click(tab('Conflicts'))
     expect(screen.getByText('SN-00042')).toBeInTheDocument()

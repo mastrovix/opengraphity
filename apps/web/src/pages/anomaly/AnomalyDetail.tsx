@@ -1,3 +1,4 @@
+import { Button } from '@/components/Button'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
@@ -131,17 +132,12 @@ export function DetailPanel({
 
       {/* Resolution */}
       {isOpen && !showForm && (
-        <button
-          type="button"
+        <Button variant="primary"
           onClick={() => setShowForm(true)}
-          style={{
-            width: '100%', padding: '9px 14px', borderRadius: 6, border: 'none',
-            background: 'var(--color-brand)', color: colors.white,
-            fontSize: 'var(--font-size-body)', fontWeight: 600, cursor: 'pointer',
-          }}
+          style={{ width: '100%' }}
         >
           {t('pages.anomalies.resolveAnomaly')}
-        </button>
+        </Button>
       )}
 
       {isOpen && showForm && (

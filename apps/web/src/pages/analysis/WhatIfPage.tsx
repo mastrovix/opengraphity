@@ -1,3 +1,5 @@
+import { Chip } from '@/components/ui/Chip'
+import { Tabs } from '@/components/ui/Tabs'
 import { useState, useMemo } from 'react'
 import { useLazyQuery, useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
@@ -12,7 +14,7 @@ import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/
 import { Skeleton } from '@/components/ui/skeleton'
 import { Pill } from '@/components/ui/Pill'
 import { Pagination } from '@/components/ui/Pagination'
-import { Input } from '@/components/ui/FormControls'
+import { Input, Select } from '@/components/ui/FormControls'
 import { RiskBadge, useRiskScoreStyle } from '@/components/ui/badges'
 import { GET_ALL_CIS, GET_CI_TYPES, WHAT_IF_ANALYSIS } from '@/graphql/queries'
 import { lookupStyle, colors, palette } from '@/lib/tokens'
@@ -216,7 +218,7 @@ export function WhatIfPage() {
       const path = v as unknown as string[]
       return <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{path?.join(' → ') || '—'}</span>
     }},
-    { key: 'id', label: '', width: '44px', render: (_v, row) => (
+    { key: 'id', label: '', width: '44px', sortable: false, render: (_v, row) => (
       <button
         type="button"
         onClick={e => { e.stopPropagation(); setExpandedGraphId(expandedGraphId === row.id ? null : row.id) }}
@@ -272,36 +274,25 @@ export function WhatIfPage() {
           {ACTIONS.map(a => {
             const sel = action === a.key
             return (
-              <button
-                key={a.key}
-                type="button"
-                aria-pressed={sel}
-                onClick={() => setAction(a.key)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px',
-                  borderRadius: 20, border: sel ? `2px solid ${a.fg}` : '2px solid var(--color-border)',
-                  background: sel ? a.bg : colors.white, color: sel ? a.fg : 'var(--color-slate)',
-                  fontSize: 'var(--font-size-body)', fontWeight: 600, cursor: 'pointer', transition: 'all 100ms',
-                }}
-              >
+              <Chip pressed={sel} key={a.key} onClick={() => setAction(a.key)} accent={a.fg} tint={a.bg}>
                 <a.icon size={13} />
                 {t(a.labelKey)}
-              </button>
+              </Chip>
             )
           })}
         </div>
 
         {/* Depth */}
-        <select
+        <Select
           aria-label={t('pages.whatIf.depth')}
           value={depth}
           onChange={e => setDepth(Number(e.target.value))}
-          style={{ width: 'auto', padding: '7px 12px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', cursor: 'pointer' }}
+          style={{ width: 'auto', cursor: 'pointer' }}
         >
           {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
             <option key={n} value={n}>{t('pages.whatIf.depth')}: {n}</option>
           ))}
-        </select>
+        </Select>
 
         {/* Analyze button */}
         <button
@@ -389,23 +380,17 @@ export function WhatIfPage() {
             </div>
           </div>
 
-          {/* Tabs */}
-          <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border)' }}>
-            {(['cis', 'services', 'teams'] as const).map(tab => {
-              const sel = resultTab === tab
-              const count = tab === 'cis' ? result.totalImpacted : tab === 'services' ? result.impactedServices.length : result.impactedTeams.length
-              const label = tab === 'cis' ? t('pages.whatIf.tabCIs') : tab === 'services' ? t('pages.whatIf.tabServices') : t('pages.whatIf.tabTeams')
-              return (
-                <button key={tab} type="button" onClick={() => setResultTab(tab)} style={{
-                  padding: '10px 14px', border: 'none', borderBottom: sel ? '2px solid var(--color-brand)' : '2px solid transparent',
-                  marginBottom: -1, background: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer',
-                  color: sel ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: sel ? 600 : 400,
-                }}>
-                  {label} ({count})
-                </button>
-              )
-            })}
-          </div>
+          <Tabs<'cis' | 'services' | 'teams'>
+            ariaLabel={t('pages.whatIf.tabsLabel')}
+            items={[
+              { key: 'cis', label: t('pages.whatIf.tabCIs'), badge: result.totalImpacted },
+              { key: 'services', label: t('pages.whatIf.tabServices'), badge: result.impactedServices.length },
+              { key: 'teams', label: t('pages.whatIf.tabTeams'), badge: result.impactedTeams.length },
+            ]}
+            value={resultTab}
+            onChange={setResultTab}
+            style={{ marginBottom: 0 }}
+          />
 
           {/* Tab: CI Impattati */}
           {resultTab === 'cis' && (() => {

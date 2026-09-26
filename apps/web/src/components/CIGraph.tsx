@@ -1,3 +1,4 @@
+import { Select } from '@/components/ui/FormControls'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -316,16 +317,16 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
         {showBlastRadius && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 16 }}>
             <label htmlFor={ids.depth} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{t('components.ciGraph.maxDepth')}</label>
-            <select
+            <Select
               id={ids.depth}
               value={maxDepth}
               onChange={e => setMaxDepth(Number(e.target.value))}
-              style={{ fontSize: 'var(--font-size-body)', padding: '2px 4px', borderRadius: 4, border: `1px solid ${palette.neutral.borderStrong}`, cursor: 'pointer' }}
+              style={{ cursor: 'pointer' }}
             >
               {[1, 2, 3, 4, 5].map(d => (
                 <option key={d} value={d}>{d}</option>
               ))}
-            </select>
+            </Select>
           </div>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 16 }}>

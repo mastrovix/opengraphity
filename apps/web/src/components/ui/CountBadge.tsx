@@ -1,3 +1,4 @@
+import { Pill } from '@/components/ui/Pill'
 import { palette } from '@/lib/tokens'
 
 interface CountBadgeProps {
@@ -6,21 +7,8 @@ interface CountBadgeProps {
 
 export function CountBadge({ count }: CountBadgeProps) {
   return (
-    <span style={{
-      display:         'inline-flex',
-      alignItems:      'center',
-      justifyContent:  'center',
-      fontSize:        11,
-      fontWeight:      600,
-      padding:         '1px 7px',
-      borderRadius:    100,
-      backgroundColor: palette.neutral.surface2,
-      color:           'var(--color-slate-light)',
-      marginLeft:      6,
-      verticalAlign:   'middle',
-      lineHeight:      1,
-    }}>
+    <Pill bg={palette.neutral.surface2} color="var(--color-slate-light)" radius={100} style={{ justifyContent:  'center', fontSize:        11, fontWeight:      600, marginLeft:      6, verticalAlign:   'middle' }}>
       {count}
-    </span>
+    </Pill>
   )
 }

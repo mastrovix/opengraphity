@@ -30,7 +30,7 @@ export function ImpactedServicesSection({ services }: { services: ImpactedServic
             <Link
               to={servicePath(s.id)}
               title={t('pages.incidents.impactedServices.openService', { name: s.name })}
-              style={{ color: colors.brand, textDecoration: 'none', fontWeight: 600 }}
+              style={{ color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, fontWeight: 600 }}
             >
               {s.name}
             </Link>

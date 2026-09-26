@@ -111,7 +111,7 @@ describe('CIHealthPage', () => {
     const rows = bodyRows()
     expect(rows).toHaveLength(3)
     expect(screen.getByText('3 CIs with health data')).toBeInTheDocument()
-    expect(within(rows[0]!).getByRole('link', { name: 'db-01' })).toHaveAttribute('href', '/ci/server/ci-1')
+    expect(within(rows[0]!).getByText('db-01')).toBeInTheDocument()
     expect(within(rows[0]!).getByText('Down')).toBeInTheDocument()
     expect(within(rows[0]!).getByText('for 42 min')).toBeInTheDocument()
     expect(within(rows[0]!).getByRole('link', { name: 'View the 2 active alarms of db-01' })).toHaveAttribute('href', '/events?ciId=ci-1')
@@ -148,12 +148,11 @@ describe('CIHealthPage', () => {
     expect(screen.getByRole('button', { name: 'Refresh' })).toBeInTheDocument()
   })
 
-  it('accessibilità: la riga non è nel tab order (il bersaglio è il Link), i tooltip di "da N min", impatto e origine sono anche descrizioni', async () => {
+  it('accessibilità: la riga è nel tab order, come in ogni lista (26 Sep 2026: il nome non è più un link), i tooltip di "da N min", impatto e origine sono anche descrizioni', async () => {
     renderPage('operator')
     await screen.findByRole('heading', { name: 'CI health' })
     const first = bodyRows()[0]!
-    expect(first).not.toHaveAttribute('tabindex')
-    expect(first).not.toHaveAttribute('role')
+    expect(first).toHaveAttribute('tabindex', '0')
     const impact = within(first).getByText('7 dependents')
     expect(impact).toHaveAccessibleDescription('At least 5 CIs depend on this one: a failure here spreads')
     expect(within(first).getByText('Monitoring')).toHaveAccessibleDescription(/Health computed from the alarms/)

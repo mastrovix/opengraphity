@@ -15,6 +15,7 @@
  *  - una chiave rimasta fuori vocabolario dopo una rinomina si mostra in una
  *    sezione a parte, perché è così che si capisce cosa è successo.
  */
+import { Loading } from '@/components/ui/Loading'
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
@@ -26,7 +27,7 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { PageTitle } from '@/components/PageTitle'
 import { Button } from '@/components/Button'
 import { Select, Input } from '@/components/ui/FormControls'
-import { inputS, labelS } from '@/components/ui/styles'
+import { labelS } from '@/components/ui/styles'
 import { GET_DOMAIN_MATRICES, GET_PRE_APPROVED_CHANGE_TYPES, GET_RISK_BAND_THRESHOLDS, GET_CHANGE_ENVIRONMENT_WEIGHT } from '@/graphql/queries'
 import { UPDATE_DOMAIN_MATRIX, UPDATE_PRE_APPROVED_CHANGE_TYPES, UPDATE_RISK_BAND_THRESHOLDS, UPDATE_CHANGE_ENVIRONMENT_WEIGHT } from '@/graphql/mutations'
 import { colors } from '@/lib/tokens'
@@ -142,8 +143,7 @@ function MatrixCard({ matrix }: { matrix: DomainMatrix }) {
     if (!cell) return null
     return (
       <Select
-        aria-label={ariaLabel}
-        style={{ ...inputS, minWidth: 130 }}
+        aria-label={ariaLabel} style={{ minWidth: 130 }}
         value={valueOf(cell)}
         onChange={(e) => setDraft((d) => ({ ...d, [cell.key]: e.target.value }))}
       >
@@ -295,7 +295,7 @@ function PreApprovedChangeTypesCard() {
       <p style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight, marginTop: 0 }}>
         {t('pages.domainMatrices.preApproved.help')}
       </p>
-      {loading && !data && <p>{t('common.loading')}</p>}
+      {loading && !data && <Loading />}
       {error && <p style={{ color: 'var(--color-danger-text)' }}>{error.message}</p>}
       {saved && (
         <>
@@ -374,7 +374,7 @@ function RiskBandsCard() {
       <p style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight, marginTop: 0 }}>
         {t('pages.domainMatrices.riskBands.help')}
       </p>
-      {loading && !data && <p>{t('common.loading')}</p>}
+      {loading && !data && <Loading />}
       {error && <p style={{ color: 'var(--color-danger-text)' }}>{error.message}</p>}
       {saved && (
         <>
@@ -458,7 +458,7 @@ function EnvironmentWeightCard() {
       <p style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight, marginTop: 0 }}>
         {t('pages.domainMatrices.environmentWeight.help', { max: MAX_ENVIRONMENT_WEIGHT })}
       </p>
-      {loading && !data && <p>{t('common.loading')}</p>}
+      {loading && !data && <Loading />}
       {error && <p style={{ color: 'var(--color-danger-text)' }}>{error.message}</p>}
       {saved && (
         <>
@@ -504,7 +504,7 @@ export function DomainMatricesPage() {
           {t('pages.domainMatrices.subtitle')}
         </p>
       </div>
-      {loading && !data && <p>{t('common.loading')}</p>}
+      {loading && !data && <Loading />}
       {error && <p style={{ color: 'var(--color-danger-text)' }}>{error.message}</p>}
       {data?.domainMatrices.map((m) => <MatrixCard key={m.kind} matrix={m} />)}
       <RiskBandsCard />

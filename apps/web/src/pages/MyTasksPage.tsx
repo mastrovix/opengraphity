@@ -1,3 +1,4 @@
+import { Button } from '@/components/Button'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -161,28 +162,13 @@ function TaskRow({ task, onClaim, claimLoading }: TaskRowProps) {
         {t(stateColor.labelKey)}
       </Pill>
       {onClaim && (
-        <button
-          type="button"
+        <Button variant="primary"
           disabled={claimLoading}
           onClick={onClaim}
-          style={{
-            display:         'flex',
-            alignItems:      'center',
-            gap:             4,
-            padding:         '6px 12px',
-            borderRadius:    6,
-            border:          'none',
-            backgroundColor: 'var(--color-brand)',
-            color:           colors.white,
-            fontSize:        'var(--font-size-label)',
-            fontWeight:      600,
-            cursor:          claimLoading ? 'not-allowed' : 'pointer',
-            opacity:         claimLoading ? 0.5 : 1,
-            flexShrink:      0,
-          }}
+          style={{ flexShrink:      0 }}
         >
           <UserPlus size={12} /> {t('pages.myTasks.takeIt')}
-        </button>
+        </Button>
       )}
     </div>
   )
@@ -227,7 +213,7 @@ function IntestazioneDelTicket({ gruppo, children }: {
     <div style={{ marginBottom: 10 }}>
       <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-slate)', padding: '6px 0 2px' }}>
         {gruppo.strada
-          ? <Link to={gruppo.strada} style={{ color: 'inherit', textDecoration: 'none' }}>{gruppo.entityNumber}</Link>
+          ? <Link to={gruppo.strada} style={{ color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{gruppo.entityNumber}</Link>
           : gruppo.entityNumber}
       </div>
       {children}

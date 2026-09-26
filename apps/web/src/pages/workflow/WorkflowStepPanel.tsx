@@ -1,3 +1,6 @@
+import { Toggle } from '@/components/ui/Toggle'
+import { Button } from '@/components/Button'
+import { Tabs } from '@/components/ui/Tabs'
 import { useState, useMemo } from 'react'
 import { useConfirm } from '@/hooks/useConfirm'
 import { useQuery } from '@apollo/client/react'
@@ -13,8 +16,6 @@ import {
 import type { WFStep, NotifyRuleAction, ConditionRow, AnyAction } from './workflow-types'
 import {
   panelStyle,
-  panelInputStyle,
-  saveButtonStyle,
   PanelHeader,
   PanelField,
   ActionBadge,
@@ -48,10 +49,6 @@ const NR_SEVERITIES = ['info', 'success', 'warning', 'error'] as const
  * un valore così non viene più ignorato: fa fallire il job di notifica a ogni
  * ingresso nel passo. Il server lo rifiuta in scrittura (`assertStepActions`).
  */
-
-// ── inputStyle alias ─────────────────────────────────────────────────────────
-
-const inputStyle = panelInputStyle
 
 // ── Adapter di vocabolario (F-20) ─────────────────────────────────────────────
 //
@@ -396,25 +393,6 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
     )
   }
 
-  const tabStyle = (active: boolean): React.CSSProperties => ({
-    padding:           '6px 8px',
-    whiteSpace:        'nowrap' as const,
-    fontSize:          12,
-    fontWeight:        active ? 700 : 400,
-    color:             active ? ACCENT_COLOR : 'var(--color-slate-light)',
-    cursor:            'pointer',
-    background:        'none',
-    border:            'none',
-    borderBottomWidth: 2,
-    borderBottomStyle: 'solid' as const,
-    borderBottomColor: active ? ACCENT_COLOR : 'transparent',
-    transition:        'color 150ms',
-  })
-
-  const cancelBtnStyle: React.CSSProperties = {
-    flex: 1, padding: '6px 0', backgroundColor: colors.slateBg, border: '1px solid var(--color-border)',
-    borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer', color: 'var(--color-slate)',
-  }
 
   // ── Editor di una bozza (tipo + parametri + condizioni), condiviso tra add/edit ──
   /**
@@ -439,7 +417,6 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
         <Select
           value={draft.type}
           onChange={(e) => setDraft((d) => ({ ...d, type: e.target.value, params: {} }))}
-          style={inputStyle}
         >
           {/*
             «Crea un compito» solo fra le azioni d'INGRESSO: il motore esegue
@@ -539,8 +516,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
                   </div>
                   {renderDraftEditor(editingAction, (updater) => setEditingAction((prev) => prev ? { ...prev, ...updater(prev) } : null), forKey)}
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <button
-                      type="button"
+                    <Button variant="primary" size="xs"
                       disabled={blocked}
                       onClick={() => {
                         const updated = draftToAction(editingAction)
@@ -548,13 +524,13 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
                         else                    setEditableExitActions((prev)  => prev.map((x, idx) => idx === i ? updated : x))
                         setEditingAction(null)
                       }}
-                      style={{ ...saveButtonStyle(blocked), flex: 1, padding: '6px 0' }}
+                      style={{ flex: 1 }}
                     >
                       {t('pages.workflowStep.update')}
-                    </button>
-                    <button type="button" onClick={() => setEditingAction(null)} style={cancelBtnStyle}>
+                    </Button>
+                    <Button variant="secondary" size="xs" onClick={() => setEditingAction(null)} style={{ flex: 1 }}>
                       {t('common.cancel')}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               )
@@ -569,12 +545,12 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
           <div style={{ border: '1px solid var(--color-border)', borderRadius: 6, padding: 10, display: 'flex', flexDirection: 'column', gap: 8, backgroundColor: 'var(--color-slate-bg)' }}>
             {renderDraftEditor(newAction, (updater) => setNewAction((d) => updater(d)), forKey)}
             <div style={{ display: 'flex', gap: 6 }}>
-              <button type="button" disabled={blocked} onClick={() => handleConfirmAdd(forKey)} style={{ ...saveButtonStyle(blocked), flex: 1, padding: '6px 0' }}>
+              <Button variant="primary" size="xs" disabled={blocked} onClick={() => handleConfirmAdd(forKey)} style={{ flex: 1 }}>
                 {t('common.confirm')}
-              </button>
-              <button type="button" onClick={() => { setAddingFor(null); setNewAction(emptyDraft()) }} style={cancelBtnStyle}>
+              </Button>
+              <Button variant="secondary" size="xs" onClick={() => { setAddingFor(null); setNewAction(emptyDraft()) }} style={{ flex: 1 }}>
                 {t('common.cancel')}
-              </button>
+              </Button>
             </div>
           </div>
         )
@@ -618,12 +594,18 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
       )}
 
       {/* Tabs */}
-      <div role="tablist" style={{ display: 'flex', borderBottom: '1px solid var(--color-border)', marginBottom: 4, overflowX: 'auto' }}>
-        <button type="button" role="tab" aria-selected={activeTab === 'props'}    style={tabStyle(activeTab === 'props')}    onClick={() => setActiveTab('props')}>{t('pages.workflowStep.tabProps')}</button>
-        <button type="button" role="tab" aria-selected={activeTab === 'metadata'} style={tabStyle(activeTab === 'metadata')} onClick={() => setActiveTab('metadata')}>{t('pages.workflowStep.tabMetadata')}</button>
-        <button type="button" role="tab" aria-selected={activeTab === 'notify'}   style={tabStyle(activeTab === 'notify')}   onClick={() => setActiveTab('notify')}>{t('pages.workflowStep.tabNotify')}</button>
-        <button type="button" role="tab" aria-selected={activeTab === 'deadline'} style={tabStyle(activeTab === 'deadline')} onClick={() => setActiveTab('deadline')}>{t('pages.workflowStep.tabDeadline')}</button>
-      </div>
+      <Tabs<'props' | 'metadata' | 'notify' | 'deadline'>
+        ariaLabel={t('pages.workflowStep.tabsLabel')}
+        items={[
+          { key: 'props', label: t('pages.workflowStep.tabProps') },
+          { key: 'metadata', label: t('pages.workflowStep.tabMetadata') },
+          { key: 'notify', label: t('pages.workflowStep.tabNotify') },
+          { key: 'deadline', label: t('pages.workflowStep.tabDeadline') },
+        ]}
+        value={activeTab}
+        onChange={setActiveTab}
+        style={{ marginBottom: 4 }}
+      />
 
       {activeTab === 'deadline' && (initialDeadline.error ? (
         <div role="alert" style={{ padding: '8px 10px', borderRadius: 6, background: 'var(--color-danger-bg)', border: '1px solid var(--color-danger)', color: 'var(--color-danger)', fontSize: 'var(--font-size-label)', lineHeight: 1.4 }}>
@@ -687,7 +669,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
               arriva da @opengraphity/types, come per lo scopo: la stessa lista che
               il server valida in scrittura. */}
           <PanelField label={t('workflow.category')}>
-            <Select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>
+            <Select value={category} onChange={(e) => setCategory(e.target.value)}>
               <option value="">{t('workflow.categoryNone')}</option>
               {WORKFLOW_STEP_CATEGORIES.map((c) => (
                 <option key={c} value={c}>{t(`workflow.categoryOption.${c}`)}</option>
@@ -702,7 +684,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
               scrittura. «Nessuno» è una scelta legittima — nessuno scopo viene
               indovinato dal nome del passo. */}
           <PanelField label={t('workflow.purpose')}>
-            <Select value={purpose} onChange={(e) => setPurpose(e.target.value)} style={inputStyle}>
+            <Select value={purpose} onChange={(e) => setPurpose(e.target.value)}>
               <option value="">{t('workflow.purposeNone')}</option>
               {WORKFLOW_STEP_PURPOSES.map((p) => (
                 <option key={p} value={p}>{t(`workflow.purposeOption.${p}`)}</option>
@@ -718,7 +700,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
       {activeTab === 'props' && (
         <>
           <PanelField label={t('workflow.panel.label')}>
-            <Input value={label} onChange={(e) => setLabel(e.target.value)} style={inputStyle} aria-label={t('workflow.panel.label')} />
+            <Input value={label} onChange={(e) => setLabel(e.target.value)} aria-label={t('workflow.panel.label')} />
             {/* V-5: cambiare l'etichetta mette da parte le traduzioni spedite; rimettendola com'era tornano. */}
             {label !== step.label && (step.labels ?? []).length > 0 && (
               <span data-testid="step-label-translations-hint" style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)', lineHeight: 1.4 }}>
@@ -729,8 +711,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
 
           {isTimer && (
             <PanelField label={t('workflow.panel.timerDelay')}>
-              <Input type="number" min={1} step={1} value={timerDelay} onChange={(e) => setTimerDelay(e.target.value)}
-                style={inputStyle} aria-label={t('workflow.panel.timerDelay')} aria-invalid={!timerDelayValid} />
+              <Input type="number" min={1} step={1} value={timerDelay} onChange={(e) => setTimerDelay(e.target.value)} aria-label={t('workflow.panel.timerDelay')} aria-invalid={!timerDelayValid} />
               {!timerDelayValid && (
                 <span role="alert" style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-danger)', lineHeight: 1.4 }}>
                   {t('workflow.panel.timerDelayInvalid')}
@@ -769,25 +750,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
         <>
           <PanelField label={t('workflow.panel.notifica_all_ingresso')}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={notifyEnabled}
-                aria-label={t('pages.workflowStep.notifyOnEnter')}
-                onClick={() => setNotifyEnabled((p) => !p)}
-                style={{
-                  width: 36, height: 20, borderRadius: 10, cursor: 'pointer',
-                  border: 'none', padding: 0,
-                  backgroundColor: notifyEnabled ? ACCENT_COLOR : palette.neutral.borderStrong,
-                  position: 'relative', transition: 'background 200ms', flexShrink: 0,
-                }}
-              >
-                <span style={{
-                  position: 'absolute', top: 2, left: notifyEnabled ? 18 : 2,
-                  width: 16, height: 16, borderRadius: '50%', background: colors.white,
-                  transition: 'left 200ms', boxShadow: '0 1px 3px var(--color-black-a20)',
-                }} />
-              </button>
+              <Toggle checked={notifyEnabled} onChange={(v) => setNotifyEnabled(v)} label={t('pages.workflowStep.notifyOnEnter')} />
               <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
                 {t(notifyEnabled ? 'common.enabled' : 'common.disabled')}
               </span>
@@ -802,7 +765,6 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
                   onChange={(e) => setNotifyTitleKey(e.target.value)}
                   placeholder={t('workflow.panel.titleKeyPlaceholder')}
                   aria-invalid={notifyTitleMissing}
-                  style={inputStyle}
                 />
                 {notifyTitleMissing && (
                   <p role="alert" style={{ margin: '4px 0 0', fontSize: 'var(--font-size-label)', color: 'var(--color-danger)' }}>
@@ -812,7 +774,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
               </PanelField>
 
               <PanelField label={t('workflow.panel.severit')}>
-                <Select value={notifySeverity} onChange={(e) => setNotifySeverity(e.target.value)} style={inputStyle}>
+                <Select value={notifySeverity} onChange={(e) => setNotifySeverity(e.target.value)}>
                   {NR_SEVERITIES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </Select>
               </PanelField>
@@ -834,7 +796,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
               </PanelField>
 
               <PanelField label={t('workflow.panel.destinatari')}>
-                <Select value={notifyTarget} onChange={(e) => setNotifyTarget(e.target.value)} style={inputStyle}>
+                <Select value={notifyTarget} onChange={(e) => setNotifyTarget(e.target.value)}>
                   {withCurrent(targetOptions, notifyTarget).map(({ value, label }) => (
                     <option key={value} value={value}>{label}</option>
                   ))}
@@ -845,14 +807,13 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
         </>
       )}
 
-      <button
-        type="button"
+      <Button
         onClick={handleSave}
         disabled={saveDisabled}
-        style={saveButtonStyle(saveDisabled)}
+        style={{ width: '100%' }}
       >
         {t('common.save')}
-      </button>
+      </Button>
 
       {/*
         L'eliminazione di uno step con dei ticket sopra li lascia senza step
@@ -875,21 +836,16 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
           </div>
         )
         : (
-          <button
-            type="button"
+          <Button variant="danger"
             onClick={() => {
               void confirm({ title: t('workflow.panel.deleteStepTitle', { step: step.label || step.name }), body: t('workflow.panel.deleteStepBody'), danger: true }).then((ok) => {
                 if (ok) onDelete(step.name)
               })
             }}
-            style={{
-              marginTop: 8, width: '100%', padding: '8px 12px', borderRadius: 6,
-              border: '1px solid var(--color-danger)', background: colors.white,
-              color: 'var(--color-danger)', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600,
-            }}
+            style={{ marginTop: 8, width: '100%' }}
           >
             {t('pages.workflowStep.deleteStep')}
-          </button>
+          </Button>
         )
       )}
     </div>

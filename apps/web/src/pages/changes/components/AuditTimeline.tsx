@@ -2,6 +2,9 @@
  * Filterable timeline view of the change audit trail.
  * Local state: category filter, expanded long entries, "show all" toggle.
  */
+import { Pill } from '@/components/ui/Pill'
+import { Select } from '@/components/ui/FormControls'
+import { Button } from '@/components/Button'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -125,13 +128,13 @@ export function AuditTimeline({ audit }: { audit: ChangeAuditEntryData[] }) {
   return (
     <SectionCard title={t('pages.auditTimeline.title')} collapsible defaultOpen={false} count={audit.length}>
       <div style={{ marginBottom: 12 }}>
-        <select aria-label={t('pages.auditTimeline.filterLabel')} value={filter} onChange={(e) => { setFilter(e.target.value as AuditCategory | 'all'); setShowAll(false) }} style={{ padding: '5px 10px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)' }}>
+        <Select aria-label={t('pages.auditTimeline.filterLabel')} value={filter} onChange={(e) => { setFilter(e.target.value as AuditCategory | 'all'); setShowAll(false) }}>
           <option value="all">{t('common.all')} ({audit.length})</option>
           {(Object.keys(AUDIT_CAT_KEY) as AuditCategory[]).map(cat => {
             const n = audit.filter(e => categorizeAction(e.action) === cat).length
             return n > 0 ? <option key={cat} value={cat}>{t(AUDIT_CAT_KEY[cat])} ({n})</option> : null
           })}
-        </select>
+        </Select>
       </div>
       {filtered.length === 0 && <p style={{ color: 'var(--color-slate-light)', margin: 0 }}>{t('pages.auditTimeline.empty')}</p>}
       <div>
@@ -149,18 +152,18 @@ export function AuditTimeline({ audit }: { audit: ChangeAuditEntryData[] }) {
                 <div style={{ padding: '6px 10px', background: 'var(--color-slate-bg)', borderRadius: 6, border: '1px solid var(--color-border-light)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
                     <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>{fmtTS(e.timestamp)}</span>
-                    <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 5px', borderRadius: 4, backgroundColor: bg, color }}>{actionLabel(t, labelFor, e.action, stepOf(e))}</span>
+                    <Pill bg={bg} color={color} radius={4} style={{ fontSize: 'var(--font-size-label)', fontWeight: 600 }}>{actionLabel(t, labelFor, e.action, stepOf(e))}</Pill>
                     {e.actor && <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>{e.actor.name}</span>}
                   </div>
                   {e.detail && <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-dark)', ...(isLong && !isExp ? { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } : {}) }}>{detailText(t, e)}</div>}
-                  {isLong && <button type="button" onClick={() => setExpandedIdx(prev => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n })} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-label)', color: 'var(--color-brand)', marginTop: 2 }}>{t(isExp ? 'common.showLess' : 'common.showAll')}</button>}
+                  {isLong && <button type="button" onClick={() => setExpandedIdx(prev => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n })} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-label)', color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, marginTop: 2 }}>{t(isExp ? 'common.showLess' : 'common.showAll')}</button>}
                 </div>
               </div>
             </div>
           )
         })}
       </div>
-      {filtered.length > 20 && !showAll && <button type="button" onClick={() => setShowAll(true)} style={{ marginTop: 6, background: 'none', border: '1px solid var(--color-border)', borderRadius: 6, padding: '5px 12px', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-brand)' }}>{t('common.showAllCount', { count: filtered.length })}</button>}
+      {filtered.length > 20 && !showAll && <Button variant="secondary" onClick={() => setShowAll(true)} style={{ marginTop: 6 }}>{t('common.showAllCount', { count: filtered.length })}</Button>}
     </SectionCard>
   )
 }

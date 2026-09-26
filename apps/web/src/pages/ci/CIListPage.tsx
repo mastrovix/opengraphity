@@ -1,3 +1,4 @@
+import { Loading } from '@/components/ui/Loading'
 import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
@@ -206,7 +207,7 @@ export function CIListPage() {
   ]
 
   if (metamodelLoading) {
-    return <div style={{ padding: 40, color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</div>
+    return <Loading padded />
   }
   if (metamodelError) {
     return <div style={{ padding: 40 }}><QueryError message={metamodelError.message} /></div>

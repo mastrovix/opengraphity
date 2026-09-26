@@ -11,13 +11,15 @@
  * cliente): nessuna lista copiata nel web. Una regola che cita un tipo tolto
  * dopo il salvataggio mostra il problema invece di sembrare a posto.
  */
+import { Loading } from '@/components/ui/Loading'
+import { Chip } from '@/components/ui/Chip'
+import { BackLink } from '@/components/ui/BackLink'
 import { useState } from 'react'
 import { showError } from '@/lib/showError'
-import { Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { AlertTriangle, ArrowLeft, Plus, Save, ShieldAlert, X } from 'lucide-react'
+import { AlertTriangle, Plus, Save, ShieldAlert, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
@@ -124,19 +126,9 @@ function Chips({ values, selected, labelOf, onChange, label }: {
         const on = selected.includes(v)
         const orphan = orphans.includes(v)
         return (
-          <button
-            key={v} type="button" aria-pressed={on}
-            title={orphan ? t('pages.anomalyRules.orphanValue', { value: v }) : undefined}
-            onClick={() => onChange(on ? selected.filter((x) => x !== v) : [...selected, v])}
-            style={{
-              font: 'inherit', fontSize: 'var(--font-size-body)', cursor: 'pointer', padding: '4px 10px', borderRadius: 999,
-              border: `1px solid ${orphan ? 'var(--color-danger-text)' : on ? colors.brand : colors.border}`,
-              background: orphan ? 'var(--color-danger-bg)' : on ? 'var(--color-brand-light)' : 'var(--surface)',
-              color: orphan ? 'var(--color-danger-text)' : on ? colors.brandHover : colors.slate, fontWeight: on ? 600 : 400,
-            }}
-          >
+          <Chip pressed={on} key={v} title={orphan ? t('pages.anomalyRules.orphanValue', { value: v }) : undefined} onClick={() => onChange(on ? selected.filter((x) => x !== v) : [...selected, v])} accent={orphan ? 'var(--color-danger-text)' : undefined} tint={orphan ? 'var(--color-danger-bg)' : undefined} dashed={orphan}>
             {orphan ? t('pages.anomalyRules.orphanChip', { value: v }) : labelOf(v)}
-          </button>
+          </Chip>
         )
       })}
     </div>
@@ -349,15 +341,13 @@ export function AnomalyRulesPage() {
   return (
     <PageContainer style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div>
-        <Link to="/anomalies" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-size-label)', color: colors.brand, textDecoration: 'none', marginBottom: 8 }}>
-          <ArrowLeft size={13} aria-hidden="true" /> {t('pages.anomalyRules.backToAnomalies')}
-        </Link>
+        <BackLink to="/anomalies">{t('pages.anomalyRules.backToAnomalies')}</BackLink>
         <PageTitle icon={<ShieldAlert size={22} color="var(--color-icon-accent)" aria-hidden="true" />}>{t('pages.anomalyRules.title')}</PageTitle>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0, maxWidth: '80ch' }}>
           {t('pages.anomalyRules.subtitle')}
         </p>
       </div>
-      {loading && !data && <p>{t('common.loading')}</p>}
+      {loading && !data && <Loading />}
       {error && <p role="alert" style={{ color: 'var(--color-danger-text)' }}>{error.message}</p>}
       {data?.anomalyRules.map((r) => <RuleCard key={r.ruleKey} rule={r} options={data.anomalyRuleOptions} />)}
     </PageContainer>

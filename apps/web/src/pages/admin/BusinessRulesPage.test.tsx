@@ -92,7 +92,7 @@ async function overwrite(user: User, input: HTMLElement, value: string) {
 
 async function openNew(user: User) {
   await user.click(screen.getByRole('button', { name: 'New rule' }))
-  expect(inDialog().getByText('New rule', { selector: 'span' })).toBeInTheDocument()
+  expect(inDialog().getByRole('heading', { name: 'New rule' })).toBeInTheDocument()
 }
 
 async function openEdit(user: User, name = 'Escalate P1') {

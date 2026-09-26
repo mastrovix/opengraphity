@@ -2,6 +2,7 @@
  * Read-only modal showing the assessment responses for a single role
  * (functional / technical) on a single CI.
  */
+import { Pill } from '@/components/ui/Pill'
 import { useTranslation } from 'react-i18next'
 import type { AssessmentTaskData } from '@/types/change'
 import { ModalOverlay } from './shared'
@@ -27,7 +28,7 @@ export function AssessmentModal({ task, ciName, roleLabel, bothAssessDone, onClo
             <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid var(--color-border-light)' }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 4 }}>
                 <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', flex: 1 }}>{r.question.text}</span>
-                <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)', whiteSpace: 'nowrap', flexShrink: 0 }}>W:{r.selectedOption.score}</span>
+                <Pill bg={colors.slateBg} color="var(--color-slate)" radius={4} style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, flexShrink: 0 }}>W:{r.selectedOption.score}</Pill>
               </div>
               <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', fontWeight: 500 }}>
                 {r.selectedOption.label} ({r.selectedOption.score})

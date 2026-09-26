@@ -8,7 +8,18 @@ import { keyActivate } from '@/lib/a11y'
 export interface ColumnDef<T> {
   key:      keyof T
   label:    string
+  /**
+   * Every column sorts (26 Sep 2026, the owner: «le colonne dovrebbero essere
+   * sempre tutte ordinabili»). `false` only for a column that holds nothing
+   * but buttons (edit, delete): `__tests__/sortableColumns.test.ts` keeps the list.
+   */
   sortable?: boolean
+  /**
+   * What the column sorts on, when its raw value is not it: a label shown in
+   * place of a code, a name inside an object, a count of a list. Client-side
+   * sorting only: a server-sorted table sends the column's key.
+   */
+  sortValue?: (row: T) => unknown
   width?:   string
   render?:  (value: unknown, row: T) => React.ReactNode
   /**
@@ -55,10 +66,14 @@ const STICKY_END_CELL: React.CSSProperties = {
   boxShadow:       'inset 1px 0 0 var(--color-border)',
 }
 
-/** Valore su cui si ordina: per un oggetto con `name` (CI, sorgente, squadra) è il nome, non `[object Object]`. */
+/**
+ * Valore su cui si ordina: per un oggetto con `name` (CI, sorgente, squadra) è
+ * il nome, non `[object Object]`; per una lista, quanti elementi ha.
+ */
 function getSortValue(row: object, key: string): unknown {
   const v = getRawValue(row, key)
-  if (v && typeof v === 'object' && !Array.isArray(v) && 'name' in v) return (v as { name: string }).name
+  if (Array.isArray(v)) return v.length
+  if (v && typeof v === 'object' && 'name' in v) return (v as { name: string }).name
   return v
 }
 
@@ -76,11 +91,12 @@ function rankOf(value: unknown, scale?: readonly string[]): number | null {
  * colonna quando quella colonna e una scala. Non muta `rows`.
  */
 export function sortRowsBy<T extends object>(
-  rows: T[], key: string, dir: 'asc' | 'desc', rank?: readonly string[],
+  rows: T[], key: string, dir: 'asc' | 'desc', rank?: readonly string[], sortValue?: (row: T) => unknown,
 ): T[] {
+  const valueOf = (row: T) => (sortValue ? sortValue(row) : getSortValue(row, key))
   return [...rows].sort((a, b) => {
-    const av = getSortValue(a, key)
-    const bv = getSortValue(b, key)
+    const av = valueOf(a)
+    const bv = valueOf(b)
     if (av == null) return 1
     if (bv == null) return -1
     const ar = rankOf(av, rank)
@@ -200,6 +216,7 @@ export function SortableFilterTable<T extends object>({
     : sortRowsBy(
         data, String(localSortKey), localSortDir,
         columns.find((c) => c.key === localSortKey)?.rank,
+        columns.find((c) => c.key === localSortKey)?.sortValue,
       )
 
   const rowIds = selectable
@@ -252,7 +269,7 @@ export function SortableFilterTable<T extends object>({
                 <th
                   key={String(col.key)}
                   scope="col"
-                  aria-sort={col.sortable
+                  aria-sort={col.sortable !== false
                     ? (activeSortKey === String(col.key)
                         ? activeSortDir === 'asc' ? 'ascending' : 'descending'
                         : 'none')
@@ -262,7 +279,7 @@ export function SortableFilterTable<T extends object>({
                   style={{ ...thStyle, ...stickyCell(col.key) }}
                 >
                   {/* Sortable headers are real buttons (keyboard + screen reader); static ones stay plain text (E-14). */}
-                  {col.sortable ? (
+                  {col.sortable !== false ? (
                     <button
                       type="button"
                       onClick={() => handleSort(col.key)}
@@ -372,7 +389,7 @@ export function SortableFilterTable<T extends object>({
                       interna della prima cella (`.sft-row`, index.css), che
                       nel calcolo della tabella non occupa spazio.
                     */
-                    className="sft-row"
+                    className={onRowClick ? 'sft-row row-opens' : 'sft-row'}
                     style={{
                       borderBottom:    expandedContent ? 'none' : `1px solid ${palette.neutral.borderLight}`,
                       cursor:          onRowClick ? 'pointer' : 'default',

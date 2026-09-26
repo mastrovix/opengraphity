@@ -113,7 +113,7 @@ async function overwrite(user: User, input: HTMLElement, value: string) {
 
 async function openNew(user: User) {
   await user.click(screen.getByRole('button', { name: 'New policy' }))
-  expect(inDialog().getByText('New policy', { selector: 'span' })).toBeInTheDocument()
+  expect(inDialog().getByRole('heading', { name: 'New policy' })).toBeInTheDocument()
 }
 
 // ── The list ─────────────────────────────────────────────────────────────────

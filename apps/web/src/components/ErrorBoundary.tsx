@@ -1,8 +1,8 @@
+import { Button } from '@/components/Button'
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import i18n from '@/i18n/i18n'
 import { clientLogger } from '../lib/clientLogger'
 import { errorMessage } from '@/lib/showError'
-import { colors } from '@/lib/tokens'
 
 interface Props {
   children:  ReactNode
@@ -44,21 +44,12 @@ export class ErrorBoundary extends Component<Props, State> {
           <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>
             {this.state.message}
           </p>
-          <button
-            type="button"
+          <Button variant="primary"
             onClick={() => this.setState({ hasError: false })}
-            style={{
-              marginTop:    16,
-              padding:      '8px 16px',
-              background:   'var(--color-brand)',
-              color:        colors.white,
-              border:       'none',
-              borderRadius: 6,
-              cursor:       'pointer',
-            }}
+            style={{ marginTop:    16 }}
           >
             {i18n.t('errorBoundary.retry')}
-          </button>
+          </Button>
         </div>
       )
     }

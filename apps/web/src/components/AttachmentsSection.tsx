@@ -151,7 +151,7 @@ export function AttachmentsSection({ entityType, entityId, defaultOpen = true }:
                     type="button"
                     onClick={() => void handleDownload(a)}
                     title={t('attachments.download')}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', textAlign: 'left', flex: 1, minWidth: 0 }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, textAlign: 'left', flex: 1, minWidth: 0 }}
                   >
                     <Download size={13} style={{ flexShrink: 0 }} aria-hidden="true" />
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.filename}</span>

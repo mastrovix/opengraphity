@@ -7,6 +7,7 @@
  * Shown, never linked: the only link between an incident and a change is
  * «resolved by», and a suspect is not that — so no button here.
  */
+import { Loading } from '@/components/ui/Loading'
 import { useTranslation } from 'react-i18next'
 import { gql } from '@apollo/client'
 import { useQuery } from '@apollo/client/react'
@@ -64,7 +65,7 @@ export function ChangeSuspectsCard({ incidentId }: { incidentId: string }) {
           {t('components.changeSuspects.failed', { reason: error.message })}
         </div>
       ) : loading && !data ? (
-        <p style={muted}>{t('common.loading')}</p>
+        <Loading />
       ) : items.length === 0 ? (
         <p style={muted}>{t('components.changeSuspects.empty')}</p>
       ) : (
@@ -72,7 +73,7 @@ export function ChangeSuspectsCard({ incidentId }: { incidentId: string }) {
           {items.map((c) => (
             <li key={c.id} style={{ padding: '10px 12px', border: `1px solid ${c.runningAtOpening ? palette.warning.border : colors.border}`, borderRadius: 8, background: colors.white }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <Link to={`/changes/${c.id}`} style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', textDecoration: 'none' }}>
+                <Link to={`/changes/${c.id}`} style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2 }}>
                   {c.code || c.id.slice(0, 8)}
                 </Link>
                 {c.runningAtOpening ? (
@@ -85,7 +86,7 @@ export function ChangeSuspectsCard({ incidentId }: { incidentId: string }) {
                 <span style={{ flex: 1 }} />
                 <span style={{ ...badge, background: colors.slateBg, color: 'var(--color-slate)' }}>{labelFor(c.status)}</span>
               </div>
-              <Link to={`/changes/${c.id}`} style={{ display: 'block', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', fontWeight: 500, margin: '4px 0', textDecoration: 'none' }}>
+              <Link to={`/changes/${c.id}`} style={{ display: 'block', fontSize: 'var(--font-size-body)', color: 'var(--color-link)', fontWeight: 500, margin: '4px 0', textDecoration: 'underline', textUnderlineOffset: 2 }}>
                 {c.title}
               </Link>
               <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>

@@ -73,7 +73,6 @@ export function useFormFieldColumns<T extends WithFormFieldValues>(): {
       key:      cell(f.name) as keyof T,
       label:    f.label,
       width:    '150px',
-      sortable: false,
       render:   (v: unknown) => (
         <span style={{ color: v == null || v === '' ? 'var(--color-slate-light)' : undefined }}>
           {v == null || v === '' ? '—' : String(v)}

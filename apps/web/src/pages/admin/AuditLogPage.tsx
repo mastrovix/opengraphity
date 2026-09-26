@@ -163,11 +163,11 @@ export function AuditLogPage() {
     },
     { key: 'entityType', label: t('pages.audit.colEntityType'), sortable: true },
     {
-      key: 'entityId', label: t('pages.audit.colEntityId'), sortable: false,
+      key: 'entityId', label: t('pages.audit.colEntityId'),
       render: (v) => <code style={{ fontSize: 'var(--font-size-table)' }}>{String(v).slice(0, 8)}…</code>,
     },
     {
-      key: 'ipAddress', label: t('pages.audit.colIp'), sortable: false,
+      key: 'ipAddress', label: t('pages.audit.colIp'),
       render: (v) => v ? String(v) : <span style={{ color: palette.neutral.borderStrong }}>—</span>,
     },
   ]

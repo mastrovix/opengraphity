@@ -66,7 +66,7 @@ export function ActiveAlarmsWidget({ color, large = false }: { color: string; la
           </Link>
         ))}
       </div>
-      <Link to="/events" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 10, fontSize: 'var(--font-size-table)', color, textDecoration: 'none', fontWeight: 600 }}>
+      <Link to="/events" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 10, fontSize: 'var(--font-size-table)', color, textDecoration: 'underline', textUnderlineOffset: 2, fontWeight: 600 }}>
         <Radar size={12} aria-hidden="true" />{t('monitoring.widget.openConsole')}
       </Link>
     </div>

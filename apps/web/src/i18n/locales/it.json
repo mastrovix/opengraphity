@@ -49,7 +49,8 @@
     "showAllCount_other": "Mostra tutti ({{count}})",
     "any": "qualsiasi",
     "number": "Numero",
-    "searching": "Ricerca in corso…"
+    "searching": "Ricerca in corso…",
+    "sortPageOnly": "Ordina la pagina sullo schermo: le altre pagine restano come sono"
   },
   "bulk": {
     "selected_one": "{{count}} selezionato",
@@ -1087,7 +1088,8 @@
       "viewPath": "Visualizza percorso",
       "summaryImpact": "Se {{target}} diventa indisponibile: CI impattati {{cis}}, servizi {{services}}, team {{teams}}. Rischio {{risk}}/100.",
       "summaryRemove": "Se {{target}} viene rimosso: CI impattati {{cis}}, servizi {{services}}, team {{teams}}. Rischio {{risk}}/100.",
-      "filterNotApplied": "Questo filtro non si può applicare ai CI impattati: {{reason}}. Modificalo, oppure premi «Ripristina»."
+      "filterNotApplied": "Questo filtro non si può applicare ai CI impattati: {{reason}}. Modificalo, oppure premi «Ripristina».",
+      "tabsLabel": "Impatto per genere"
     },
     "ci": {
       "navigationLockedWhileEditing": "Salva o annulla la modifica prima di aprire un altro CI",
@@ -1978,7 +1980,8 @@
       "update": "Aggiorna",
       "notifyOnEnter": "Notifica all'ingresso nel passo",
       "deleteStep": "Elimina il passo",
-      "tabDeadline": "Scadenza"
+      "tabDeadline": "Scadenza",
+      "tabsLabel": "Sezioni del passo"
     },
     "slaPolicies": {
       "newPolicy": "Nuova policy",
@@ -3491,7 +3494,8 @@
       "noWorkflow": "Questo tipo di ticket non ha un workflow: il campo si vede e si modifica sempre.",
       "chooseAtLeastOne": "Scegli almeno una fase.",
       "onlyIn": "solo {{workflows}}"
-    }
+    },
+    "tabsLabel": "Sezioni del tipo di ticket"
   },
   "ciTypeDesigner": {
     "chain": "Catena",

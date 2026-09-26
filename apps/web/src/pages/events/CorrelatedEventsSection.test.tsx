@@ -26,8 +26,8 @@ describe('MonitoringAlarmsSection (dettaglio incident)', () => {
     // In the incident detail the title column was squeezed to ~50px and the
     // title wrapped word by word.
     renderWithProviders(<MonitoringAlarmsSection events={[eventFixture({ id: 'e1', title: 'Disk almost full on the reporting database' })]} incidentId="inc1" />)
-    const link = screen.getByRole('link', { name: 'Disk almost full on the reporting database' })
-    expect(link.parentElement).toHaveStyle({ minWidth: '220px' })
+    const title = screen.getByText('Disk almost full on the reporting database')
+    expect(title.closest('td')).toHaveStyle({ minWidth: '220px' })
     expect(screen.getByRole('table').parentElement).toHaveClass('og-scroll-x')
   })
 
@@ -54,7 +54,9 @@ describe('MonitoringAlarmsSection (dettaglio incident)', () => {
 
     const rows = within(screen.getAllByRole('rowgroup')[1]!).getAllByRole('row')
     expect(rows).toHaveLength(2)
-    expect(within(rows[0]!).getByRole('link', { name: 'Disk full' })).toHaveAttribute('href', '/events/e2')
+    // The row opens the alarm (26 Sep 2026: the app's small table, no link on the title).
+    expect(within(rows[0]!).getByText('Disk full')).toBeInTheDocument()
+    expect(rows[0]).toHaveClass('row-opens')
     expect(within(rows[0]!).getByText('No CI')).toBeInTheDocument()
     expect(within(rows[0]!).getByText('7')).toBeInTheDocument()
     expect(within(rows[0]!).getByText('Warning')).toBeInTheDocument()
@@ -95,7 +97,7 @@ describe('SuppressedAlarmsSection (dettaglio change)', () => {
     renderWithProviders(<SuppressedAlarmsSection events={events} changeId="chg1" />)
     expect(screen.getByRole('button', { name: /Alarms suppressed in this window/ })).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText(/Alarms received during the release window open no incident/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Latency spike' })).toHaveAttribute('href', '/events/s1')
+    expect(screen.getByText('Latency spike').closest('tr')).toHaveClass('row-opens')
     expect(screen.getByText('Suppressed')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Open in the console/ })).toHaveAttribute('href', '/events?changeId=chg1')
   })

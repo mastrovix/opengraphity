@@ -1,10 +1,9 @@
 // Designer-specific constants. The style constants moved to the design system
 // (`@/components/ui/styles`) and are re-exported here so existing imports keep
 // working; new code imports from `@/components/ui/styles` (or, better, uses
-// `<Button>` / `FormControls`).
+// `FormControls`). Buttons are `<Button>`: there is no button style to import.
 export {
   inputS, selectS, textareaS, labelS,
-  btnPrimary, btnSecondary, btnDanger,
   activeCardStyle, inactiveCardStyle,
 } from '@/components/ui/styles'
 

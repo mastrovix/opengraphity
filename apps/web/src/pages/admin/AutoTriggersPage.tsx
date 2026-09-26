@@ -13,7 +13,7 @@ import { Zap, Plus, Pencil, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { GET_AUTO_TRIGGERS } from '@/graphql/queries'
 import { CREATE_AUTO_TRIGGER, UPDATE_AUTO_TRIGGER, DELETE_AUTO_TRIGGER } from '@/graphql/mutations'
-import { selectS, labelS } from '@/components/ui/styles'
+import { labelS } from '@/components/ui/styles'
 import { Input, Select } from '@/components/ui/FormControls'
 import { Toggle } from '@/components/ui/Toggle'
 import { Modal } from '@/components/Modal'
@@ -193,7 +193,7 @@ export function AutoTriggersPage() {
     ) },
     { key: 'executionCount', label: t('admin.triggers.executions'), sortable: true },
     { key: 'lastExecutedAt', label: t('admin.triggers.lastExecution'), sortable: true, render: (v) => v ? formatDateTime(String(v)) : '—' },
-    { key: 'id', label: t('common.actions'), sortable: true, render: (_v, row) => (
+    { key: 'id', label: t('common.actions'), sortable: false, render: (_v, row) => (
       <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
         <Button variant="icon" size="xs" title={t('common.edit')} onClick={() => openEdit(row)}><Pencil size={14} aria-hidden="true" /></Button>
         <Button variant="icon" size="xs" title={t('common.delete')} onClick={() => handleDelete(row)} style={{ color: 'var(--color-danger)', borderColor: palette.danger.border }}><Trash2 size={14} aria-hidden="true" /></Button>
@@ -260,13 +260,13 @@ export function AutoTriggersPage() {
           <div className="og-pair" style={{ marginTop: 14 }}>
             <div>
               <label htmlFor={ids.entityType} style={labelS}>{t('pages.businessRules.entityType')}</label>
-              <Select id={ids.entityType} style={selectS} value={form.entityType} onChange={e => patch({ entityType: e.target.value, ...(automationEventSupported(form.eventType, e.target.value) ? {} : { eventType: 'on_create' }) })} disabled={modal.isEditing}>
+              <Select id={ids.entityType} value={form.entityType} onChange={e => patch({ entityType: e.target.value, ...(automationEventSupported(form.eventType, e.target.value) ? {} : { eventType: 'on_create' }) })} disabled={modal.isEditing}>
                 {ENTITY_TYPES.map(et => <option key={et} value={et}>{labelOf(et)}</option>)}
               </Select>
             </div>
             <div>
               <label htmlFor={ids.eventType} style={labelS}>{t('pages.autoTriggers.eventType')}</label>
-              <Select id={ids.eventType} style={selectS} value={form.eventType} onChange={e => patch({ eventType: e.target.value })}>
+              <Select id={ids.eventType} value={form.eventType} onChange={e => patch({ eventType: e.target.value })}>
                 {EVENT_TYPES.filter(et => automationEventSupported(et, form.entityType)).map(et => <option key={et} value={et}>{t(eventOptionKey(et))}</option>)}
               </Select>
             </div>
@@ -301,7 +301,7 @@ export function AutoTriggersPage() {
             <div style={{ ...labelS, fontSize: 'var(--font-size-body)', fontWeight: 600 }}>{t('common.actions')}</div>
             {form.actions.map((a, i) => (
               <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
-                <Select style={{ ...selectS, width: 180 }} value={a.type} onChange={e => setAction(i, { type: e.target.value, params: {} })}>
+                <Select style={{ width: 180 }} value={a.type} onChange={e => setAction(i, { type: e.target.value, params: {} })}>
                   {ACTION_TYPES.map(at => <option key={at} value={at}>{t(automationActionKey(at))}</option>)}
                 </Select>
                 <ActionParamsEditor

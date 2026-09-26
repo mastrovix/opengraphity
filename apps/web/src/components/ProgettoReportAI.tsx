@@ -16,6 +16,8 @@
  * Il progetto riempie il costruttore e si ferma lì: l'anteprima dal vivo dice
  * se i numeri sono quelli giusti, e «Salva la sezione» resta un gesto tuo.
  */
+import { Pill } from '@/components/ui/Pill'
+import { Textarea } from '@/components/ui/FormControls'
 import { useState } from 'react'
 import { useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
@@ -100,16 +102,13 @@ export function ModaleProgettoReportAI({ onChiudi, onApplica, descrizioneInizial
           <label htmlFor="report-ai-description" style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate)' }}>
             {t('reportAI.promptLabel')}
           </label>
-          <textarea
+          <Textarea
             id="report-ai-description"
             value={descrizione}
             onChange={(e) => { setDescrizione(e.target.value) }}
             rows={5}
             placeholder={t('reportAI.promptPlaceholder')}
-            style={{
-              width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${colors.border}`,
-              fontSize: 'var(--font-size-body)', fontFamily: 'inherit', resize: 'vertical',
-            }}
+            style={{ resize: 'vertical' }}
           />
           <p style={{ margin: 0, fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
             {t('reportAI.promptHelp')}
@@ -276,9 +275,6 @@ function Riga({ etichetta, valore }: { etichetta: string; valore: string }) {
 
 function Pillola({ testo }: { testo: string }) {
   return (
-    <span style={{
-      padding: '1px 6px', borderRadius: 999, fontSize: 'var(--font-size-table)',
-      background: 'var(--color-brand-a13)', color: 'var(--color-brand)',
-    }}>{testo}</span>
+    <Pill bg="var(--color-brand-a13)" color="var(--color-brand)" radius={999} style={{ fontSize: 'var(--font-size-table)' }}>{testo}</Pill>
   )
 }

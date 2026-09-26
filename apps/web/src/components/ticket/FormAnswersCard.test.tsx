@@ -89,7 +89,7 @@ describe('FormAnswersCard', () => {
     expect(within(table).getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Item', 'Qty'])
     const rows = within(table).getAllByRole('row').slice(1)
     expect(rows.map((r) => within(r).getAllByRole('cell').map((c) => c.textContent))).toEqual([['Laptop', '2'], ['—', '1']])
-    expect(within(valueOf('Empty table')).getByRole('cell')).toHaveTextContent('not answered')
+    expect(valueOf('Empty table')).toHaveTextContent('not answered')
     // A table is not corrected from here, even with a request id.
     expect(screen.queryByRole('button', { name: /Correct/ })).not.toBeInTheDocument()
   })

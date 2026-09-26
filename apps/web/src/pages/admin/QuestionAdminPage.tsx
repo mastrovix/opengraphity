@@ -1,3 +1,5 @@
+import { Input, Select, Textarea } from '@/components/ui/FormControls'
+import { Button } from '@/components/Button'
 import { useId, useState, useEffect, type CSSProperties } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { toast } from 'sonner'
@@ -114,7 +116,7 @@ function CommitNumberInput({ value, onCommit, disabled, title, min }: {
     if (n !== value) onCommit(n)
   }
   return (
-    <input
+    <Input
       type="number"
       min={min}
       value={draft}
@@ -122,8 +124,8 @@ function CommitNumberInput({ value, onCommit, disabled, title, min }: {
       onChange={e => setDraft(e.target.value)}
       onBlur={commit}
       onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() } }}
-      style={{ ...inputStyle, width: 80, opacity: disabled ? 0.6 : 1 }}
       title={title}
+      style={{ width: 80, opacity: disabled ? 0.6 : 1 }}
     />
   )
 }
@@ -145,7 +147,7 @@ function ScoreField({ value, onChange, label, placeholder, style }: {
     return text.trim() !== '' && Number.isInteger(n) && n >= 1 ? n : null
   }
   return (
-    <input
+    <Input
       type="number"
       min={1}
       step={1}
@@ -324,30 +326,23 @@ export function QuestionAdminPage() {
                 ? t('admin.questions.headerFiltered', { shown: questions.length, total: allQuestions.length })
                 : t('admin.questions.header', { count: questions.length })}
             </h3>
-            <button
-              type="button"
+            <Button variant="primary"
               onClick={handleNew}
-              style={{
-                padding: '6px 12px', borderRadius: 6, border: 'none',
-                background: 'var(--color-brand)', color: colors.white,
-                fontSize: 'var(--font-size-body)', fontWeight: 600, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: 4,
-              }}
             >
               <Plus size={14} /> {t('pages.questions.new')}
-            </button>
+            </Button>
           </div>
 
-          <select
+          <Select
             aria-label={t('a11y.questionCategoryFilter')}
             value={filterCat}
             onChange={e => setFilterCat(e.target.value)}
-            style={{ ...inputStyle, marginBottom: 12 }}
+            style={{ marginBottom: 12 }}
           >
             <option value="">{t('pages.questions.allCategories')}</option>
             <option value="functional">{t('changeTasks.functional')}</option>
             <option value="technical">{t('changeTasks.technical')}</option>
-          </select>
+          </Select>
 
           <div style={{ maxHeight: 600, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
             {questions.map(q => {
@@ -373,10 +368,10 @@ export function QuestionAdminPage() {
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                     <CategoryBadge category={q.category} />
                     {q.isCore && (
-                      <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: colors.slateBg, color: 'var(--color-slate)' }}>{t('pages.questionAdmin.coreBadge')}</span>
+                      <Pill bg={colors.slateBg} color="var(--color-slate)" radius={4} style={{ fontSize: 'var(--font-size-label)', fontWeight: 600 }}>{t('pages.questionAdmin.coreBadge')}</Pill>
                     )}
                     {!q.isActive && (
-                      <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: palette.danger.tint, color: palette.danger.text }}>{t('pages.questionAdmin.inactiveBadge')}</span>
+                      <Pill bg={palette.danger.tint} color={palette.danger.text} radius={4} style={{ fontSize: 'var(--font-size-label)', fontWeight: 600 }}>{t('pages.questionAdmin.inactiveBadge')}</Pill>
                     )}
                   </div>
                 </button>
@@ -399,23 +394,23 @@ export function QuestionAdminPage() {
             <>
               <div style={{ marginBottom: 16 }}>
                 <label htmlFor={ids.text} style={labelStyle}>{t('pages.questions.text')}</label>
-                <textarea
+                <Textarea
                   id={ids.text}
                   value={text}
                   onChange={e => setText(e.target.value)}
                   rows={3}
-                  style={{ ...inputStyle, resize: 'vertical' }}
+                  style={{ resize: 'vertical' }}
                 />
               </div>
 
               <div className="og-pair" style={{ marginBottom: 16 }}>
                 <div>
                   <label htmlFor={ids.category} style={labelStyle}>{t('pages.serviceCatalogAdmin.category')}</label>
-                  <select id={ids.category} value={category} onChange={e => setCategory(e.target.value as QuestionCategoryKey)} style={inputStyle} title={t('pages.questions.categoryTitle')}>
+                  <Select id={ids.category} value={category} onChange={e => setCategory(e.target.value as QuestionCategoryKey)} title={t('pages.questions.categoryTitle')}>
                     {Object.values(QUESTION_CATEGORY).map((v) => (
                       <option key={v} value={v}>{categoriaTradotta(v)}</option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
                 <div>
                   <div style={labelStyle}>{t('pages.questions.flags')}</div>
@@ -496,19 +491,19 @@ export function QuestionAdminPage() {
               <div style={{ marginBottom: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                   <div style={{ ...labelStyle, marginBottom: 0 }}>{t('pages.questions.options')}</div>
-                  <button type="button" onClick={addOption} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-brand)', fontSize: 'var(--font-size-body)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <button type="button" onClick={addOption} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, fontSize: 'var(--font-size-body)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
                     <Plus size={12} /> {t('pages.questions.add')}
                   </button>
                 </div>
                 {options.map((opt, i) => (
                   <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
-                    <input
+                    <Input
                       type="text"
                       value={opt.label}
                       onChange={e => updateOption(i, { label: e.target.value })}
                       placeholder={t('pages.questions.optionLabel')}
                       aria-label={t('pages.questions.optionLabelFor', { n: i + 1 })}
-                      style={{ ...inputStyle, flex: 2 }}
+                      style={{ flex: 2 }}
                     />
                     {/*
                       `min={1}`: nessuna risposta puo valere 0 (terza revisione).
@@ -562,15 +557,13 @@ export function QuestionAdminPage() {
                   </button>
                 )}
                 <div style={{ marginLeft: 'auto' }}>
-                  <button
-                    type="button"
-                    onClick={() => void handleSave()}
+                  <Button variant="primary"
+                    onClick={() => handleSave()}
                     disabled={saving}
                     aria-busy={saving || undefined}
-                    style={{ padding: '8px 24px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: colors.white, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}
                   >
                     {t('common.save')}
-                  </button>
+                  </Button>
                 </div>
               </div>
             </>

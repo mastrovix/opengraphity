@@ -1,9 +1,12 @@
+import { Pill } from '@/components/ui/Pill'
+import { Input, Select, Textarea } from '@/components/ui/FormControls'
+import { Button } from '@/components/Button'
 import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   type ReportTemplate, type Channel,
   SCHEDULE_PRESETS,
-  inputStyle, labelStyle, btnPrimary, btnGhost,
+  labelStyle,
 } from './useCustomReports'
 import { colors, palette } from '@/lib/tokens'
 import { formatDateTime } from '@/lib/datetime'
@@ -68,27 +71,27 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
     <div style={{ flex: 1, overflowY: 'auto', padding: '28px 32px' }}>
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 28 }}>
-          <button type="button" onClick={() => setView('detail')} style={{ ...btnGhost, padding: '6px 12px', fontSize: 'var(--font-size-body)' }}>&larr; {t('pages.reportSchedule.back')}</button>
+          <Button variant="secondary" onClick={() => setView('detail')}>&larr; {t('pages.reportSchedule.back')}</Button>
           <h2 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{t('pages.reportSchedule.title')} &mdash; {selected.name}</h2>
         </div>
 
         <div style={{ marginBottom: 14 }}>
           <label htmlFor={ids.name} style={labelStyle}>{t('common.name')}</label>
-          <input id={ids.name} value={settingsName} onChange={e => setSettingsName(e.target.value)} style={inputStyle} />
+          <Input id={ids.name} value={settingsName} onChange={e => setSettingsName(e.target.value)} />
         </div>
 
         <div style={{ marginBottom: 14 }}>
           <label htmlFor={ids.desc} style={labelStyle}>{t('common.description')}</label>
-          <textarea id={ids.desc} value={settingsDesc} onChange={e => setSettingsDesc(e.target.value)} style={{ ...inputStyle, minHeight: 70, resize: 'vertical' }} />
+          <Textarea id={ids.desc} value={settingsDesc} onChange={e => setSettingsDesc(e.target.value)} style={{ minHeight: 70, resize: 'vertical' }} />
         </div>
 
         <div style={{ marginBottom: 14 }}>
           <label htmlFor={ids.vis} style={labelStyle}>{t('pages.reports.visibility.label')}</label>
-          <select id={ids.vis} value={settingsVis} onChange={e => setSettingsVis(e.target.value)} style={{ ...inputStyle, background: colors.white }}>
+          <Select id={ids.vis} value={settingsVis} onChange={e => setSettingsVis(e.target.value)}>
             <option value="private">{t('pages.reports.visibility.private')}</option>
             <option value="groups">{t('pages.reports.visibility.selectedGroups')}</option>
             <option value="all">{t('common.all')}</option>
-          </select>
+          </Select>
         </div>
 
         {settingsVis === 'groups' && teamsError && (
@@ -123,17 +126,23 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
             <>
               <div style={{ marginBottom: 10 }}>
                 <label htmlFor={ids.preset} style={labelStyle}>{t('pages.reportSchedule.frequency')}</label>
-                <select id={ids.preset} value={schedulePreset}
+                <Select
+                  id={ids.preset}
+                  value={schedulePreset}
                   onChange={e => { setSchedulePreset(e.target.value); if (e.target.value !== '__custom__') setSettingsSchedCron(e.target.value) }}
-                  style={{ ...inputStyle, background: colors.white }}>
+                >
                   {SCHEDULE_PRESETS.map(p => <option key={p.value} value={p.value}>{t(p.labelKey)}</option>)}
-                </select>
+                </Select>
               </div>
               {schedulePreset === '__custom__' && (
                 <div style={{ marginBottom: 10 }}>
                   <label htmlFor={ids.cron} style={labelStyle}>{t('pages.reportSchedule.cron')}</label>
-                  <input id={ids.cron} value={customCron} onChange={e => { setCustomCron(e.target.value); setSettingsSchedCron(e.target.value) }}
-                    style={inputStyle} placeholder="0 9 * * *" />
+                  <Input
+                    id={ids.cron}
+                    value={customCron}
+                    onChange={e => { setCustomCron(e.target.value); setSettingsSchedCron(e.target.value) }}
+                    placeholder="0 9 * * *"
+                  />
                 </div>
               )}
               {channelsError && (
@@ -146,10 +155,10 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
               {channels.length > 0 && (
                 <div style={{ marginBottom: 10 }}>
                   <label htmlFor={ids.channel} style={labelStyle}>{t('pages.reportSchedule.slackChannel')}</label>
-                  <select id={ids.channel} value={settingsChanId} onChange={e => setSettingsChanId(e.target.value)} style={{ ...inputStyle, background: colors.white }}>
+                  <Select id={ids.channel} value={settingsChanId} onChange={e => setSettingsChanId(e.target.value)}>
                     <option value="">{t('pages.reportSchedule.noChannel')}</option>
                     {channels.map((c: Channel) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
+                  </Select>
                 </div>
               )}
               {!channelsError && channels.length === 0 && (
@@ -163,11 +172,11 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
                 <label htmlFor={ids.recipients} style={labelStyle}>{t('pages.reportSchedule.recipients')}</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '6px 8px', border: '1px solid var(--color-border-strong)', borderRadius: 6, background: colors.white, minHeight: 38 }}>
                   {settingsRecipients.map((r) => (
-                    <span key={r} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 12, background: palette.info.tint, color: palette.info.text, fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
+                    <Pill bg={palette.info.tint} color={palette.info.text} radius={12} key={r} style={{ gap: 4, fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
                       {r}
                       <button type="button" aria-label={t('pages.reportSchedule.removeRecipient', { email: r })} onClick={() => setSettingsRecipients(prev => prev.filter(x => x !== r))}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1, color: palette.info.text, fontWeight: 600 }}>&times;</button>
-                    </span>
+                    </Pill>
                   ))}
                   <input
                     id={ids.recipients}
@@ -218,10 +227,10 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
         </div>}
 
         <div style={{ display: 'flex', gap: 10 }}>
-          <button type="button" onClick={() => void handleSaveSettings()} disabled={updating} style={btnPrimary}>
+          <Button variant="primary" onClick={() => handleSaveSettings()} disabled={updating}>
             {updating ? t('pages.reportSchedule.saving') : t('pages.reportSchedule.save')}
-          </button>
-          <button type="button" onClick={() => setView('detail')} style={btnGhost}>{t('common.cancel')}</button>
+          </Button>
+          <Button variant="secondary" onClick={() => setView('detail')}>{t('common.cancel')}</Button>
         </div>
       </div>
     </div>

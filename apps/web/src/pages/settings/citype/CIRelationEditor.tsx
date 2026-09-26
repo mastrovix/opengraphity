@@ -1,14 +1,14 @@
+import { Button } from '@/components/Button'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { Modal } from '@/components/Modal'
 import { Input, LabelledField, Select } from '@/components/ui/FormControls'
-import { inputS, selectS, labelS, btnPrimary, btnSecondary, btnDanger } from '@/components/ui/styles'
+import { labelS } from '@/components/ui/styles'
 import { useConfirm } from '@/hooks/useConfirm'
+import { SimpleTable, type SimpleColumn } from '@/components/ui/SimpleTable'
 import { useMetamodel, type CITypeDef, type CIRelationDef } from '@/contexts/MetamodelContext'
-import { srOnlyStyle } from '@/lib/a11y'
 import { shippedLabel } from '@/lib/shippedLabel'
-import { palette } from '@/lib/tokens'
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <LabelledField label={label} labelStyle={labelS} style={{ marginBottom: 14 }}>{children}</LabelledField>
@@ -46,43 +46,45 @@ export function CIRelationEditor({ open, onClose, onSave, allTypes }: RelationMo
     <Modal open={open} onClose={onClose} title={t('citypeDesigner.relation.addTitle')} width={500}
       footer={
         <>
-          <button type="button" style={btnSecondary} onClick={onClose}>{t('common.cancel')}</button>
-          <button type="button" style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }} disabled={saving}
+          <Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button>
+          <Button variant="primary"
+            disabled={saving}
             onClick={async () => {
               setSaving(true)
               try { await onSave(form) } finally { setSaving(false) }
-            }}>
+            }}
+          >
             {saving ? t('common.saving') : t('common.save')}
-          </button>
+          </Button>
         </>
       }>
       <div className="og-pair">
         <Field label={t('citypeDesigner.field.slugName')}>
-          <Input style={inputS} value={form.name}
+          <Input value={form.name}
             onChange={e => set('name', e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))} />
         </Field>
         <Field label={`${t('common.label')} *`}>
-          <Input style={inputS} value={form.label} onChange={e => set('label', e.target.value)} />
+          <Input value={form.label} onChange={e => set('label', e.target.value)} />
         </Field>
         <Field label={t('citypeDesigner.relation.neo4jType')}>
-          <Input style={inputS} value={form.relationshipType}
+          <Input value={form.relationshipType}
             onChange={e => set('relationshipType', e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_'))}
             placeholder="DEPENDS_ON" />
         </Field>
         <Field label={t('citypeDesigner.relation.targetType')}>
-          <Select style={selectS} value={form.targetType} onChange={e => set('targetType', e.target.value)}>
+          <Select value={form.targetType} onChange={e => set('targetType', e.target.value)}>
             <option value="any">{t('common.any')}</option>
             {allTypes.map(t => <option key={t.name} value={t.name}>{t.label}</option>)}
           </Select>
         </Field>
         <Field label={t('citypeDesigner.relation.cardinality')}>
-          <Select style={selectS} value={form.cardinality} onChange={e => set('cardinality', e.target.value)}>
+          <Select value={form.cardinality} onChange={e => set('cardinality', e.target.value)}>
             <option value="one">{t('citypeDesigner.relation.cardinalityOne')}</option>
             <option value="many">{t('citypeDesigner.relation.cardinalityMany')}</option>
           </Select>
         </Field>
         <Field label={t('citypeDesigner.relation.direction')}>
-          <Select style={selectS} value={form.direction} onChange={e => set('direction', e.target.value)}>
+          <Select value={form.direction} onChange={e => set('direction', e.target.value)}>
             <option value="outgoing">{t('citypeDesigner.relation.directionOutgoing')}</option>
             <option value="incoming">{t('citypeDesigner.relation.directionIncoming')}</option>
           </Select>
@@ -115,41 +117,24 @@ export function CIRelationTable({ relations, onRemove, readOnly = false }: Relat
   if (relations.length === 0) {
     return <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('citypeDesigner.relation.empty')}</p>
   }
-  return (
-    <div className="og-scroll-x">
-    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
-      <thead>
-        <tr>
-          {[t('citypeDesigner.relation.colName'), t('common.label'), t('citypeDesigner.relation.neo4jTypeShort'), t('citypeDesigner.relation.colTarget'), t('citypeDesigner.relation.colCardinality'), t('citypeDesigner.relation.colDirection')].map(h => (
-            <th key={h} scope="col" style={{ textAlign: 'left', padding: '6px 8px' }}>{h}</th>
-          ))}
-          <th scope="col" style={{ padding: '6px 8px' }}><span style={srOnlyStyle}>{t('citypeDesigner.relation.colActions')}</span></th>
-        </tr>
-      </thead>
-      <tbody>
-        {[...relations].sort((a: CIRelationDef, b: CIRelationDef) => a.order - b.order).map(r => (
-          <tr key={r.id} style={{ borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
-            <td style={{ padding: '8px', fontFamily: 'var(--font-family)', fontSize: 'var(--font-size-body)' }}>{r.name}</td>
-            <td style={{ padding: '8px' }}>{shippedLabel('relation', r.name, r.label)}</td>
-            <td style={{ padding: '8px', fontFamily: 'var(--font-family)', fontSize: 'var(--font-size-body)' }}>{r.relationshipType}</td>
-            <td style={{ padding: '8px', fontSize: 'var(--font-size-body)' }}>{r.targetType === 'any' ? t('common.any') : (getCIType(r.targetType)?.label ?? r.targetType)}</td>
-            <td style={{ padding: '8px', fontSize: 'var(--font-size-body)' }}>{r.cardinality === 'one' ? t('citypeDesigner.relation.cardinalityOne') : r.cardinality === 'many' ? t('citypeDesigner.relation.cardinalityMany') : r.cardinality}</td>
-            <td style={{ padding: '8px', fontSize: 'var(--font-size-body)' }}>{r.direction === 'outgoing' ? t('citypeDesigner.relation.directionOutgoing') : r.direction === 'incoming' ? t('citypeDesigner.relation.directionIncoming') : r.direction}</td>
-            <td style={{ padding: '8px' }}>
-              {readOnly
-                ? <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{t('ciTypeDesigner.shippedRelationLabel')}</span>
-                : (
-                  <button type="button" style={{ ...btnDanger, padding: '3px 10px' }}
-                    aria-label={t('citypeDesigner.relation.deleteAria', { name: r.name })}
-                    onClick={() => void handleRemove(r)}>
-                    <X size={12} aria-hidden="true" />
-                  </button>
-                )}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-  )
+  // The app's small table (26 Sep 2026: it was hand-made).
+  const columns: SimpleColumn<CIRelationDef>[] = [
+    { key: 'name', label: t('citypeDesigner.relation.colName') },
+    { key: 'label', label: t('common.label'), render: (_v, r) => shippedLabel('relation', r.name, r.label) },
+    { key: 'relationshipType', label: t('citypeDesigner.relation.neo4jTypeShort') },
+    { key: 'targetType', label: t('citypeDesigner.relation.colTarget'), render: (_v, r) => (r.targetType === 'any' ? t('common.any') : (getCIType(r.targetType)?.label ?? r.targetType)) },
+    { key: 'cardinality', label: t('citypeDesigner.relation.colCardinality'), render: (_v, r) => (r.cardinality === 'one' ? t('citypeDesigner.relation.cardinalityOne') : r.cardinality === 'many' ? t('citypeDesigner.relation.cardinalityMany') : r.cardinality) },
+    { key: 'direction', label: t('citypeDesigner.relation.colDirection'), render: (_v, r) => (r.direction === 'outgoing' ? t('citypeDesigner.relation.directionOutgoing') : r.direction === 'incoming' ? t('citypeDesigner.relation.directionIncoming') : r.direction) },
+    { key: 'id', label: t('citypeDesigner.relation.colActions'), sortable: false, render: (_v, r) => (readOnly
+      ? <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{t('ciTypeDesigner.shippedRelationLabel')}</span>
+      : (
+        <Button variant="danger" size="xs"
+          aria-label={t('citypeDesigner.relation.deleteAria', { name: r.name })}
+          onClick={() => handleRemove(r)}
+        >
+          <X size={12} aria-hidden="true" />
+        </Button>
+      )) },
+  ]
+  return <SimpleTable<CIRelationDef> columns={columns} rows={[...relations].sort((a, b) => a.order - b.order)} />
 }

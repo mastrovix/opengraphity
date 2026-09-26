@@ -196,7 +196,7 @@ export function ImportTab() {
           />
           <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', margin: '4px 0 0' }}>
             {t('pages.import.apiKeyHint')}{' '}
-            <Link to="/admin/integrations" style={{ color: 'var(--color-brand)' }}>
+            <Link to="/admin/integrations" style={{ color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2 }}>
               {t('pages.import.apiKeyHintLink')}
             </Link>
           </p>

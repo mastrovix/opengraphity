@@ -80,7 +80,7 @@ describe('ServicesPage', () => {
     const rows = bodyRows()
     expect(rows).toHaveLength(3)
     expect(screen.getByText('3 monitored services')).toBeInTheDocument()
-    expect(within(rows[0]!).getByRole('link', { name: 'Enterprise Billing' })).toHaveAttribute('href', '/monitoring/services/map-1')
+    expect(within(rows[0]!).getByText('Enterprise Billing')).toBeInTheDocument()
     expect(within(rows[0]!).getByText('Degraded')).toBeInTheDocument()
     expect(within(rows[0]!).getByText('for 42 min')).toHaveAccessibleDescription(/Current health in force since/)
     expect(within(rows[0]!).getByLabelText('Impact score 41 out of 100')).toBeInTheDocument()
@@ -330,7 +330,7 @@ describe('ServicesPage', () => {
   it('in fondo alla pagina le capacità di business in sola lettura (ondata 3)', async () => {
     renderPage('operator')
     expect(await screen.findByRole('table', { name: 'Business capabilities' })).toBeInTheDocument()
-    const row = screen.getByTestId('capability-row')
+    const row = within(screen.getByRole('table', { name: 'Business capabilities' })).getAllByRole('row')[1]!
     expect(within(row).getByText('Fatturazione')).toBeInTheDocument()
     expect(within(row).getByText('1 degraded')).toBeInTheDocument()
     expect(within(row).getByRole('link', { name: 'Enterprise Billing' })).toHaveAttribute('href', '/monitoring/services?q=Enterprise%20Billing')

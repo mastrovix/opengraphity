@@ -30,6 +30,10 @@ interface ModalProps {
    * form must not throw away what the user typed (E-14).
    */
   closeOnOverlay?: boolean
+  /** A line under the title (26 Sep 2026: the builder's own modal had one). */
+  subtitle?: string
+  /** The body's own layout, when it is not a padded column (two panes side by side). */
+  bodyStyle?: React.CSSProperties
 }
 
 export function Modal({
@@ -44,6 +48,8 @@ export function Modal({
   footerStyle,
   zIndex = 1000,
   closeOnOverlay,
+  subtitle,
+  bodyStyle,
 }: ModalProps) {
   const { t } = useTranslation()
   const titleId = useId()
@@ -79,21 +85,24 @@ export function Modal({
         justifyContent: 'space-between',
         flexShrink:     0,
       }}>
-        <span id={titleId} style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{title}</span>
+        <div style={{ minWidth: 0 }}>
+          {/* A heading (26 Sep 2026): a screen reader lists it, and the dialogs that became Modals had one. */}
+          <h2 id={titleId} style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{title}</h2>
+          {subtitle && <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate)' }}>{subtitle}</p>}
+        </div>
         <button
           type="button"
           onClick={onClose}
           aria-label={t('common.close')}
+          className="hover-strong"
           style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', padding: 4, display: 'flex', alignItems: 'center', borderRadius: 4 }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-slate)' }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-slate-light)' }}
         >
           <X size={16} />
         </button>
       </div>
 
       {/* Body */}
-      <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
+      <div style={{ padding: '24px', overflowY: 'auto', flex: 1, minHeight: 0, ...bodyStyle }}>
         {children}
       </div>
 

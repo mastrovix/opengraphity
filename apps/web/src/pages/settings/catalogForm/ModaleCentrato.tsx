@@ -27,13 +27,14 @@
  * last. Escape is heard on the document, not on the panel: the focus is
  * usually in a text box, and a handler on the panel would catch it by chance.
  */
-import { useRef } from 'react'
-import { createPortal } from 'react-dom'
-import { useTranslation } from 'react-i18next'
-import { X } from 'lucide-react'
-import { alpha, colors } from '@/lib/tokens'
-import { useDialogFocus } from '@/hooks/useDialogFocus'
+import { Modal } from '@/components/Modal'
 
+/**
+ * Since 26 Sep 2026 (wave 4 of «tutte in fila») this is the app's `Modal`
+ * under the builder's name: the lessons above live there now — a portal on the
+ * body, the header always in view, only the body scrolling, the keyboard kept
+ * inside.
+ */
 export function ModaleCentrato({ titolo, sottotitolo, largo, onChiudi, children }: {
   titolo: string
   sottotitolo?: string
@@ -42,46 +43,9 @@ export function ModaleCentrato({ titolo, sottotitolo, largo, onChiudi, children 
   onChiudi: () => void
   children: React.ReactNode
 }) {
-  const { t } = useTranslation()
-  const dialogRef = useRef<HTMLDivElement>(null)
-
-  // Mounted means open: whoever shows this modal renders it only while it is.
-  useDialogFocus(dialogRef, true, onChiudi)
-
-  return createPortal(
-    <div
-      ref={dialogRef}
-      role="dialog"
-      aria-modal="true"
-      aria-label={titolo}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 100, background: alpha.scrim,
-        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-        padding: 'clamp(12px, 3vh, 32px) 16px', overflowY: 'auto',
-      }}
-    >
-      <div style={{
-        background: colors.white, borderRadius: 12, padding: 20,
-        width: largo ?? 680, maxWidth: '100%', margin: 'auto',
-        display: 'flex', flexDirection: 'column', maxHeight: '100%',
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-          <strong style={{ fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>{titolo}</strong>
-          <button type="button" onClick={onChiudi} aria-label={t('common.cancel')}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)' }}>
-            <X size={16} />
-          </button>
-        </div>
-        {sottotitolo !== undefined && sottotitolo !== '' && (
-          <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate)' }}>{sottotitolo}</p>
-        )}
-        {/* `minHeight: 0` perché senza, un figlio flex non si lascia
-            rimpicciolire sotto il suo contenuto e lo scorrimento non parte. */}
-        <div style={{ overflowY: 'auto', minHeight: 0, flex: 1, marginTop: 12 }}>
-          {children}
-        </div>
-      </div>
-    </div>,
-    document.body,
+  return (
+    <Modal open onClose={onChiudi} title={titolo} subtitle={sottotitolo || undefined} width={largo ?? 680} zIndex={100}>
+      {children}
+    </Modal>
   )
 }

@@ -76,7 +76,7 @@ function Rilievo({ issue }: { issue: IssueData }) {
           <button
             type="button"
             onClick={() => navigate(issue.where!)}
-            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--color-brand)', textDecoration: 'underline', fontSize: 'inherit' }}
+            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--color-link)', textDecoration: 'underline', fontSize: 'inherit' }}
           >
             {t('configurationIssues.goFix')}
           </button>

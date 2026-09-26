@@ -1,3 +1,4 @@
+import { Pill } from '@/components/ui/Pill'
 import { X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { colors, palette } from '@/lib/tokens'
@@ -32,19 +33,6 @@ export const panelInputStyle: React.CSSProperties = {
   backgroundColor: palette.neutral.surface1,
 }
 
-export function saveButtonStyle(disabled: boolean): React.CSSProperties {
-  return {
-    padding:         '8px 0',
-    backgroundColor: disabled ? colors.border : colors.brand,
-    color:           disabled ? colors.slateLight : colors.white,
-    border:          'none',
-    borderRadius:    6,
-    fontSize:        13,
-    fontWeight:      600,
-    cursor:          disabled ? 'not-allowed' : 'pointer',
-    width:           '100%',
-  }
-}
 
 export function PanelHeader({ title, onClose }: { title: string; onClose: () => void }) {
   const { t } = useTranslation()
@@ -249,20 +237,9 @@ export function buildActionParams(type: string, raw: Record<string, string>): Re
 export function ActionBadge({ type, params }: { type: string; params?: Record<string, unknown> }) {
   const { t } = useTranslation()
   return (
-    <span
-      title={type}
-      style={{
-        fontSize:        10,
-        padding:         '2px 6px',
-        borderRadius:    4,
-        backgroundColor: colors.brandLight,
-        color:           colors.brand,
-        fontWeight:      500,
-        cursor:          'default',
-      }}
-    >
+    <Pill bg={colors.brandLight} color={colors.brand} radius={4} title={type} style={{ fontSize:        10, fontWeight:      500, cursor:          'default' }}>
       {actionLabel(t, type, params)}
-    </span>
+    </Pill>
   )
 }
 

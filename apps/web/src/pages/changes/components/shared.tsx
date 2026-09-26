@@ -2,15 +2,17 @@
  * Presentational bits shared between ChangeDetailPage components.
  * Pure: no data fetching, no mutations, no app-level state.
  */
-import { useEffect, useRef, useState } from 'react'
+import { Modal } from '@/components/Modal'
+import { Button } from '@/components/Button'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
-import { Eye, ExternalLink, X } from 'lucide-react'
+import { Eye, ExternalLink } from 'lucide-react'
 import { TASK_STATUS, VALIDATION_RESULT, REVIEW_RESULT } from '@/lib/taskStatus'
 import type { TFunction } from 'i18next'
 import { formatDateTime } from '@/lib/datetime'
 import { StatusLabel } from '@/components/ui/badges'
-import { alpha, colors } from '@/lib/tokens'
+import { colors } from '@/lib/tokens'
 
 // Date e badge vivono nei moduli condivisi; i re-export mantengono i path
 // storici dei call site delle change.
@@ -24,7 +26,7 @@ export function OpenTaskButton({ taskId }: { taskId: string }) {
       display: 'inline-flex', alignItems: 'center', gap: 4,
       padding: '4px 10px', borderRadius: 6, border: '1px solid var(--color-brand)',
       fontSize: 'var(--font-size-label)', fontWeight: 500,
-      color: 'var(--color-brand)', background: 'transparent', textDecoration: 'none',
+      color: 'var(--color-link)', background: 'transparent', textDecoration: 'underline', textUnderlineOffset: 2,
     }}>
       <ExternalLink size={12} /> {t('common.open')}
     </Link>
@@ -34,49 +36,19 @@ export function OpenTaskButton({ taskId }: { taskId: string }) {
 export function EyeButton({ onClick }: { onClick: () => void }) {
   const { t } = useTranslation()
   return (
-    <button type="button" onClick={(e) => { e.stopPropagation(); onClick() }} style={{
-      display: 'inline-flex', alignItems: 'center', gap: 4,
-      background: 'none', border: '1px solid var(--color-border)', borderRadius: 4,
-      padding: '2px 6px', cursor: 'pointer', fontSize: 'var(--font-size-label)',
-      color: 'var(--color-brand)', fontWeight: 500,
-    }}>
+    <Button variant="secondary" size="xs"
+      onClick={(e) => { e.stopPropagation(); onClick() }}
+    >
       <Eye size={12} /> {t('common.view')}
-    </button>
+    </Button>
   )
 }
 
+/** A dialog of the change page: the app's `Modal` (26 Sep 2026: it was a hand-made overlay). */
 export function ModalOverlay({ title, onClose, children }: {
   title: string; onClose: () => void; children: React.ReactNode
 }) {
-  const { t } = useTranslation()
-  const containerRef = useRef<HTMLDivElement | null>(null)
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', onKey)
-    queueMicrotask(() => {
-      const focusable = containerRef.current?.querySelector<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      )
-      focusable?.focus()
-    })
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
-  return (
-    // Il click sull'overlay (fuori dal pannello) chiude il dialogo: scorciatoia
-    // solo-mouse; l'equivalente da tastiera è Escape (keydown sopra) e il bottone "Chiudi".
-    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- overlay: chiusura via mouse, Escape/bottone per la tastiera
-    <div
-      style={{ position: 'fixed', inset: 0, background: alpha.scrim, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div ref={containerRef} role="dialog" aria-modal="true" aria-label={title} style={{ background: colors.white, borderRadius: 12, padding: 24, maxWidth: 600, width: '90%', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 8px 24px var(--color-black-a15)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h3 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>{title}</h3>
-          <button type="button" onClick={onClose} aria-label={t('common.close')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}><X size={18} color="var(--color-slate-light)" /></button>
-        </div>
-        {children}
-      </div>
-    </div>
-  )
+  return <Modal open onClose={onClose} title={title} width={600} zIndex={100}>{children}</Modal>
 }
 
 /** L'esito di un task (validazione, review) nella lingua di chi legge. */
@@ -154,7 +126,7 @@ export function DescriptionField({ value, label }: { value: string; label?: stri
         {value}
       </div>
       {value.length > 150 && (
-        <button type="button" onClick={() => setShowFull(p => !p)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-label)', color: 'var(--color-brand)', marginTop: 2 }}>
+        <button type="button" onClick={() => setShowFull(p => !p)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-label)', color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, marginTop: 2 }}>
           {t(showFull ? 'common.showLess' : 'common.showAll')}
         </button>
       )}

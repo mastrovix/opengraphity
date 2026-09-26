@@ -32,13 +32,15 @@
  *
  * Contratto: `ciHealthOverview` in apps/api/src/graphql/schema-events.ts.
  */
+import { Loading } from '@/components/ui/Loading'
+import { Pill } from '@/components/ui/Pill'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { NetworkStatus } from '@apollo/client'
 import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import {
-  HeartPulse, Share2, RefreshCw, XCircle, AlertTriangle, CheckCircle2, EyeOff, Radar, Hand, Plus, Loader2, type LucideIcon,
+  HeartPulse, Share2, RefreshCw, CheckCircle2, EyeOff, Radar, Hand, Plus, Loader2, type LucideIcon,
 } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { ListPageHeader } from '@/components/ListPageHeader'
@@ -47,6 +49,8 @@ import { QueryError, StaleDataBanner } from '@/components/QueryError'
 import { Pagination } from '@/components/ui/Pagination'
 import { Input, Select } from '@/components/ui/FormControls'
 import { Button } from '@/components/Button'
+import { StatTile } from '@/components/ui/StatTile'
+import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { useMe } from '@/hooks/useMe'
 import { useMetamodel } from '@/contexts/MetamodelContext'
 import { useCILabels } from '@/hooks/useCILabels'
@@ -56,7 +60,7 @@ import { useCIBaseEnums } from '@/lib/ciEnums'
 import { timeAgo, formatDateTime, formatDuration, currentLocale } from '@/lib/datetime'
 import { pausedWhenHidden } from '@/lib/polling'
 import { GET_CI_HEALTH_OVERVIEW, GET_EVENT_POLICY, GET_TEAMS } from '@/graphql/queries'
-import { CIHealthBadge, CI_HEALTH_ACCENT } from '@/pages/events/eventShared'
+import { CIHealthBadge, CIHealthIcon, CI_HEALTH_ACCENT, CI_HEALTH_ICON, CI_HEALTH_TINT } from '@/pages/events/eventShared'
 import { servicesForCIPath } from './ServicesPage'
 import type { CIHealth, CIHealthOverview, CIHealthRow, CIHealthFilterVars } from '@/types/events'
 import { colors, palette } from '@/lib/tokens'
@@ -86,9 +90,9 @@ const TILE_ORDER: TileKey[] = ['down', 'degraded', 'operational', 'unmonitored']
 
 /** Palette dei riquadri: stessi rosso/ambra/verde dei badge (CI_HEALTH_ACCENT), grigio per "senza monitoraggio". */
 const TILE_STYLE: Record<TileKey, { accent: string; tint: string; icon: LucideIcon }> = {
-  down:        { accent: CI_HEALTH_ACCENT.down,        tint: palette.danger.tint,               icon: XCircle },
-  degraded:    { accent: CI_HEALTH_ACCENT.degraded,    tint: palette.warning.tint,               icon: AlertTriangle },
-  operational: { accent: CI_HEALTH_ACCENT.operational, tint: palette.success.tint,               icon: CheckCircle2 },
+  down:        { accent: CI_HEALTH_ACCENT.down,        tint: CI_HEALTH_TINT.down,        icon: CI_HEALTH_ICON.down },
+  degraded:    { accent: CI_HEALTH_ACCENT.degraded,    tint: CI_HEALTH_TINT.degraded,    icon: CI_HEALTH_ICON.degraded },
+  operational: { accent: CI_HEALTH_ACCENT.operational, tint: CI_HEALTH_TINT.operational, icon: CI_HEALTH_ICON.operational },
   unmonitored: { accent: 'var(--color-slate)',         tint: 'var(--color-slate-bg)', icon: EyeOff },
 }
 
@@ -169,34 +173,10 @@ interface TileProps {
   onClick?: () => void
 }
 
+/** A tile of the page: the app's StatTile (26 Sep 2026), pressed while its filter is on. */
 function HealthTile({ tileKey, label, value, context, hint, extra, active, onClick }: TileProps) {
   const { accent, tint, icon: Icon } = TILE_STYLE[tileKey]
-  const body = (
-    <>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <span aria-hidden="true" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, borderRadius: 999, background: tint, color: accent, flexShrink: 0 }}>
-          <Icon size={20} />
-        </span>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 28, lineHeight: 1.1, fontWeight: 700, color: accent, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
-          <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: 2 }}>{label}</div>
-        </div>
-      </div>
-      <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 10 }}>{context}</div>
-      {extra}
-    </>
-  )
-  const style: React.CSSProperties = {
-    textAlign: 'left', font: 'inherit', padding: '14px 16px', borderRadius: 12, minWidth: 0,
-    background: active ? tint : colors.white,
-    border: active ? `2px solid ${accent}` : '1px solid var(--border)',
-    boxShadow: 'var(--shadow-card)',
-    cursor: onClick ? 'pointer' : 'default',
-    transition: 'background-color 150ms, border-color 150ms',
-  }
-  return onClick
-    ? <button type="button" onClick={onClick} aria-pressed={active} title={hint} style={style}>{body}</button>
-    : <div title={hint} style={style}>{body}</div>
+  return <StatTile label={label} value={value} accent={accent} tint={tint} icon={<Icon size={20} />} context={context} hint={hint} extra={extra} onClick={onClick} pressed={active} />
 }
 
 // ── Celle ────────────────────────────────────────────────────────────────────
@@ -212,18 +192,9 @@ function ImpactChip({ dependents, highImpact, describedBy }: { dependents: numbe
     : t('monitoring.health.dependentsHint', { count: dependents })
   return (
     <>
-      <span
-        title={reason}
-        aria-describedby={describedBy}
-        style={{
-          display: 'inline-flex', alignItems: 'center', padding: '3px 8px', borderRadius: 999, whiteSpace: 'nowrap',
-          fontSize: 'var(--font-size-table)', fontWeight: high ? 700 : 500, fontVariantNumeric: 'tabular-nums',
-          background: high ? 'var(--color-slate-dark)' : 'var(--color-slate-bg)',
-          color: high ? colors.white : 'var(--color-slate)',
-        }}
-      >
+      <Pill bg={high ? 'var(--color-slate-dark)' : 'var(--color-slate-bg)'} color={high ? colors.white : 'var(--color-slate)'} radius={999} title={reason} aria-describedby={describedBy} style={{ fontSize: 'var(--font-size-table)', fontWeight: high ? 700 : 500, fontVariantNumeric: 'tabular-nums' }}>
         {t('monitoring.health.dependents', { count: dependents })}
-      </span>
+      </Pill>
       <span id={describedBy} style={SR_ONLY}>{reason}</span>
     </>
   )
@@ -250,7 +221,7 @@ function ServicesCell({ count, ciId, name, describedBy }: { count: number; ciId:
             aria-label={hint}
             title={hint}
             aria-describedby={describedBy}
-            style={{ color: 'var(--color-brand)', textDecoration: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
+            style={{ color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, fontWeight: 600, whiteSpace: 'nowrap' }}
           >
             {t('monitoring.health.services', { count })}
           </Link>
@@ -282,17 +253,6 @@ function SourceCell({ source, describedBy }: { source: CIHealthRow['healthSource
   )
 }
 
-const TH: React.CSSProperties = {
-  textAlign: 'left', padding: '10px 12px', fontSize: 'var(--font-size-label)', fontWeight: 600, letterSpacing: '0.05em',
-  textTransform: 'uppercase', color: 'var(--color-slate)', background: 'var(--surface-1)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap',
-}
-const TD: React.CSSProperties = { padding: '10px 12px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', verticalAlign: 'middle' }
-
-/**
- * Riga: il clic con il mouse apre il dettaglio (comodità), ma il bersaglio
- * da tastiera è il Link sul nome (D·3.2: niente `tabIndex` sulla riga, che
- * non saprebbe dichiararsi link). I link secondari fermano la propagazione.
- */
 /**
  * The two team filters. Each offers the teams that do that job (D10): owner
  * teams own CIs, support groups run them. A tenant whose teams have no type
@@ -326,74 +286,67 @@ function TeamFilters({ owner, support, onOwner, onSupport }: { owner: string; su
   )
 }
 
-function HealthRowView({ row, highImpact }: { row: CIHealthRow; highImpact: number | null }) {
+/**
+ * The columns of the list (26 Sep 2026: the app's table, not a hand-made one).
+ * The row opens the CI; the alarms count and the map are links elsewhere.
+ */
+function useHealthColumns(highImpact: number | null): ColumnDef<CIHealthRow>[] {
   const { t } = useTranslation()
-  const navigate = useNavigate()
   const { getCIType } = useMetamodel()
-  const { environmentLabel, typeLabel: etichettaTipo } = useCILabels()
-  const ciType = getCIType(row.type)
-  const typeLabel = etichettaTipo(row.type)
-  const accent = CI_HEALTH_ACCENT[row.health]
-  const since = row.healthSince ? formatDuration(Date.now() - new Date(row.healthSince).getTime()) : null
-  const to = ciPath(row)
-  const ids = { since: `ci-health-${row.id}-since`, impact: `ci-health-${row.id}-impact`, services: `ci-health-${row.id}-services`, source: `ci-health-${row.id}-source` }
-
-  return (
-    <tr
-      onClick={() => navigate(to)}
-      className="hover-bg"
-      style={{ cursor: 'pointer', borderTop: '1px solid var(--border)' }}
-    >
-      <td style={{ ...TD, borderLeft: `4px solid ${accent}` }}>
+  const { environmentLabel, typeLabel } = useCILabels()
+  const ids = (row: CIHealthRow) => ({ since: `ci-health-${row.id}-since`, impact: `ci-health-${row.id}-impact`, services: `ci-health-${row.id}-services`, source: `ci-health-${row.id}-source` })
+  return [
+    { key: 'name', label: t('monitoring.health.columns.ci'), render: (_v, row) => {
+      const ciType = getCIType(row.type)
+      return (
+        // The health as an icon, beside the name (26 Sep 2026: it was a stripe along the row).
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <CIHealthIcon health={row.health} />
           {ciType && <CIIcon icon={ciType.icon} size={16} color={ciType.color} style={{ flexShrink: 0 }} />}
           <div style={{ minWidth: 0 }}>
-            <Link to={to} onClick={(e) => e.stopPropagation()} title={t('monitoring.health.openCI', { name: row.name })} style={{ fontWeight: 600, color: 'var(--color-slate-dark)', textDecoration: 'none' }}>
-              {row.name}
-            </Link>
-            <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 2 }}>
-              {typeLabel}{row.environment ? ` · ${environmentLabel(row.environment)}` : ''}
-            </div>
+            <div style={{ fontWeight: 600 }}>{row.name}</div>
+            <div style={{ marginTop: 2 }}>{typeLabel(row.type)}{row.environment ? ` · ${environmentLabel(row.environment)}` : ''}</div>
           </div>
         </div>
-      </td>
-      <td style={TD}>
-        <CIHealthBadge health={row.health} compact />
-        {since && (
-          <div aria-describedby={ids.since} title={t('monitoring.health.sinceHint', { date: formatDateTime(row.healthSince) })} style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 3 }}>
-            {t('monitoring.health.since', { duration: since })}
-            <span id={ids.since} style={SR_ONLY}>{t('monitoring.health.sinceHint', { date: formatDateTime(row.healthSince) })}</span>
-          </div>
-        )}
-      </td>
-      <td style={{ ...TD, fontVariantNumeric: 'tabular-nums' }}>
-        {row.firingEvents > 0
-          ? <Link to={`/events?ciId=${row.id}`} onClick={(e) => e.stopPropagation()} aria-label={t('monitoring.health.alarmsLink', { count: row.firingEvents, name: row.name })} style={{ color: accent, fontWeight: 700, textDecoration: 'none' }}>{row.firingEvents}</Link>
-          : <span style={{ color: 'var(--color-slate-light)' }}>0</span>}
-      </td>
-      <td style={TD}><ImpactChip dependents={row.dependents} highImpact={highImpact} describedBy={ids.impact} /></td>
-      <td style={{ ...TD, fontVariantNumeric: 'tabular-nums' }}><ServicesCell count={row.servicesCount} ciId={row.id} name={row.name} describedBy={ids.services} /></td>
-      {/* Who acts on it: the SUPPORT team, not the owner (tour of 23 Sep 2026). */}
-      <td style={TD}>{row.supportTeam ?? <span style={{ color: 'var(--color-slate-light)' }}>—</span>}</td>
-      <td style={TD}>
-        {row.lastEventAt
-          ? <span title={formatDateTime(row.lastEventAt)} style={{ color: 'var(--color-slate)' }}>{timeAgo(row.lastEventAt)}</span>
-          : <span style={{ color: 'var(--color-slate-light)' }}>{t('monitoring.health.never')}</span>}
-      </td>
-      <td style={TD}><SourceCell source={row.healthSource} describedBy={ids.source} /></td>
-      <td style={{ ...TD, textAlign: 'center' }}>
-        <Link
-          to={topologyHealthPath(row.id)}
-          onClick={(e) => e.stopPropagation()}
-          aria-label={t('monitoring.health.viewOnMapRow', { name: row.name })}
-          title={t('monitoring.health.viewOnMapRow', { name: row.name })}
-          style={{ display: 'inline-flex', color: 'var(--color-slate)', padding: 4 }}
-        >
-          <Share2 size={14} aria-hidden="true" />
-        </Link>
-      </td>
-    </tr>
-  )
+      )
+    } },
+    // The gravest first when sorting up (26 Sep 2026: every column sorts).
+    { key: 'health', label: t('monitoring.health.columns.health'), width: '150px', rank: ['down', 'degraded', 'operational'], render: (_v, row) => {
+      const since = row.healthSince ? formatDuration(Date.now() - new Date(row.healthSince).getTime()) : null
+      return (
+        <>
+          <CIHealthBadge health={row.health} compact />
+          {since && (
+            <div aria-describedby={ids(row).since} title={t('monitoring.health.sinceHint', { date: formatDateTime(row.healthSince) })} style={{ marginTop: 3 }}>
+              {t('monitoring.health.since', { duration: since })}
+              <span id={ids(row).since} style={SR_ONLY}>{t('monitoring.health.sinceHint', { date: formatDateTime(row.healthSince) })}</span>
+            </div>
+          )}
+        </>
+      )
+    } },
+    { key: 'firingEvents', label: t('monitoring.health.columns.alarms'), width: '110px', render: (_v, row) => row.firingEvents > 0
+      ? <Link to={`/events?ciId=${row.id}`} aria-label={t('monitoring.health.alarmsLink', { count: row.firingEvents, name: row.name })} style={{ color: CI_HEALTH_ACCENT[row.health], fontWeight: 700, textDecoration: 'underline', textUnderlineOffset: 2, fontVariantNumeric: 'tabular-nums' }}>{row.firingEvents}</Link>
+      : <span>0</span> },
+    { key: 'dependents', label: t('monitoring.health.columns.impact'), width: '130px', render: (_v, row) => <ImpactChip dependents={row.dependents} highImpact={highImpact} describedBy={ids(row).impact} /> },
+    { key: 'servicesCount', label: t('monitoring.health.columns.services'), width: '120px', render: (_v, row) => <ServicesCell count={row.servicesCount} ciId={row.id} name={row.name} describedBy={ids(row).services} /> },
+    // Who acts on it: the SUPPORT team, not the owner (tour of 23 Sep 2026).
+    { key: 'supportTeam', label: t('monitoring.health.columns.supportTeam'), width: '170px', render: (_v, row) => row.supportTeam ?? '—' },
+    { key: 'lastEventAt', label: t('monitoring.health.columns.lastEvent'), width: '130px', render: (_v, row) => row.lastEventAt
+      ? <span title={formatDateTime(row.lastEventAt)}>{timeAgo(row.lastEventAt)}</span>
+      : t('monitoring.health.never') },
+    { key: 'healthSource', label: t('monitoring.health.columns.source'), width: '130px', render: (_v, row) => <SourceCell source={row.healthSource} describedBy={ids(row).source} /> },
+    { key: 'id', label: t('monitoring.health.columns.map'), sortable: false, width: '70px', render: (_v, row) => (
+      <Link
+        to={topologyHealthPath(row.id)}
+        aria-label={t('monitoring.health.viewOnMapRow', { name: row.name })}
+        title={t('monitoring.health.viewOnMapRow', { name: row.name })}
+        style={{ display: 'inline-flex', color: 'var(--color-slate)', padding: 4 }}
+      >
+        <Share2 size={14} aria-hidden="true" />
+      </Link>
+    ) },
+  ]
 }
 
 // ── Pagina ───────────────────────────────────────────────────────────────────
@@ -474,6 +427,7 @@ export function CIHealthPage() {
    * dell'organizzazione (Policy eventi). null = non ancora letta.
    */
   const { data: policyData } = useQuery<{ eventPolicy: { highImpactDependents: number } }>(GET_EVENT_POLICY, { fetchPolicy: METAMODEL_FETCH_POLICY })
+  const healthColumns = useHealthColumns(policyData?.eventPolicy.highImpactDependents ?? null)
   const typeOptions = useMemo(() => ciTypes.filter((ct) => ct.name !== '__base__'), [ciTypes])
 
   const overview = data?.ciHealthOverview
@@ -499,23 +453,12 @@ export function CIHealthPage() {
     ? t('monitoring.health.updatedAt', { time: new Date(lastUpdated).toLocaleTimeString(currentLocale(), { hour: '2-digit', minute: '2-digit' }) })
     : '—'
 
-  const headers: { key: string; label: string; width?: string }[] = [
-    { key: 'ci',        label: t('monitoring.health.columns.ci') },
-    { key: 'health',    label: t('monitoring.health.columns.health'),    width: '150px' },
-    { key: 'alarms',    label: t('monitoring.health.columns.alarms'),    width: '110px' },
-    { key: 'impact',    label: t('monitoring.health.columns.impact'),    width: '130px' },
-    { key: 'services',  label: t('monitoring.health.columns.services'),  width: '120px' },
-    { key: 'team',      label: t('monitoring.health.columns.supportTeam'), width: '170px' },
-    { key: 'lastEvent', label: t('monitoring.health.columns.lastEvent'), width: '130px' },
-    { key: 'source',    label: t('monitoring.health.columns.source'),    width: '130px' },
-    { key: 'map',       label: t('monitoring.health.columns.map'),       width: '70px' },
-  ]
 
   let tableBody: ReactNode
   if (error && !data) {
     tableBody = <QueryError message={error.message} onRetry={() => void refetch()} />
   } else if (loading && !data) {
-    tableBody = <p role="status" style={{ color: 'var(--color-slate-light)', padding: '24px 0' }}>{t('common.loading')}</p>
+    tableBody = <Loading padded />
   } else if (nothingYet) {
     tableBody = (
       <div className="card-border">
@@ -541,21 +484,15 @@ export function CIHealthPage() {
           </span>
           {totalPages > 1 && <span>{t('monitoring.health.page', { page: page + 1, total: totalPages })}</span>}
         </div>
-        {/* Sotto ~900px la tabella scorre nel proprio contenitore, mai la pagina. */}
-        <div className="card-border" style={{ overflowX: 'auto' }}>
-          <table aria-label={t('monitoring.health.title')} style={{ width: '100%', minWidth: 1000, borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                {headers.map((h) => <th key={h.key} scope="col" style={{ ...TH, width: h.width }}>{h.label}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {items.length === 0
-                ? <tr><td colSpan={headers.length} style={{ ...TD, textAlign: 'center', color: 'var(--color-slate-light)', padding: '28px 12px' }}>{t('monitoring.health.noMatch')}</td></tr>
-                : items.map((row) => <HealthRowView key={row.id} row={row} highImpact={policyData?.eventPolicy.highImpactDependents ?? null} />)}
-            </tbody>
-          </table>
-        </div>
+        <SortableFilterTable<CIHealthRow>
+          label={t('monitoring.health.title')}
+          columns={healthColumns}
+          data={items}
+          emptyMessage={t('monitoring.health.noMatch')}
+          // The server pages the list by gravity: a column sorts the page on screen, and says so.
+          sortHint={t('common.sortPageOnly')}
+          onRowClick={(row) => navigate(ciPath(row))}
+       />
         <Pagination currentPage={page + 1} totalPages={totalPages} onPrev={() => setPage(page - 1)} onNext={() => setPage(page + 1)} />
       </>
     )
@@ -600,7 +537,7 @@ export function CIHealthPage() {
                 hint={clickable ? t('monitoring.health.tiles.toggleHint') : t('monitoring.health.tiles.unmonitoredHint')}
                 extra={clickable ? undefined : (
                   // `?health=none` → la CMDB apre il filtro avanzato "Salute è vuoto" (CI mai toccati da un allarme).
-                  <Link to="/cmdb?health=none" style={{ display: 'inline-block', marginTop: 6, fontSize: 'var(--font-size-table)', color: 'var(--color-brand)' }}>
+                  <Link to="/cmdb?health=none" style={{ display: 'inline-block', marginTop: 6, fontSize: 'var(--font-size-table)', color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2 }}>
                     {t('monitoring.health.tiles.unmonitoredLink')}
                   </Link>
                 )}

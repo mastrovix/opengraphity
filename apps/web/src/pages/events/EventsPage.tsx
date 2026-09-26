@@ -36,6 +36,7 @@
  * (`events(filter)` non accetta `sortField`): le intestazioni ordinabili lo
  * dicono nel `title` (D·2.8) invece di far credere a un ordine globale.
  */
+import { Chip } from '@/components/ui/Chip'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@apollo/client/react'
@@ -50,6 +51,7 @@ import { QueryError } from '@/components/QueryError'
 import { Pagination } from '@/components/ui/Pagination'
 import { Input, Select } from '@/components/ui/FormControls'
 import { Button } from '@/components/Button'
+import { StatTile, StatTileGrid } from '@/components/ui/StatTile'
 import { FilterBuilder, type FilterGroup } from '@/components/FilterBuilder'
 import { useEntityFields } from '@/hooks/useEntityFields'
 import { useMe } from '@/hooks/useMe'
@@ -81,6 +83,11 @@ import {
 const COLUMN_RANKS: Readonly<Record<string, readonly string[]>> = {
   status:   EVENT_STATUS_RANK,
   severity: EVENT_SEVERITIES,
+}
+
+/** What a column sorts on when its raw value is an object without a name (26 Sep 2026: every column sorts). */
+const COLUMN_SORT_VALUES: Readonly<Record<string, (row: EventRow) => unknown>> = {
+  incident: (row) => row.incident?.number ?? null,
 }
 
 const PAGE_SIZE       = 50
@@ -225,28 +232,6 @@ const STAT_ACCENT: Record<StatKey, string> = {
   resolved24h: ACCENT.success,
 }
 
-function StatTile({ label, value, accent, active, onClick }: { label: string; value: number; accent: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      style={{
-        flex: 1, minWidth: 110, textAlign: 'left', cursor: 'pointer',
-        background: colors.white, borderRadius: 10, padding: '12px 16px',
-        border: active ? `2px solid ${accent}` : `1px solid ${colors.border}`,
-        boxShadow: 'var(--shadow-card)',
-        font: 'inherit',
-      }}
-    >
-      <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 500, color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: accent }}>{value}</div>
-    </button>
-  )
-}
-
 /**
  * Un gruppo di filtri: etichetta sopra, chip sotto. L'etichetta era una
  * `legend` con `float: left` dentro un fieldset flex — fuori dal flusso, quindi
@@ -264,22 +249,12 @@ function FilterChipGroup({ label, children }: { label: string; children: React.R
   )
 }
 
-function Chip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+/** A filter of the console: the app's Chip. */
+function FilterChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      style={{
-        padding: '4px 10px', borderRadius: 999, cursor: 'pointer', fontSize: 'var(--font-size-body)',
-        border: `1px solid ${active ? colors.brand : colors.border}`,
-        background: active ? colors.brandLight : colors.white,
-        color: active ? colors.brand : colors.slate,
-        fontWeight: active ? 600 : 400,
-      }}
-    >
+    <Chip pressed={active} onClick={onClick}>
       {label}
-    </button>
+    </Chip>
   )
 }
 
@@ -442,7 +417,7 @@ export function EventsPage() {
     const matching = applyFilterGroup(rows, filterGroup)
     return sort.field === null
       ? matching
-      : sortRowsBy(matching, String(sort.field), sort.dir, COLUMN_RANKS[String(sort.field)])
+      : sortRowsBy(matching, String(sort.field), sort.dir, COLUMN_RANKS[String(sort.field)], COLUMN_SORT_VALUES[String(sort.field)])
   }, [rows, filterGroup, sort])
   const total = data?.events.total ?? 0
   const totalPages = Math.ceil(total / PAGE_SIZE)
@@ -475,13 +450,11 @@ export function EventsPage() {
     ) },
     { key: 'severity', label: t('events.columns.severity'), width: '100px', sortable: true, rank: EVENT_SEVERITIES, render: (_v, row) => <EventSeverityBadge severity={row.severity} /> },
     {
-      // Il titolo è un link al dettaglio: è lui il bersaglio da tastiera (la
-      // riga resta cliccabile con il mouse ma non è focalizzabile, vedi
-      // SortableFilterTable `focusableRows`).
+      // The row opens the alarm, from the mouse and the keyboard, as in every list (26 Sep 2026).
       key: 'title', label: t('events.columns.title'), sortable: true,
       render: (_v, row) => (
         <div style={{ minWidth: ALARM_TITLE_MIN_WIDTH }}>
-          <Link to={`/events/${row.id}`} state={listReturnState(location.search)} onClick={(e) => e.stopPropagation()} style={{ fontWeight: 600, color: colors.slateDark, textDecoration: 'none' }}>{row.title}</Link>
+          <div style={{ fontWeight: 600 }}>{row.title}</div>
           <div style={{ fontSize: 'var(--font-size-table)', color: colors.slateLight, marginTop: 2 }}>{resourceKindLabel(t, row.resourceKind)} · {row.resource}</div>
         </div>
       ),
@@ -489,7 +462,7 @@ export function EventsPage() {
     {
       key: 'ci', label: t('events.columns.ci'), width: '160px',
       render: (_v, row) => row.ci
-        ? <Link to={ciPath(row.ci)} onClick={(e) => e.stopPropagation()} style={{ color: colors.brand, textDecoration: 'none', fontWeight: 500 }}>{row.ci.name}</Link>
+        ? <Link to={ciPath(row.ci)} onClick={(e) => e.stopPropagation()} style={{ color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, fontWeight: 500 }}>{row.ci.name}</Link>
         : <EventNoCIBadge matchReason={row.matchReason} />,
     },
     {
@@ -541,33 +514,34 @@ export function EventsPage() {
       {/* Contatori */}
       {statsError && !stats && <QueryError message={statsError.message} onRetry={() => void refetchStats()} />}
       {stats && (
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
+        // The app's tiles (26 Sep 2026: the console drew its own, label above the number).
+        <StatTileGrid>
           {STAT_ORDER.map((key) => (
-            <StatTile key={key} label={t(`events.stats.${key}`)} value={stats[key]} accent={STAT_ACCENT[key]} active={activeStat === key} onClick={() => applyStat(key)} />
+            <StatTile key={key} label={t(`events.stats.${key}`)} value={stats[key]} accent={STAT_ACCENT[key]} pressed={activeStat === key} onClick={() => applyStat(key)} />
           ))}
-        </div>
+        </StatTileGrid>
       )}
 
       {/* Filtri rapidi: un gruppo per famiglia, etichetta sopra i suoi chip. */}
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '12px 32px', marginBottom: 12 }}>
         <FilterChipGroup label={t('events.columns.status')}>
           {EVENT_STATUSES.map((s) => (
-            <Chip key={s} label={t(`events.status.${s}`)} active={filter.status.includes(s)} onClick={() => updateFilter({ status: toggle(filter.status, s) })} />
+            <FilterChip key={s} label={t(`events.status.${s}`)} active={filter.status.includes(s)} onClick={() => updateFilter({ status: toggle(filter.status, s) })} />
           ))}
         </FilterChipGroup>
         <FilterChipGroup label={t('events.columns.severity')}>
           {EVENT_SEVERITIES.map((s) => (
-            <Chip key={s} label={t(`events.severity.${s}`)} active={filter.severity.includes(s)} onClick={() => updateFilter({ severity: toggle(filter.severity, s) })} />
+            <FilterChip key={s} label={t(`events.severity.${s}`)} active={filter.severity.includes(s)} onClick={() => updateFilter({ severity: toggle(filter.severity, s) })} />
           ))}
         </FilterChipGroup>
         <FilterChipGroup label={t('events.filters.other')}>
-          <Chip label={t('events.filters.orphanOnly')} active={filter.orphan} onClick={() => updateFilter({ orphan: !filter.orphan })} />
+          <FilterChip label={t('events.filters.orphanOnly')} active={filter.orphan} onClick={() => updateFilter({ orphan: !filter.orphan })} />
           {/* Chip di contesto (arrivo da CI/incident/change): il click li toglie e aggiorna l'URL. */}
-          {filter.ciId       && <Chip label={t('monitoring.console.ciFilter')}    active onClick={() => updateFilter({ ciId: null })} />}
-          {filter.incidentId && <Chip label={t('events.filters.incidentOnly')}   active onClick={() => updateFilter({ incidentId: null })} />}
-          {filter.changeId   && <Chip label={t('events.filters.changeOnly')}     active onClick={() => updateFilter({ changeId: null })} />}
+          {filter.ciId       && <FilterChip label={t('monitoring.console.ciFilter')}    active onClick={() => updateFilter({ ciId: null })} />}
+          {filter.incidentId && <FilterChip label={t('events.filters.incidentOnly')}   active onClick={() => updateFilter({ incidentId: null })} />}
+          {filter.changeId   && <FilterChip label={t('events.filters.changeOnly')}     active onClick={() => updateFilter({ changeId: null })} />}
           {/* G-EVT-6: il filtro su una sorgente che non esiste piu si toglie da qui. */}
-          {sourceGone        && <Chip label={t('events.filters.sourceGoneClear')} active onClick={() => updateFilter({ sourceId: null })} />}
+          {sourceGone        && <FilterChip label={t('events.filters.sourceGoneClear')} active onClick={() => updateFilter({ sourceId: null })} />}
         </FilterChipGroup>
         <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 4, marginLeft: 'auto' }}>
           <Select
@@ -630,7 +604,6 @@ export function EventsPage() {
             emptyComponent={<EmptyState icon={<Radar size={32} />} title={t('events.empty.title')} description={t('events.empty.description')} />}
             // G-EVT-13: la scheda deve sapere con quali filtri si e arrivati.
             onRowClick={(row) => navigate(`/events/${row.id}`, { state: listReturnState(location.search) })}
-            focusableRows={false}
             onSort={onSort}
             sortField={sort.field === null ? null : String(sort.field)}
             sortDir={sort.dir}

@@ -191,8 +191,8 @@ export function OLAContractsPage() {
       <Pill bg={v === 'uc' ? palette.purple.tint : palette.info.tint} color={v === 'uc' ? palette.purple.dark : palette.info.text}>{String(v).toUpperCase()}</Pill>
     ) },
     { key: 'name', label: t('common.name'), sortable: true, render: (v) => <span style={{ fontWeight: 500, color: 'var(--color-slate-dark)' }}>{String(v)}</span> },
-    { key: 'entityType', label: t('admin.sla.scopeField'), sortable: true, render: (v) => olaScopeLabel(String(v), t, typeLabel) },
-    { key: 'teamName', label: t('pages.slaReport.party'), sortable: true, render: (_v, o) => o.teamName ?? o.partyName ?? '—' },
+    { key: 'entityType', label: t('admin.sla.scopeField'), sortable: true, sortValue: (o) => olaScopeLabel(String(o.entityType), t, typeLabel), render: (v) => olaScopeLabel(String(v), t, typeLabel) },
+    { key: 'teamName', label: t('pages.slaReport.party'), sortable: true, sortValue: (o) => o.teamName ?? o.partyName, render: (_v, o) => o.teamName ?? o.partyName ?? '—' },
     { key: 'responseMinutes', label: t('admin.sla.response'), sortable: true, render: (v) => olaMinutes(Number(v), t) },
     { key: 'resolveMinutes', label: t('admin.sla.resolution'), sortable: true, render: (v) => olaMinutes(Number(v), t) },
     { key: 'businessHours', label: t('serviceTargets.timeCounting'), sortable: true, width: '150px', render: (_v, o) => (
@@ -200,7 +200,7 @@ export function OLAContractsPage() {
         ? <Pill bg={o.calendarName ? palette.success.tint : palette.danger.tint} color={o.calendarName ? palette.success.text : palette.danger.text} radius={10}>{o.calendarName ?? t('serviceTargets.noCalendar')}{o.timezone ? ` · ${o.timezone}` : ''}</Pill>
         : <Pill bg="var(--color-border-light)" color="var(--color-slate)" radius={10}>{t('serviceTargets.alwaysOn')}</Pill>
     ) },
-    { key: 'complianceTarget', label: t('serviceTargets.targetColumn'), sortable: false, width: '100px', render: (_v, o) => (
+    { key: 'complianceTarget', label: t('serviceTargets.targetColumn'), width: '100px', render: (_v, o) => (
       <span style={{ color: 'var(--color-slate)' }}>{o.complianceTarget == null ? '—' : `${o.complianceTarget}%`}</span>
     ) },
     { key: 'enabled', label: t('admin.rules.active'), sortable: true, width: '90px', render: (_v, o) => (

@@ -13,7 +13,7 @@ import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { GET_SERVICE_CALENDARS } from '@/graphql/queries'
 import { Input, Select } from '@/components/ui/FormControls'
-import { selectS, labelS } from '@/components/ui/styles'
+import { labelS } from '@/components/ui/styles'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
 /** Il valore del selettore per «24×7»: un calendario ha sempre un id, mai questa stringa. */
@@ -43,13 +43,13 @@ export function TimeCountingField({ id, value, onChange }: { id: string; value: 
   return (
     <div>
       <label htmlFor={id} style={labelS}>{t('serviceTargets.timeCounting')} *</label>
-      <Select id={id} style={selectS} value={value} onChange={(e) => onChange(e.target.value)}>
+      <Select id={id} value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="" disabled>{t('serviceTargets.chooseTimeCounting')}</option>
         <option value={ALWAYS_ON}>{t('serviceTargets.alwaysOn')}</option>
         {calendars.map((c) => <option key={c.id} value={c.id}>{t('serviceTargets.calendarOption', { name: c.name })}</option>)}
       </Select>
       <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
-        {t('serviceTargets.timeCountingHint')} <Link to="/settings/organization" style={{ color: 'var(--color-brand)' }}>{t('serviceTargets.manageCalendars')}</Link>
+        {t('serviceTargets.timeCountingHint')} <Link to="/settings/organization" style={{ color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{t('serviceTargets.manageCalendars')}</Link>
       </span>
     </div>
   )

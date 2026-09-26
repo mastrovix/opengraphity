@@ -28,6 +28,10 @@
  * Dal server arriva `kind` + `params`, mai una frase: l'API non sa in che
  * lingua guarda chi legge.
  */
+import { Loading } from '@/components/ui/Loading'
+import { Pill } from '@/components/ui/Pill'
+import { Tabs } from '@/components/ui/Tabs'
+import { Select, Textarea } from '@/components/ui/FormControls'
 import { useState } from 'react'
 import { formatHourMinute } from '@/lib/datetime'
 import { Link } from 'react-router-dom'
@@ -290,26 +294,18 @@ export function ProposalsPage() {
         </div>
       )}
 
-      <div role="tablist" aria-label={t('pages.proposals.viewLabel')} style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        {(['open', 'decided'] as const).map((v) => (
-          <button key={v} type="button" role="tab" aria-selected={vista === v}
-            onClick={() => setVista(v)}
-            style={{
-              padding: '7px 14px', borderRadius: 6, cursor: 'pointer',
-              fontSize: 'var(--font-size-body)', fontWeight: vista === v ? 600 : 400,
-              border: `1.5px solid ${vista === v ? 'var(--color-brand)' : 'var(--color-border)'}`,
-              background: vista === v ? palette.info.light : 'var(--color-slate-bg)',
-              color: vista === v ? 'var(--color-brand)' : 'var(--color-slate)',
-            }}>
-            {t(v === 'open' ? 'pages.proposals.viewOpen' : 'pages.proposals.viewDecided')}
-          </button>
-        ))}
-      </div>
+      <Tabs<'open' | 'decided'>
+        ariaLabel={t('pages.proposals.viewLabel')}
+        items={[{ key: 'open', label: t('pages.proposals.viewOpen') }, { key: 'decided', label: t('pages.proposals.viewDecided') }]}
+        value={vista}
+        onChange={setVista}
+        style={{ marginBottom: 16 }}
+      />
 
       {error && <QueryError message={error.message} onRetry={() => void refetch()} />}
 
       {!error && loading && !r && (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-slate-light)' }}>{t('common.loading')}</div>
+        <Loading padded />
       )}
 
       {/*
@@ -349,12 +345,9 @@ export function ProposalsPage() {
                     {p.windowDays > 0 && ` · ${t('pages.proposals.window', { count: p.windowDays })}`}
                   </div>
                 </div>
-                <span style={{
-                  padding: '3px 10px', borderRadius: 999, fontSize: 'var(--font-size-label)', fontWeight: 600,
-                  background: palette.info.tint, color: 'var(--color-brand)',
-                }}>
+                <Pill bg={palette.info.tint} color="var(--color-brand)" radius={999} style={{ fontSize: 'var(--font-size-label)', fontWeight: 600 }}>
                   {t('pages.proposals.occurrences', { count: p.occurrences })}
-                </span>
+                </Pill>
               </div>
 
               {/*
@@ -410,7 +403,7 @@ export function ProposalsPage() {
               */}
               {p.openedProblemNumber && (
                 <div style={{ marginTop: 10, fontSize: 'var(--font-size-body)' }}>
-                  <Link to={`/problems/${p.openedProblemId ?? ''}`} style={{ color: 'var(--color-brand)', fontWeight: 600 }}>
+                  <Link to={`/problems/${p.openedProblemId ?? ''}`} style={{ color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, fontWeight: 600 }}>
                     {t('pages.proposals.openedProblem', { number: p.openedProblemNumber })}
                   </Link>
                 </div>
@@ -560,9 +553,13 @@ export function ProposalsPage() {
         <label htmlFor="proposal-reject-note" style={{ display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 600, marginBottom: 6 }}>
           {t('pages.proposals.rejectNote')}
         </label>
-        <textarea id="proposal-reject-note" value={nota} onChange={(e) => setNota(e.target.value)}
-          rows={3} placeholder={t('pages.proposals.rejectNotePlaceholder')}
-          style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: 'var(--font-size-body)', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+        <Textarea
+          id="proposal-reject-note"
+          value={nota}
+          onChange={(e) => setNota(e.target.value)}
+          rows={3}
+          placeholder={t('pages.proposals.rejectNotePlaceholder')}
+        />
       </Modal>
 
       {/*
@@ -606,13 +603,16 @@ export function ProposalsPage() {
             <label htmlFor={campo.id} style={{ display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 600, marginBottom: 6 }}>
               {campo.etichetta}
             </label>
-            <select id={campo.id} value={campo.valore} onChange={(e) => campo.set(e.target.value)}
-              style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: 'var(--font-size-body)', boxSizing: 'border-box', fontFamily: 'inherit' }}>
+            <Select
+              id={campo.id}
+              value={campo.valore}
+              onChange={(e) => campo.set(e.target.value)}
+            >
               <option value="">{t('pages.proposals.pickOne')}</option>
               {(campo.voci ?? []).map((v) => (
                 <option key={v.value} value={v.value}>{v.label ?? v.value}</option>
               ))}
-            </select>
+            </Select>
           </div>
         ))}
       </Modal>

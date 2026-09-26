@@ -44,6 +44,13 @@
   --color-slate:        var(--text-secondary);
   --color-slate-dark:   var(--text-primary);
   --color-slate-light:  var(--text-muted);
+  /* The header of an open section (26 Sep 2026, the owner, after a warm orange he did not like:
+     «prova carta da zucchero»): sugar-paper blue with a navy title, ~8:1 — white on it would not read. */
+  --color-section-head:      #b3c7de;
+  --color-section-head-text: #1f3a5f;
+  /* Links (26 Sep 2026, the owner: «anche i link in carta da zucchero»): the deep tone of the
+     family — the light one of the headers reads 1.6:1 as text on white, this one ~6:1. */
+  --color-link:              #3f6690;
   --color-slate-bg:     #f1f5f9;
   --color-white:        var(--surface);
   --color-border:       var(--border);
@@ -252,6 +259,10 @@
 }
 
 @layer base {
+  /* A link with no colour of its own is sugar-paper blue, and underlined: the muted colour alone
+     did not say «click me» (26 Sep 2026, the owner; WCAG 1.4.1, not by colour alone). */
+  a { color: var(--color-link); text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }
+
   * {
     border-color: var(--border);
   }
@@ -307,11 +318,15 @@
   porta un giudizio (`data-tone`): la percentuale di rispetto colorata contro
   l'obiettivo del contratto. Senza l'eccezione la regola cancellava quel colore
   in silenzio, e un 96% sotto un obiettivo del 99,5% restava nero come un 100%.
+  Quel che sta DENTRO un `data-tone` (l'icona della salute, 26 set 2026) tiene
+  il colore del suo contenitore.
+  E TRANNE un link verso altro (il CI di un allarme, 26 set 2026): resta del
+  colore dei link. Il nome della riga e un RowLink, che eredita questo colore.
 */
 .sft-td,
-.sft-td *:not([data-tone]),
+.sft-td *:not([data-tone]):not([data-tone] *):not(a):not(a *),
 tr:hover .sft-td,
-tr:hover .sft-td *:not([data-tone]) {
+tr:hover .sft-td *:not([data-tone]):not([data-tone] *):not(a):not(a *) {
   color: var(--text-primary) !important;
 }
 
@@ -321,12 +336,27 @@ tr:hover .sft-td *:not([data-tone]) {
   `border-collapse: collapse` sposta tutta la tabella di meta della sua
   larghezza — e lasciava una fascia bianca di 4px prima della testata.
   L'ombra non entra nel calcolo delle dimensioni.
+
+  Una regola sola per OGNI riga che apre qualcosa (26 set 2026, «alcune
+  tabelle hanno un bordino, ma non tutte»): la tabella standard, SimpleTable
+  e le tabelle fatte a mano (`rowOpens`, components/ui/RowLink.tsx). Una riga
+  che non si apre non ha la striscia: la striscia dice «cliccami».
 */
-.sft-row > td:first-child {
+.row-opens > td:first-child {
   transition: box-shadow 0.15s;
 }
-.sft-row:hover > td:first-child {
+.row-opens:hover > td:first-child {
   box-shadow: inset 8px 0 0 var(--color-icon-accent);
+}
+
+/*
+  Il campo col fuoco si vede (26 set 2026): bordo del colore del marchio. Prima
+  lo facevano alcune pagine con onFocus/onBlur, e lo stesso campo si accendeva
+  in una pagina e non nella successiva. `!important` perché il bordo del campo
+  è uno stile in linea (FormControls).
+*/
+.og-field:focus {
+  border-color: var(--color-brand) !important;
 }
 
 /* ── Card border — uniform style for all white panels ──── */
@@ -567,8 +597,20 @@ code, kbd, samp, pre {
    Replaces the manual onMouseEnter/Leave backgroundColor handlers.
    Override the color per element with `style={{ '--hover-bg': '#f8fafc' }}`. */
 .hover-bg:hover {
-  background-color: var(--hover-bg, var(--color-slate-bg));
+  /* `!important`: a row with a background of its own (an unread notification) lights up too. */
+  background-color: var(--hover-bg, var(--color-slate-bg)) !important;
 }
+
+/*
+  Gli altri effetti al passaggio del mouse (26 set 2026): erano gestori
+  onMouseEnter/onMouseLeave che scrivevano nello stile, pagina per pagina. Un
+  gestore non si vede col tasto Tab: la classe vale anche per :focus-visible.
+  `!important` perché il colore di partenza è uno stile in linea.
+*/
+.hover-danger:hover, .hover-danger:focus-visible { background-color: var(--color-danger-bg) !important; }
+.hover-danger-text:hover, .hover-danger-text:focus-visible { color: var(--color-danger) !important; }
+.hover-strong:hover, .hover-strong:focus-visible { color: var(--color-slate-dark) !important; }
+.hover-lift:hover, .hover-lift:focus-visible { box-shadow: 0 4px 16px var(--color-black-a08) !important; }
 
 /* ══ RESPONSIVITÀ: da 700 a 1400px ═══════════════════════════════════════════
    Ondata 4 delle quattro decise il 13 set 2026.

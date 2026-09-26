@@ -6,7 +6,10 @@
  * - primary:   brand background, white text (the "Nuovo X" header buttons)
  * - secondary: white background, 1px border, slate text (Annulla / secondary actions)
  * - danger:    white background, red border + text (destructive row actions)
- * - ghost:     no background, no border (back-links, inline text actions)
+ * - ghost:     no background, no border (back-links, inline text actions) —
+ *              with text it IS a link to the eye, so it is drawn as one: link
+ *              colour, underlined (26 Sep 2026, «non si capisce che si può
+ *              cliccare»); icon-only it stays an icon
  * - icon:      square icon-only button, secondary look — REQUIRES `aria-label`
  *              (or `title`, which is used as the accessible name too)
  *
@@ -32,7 +35,7 @@
  * (`onClick={() => save()}`, never `() => void save()`; a test holds the
  * whole app to it).
  */
-import { useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
+import { Children, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
 import { colors, palette } from '@/lib/tokens'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'icon'
@@ -58,6 +61,14 @@ export interface ButtonProps {
   /** The id of what describes the button (e.g. the value a «Copy» button copies, when several sit together). */
   'aria-describedby'?: string
   className?: string
+  /** Passed through as they are (26 Sep 2026: the hand-made buttons that became Buttons used them). */
+  id?: string
+  'data-testid'?: string
+  'aria-controls'?: string
+  'aria-haspopup'?: boolean | 'menu' | 'listbox' | 'dialog'
+  /** The caller's own «saving…» state, besides the promise the button awaits. */
+  'aria-busy'?: boolean
+  onMouseDown?: (e: MouseEvent<HTMLButtonElement>) => void
 }
 
 // 26 Sep 2026: a size smaller (they were 36-38 px tall with 12-13 px text; see the button rule in index.css).
@@ -70,6 +81,11 @@ const PADDING: Record<ButtonSize, string> = {
 const PRIMARY_FONT: Record<ButtonSize, string> = {
   sm: 'var(--font-size-card-title)',
   xs: 'var(--font-size-body)',
+}
+
+/** Whether the children carry words (a ghost with words reads as a link). */
+function hasText(children: ReactNode): boolean {
+  return Children.toArray(children).some((c) => typeof c === 'string' || typeof c === 'number')
 }
 
 export function Button({
@@ -111,7 +127,8 @@ export function Button({
     justifyContent: 'center',
     gap: 6,
     borderRadius: 6,
-    cursor: disabled ? 'not-allowed' : 'pointer',
+    // A button that waits for something in flight says so (D24): «wait», not «not allowed».
+    cursor: disabled ? (busy || aria['aria-busy'] === true ? 'wait' : 'not-allowed') : 'pointer',
     opacity: disabled ? 0.6 : 1,
   }
 
@@ -152,6 +169,7 @@ export function Button({
         background: 'none',
         border: 'none',
         borderRadius: 0,
+        ...(hasText(children) && { color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2 }),
       }
       break
     case 'icon':
@@ -181,7 +199,12 @@ export function Button({
       type={type}
       onClick={handleClick}
       disabled={disabled}
-      aria-busy={busy || undefined}
+      aria-busy={aria['aria-busy'] === undefined ? (busy || undefined) : (busy || aria['aria-busy'])}
+      id={aria.id}
+      data-testid={aria['data-testid']}
+      aria-controls={aria['aria-controls']}
+      aria-haspopup={aria['aria-haspopup']}
+      onMouseDown={aria.onMouseDown}
       title={title}
       // eslint-disable-next-line jsx-a11y/no-autofocus -- passthrough: la scelta (e la sua giustificazione) sta nel call site, es. il bottone sicuro di ConfirmModal
       autoFocus={autoFocus}

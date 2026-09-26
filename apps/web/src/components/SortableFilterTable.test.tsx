@@ -54,6 +54,14 @@ describe('SortableFilterTable — rendering', () => {
     expect(bodyRows().every((r) => r.classList.contains('sft-row'))).toBe(true)
   })
 
+  it('the stripe is for rows that open something (26 Sep 2026)', () => {
+    const { unmount } = render(<SortableFilterTable columns={COLUMNS} data={ROWS} label="Utenti" onRowClick={() => {}} />)
+    expect(bodyRows().every((r) => r.classList.contains('row-opens'))).toBe(true)
+    unmount()
+    render(<SortableFilterTable columns={COLUMNS} data={ROWS} label="Utenti" />)
+    expect(bodyRows().some((r) => r.classList.contains('row-opens'))).toBe(false)
+  })
+
   it('tabella con aria-label, intestazioni e celle (render personalizzato incluso)', () => {
     render(<SortableFilterTable columns={COLUMNS} data={ROWS} label="Utenti" />)
     expect(screen.getByRole('table', { name: 'Utenti' })).toBeInTheDocument()
@@ -104,11 +112,25 @@ describe('SortableFilterTable — ordinamento client-side (non controllato)', ()
     expect(firstCellTexts()).toEqual(['alpha', 'bravo', 'charlie'])   // Amy, Zed, null
   })
 
-  it('colonne non ordinabili non hanno bottone né aria-sort', () => {
-    render(<SortableFilterTable columns={[{ key: 'name', label: 'Nome' }]} data={ROWS} />)
-    const h = screen.getByRole('columnheader', { name: 'Nome' })
-    expect(h).not.toHaveAttribute('aria-sort')
-    expect(within(h).queryByRole('button')).not.toBeInTheDocument()
+  it('every column sorts by default (26 Sep 2026); only `sortable: false` (a column of buttons) has no button nor aria-sort', () => {
+    render(<SortableFilterTable columns={[{ key: 'name', label: 'Nome' }, { key: 'id', label: 'Azioni', sortable: false }]} data={ROWS} />)
+    const sortable = screen.getByRole('columnheader', { name: 'Nome' })
+    expect(sortable).toHaveAttribute('aria-sort', 'none')
+    expect(within(sortable).getByRole('button')).toBeInTheDocument()
+    const actions = screen.getByRole('columnheader', { name: 'Azioni' })
+    expect(actions).not.toHaveAttribute('aria-sort')
+    expect(within(actions).queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('a column sorts on its sortValue when given (a label in place of a code), and a list by how long it is', async () => {
+    type R = { id: string; code: string; tags: string[] }
+    const rows: R[] = [{ id: '1', code: 'b', tags: ['x', 'y'] }, { id: '2', code: 'a', tags: [] }, { id: '3', code: 'c', tags: ['x'] }]
+    const label = (c: string) => ({ a: 'Zulu', b: 'Alpha', c: 'Mike' })[c]
+    render(<SortableFilterTable<R> columns={[{ key: 'code', label: 'Code', sortValue: (r) => label(r.code), render: (v) => label(String(v)) }, { key: 'tags', label: 'Tags', render: (v) => (v as string[]).length }]} data={rows} />)
+    await userEvent.click(screen.getByRole('button', { name: /Code/ }))
+    expect(bodyRows().map((r) => within(r).getAllByRole('cell')[0]!.textContent)).toEqual(['Alpha', 'Mike', 'Zulu'])
+    await userEvent.click(screen.getByRole('button', { name: /Tags/ }))
+    expect(bodyRows().map((r) => within(r).getAllByRole('cell')[1]!.textContent)).toEqual(['0', '1', '2'])
   })
 })
 

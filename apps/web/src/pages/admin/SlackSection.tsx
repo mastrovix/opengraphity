@@ -6,6 +6,7 @@
  *    segreto di firma (provati prima di salvarli).
  * I segreti non tornano mai indietro: la pagina mostra solo il workspace.
  */
+import { Loading } from '@/components/ui/Loading'
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@apollo/client/react'
@@ -117,7 +118,7 @@ export function SlackSection() {
         {t('admin.integrations.slack.intro')}
       </p>
       {error && <QueryError message={error.message} onRetry={() => void refetch()} />}
-      {loading && !s && <p style={{ margin: 0 }}>{t('common.loading')}</p>}
+      {loading && !s && <Loading />}
       {s && !s.requestUrls && <Notice tone="warning">{t('admin.integrations.slack.noPublicUrl')}</Notice>}
       {s && !s.secretsConfigured && <Notice tone="warning">{t('admin.integrations.slack.noSecretsKey')}</Notice>}
 

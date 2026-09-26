@@ -1,3 +1,4 @@
+import { Pill } from '@/components/ui/Pill'
 import {useState, useEffect, useRef } from 'react'
 import { useApolloClient, useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
@@ -6,8 +7,8 @@ import { Lock, LockOpen, Package, Plus, X, Save, Trash2, Tag, Copy, Pencil, Arro
 import { PageTitle } from '@/components/PageTitle'
 import { Modal } from '@/components/Modal'
 import { Button } from '@/components/Button'
-import { Input, Select } from '@/components/ui/FormControls'
-import { inputS, labelS, btnSecondary, btnDanger, readOnlyInputS, btnPrimary as sharedBtnPrimary } from '@/components/ui/styles'
+import { Input, Select, Textarea } from '@/components/ui/FormControls'
+import { inputS, labelS, readOnlyInputS } from '@/components/ui/styles'
 import { toast } from 'sonner'
 import { GET_ENUM_TYPES, GET_ENUM_SHIPPED_DRIFT, GET_ENUM_VALUE_USAGE } from '@/graphql/queries'
 import { useLingue } from '@/hooks/useLingue'
@@ -81,7 +82,6 @@ interface EnumType {
 // ── Styles ────────────────────────────────────────────────────────────────────
 // Shared design-system constants (E-09): no page-local copies.
 // The former local `btnPrimary` used the compact (7px 14px / body) size; kept via override.
-const btnPrimary: React.CSSProperties = { ...sharedBtnPrimary, padding: '7px 14px', fontSize: 'var(--font-size-body)' }
 /** I bottoncini di riga di un valore (ordine, rinomina, default, rimozione). */
 const iconBtn: React.CSSProperties = {
   background: 'none', border: 'none', cursor: 'pointer', padding: 2,
@@ -171,7 +171,6 @@ function CreateEnumDialog({
             <label htmlFor="enum-name" style={labelS}>{t('pages.dictionary.nameFieldLabel')}</label>
             <Input
               id="enum-name"
-              style={inputS}
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={t('pages.dictionary.namePlaceholder')}
@@ -185,7 +184,6 @@ function CreateEnumDialog({
             <label htmlFor="enum-label" style={labelS}>{t('pages.dictionary.labelLabel')}</label>
             <Input
               id="enum-label"
-              style={inputS}
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               placeholder={t('pages.dictionary.labelPlaceholder')}
@@ -196,7 +194,6 @@ function CreateEnumDialog({
             <label htmlFor="enum-scope" style={labelS}>{t('pages.dictionary.scopeLabel')}</label>
             <Select
               id="enum-scope"
-              style={inputS}
               value={scope}
               onChange={(e) => setScope(e.target.value as 'shared' | 'itil' | 'cmdb')}
             >
@@ -207,12 +204,12 @@ function CreateEnumDialog({
           </div>
           <div>
             <label htmlFor="enum-values" style={labelS}>{t('pages.dictionary.valuesLabel')}</label>
-            <textarea
+            <Textarea
               id="enum-values"
-              style={{ ...inputS, minHeight: 90, resize: 'vertical', fontFamily: 'inherit' }}
               value={valuesText}
               onChange={(e) => setValuesText(e.target.value)}
               placeholder={t('pages.dictionary.valuesPlaceholder')}
+              style={{ minHeight: 90, resize: 'vertical' }}
             />
             <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{t('pages.dictionary.valuesHint', { count: values.length })}</span>
           </div>
@@ -233,20 +230,12 @@ function OwnerBadge({ shipped }: { shipped: boolean }) {
   const { t } = useTranslation()
   const label = shipped ? t('pages.dictionary.shippedBadge') : t('pages.dictionary.ownBadge')
   return (
-    <span
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0,
-        fontSize: 'var(--font-size-table)',
-        background: shipped ? 'var(--color-slate-bg)' : palette.info.bg,
-        color: shipped ? 'var(--color-slate)' : 'var(--color-brand)',
-        padding: '2px 8px', borderRadius: 20, fontWeight: 500,
-      }}
-    >
+    <Pill bg={shipped ? 'var(--color-slate-bg)' : palette.info.bg} color={shipped ? 'var(--color-slate)' : 'var(--color-brand)'} radius={20} style={{ gap: 4, flexShrink: 0, fontSize: 'var(--font-size-table)', fontWeight: 500 }}>
       {shipped
         ? <Package  size={10} aria-hidden="true" />
         : <LockOpen size={10} aria-hidden="true" />}
       {label}
-    </span>
+    </Pill>
   )
 }
 
@@ -643,23 +632,18 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
         <h2 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600 }}>{e.label}</h2>
         <OwnerBadge shipped={shipped} />
         {e.isSystem && !shipped && (
-          <span style={{
-            display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-size-table)',
-            background: palette.info.bg, color: 'var(--color-brand)', padding: '2px 8px',
-            borderRadius: 20, fontWeight: 500,
-          }}>
+          <Pill bg={palette.info.bg} color="var(--color-brand)" radius={20} style={{ gap: 4, fontSize: 'var(--font-size-table)', fontWeight: 500 }}>
             <Lock size={10} aria-hidden="true" /> {t('pages.dictionary.systemBadge')}
-          </span>
+          </Pill>
         )}
         {shipped && (
-          <button
-            type="button"
-            style={{ ...btnPrimary, marginLeft: 'auto' }}
+          <Button variant="primary"
             onClick={() => { void customizeEnum({ variables: { id: e.id } }) }}
             disabled={customizing}
+            style={{ marginLeft: 'auto' }}
           >
             <Copy size={13} aria-hidden="true" /> {t('pages.dictionary.customizeButton')}
-          </button>
+          </Button>
         )}
       </div>
 
@@ -689,14 +673,18 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
         >
           <span>{t('pages.dictionary.newShipped.notice', { count: newShipped.length, values: newShipped.join(', ') })}</span>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" style={btnPrimary} disabled={adopting || acknowledging}
-              onClick={() => { void adoptShipped({ variables: { id: e.id } }) }}>
+            <Button variant="primary"
+              disabled={adopting || acknowledging}
+              onClick={() => { void adoptShipped({ variables: { id: e.id } }) }}
+            >
               {t('pages.dictionary.newShipped.adopt')}
-            </button>
-            <button type="button" style={btnSecondary} disabled={adopting || acknowledging}
-              onClick={() => { void acknowledgeShipped({ variables: { id: e.id } }) }}>
+            </Button>
+            <Button variant="secondary"
+              disabled={adopting || acknowledging}
+              onClick={() => { void acknowledgeShipped({ variables: { id: e.id } }) }}
+            >
               {t('pages.dictionary.newShipped.keep')}
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -705,8 +693,7 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
       <div>
         <label htmlFor="editor-name" style={labelS}>{t('pages.dictionary.nameLabel')}</label>
         <Input
-          id="editor-name"
-          style={{ ...inputS, ...readOnlyS }}
+          id="editor-name" style={{ ...readOnlyS }}
           value={e.name}
           readOnly
         />
@@ -716,8 +703,7 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
       <div>
         <label htmlFor="editor-label" style={labelS}>{t('pages.dictionary.labelLabel')}</label>
         <Input
-          id="editor-label"
-          style={{ ...inputS, ...(shipped ? readOnlyS : {}) }}
+          id="editor-label" style={{ ...(shipped ? readOnlyS : {}) }}
           value={label}
           onChange={(ev) => setDirtyLabel(ev.target.value)}
           readOnly={shipped}
@@ -729,8 +715,7 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
       <div>
         <label htmlFor="editor-scope" style={labelS}>{t('pages.dictionary.scopeLabel')}</label>
         <Select
-          id="editor-scope"
-          style={{ ...inputS, ...(e.isSystem || shipped ? readOnlyS : {}) }}
+          id="editor-scope" style={{ ...(e.isSystem || shipped ? readOnlyS : {}) }}
           value={scope}
           onChange={(ev) => setDirtyScope(ev.target.value)}
           disabled={e.isSystem || shipped}
@@ -906,17 +891,16 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
           </p>
         ) : (
           <div style={{ display: 'flex', gap: 8 }}>
-            <Input
-              style={{ ...inputS, flex: 1 }}
+            <Input style={{ flex: 1 }}
               value={newVal}
               onChange={(ev) => setNewVal(ev.target.value)}
               onKeyDown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); addValue() } }}
               placeholder={t('pages.dictionary.addValuePlaceholder')}
               aria-label={t('pages.dictionary.addValueLabel')}
             />
-            <button type="button" style={btnPrimary} onClick={addValue} aria-label={t('pages.dictionary.addValueLabel')}>
+            <Button variant="primary" onClick={addValue} aria-label={t('pages.dictionary.addValueLabel')}>
               <Plus size={14} aria-hidden="true" />
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -933,8 +917,7 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
                 <span style={{ fontFamily: 'var(--font-mono)' }}>{u.from}</span>
                 <span style={{ color: 'var(--color-slate-light)' }}>{t('pages.dictionary.replaceInUseCount', { count: u.total })}</span>
                 <span aria-hidden="true">→</span>
-                <Select
-                  style={{ ...inputS, height: 26, width: 'auto', fontWeight: 400 }}
+                <Select style={{ height: 26, width: 'auto', fontWeight: 400 }}
                   value={replaceWith[u.from] ?? ''}
                   onChange={(ev) => setReplaceWith((m) => ({ ...m, [u.from]: ev.target.value }))}
                   aria-label={t('pages.dictionary.replaceInUseLabel', { value: u.from })}
@@ -947,34 +930,32 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
         )}
         {dirty && (
           <>
-            <button type="button" style={btnPrimary} onClick={() => void handleSave()} disabled={saving}>
+            <Button variant="primary" onClick={() => handleSave()} disabled={saving}>
               <Save size={14} aria-hidden="true" /> {t('common.save')}
-            </button>
-            <button type="button" style={btnSecondary} onClick={handleCancel}>
+            </Button>
+            <Button variant="secondary" onClick={handleCancel}>
               {t('common.cancel')}
-            </button>
+            </Button>
           </>
         )}
         {!e.isSystem && !shipped && (
           <div style={{ marginLeft: 'auto' }}>
             {!confirmDelete ? (
-              <button type="button" style={btnDanger} onClick={() => setConfirmDelete(true)}>
+              <Button variant="danger" size="xs" onClick={() => setConfirmDelete(true)}>
                 <Trash2 size={13} aria-hidden="true" /> {t('common.delete')}
-              </button>
+              </Button>
             ) : (
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-danger)' }}>{t('pages.dictionary.confirmDelete')}</span>
-                <button
-                  type="button"
-                  style={{ ...btnDanger, fontWeight: 600 }}
+                <Button variant="danger" size="xs"
                   onClick={() => { void deleteEnum({ variables: { id: e.id } }) }}
                   disabled={deleting}
                 >
                   {t('pages.dictionary.confirmYes')}
-                </button>
-                <button type="button" style={btnSecondary} onClick={() => setConfirmDelete(false)}>
+                </Button>
+                <Button variant="secondary" onClick={() => setConfirmDelete(false)}>
                   {t('common.no')}
-                </button>
+                </Button>
               </div>
             )}
           </div>
@@ -1047,14 +1028,12 @@ export function EnumDesignerPage() {
         <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
             <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{t('pages.dictionary.listHeader')}</span>
-            <button
-              type="button"
-              style={{ ...btnPrimary, padding: '4px 10px', fontSize: 'var(--font-size-body)' }}
+            <Button variant="primary" size="xs"
               onClick={() => setShowCreate(true)}
               aria-label={t('pages.dictionary.createTitle')}
             >
               <Plus size={12} aria-hidden="true" /> {t('pages.dictionary.newButton')}
-            </button>
+            </Button>
           </div>
 
           <div style={{ maxHeight: 'calc(var(--vh-app) - 220px)', overflowY: 'auto' }}>

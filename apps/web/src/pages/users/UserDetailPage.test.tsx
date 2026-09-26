@@ -14,7 +14,7 @@
  * cannot be loaded is said, not shown as an empty page.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, within, waitFor, fireEvent } from '@testing-library/react'
+import { screen, within, waitFor } from '@testing-library/react'
 import { renderWithProviders } from '@/test/utils'
 import { withVocabularyLabels } from '@/test/vocabularies'
 import { apolloFinto } from '@/test/apolloFinto'
@@ -226,13 +226,10 @@ describe('the teams', () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Teams updated'))
   })
 
-  it('the remove button turns red under the pointer', () => {
+  it('the remove button turns red under the pointer and on keyboard focus (the .hover-danger rule, 26 Sep 2026)', () => {
     renderPage()
     const [remove] = screen.getAllByTitle('Remove from team')
-    fireEvent.mouseEnter(remove!)
-    expect(remove!.style.background).toBe('var(--color-danger-bg)')
-    fireEvent.mouseLeave(remove!)
-    expect(remove!.style.background).toBe('none')
+    expect(remove).toHaveClass('hover-danger')
   })
 
   it('adding offers only the teams the person is not in, and adds that membership only', async () => {

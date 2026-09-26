@@ -1,8 +1,10 @@
+import { Loading } from '@/components/ui/Loading'
+import { Pill } from '@/components/ui/Pill'
+import { Button } from '@/components/Button'
 import { useTranslation } from 'react-i18next'
 import { Layers, Layout, Plus } from 'lucide-react'
 import { CIIcon } from '@/lib/ciIcon'
 import type { CITypeDef } from '@/contexts/MetamodelContext'
-import { btnPrimary } from '../shared/designerStyles'
 import { colors, palette } from '@/lib/tokens'
 
 interface CITypeListProps {
@@ -49,13 +51,13 @@ export function CITypeList({
     <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
         <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{t('citypeDesigner.ciTypes')}</span>
-        <button type="button" onClick={onNew} style={{ ...btnPrimary, padding: '4px 10px', fontSize: 'var(--font-size-body)' }}>
+        <Button variant="primary" size="xs" onClick={onNew}>
           <Plus size={12} /> {t('common.new')}
-        </button>
+        </Button>
       </div>
 
       {loading && (
-        <div style={{ padding: 20, color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</div>
+        <Loading padded />
       )}
 
       <div style={{ maxHeight: 'calc(var(--vh-app) - 220px)', overflowY: 'auto' }}>
@@ -68,9 +70,9 @@ export function CITypeList({
             </div>
             <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{t('citypeDesigner.sharedByAll')}</div>
           </div>
-          <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 100, fontWeight: 600, background: palette.teal.bg, color: 'var(--color-brand)', flexShrink: 0 }}>
+          <Pill bg={palette.teal.bg} color="var(--color-brand)" radius={100} style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, flexShrink: 0 }}>
             {t('citypeDesigner.system')}
-          </span>
+          </Pill>
         </button>
 
         {/* Separator */}
@@ -90,9 +92,9 @@ export function CITypeList({
                 <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{ct.name}</div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
-                <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 100, fontWeight: 500, background: ct.active ? palette.success.tint : 'var(--color-border-light)', color: ct.active ? 'var(--color-success)' : 'var(--color-slate-light)' }}>
+                <Pill bg={ct.active ? palette.success.tint : 'var(--color-border-light)'} color={ct.active ? 'var(--color-success)' : 'var(--color-slate-light)'} radius={100} style={{ fontSize: 'var(--font-size-label)', fontWeight: 500 }}>
                   {ct.active ? t('common.active') : t('common.inactive')}
-                </span>
+                </Pill>
                 <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
                   {t('citypeDesigner.fieldCount', { count: ct.fields.length })}
                 </span>

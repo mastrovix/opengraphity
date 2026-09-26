@@ -1,10 +1,10 @@
+import { Button } from '@/components/Button'
 import type { LucideIcon } from 'lucide-react'
 import { Trans, useTranslation } from 'react-i18next'
 import { CIIcon } from '@/lib/ciIcon'
 import { CI_ICON_KEYS } from '@/lib/ciIconPaths'
 import { FormField } from './citype/CIFieldInlineEditor'
-import { inputS, selectS, textareaS, btnPrimary } from './shared/designerStyles'
-import { Input, Select } from '@/components/ui/FormControls'
+import { Input, Select, Textarea } from '@/components/ui/FormControls'
 import type { SettingsFormState } from './useITILTypeDesigner'
 import { ColorField } from '@/components/ui/ColorField'
 
@@ -22,7 +22,6 @@ export function ITILTypeSettings({ settingsForm, setSettingsForm, settingsSaving
     <div style={{ maxWidth: 480 }}>
       <FormField label={t('common.label')}>
         <Input
-          style={inputS}
           value={settingsForm.label}
           onChange={(e) => setSettingsForm((p) => p && ({ ...p, label: e.target.value }))}
         />
@@ -31,7 +30,6 @@ export function ITILTypeSettings({ settingsForm, setSettingsForm, settingsSaving
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, marginBottom: 14 }}>
         <FormField label={t('citypeDesigner.icon')}>
           <Select
-            style={selectS}
             value={settingsForm.icon}
             onChange={(e) => setSettingsForm((p) => p && ({ ...p, icon: e.target.value }))}
           >
@@ -56,23 +54,22 @@ export function ITILTypeSettings({ settingsForm, setSettingsForm, settingsSaving
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
           <Trans i18nKey="citypeDesigner.validationScriptHint" components={{ code: <code /> }} />
         </p>
-        <textarea
+        <Textarea
           aria-label={t('citypeDesigner.validationScript')}
-          style={{ ...textareaS, minHeight: 100 }}
           value={settingsForm.validationScript}
           onChange={(e) => setSettingsForm((p) => p && ({ ...p, validationScript: e.target.value }))}
           placeholder={t('itilDesigner.validationPlaceholder')}
+          style={{ minHeight: 100 }}
         />
       </FormField>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button type="button"
-          style={{ ...btnPrimary, opacity: settingsSaving ? 0.6 : 1 }}
+        <Button variant="primary"
           disabled={settingsSaving}
-          onClick={() => void onSaveSettings()}
+          onClick={() => onSaveSettings()}
         >
           {settingsSaving ? t('common.saving') : t('citypeDesigner.saveSettings')}
-        </button>
+        </Button>
       </div>
     </div>
   )

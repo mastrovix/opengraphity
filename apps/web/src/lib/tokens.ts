@@ -11,6 +11,11 @@ export const colors = {
   brand:      v('--color-brand'),        // #0284c7 — buttons, links, active menu, nodes
   brandHover: v('--color-brand-hover'),  // #0369a1
   brandLight: v('--color-brand-light'),  // #ecfeff — badge bg, hover bg
+  // The header of an open section: sugar-paper blue, navy title (26 Sep 2026)
+  sectionHead:     v('--color-section-head'),       // #b3c7de
+  sectionHeadText: v('--color-section-head-text'),  // #1f3a5f
+  // Links: the deep sugar-paper blue (26 Sep 2026)
+  link:            v('--color-link'),               // #3f6690
 
   // Slate scale
   slateDark:  v('--color-slate-dark'),   // #0f172a — primary text, titles

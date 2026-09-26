@@ -7,11 +7,13 @@
  * quali dare, con il nome e la spiegazione di ognuno. La chiave del ruolo nasce
  * dal nome alla creazione e poi non cambia.
  */
+import { Loading } from '@/components/ui/Loading'
+import { BackLink } from '@/components/ui/BackLink'
 import { useMemo, useState } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Info, KeyRound, Save, Trash2 } from 'lucide-react'
+import { Info, KeyRound, Save, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { PERMISSION_AREAS, PERMISSION_CATALOG, PERMISSIONS, type Permission, type PermissionArea } from '@opengraphity/types'
 import { PageContainer } from '@/components/PageContainer'
@@ -202,15 +204,13 @@ export function RoleEditorPage() {
   return (
     <PageContainer style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div>
-        <Link to="/roles" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-size-label)', color: colors.brand, textDecoration: 'none', marginBottom: 8 }}>
-          <ArrowLeft size={13} aria-hidden="true" /> {t('pages.roles.backToRoles')}
-        </Link>
+        <BackLink to="/roles">{t('pages.roles.backToRoles')}</BackLink>
         <PageTitle icon={<KeyRound size={22} color="var(--color-icon-accent)" />}>
           {isNew ? t('pages.roles.newTitle') : role ? label(role) : t('pages.roles.editTitle')}
         </PageTitle>
       </div>
       {error && <p role="alert" style={{ color: 'var(--color-danger-text)', margin: 0 }}>{t('pages.roles.loadError', { error: error.message })}</p>}
-      {(loading && !isNew) || waitingTemplate ? <p style={{ margin: 0 }}>{t('common.loading')}</p> : null}
+      {(loading && !isNew) || waitingTemplate ? <Loading /> : null}
       {!loading && !isNew && !role && !error && <p role="alert" style={{ margin: 0 }}>{t('errors.notFound', { entity: 'Role', id: key })}</p>}
       {(isNew ? !waitingTemplate : role !== null) && <Editor key={role?.key ?? `new-${template?.key ?? ''}`} role={role} template={template} />}
     </PageContainer>

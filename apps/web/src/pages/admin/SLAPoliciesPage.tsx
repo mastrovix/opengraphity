@@ -19,7 +19,7 @@ import { Button } from '@/components/Button'
 import { Input, Select } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
 import { Toggle } from '@/components/ui/Toggle'
-import { selectS, labelS } from '@/components/ui/styles'
+import { labelS } from '@/components/ui/styles'
 import { useListQueryState } from '@/hooks/useListQueryState'
 import { useCrudModal } from '@/hooks/useCrudModal'
 import { useConfirm } from '@/hooks/useConfirm'
@@ -218,7 +218,7 @@ export function SLAPoliciesPage() {
     { key: 'name', label: t('common.name'), sortable: true, render: (v) => (
       <span style={{ fontWeight: 500, color: 'var(--color-slate-dark)' }}>{String(v)}</span>
     ) },
-    { key: 'priority', label: t('admin.sla.appliesToColumn'), sortable: false, render: (_v, row) => {
+    { key: 'priority', label: t('admin.sla.appliesToColumn'), render: (_v, row) => {
       const scope = scopeParts(row.entityType, row.priority, row.category, row.teamName, t, vocabLabel)
       return (
         <span style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>
@@ -233,7 +233,7 @@ export function SLAPoliciesPage() {
         ? <Pill bg={row.calendarName ? palette.success.tint : palette.danger.tint} color={row.calendarName ? palette.success.text : palette.danger.text} radius={10}>{row.calendarName ?? t('serviceTargets.noCalendar')}</Pill>
         : <Pill bg="var(--color-border-light)" color="var(--color-slate)" radius={10}>{t('serviceTargets.alwaysOn')}</Pill>
     ) },
-    { key: 'complianceTarget', label: t('serviceTargets.targetColumn'), sortable: false, width: '100px', render: (_v, row) => (
+    { key: 'complianceTarget', label: t('serviceTargets.targetColumn'), width: '100px', render: (_v, row) => (
       <span style={{ color: 'var(--color-slate)' }}>{row.complianceTarget == null ? '—' : `${row.complianceTarget}%`}</span>
     ) },
     { key: 'enabled', label: t('admin.rules.active'), sortable: true, render: (_v, row) => (
@@ -325,13 +325,13 @@ export function SLAPoliciesPage() {
             <div className="og-pair">
               <div>
                 <label htmlFor={fid('entity-type')} style={labelS}>{t('admin.sla.entityType')} *</label>
-                <Select id={fid('entity-type')} style={selectS} value={form.entityType} onChange={e => patch({ entityType: e.target.value })} disabled={modal.isEditing}>
+                <Select id={fid('entity-type')} value={form.entityType} onChange={e => patch({ entityType: e.target.value })} disabled={modal.isEditing}>
                   {ENTITY_TYPES.map(et => <option key={et} value={et}>{typeLabel(et)}</option>)}
                 </Select>
               </div>
               <div>
                 <label htmlFor={fid('priority')} style={labelS}>{t(campoAmbito === 'severity' ? 'admin.sla.severity' : 'admin.sla.priority')}</label>
-                <Select id={fid('priority')} style={selectS} value={form.priority} onChange={e => patch({ priority: e.target.value })} aria-describedby={fid('scope-hint')}>
+                <Select id={fid('priority')} value={form.priority} onChange={e => patch({ priority: e.target.value })} aria-describedby={fid('scope-hint')}>
                   <option value="">{t('admin.sla.anyScope')}</option>
                   {PRIORITIES.map(p => <option key={p} value={p}>{vocabLabel(campoAmbito, p)}</option>)}
                 </Select>
@@ -345,7 +345,7 @@ export function SLAPoliciesPage() {
               {hasCategory && (
                 <div>
                   <label htmlFor={fid('category')} style={labelS}>{t('admin.sla.category')}</label>
-                  <Select id={fid('category')} style={selectS} value={form.category} onChange={e => patch({ category: e.target.value })}>
+                  <Select id={fid('category')} value={form.category} onChange={e => patch({ category: e.target.value })}>
                     <option value="">{t('admin.sla.anyScope')}</option>
                     {CATEGORIES.map(c => <option key={c} value={c}>{vocabLabel('category', c)}</option>)}
                   </Select>
@@ -353,7 +353,7 @@ export function SLAPoliciesPage() {
               )}
               <div>
                 <label htmlFor={fid('team')} style={labelS}>{t('admin.sla.team')}</label>
-                <Select id={fid('team')} style={selectS} value={form.teamId} onChange={e => patch({ teamId: e.target.value })}>
+                <Select id={fid('team')} value={form.teamId} onChange={e => patch({ teamId: e.target.value })}>
                   <option value="">{t('admin.sla.anyTeam')}</option>
                   {teams.map(tm => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
                 </Select>

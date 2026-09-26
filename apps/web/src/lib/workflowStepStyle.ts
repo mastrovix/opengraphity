@@ -54,6 +54,18 @@ export const BRAND_BUTTON: ButtonColors = {
   borderColor:     'var(--color-brand)',
 }
 
+/**
+ * The neutral action of a ticket header — a transition with no colour of its
+ * own («Put on hold»), «Request change» (26 Sep 2026, the owner: the section
+ * headers' sugar-paper blue «anche nei bottoni tipo richiedi change»). The
+ * colours that mean something stay: green resolves, red escalates or rejects.
+ */
+export const SOFT_BUTTON: ButtonColors = {
+  backgroundColor: colors.sectionHead,
+  color:           colors.sectionHeadText,
+  borderColor:     colors.sectionHead,
+}
+
 /** Solid-background style for primary action buttons (e.g. "Resolve"). */
 const BUTTON_SOLID: Record<string, { bg: string; fg: string; border: string }> = {
   resolved:  { bg: 'var(--color-trigger-automatic)',  fg: colors.white, border: 'var(--color-trigger-automatic)'  },
@@ -67,7 +79,7 @@ const BUTTON_SOLID: Record<string, { bg: string; fg: string; border: string }> =
 export function buttonStyleForCategory(category: string | null | undefined): ButtonColors {
   const solid = category ? BUTTON_SOLID[category] : undefined
   if (solid) return { backgroundColor: solid.bg, color: solid.fg, borderColor: solid.border }
-  return BRAND_BUTTON
+  return SOFT_BUTTON
 }
 
 /**

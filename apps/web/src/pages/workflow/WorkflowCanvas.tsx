@@ -1,3 +1,4 @@
+import { Button } from '@/components/Button'
 import { useTranslation } from 'react-i18next'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { createContext, memo, useCallback, useContext, useRef, useState } from 'react'
@@ -561,10 +562,13 @@ export function WorkflowCanvas({
 
       {/* Legend — on a narrow screen folded into a button: open, it covered the first steps (G47). */}
       {def && narrow && !legendOpen && (
-        <button type="button" onClick={() => setLegendOpen(true)} aria-expanded={false}
-          style={{ position: 'absolute', bottom: 80, left: 16, zIndex: 10, background: colors.white, border: '1px solid var(--color-border)', borderRadius: 8, padding: '6px 10px', fontSize: 'var(--font-size-body)', color: colors.slate, cursor: 'pointer' }}>
+        <Button variant="secondary"
+          onClick={() => setLegendOpen(true)}
+          aria-expanded={false}
+          style={{ position: 'absolute', bottom: 80, left: 16, zIndex: 10 }}
+        >
           {t('workflow.legend.show')}
-        </button>
+        </Button>
       )}
       {def && (!narrow || legendOpen) && (
         <div style={{
@@ -582,7 +586,7 @@ export function WorkflowCanvas({
         }}>
           {narrow && (
             <button type="button" onClick={() => setLegendOpen(false)} aria-expanded
-              style={{ alignSelf: 'flex-end', background: 'none', border: 'none', padding: 0, fontSize: 'var(--font-size-body)', color: colors.slate, cursor: 'pointer' }}>
+              style={{ alignSelf: 'flex-end', background: 'none', border: 'none', padding: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-link)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 2 }}>
               {t('workflow.legend.hide')}
             </button>
           )}

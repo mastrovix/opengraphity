@@ -2,6 +2,7 @@
  * GLI ALLEGATI (verifica «Cosa resta cablato», ondata 6): dimensione massima e
  * tipi di file, dentro i limiti della piattaforma che la pagina mostra.
  */
+import { Chip } from '@/components/ui/Chip'
 import { useEffect, useId, useState } from 'react'
 import { showError } from '@/lib/showError'
 import { useQuery, useMutation } from '@apollo/client/react'
@@ -59,14 +60,9 @@ export function AttachmentPolicySection() {
             {saved.platformExtensions.map((ext) => {
               const on = exts.includes(ext)
               return (
-                <button key={ext} type="button" aria-pressed={on} onClick={() => setExts(on ? exts.filter((x) => x !== ext) : [...exts, ext])}
-                  style={{
-                    font: 'inherit', fontSize: 'var(--font-size-body)', cursor: 'pointer', padding: '3px 10px', borderRadius: 999,
-                    border: `1px solid ${on ? colors.brand : colors.border}`, background: on ? 'var(--color-brand-light)' : 'var(--surface)',
-                    color: on ? colors.brandHover : colors.slate, fontWeight: on ? 600 : 400, fontFamily: 'var(--font-mono, monospace)',
-                  }}>
+                <Chip pressed={on} key={ext} onClick={() => setExts(on ? exts.filter((x) => x !== ext) : [...exts, ext])}>
                   .{ext}
-                </button>
+                </Chip>
               )
             })}
           </div>

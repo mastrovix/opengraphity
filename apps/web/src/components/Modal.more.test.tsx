@@ -11,15 +11,9 @@ import userEvent from '@testing-library/user-event'
 import { Modal } from './Modal'
 
 describe('Modal (more)', () => {
-  it('the close button darkens on hover and goes back on leave', async () => {
-    const user = userEvent.setup()
+  it('the close button darkens on hover and on keyboard focus (the .hover-strong rule, 26 Sep 2026)', () => {
     render(<Modal open onClose={() => {}} title="T">body</Modal>)
-    const close = screen.getByRole('button', { name: 'Close' })
-    const idle = close.style.color
-    await user.hover(close)
-    expect(close.style.color).toBe('var(--color-slate)')
-    await user.unhover(close)
-    expect(close.style.color).toBe(idle)
+    expect(screen.getByRole('button', { name: 'Close' })).toHaveClass('hover-strong')
   })
 
   it('a click on the overlay does not reach the React parent that mounted the modal', async () => {

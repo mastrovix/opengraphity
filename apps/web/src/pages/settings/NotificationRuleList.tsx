@@ -1,3 +1,4 @@
+import { Select } from '@/components/ui/FormControls'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Lock, Unlock, AlertTriangle } from 'lucide-react'
@@ -175,10 +176,6 @@ export function withCurrent(options: readonly TargetOption[], current: string | 
   return [...options, { value: current, label: role ? i18n.t('notificationRules.target.role', { role }) : current }]
 }
 
-const selectStyle: React.CSSProperties = {
-  padding: '4px 8px', border: `1px solid ${colors.border}`, borderRadius: 4,
-  fontSize: 'var(--font-size-body)', background: palette.neutral.surface1, cursor: 'pointer', width: '100%',
-}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -340,16 +337,16 @@ export function RuleRow({
 
       {/* Severity */}
       <td style={{ padding: '10px 12px', width: 120 }}>
-        <select
+        <Select
           aria-label={t('notificationRules.header.severity')}
           value={view.severityOverride}
           onChange={(e) => debounce({ severityOverride: e.target.value })}
-          style={{ ...selectStyle, color: SEVERITY_COLOR[view.severityOverride] ?? 'var(--color-slate)', fontWeight: fontWeight.medium }}
+          style={{ color: SEVERITY_COLOR[view.severityOverride] ?? 'var(--color-slate)', fontWeight: fontWeight.medium }}
         >
           {SEVERITY_OPTIONS.map((s) => (
             <option key={s} value={s} style={{ color: SEVERITY_COLOR[s] }}>{t(`notificationRules.severity.${s}`)}</option>
           ))}
-        </select>
+        </Select>
       </td>
 
       {/* Channels: only the ones the dispatcher can route for this event type */}
@@ -380,27 +377,25 @@ export function RuleRow({
 
       {/* Target */}
       <td style={{ padding: '10px 12px', width: 160 }}>
-        <select aria-label={t('notificationRules.header.target')} value={view.target} onChange={(e) => debounce({ target: e.target.value })} style={{ ...selectStyle, color: 'var(--color-slate)' }}>
+        <Select aria-label={t('notificationRules.header.target')} value={view.target} onChange={(e) => debounce({ target: e.target.value })}>
           {targets.map(({ value, label, applicable }) => (
             <option key={value} value={value}>
               {applicable ? label : t('notificationRules.target.notApplicable', { target: label })}
             </option>
           ))}
-        </select>
+        </Select>
       </td>
 
       {/* Delete (custom rules only) */}
       <td style={{ padding: '10px 8px', width: 36, textAlign: 'center' }}>
         {!rule.isSeed && (
-          <button type="button"
+          <button className="hover-danger-text" type="button"
             onClick={() => onDelete(rule.id)}
             title={t('notificationRules.deleteRule')}
             style={{
               background: 'none', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 4,
               color: 'var(--color-slate-light)', display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-danger)' }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-slate-light)' }}
           >
             <Trash2 size={14} />
           </button>

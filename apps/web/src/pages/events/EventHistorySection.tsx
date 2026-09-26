@@ -32,7 +32,7 @@ import { EVENT_CORRELATIONS, EVENT_SEVERITIES, type EventHistoryEntry, type Even
 import { useValueStyle } from '@/hooks/useValueStyle'
 import type { ValueStyle } from '@/lib/domainStyle'
 
-const linkStyle = { color: colors.brand, textDecoration: 'none', fontWeight: 500 } as const
+const linkStyle = { color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, fontWeight: 500 } as const
 
 /** Famiglia di ogni voce: decide colore e icona del pallino. */
 type Family = 'cycle' | 'correlation' | 'silence' | 'flapping' | 'storm' | 'manual'

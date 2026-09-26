@@ -6,6 +6,7 @@
  * differivano solo per una prop ignorata e per i colori dello status).
  * Lo stato di apertura/ricerca è interno: il genitore passa solo dati e azioni.
  */
+import { Button } from '@/components/Button'
 import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -105,10 +106,12 @@ export function AffectedCIList({ affectedCIs, excludedTypes, ciResults, onSearch
            apre né chiude il riquadro, quindi non serve fermare la propagazione
            come nella vecchia testata fatta a mano. Bordo e testo prendono
            `currentColor`, cioè il colore che la testata ha in quello stato. */
-        <button type="button" onClick={toggleSearch}
-          style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 6, border: '1px solid currentColor', background: 'transparent', cursor: 'pointer', color: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 }}>
+        <Button variant="secondary" size="xs"
+          onClick={toggleSearch}
+          style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+        >
           {showSearch ? t('common.close') : t('attachments.addCI')}
-        </button>
+        </Button>
       }
     >
       <>
@@ -129,8 +132,9 @@ export function AffectedCIList({ affectedCIs, excludedTypes, ciResults, onSearch
                           <span style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-body)', marginLeft: 8 }}>{ciLabels.subtitle(ci)}</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                          <button type="button" onClick={() => handleAdd(ci)}
-                            style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 4, border: 'none', background: 'var(--accent)', color: colors.white, cursor: 'pointer', fontWeight: 500 }}>+</button>
+                          <Button variant="primary" size="xs"
+                            onClick={() => handleAdd(ci)}
+                          >+</Button>
                         </div>
                       </div>
                     </div>
@@ -149,7 +153,7 @@ export function AffectedCIList({ affectedCIs, excludedTypes, ciResults, onSearch
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {cis.map((ci) => (
                     <div key={ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '4px 0' }}>
-                      <button type="button" onClick={() => navigate(ciPath(ci))} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{ci.name}</button>
+                      <button type="button" onClick={() => navigate(ciPath(ci))} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{ci.name}</button>
                       <MicroBadge {...statusBadgeStyle(ci.status, ciStatuses, colorOf('ci_status', ci.status))}>{ciLabels.statusLabel(ci.status)}</MicroBadge>
                       {ci.environment && <MicroBadge>{ciLabels.environmentLabel(ci.environment)}</MicroBadge>}
                       {canEdit && <button type="button" onClick={() => onRemoveCI(ci.id)} title={t('components.affectedCI.remove')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-body)', lineHeight: 1, padding: '0 2px', marginLeft: 'auto' }}><X size={14} /></button>}

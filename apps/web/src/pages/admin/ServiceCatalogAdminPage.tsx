@@ -12,6 +12,7 @@ import { Modal } from '@/components/Modal'
 import { Button } from '@/components/Button'
 import { Input, Textarea, Select, FieldLabel } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
+import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { GET_SERVICE_CATALOG_ADMIN } from '@/graphql/queries'
 import { CREATE_SERVICE_CATALOG_ITEM, UPDATE_SERVICE_CATALOG_ITEM } from '@/graphql/mutations'
 import { useCrudModal } from '@/hooks/useCrudModal'
@@ -92,6 +93,39 @@ export function ServiceCatalogAdminPage() {
     void updateItem({ variables: { id: item.id, input: { active: !item.active } } })
 
   const items = data?.serviceCatalogItems ?? []
+  // The app's table (26 Sep 2026: it was hand-made). The row opens the item to edit.
+  // `data-tone` keeps the red of what is missing: the table greys the rest.
+  const columns: ColumnDef<CatalogItem>[] = [
+    { key: 'name', label: t('common.name'), sortable: true, render: (_v, it) => (
+      <>
+        <div style={{ fontWeight: 600 }}>{it.name}</div>
+        {it.description && <div style={{ marginTop: 2 }}>{it.description}</div>}
+      </>
+    ) },
+    { key: 'category', label: t('pages.serviceCatalogAdmin.category'), sortable: true, sortValue: (it) => (it.category ? (labelOf('category', it.category) ?? it.category) : it.legacyCategory), render: (_v, it) => it.category
+      ? (labelOf('category', it.category) ?? it.category)
+      : it.legacyCategory
+        ? <span data-tone="danger" title={t('pages.serviceCatalogAdmin.legacyCategoryHint')} style={{ color: 'var(--color-danger)' }}>{t('pages.serviceCatalogAdmin.legacyCategory', { text: it.legacyCategory })}</span>
+        : '—' },
+    { key: 'priority', label: t('pages.serviceCatalogAdmin.priority'), sortable: true, render: (_v, it) => it.priority
+      ? <SeverityBadge value={it.priority} vocabulary="priority" />
+      : <span data-tone="danger" style={{ color: 'var(--color-danger)' }}>{t('pages.serviceCatalogAdmin.priorityMissing')}</span> },
+    { key: 'fulfillmentTeam', label: t('pages.serviceCatalogAdmin.fulfillmentTeam'), sortable: true, render: (_v, it) => it.fulfillmentTeam?.name ?? '—' },
+    { key: 'requiresApproval', label: t('pages.changeDetail.approval'), render: (_v, it) => it.requiresApproval
+      ? <Pill bg={palette.warning.tint} color={palette.warning.strong}>{t('pages.serviceCatalogAdmin.required')}</Pill>
+      : t('common.no') },
+    { key: 'active', label: t('common.status'), render: (_v, it) => it.active
+      ? <Pill bg={palette.success.tint} color={palette.success.strong}>{t('pages.serviceCatalogAdmin.active')}</Pill>
+      : <Pill bg="var(--color-border-light)" color="var(--color-slate)">{t('pages.serviceCatalogAdmin.inactive')}</Pill> },
+    { key: 'id', label: t('common.actions'), sortable: false, render: (_v, it) => (
+      <span style={{ whiteSpace: 'nowrap' }}>
+        <Button variant="ghost" onClick={() => modal.openEdit(it)} style={{ marginRight: 6 }}>{t('common.edit')}</Button>
+        <Button variant="secondary" size="xs" onClick={() => toggleActive(it)} disabled={saving}>
+          {t(it.active ? 'pages.serviceCatalogAdmin.deactivate' : 'pages.serviceCatalogAdmin.activate')}
+        </Button>
+      </span>
+    ) },
+  ]
   const saving = creating || updating
 
   return (
@@ -109,62 +143,12 @@ export function ServiceCatalogAdminPage() {
       )}
 
       {items.length > 0 && (
-        <div style={{ border: '1px solid var(--color-border-light)', overflow: 'hidden' }}>
-          <div className="og-scroll-x">
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
-            <thead>
-              <tr style={{ textAlign: 'left' }}>
-                <th style={{ padding: '10px 14px' }}>{t('common.name')}</th>
-                <th style={{ padding: '10px 14px' }}>{t('pages.serviceCatalogAdmin.category')}</th>
-                <th style={{ padding: '10px 14px' }}>{t('pages.serviceCatalogAdmin.priority')}</th>
-                <th style={{ padding: '10px 14px' }}>{t('pages.serviceCatalogAdmin.fulfillmentTeam')}</th>
-                <th style={{ padding: '10px 14px' }}>{t('pages.changeDetail.approval')}</th>
-                <th style={{ padding: '10px 14px' }}>{t('common.status')}</th>
-                <th style={{ padding: '10px 14px', textAlign: 'right' }}>{t('common.actions')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((it) => (
-                <tr key={it.id} style={{ borderTop: '1px solid var(--color-border-light)' }}>
-                  <td style={{ padding: '10px 14px' }}>
-                    <div style={{ fontWeight: 600, color: 'var(--color-slate-dark)' }}>{it.name}</div>
-                    {it.description && <div style={{ color: 'var(--color-slate-light)', fontSize: 12, marginTop: 2 }}>{it.description}</div>}
-                  </td>
-                  <td style={{ padding: '10px 14px', color: 'var(--color-slate)' }}>
-                    {it.category
-                      ? (labelOf('category', it.category) ?? it.category)
-                      : it.legacyCategory
-                        ? <span title={t('pages.serviceCatalogAdmin.legacyCategoryHint')} style={{ color: 'var(--color-danger)', fontSize: 'var(--font-size-label)' }}>{t('pages.serviceCatalogAdmin.legacyCategory', { text: it.legacyCategory })}</span>
-                        : '—'}
-                  </td>
-                  <td style={{ padding: '10px 14px' }}>
-                    {it.priority
-                      ? <SeverityBadge value={it.priority} vocabulary="priority" />
-                      : <span style={{ color: 'var(--color-danger)', fontSize: 'var(--font-size-label)' }}>{t('pages.serviceCatalogAdmin.priorityMissing')}</span>}
-                  </td>
-                  <td style={{ padding: '10px 14px', color: 'var(--color-slate)' }}>{it.fulfillmentTeam?.name ?? '—'}</td>
-                  <td style={{ padding: '10px 14px' }}>
-                    {it.requiresApproval
-                      ? <Pill bg={palette.warning.tint} color={palette.warning.strong}>{t('pages.serviceCatalogAdmin.required')}</Pill>
-                      : <span style={{ color: 'var(--color-slate-light)' }}>{t('common.no')}</span>}
-                  </td>
-                  <td style={{ padding: '10px 14px' }}>
-                    {it.active
-                      ? <Pill bg={palette.success.tint} color={palette.success.strong}>{t('pages.serviceCatalogAdmin.active')}</Pill>
-                      : <Pill bg="var(--color-border-light)" color="var(--color-slate)">{t('pages.serviceCatalogAdmin.inactive')}</Pill>}
-                  </td>
-                  <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    <Button variant="ghost" onClick={() => modal.openEdit(it)} style={{ marginRight: 6 }}>{t('common.edit')}</Button>
-                    <Button variant="secondary" size="xs" onClick={() => toggleActive(it)} disabled={saving}>
-                      {t(it.active ? 'pages.serviceCatalogAdmin.deactivate' : 'pages.serviceCatalogAdmin.activate')}
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        </div>
+        <SortableFilterTable<CatalogItem>
+          label={t('sidebar.serviceCatalog')}
+          columns={columns}
+          data={items}
+          onRowClick={(it) => modal.openEdit(it)}
+       />
       )}
 
       <Modal

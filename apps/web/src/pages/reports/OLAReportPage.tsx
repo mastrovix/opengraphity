@@ -80,10 +80,10 @@ export function OLAReportPage() {
           { key: 'name', label: t('common.name'), sortable: true, render: (v, o) => (
             <span style={{ fontWeight: 500, color: 'var(--color-slate-dark)', opacity: o.enabled ? 1 : 0.55 }}>{String(v)}</span>
           ) },
-          { key: 'entityType', label: t('admin.sla.scopeField'), sortable: true, render: (v) => olaScopeLabel(String(v), t, typeLabel) },
-          { key: 'teamName', label: t('pages.slaReport.party'), sortable: true, render: (_v, o) => o.teamName ?? o.partyName ?? '—' },
+          { key: 'entityType', label: t('admin.sla.scopeField'), sortable: true, sortValue: (o) => olaScopeLabel(String(o.entityType), t, typeLabel), render: (v) => olaScopeLabel(String(v), t, typeLabel) },
+          { key: 'teamName', label: t('pages.slaReport.party'), sortable: true, sortValue: (o) => o.teamName ?? o.partyName, render: (_v, o) => o.teamName ?? o.partyName ?? '—' },
           { key: 'resolveMinutes', label: t('pages.slaReport.target'), sortable: true, render: (v) => olaMinutes(Number(v), t) },
-          { key: 'id', label: t('pages.slaReport.attainment', { window: finestra }), sortable: false, render: (_v, o) => {
+          { key: 'id', label: t('pages.slaReport.attainment', { window: finestra }), sortValue: (o) => report.ola.find((r) => r.id === o.id)?.attainmentPct ?? null, render: (_v, o) => {
             const att = report.ola.find((r) => r.id === o.id)
             const pct = att?.attainmentPct ?? null
             return (

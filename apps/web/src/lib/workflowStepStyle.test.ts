@@ -6,7 +6,7 @@
  * silently neutral and nobody notices the map is missing it.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { styleForCategory, buttonStyleForCategory, isDestructiveTransition, transitionButtonColors, DANGER_BUTTON, BRAND_BUTTON, REJECTION_INPUT_FIELD } from './workflowStepStyle'
+import { SOFT_BUTTON, styleForCategory, buttonStyleForCategory, isDestructiveTransition, transitionButtonColors, DANGER_BUTTON, BRAND_BUTTON, REJECTION_INPUT_FIELD } from './workflowStepStyle'
 
 afterEach(() => { vi.restoreAllMocks() })
 
@@ -54,8 +54,8 @@ describe('buttonStyleForCategory', () => {
     expect(buttonStyleForCategory('closed')).toEqual({ backgroundColor: 'transparent', color: 'var(--text-primary)', borderColor: 'var(--border)' })
   })
 
-  it('any other (or missing) category uses the brand primary style', () => {
-    const brand = { backgroundColor: 'var(--color-brand)', borderColor: 'var(--color-brand)' }
+  it('any other (or missing) category uses the soft neutral style: sugar-paper blue (26 Sep 2026)', () => {
+    const brand = { backgroundColor: 'var(--color-section-head)', borderColor: 'var(--color-section-head)', color: 'var(--color-section-head-text)' }
     expect(buttonStyleForCategory('active')).toMatchObject(brand)
     expect(buttonStyleForCategory(null)).toMatchObject(brand)
     expect(buttonStyleForCategory(undefined)).toMatchObject(brand)
@@ -100,10 +100,10 @@ describe('transitionButtonColors', () => {
     expect(DANGER_BUTTON.backgroundColor).toBe('var(--color-danger)')
   })
 
-  it('otherwise: the category colours, or the brand primary style', () => {
+  it('otherwise: the category colours or the soft neutral style; the brand palette keeps the primary style', () => {
     expect(transitionButtonColors('resolved', null, 'byCategory')).toEqual(buttonStyleForCategory('resolved'))
     expect(transitionButtonColors('resolved', null, 'brand')).toEqual(BRAND_BUTTON)
-    expect(transitionButtonColors(null, null, 'byCategory')).toEqual(BRAND_BUTTON)
+    expect(transitionButtonColors(null, null, 'byCategory')).toEqual(SOFT_BUTTON)
   })
 
   it('the failed category and the danger style are the same thing', () => {

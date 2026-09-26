@@ -3,13 +3,14 @@
  * so the parent decides when state resets (e.g. on task change). The form
  * notifies the parent on every edit and on explicit save/complete.
  */
+import { Input } from '@/components/ui/FormControls'
 import { useId } from 'react'
 import { useTenantTimezone } from '@/hooks/useTenantTimezone'
 import { useTranslation } from 'react-i18next'
 import { Plus, X } from 'lucide-react'
 import { TASK_STATUS } from '@/lib/taskStatus'
 import type { DeployPlanTaskData, DeployStep } from '@/types/change'
-import { StickyAction, inputStyle, labelStyle, toLocal, fromLocal } from './shared'
+import { StickyAction, labelStyle, toLocal, fromLocal } from './shared'
 import { colors, palette } from '@/lib/tokens'
 
 const emptyStep = (): DeployStep => ({
@@ -69,40 +70,57 @@ export function PlanTaskForm({ task, steps, setSteps, dirty, setDirty, canEdit, 
           </div>
           <div style={{ marginBottom: 10 }}>
             <label htmlFor={`${baseId}-title-${i}`} style={labelStyle}>{t('pages.serviceRequestDetail.titleRequired')}</label>
-            <input
+            <Input
               id={`${baseId}-title-${i}`}
-              type="text" disabled={!canEdit || completed} value={s.title}
+              type="text"
+              disabled={!canEdit || completed}
+              value={s.title}
               onChange={e => updateStep(i, { title: e.target.value })}
-              style={inputStyle}
             />
           </div>
           <div style={{ marginBottom: 10 }}>
             {/* F-13: l'etichetta dice in quale fuso si stanno scrivendo le ore. */}
             <label htmlFor={`${baseId}-val-start-${i}`} style={labelStyle}>{t('pages.planTask.validation')} <span style={{ fontWeight: 400, color: 'var(--color-slate-light)' }}>({zoneLabel})</span></label>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <input id={`${baseId}-val-start-${i}`} type="datetime-local" disabled={!canEdit || completed}
+              <Input
+                id={`${baseId}-val-start-${i}`}
+                type="datetime-local"
+                disabled={!canEdit || completed}
                 value={s.validationWindow.start ? toLocal(s.validationWindow.start, timeZone) : ''}
                 onChange={e => updateStep(i, { validationWindow: { ...s.validationWindow, start: fromLocal(e.target.value, timeZone) } })}
-                style={{ ...inputStyle, flex: 1 }} />
+                style={{ flex: 1 }}
+              />
               <span style={{ color: 'var(--color-slate-light)' }}>→</span>
-              <input type="datetime-local" disabled={!canEdit || completed} aria-label={t('pages.planTask.validationEnd')}
+              <Input
+                type="datetime-local"
+                disabled={!canEdit || completed}
+                aria-label={t('pages.planTask.validationEnd')}
                 value={s.validationWindow.end ? toLocal(s.validationWindow.end, timeZone) : ''}
                 onChange={e => updateStep(i, { validationWindow: { ...s.validationWindow, end: fromLocal(e.target.value, timeZone) } })}
-                style={{ ...inputStyle, flex: 1 }} />
+                style={{ flex: 1 }}
+              />
             </div>
           </div>
           <div>
             <label htmlFor={`${baseId}-rel-start-${i}`} style={labelStyle}>{t('changeTasks.deploy')} * <span style={{ fontWeight: 400, color: 'var(--color-slate-light)' }}>({zoneLabel})</span></label>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <input id={`${baseId}-rel-start-${i}`} type="datetime-local" disabled={!canEdit || completed}
+              <Input
+                id={`${baseId}-rel-start-${i}`}
+                type="datetime-local"
+                disabled={!canEdit || completed}
                 value={s.releaseWindow.start ? toLocal(s.releaseWindow.start, timeZone) : ''}
                 onChange={e => updateStep(i, { releaseWindow: { ...s.releaseWindow, start: fromLocal(e.target.value, timeZone) } })}
-                style={{ ...inputStyle, flex: 1 }} />
+                style={{ flex: 1 }}
+              />
               <span style={{ color: 'var(--color-slate-light)' }}>→</span>
-              <input type="datetime-local" disabled={!canEdit || completed} aria-label={t('pages.planTask.deployEnd')}
+              <Input
+                type="datetime-local"
+                disabled={!canEdit || completed}
+                aria-label={t('pages.planTask.deployEnd')}
                 value={s.releaseWindow.end ? toLocal(s.releaseWindow.end, timeZone) : ''}
                 onChange={e => updateStep(i, { releaseWindow: { ...s.releaseWindow, end: fromLocal(e.target.value, timeZone) } })}
-                style={{ ...inputStyle, flex: 1 }} />
+                style={{ flex: 1 }}
+              />
             </div>
           </div>
         </div>

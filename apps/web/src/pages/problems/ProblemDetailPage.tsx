@@ -1,3 +1,4 @@
+import { Loading } from '@/components/ui/Loading'
 import { useId, useState } from 'react'
 import { TicketOLACard } from '@/components/ticket/ola/TicketOLACard'
 import { CustomFieldsCard } from '@/components/ticket/customFields/CustomFieldsCard'
@@ -347,7 +348,7 @@ export function ProblemDetailPage() {
     return (
       <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-muted)', fontSize: 'var(--font-size-body)' }}>
         {t('pages.problems.notFound')}{' '}
-        <button type="button" onClick={() => navigate('/problems')} style={{ color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
+        <button type="button" onClick={() => navigate('/problems')} style={{ color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
           {t('detail.backToList')}
         </button>
       </div>
@@ -742,7 +743,7 @@ function ProblemAssignmentFields({ problem, usersData, usersError, canEdit, onAs
         problem.assignedTeam && !showReassign ? (
           <div>
             <div style={{ fontWeight: 500 }}>{problem.assignedTeam.name}</div>
-            <button type="button" onClick={() => setShowReassign(true)} style={{ marginTop: 4, background: 'none', border: 'none', padding: 0, fontSize: 'var(--font-size-body)', color: 'var(--accent)', cursor: 'pointer' }}>{t('detail.reassign')}</button>
+            <button type="button" onClick={() => setShowReassign(true)} style={{ marginTop: 4, background: 'none', border: 'none', padding: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, cursor: 'pointer' }}>{t('detail.reassign')}</button>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -772,7 +773,7 @@ function ProblemAssignmentFields({ problem, usersData, usersError, canEdit, onAs
               type="button"
               disabled={assigningUser}
               onClick={() => void assignToUser({ variables: { problemId: problem.id, userId: null } })}
-              style={{ marginTop: 6, padding: 0, background: 'none', border: 'none', color: 'var(--accent)', fontSize: 'var(--font-size-body)', cursor: assigningUser ? 'not-allowed' : 'pointer', textDecoration: 'underline' }}
+              style={{ marginTop: 6, padding: 0, background: 'none', border: 'none', color: 'var(--color-link)', fontSize: 'var(--font-size-body)', cursor: assigningUser ? 'not-allowed' : 'pointer', textDecoration: 'underline' }}
             >
               {t('detail.removeAssignment')}
             </button>
@@ -801,9 +802,7 @@ function ProblemAssignmentFields({ problem, usersData, usersError, canEdit, onAs
                     {t('pages.problemDetail.usersUnreadable', { team: problem.assignedTeam.name, error: usersError.message })}
                   </span>
                 ) : (
-                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                    {t('common.loading')}
-                  </span>
+                  <Loading inline />
                 )
               ) : teamUsers.length === 0 && (
                 <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', fontStyle: 'italic' }}>

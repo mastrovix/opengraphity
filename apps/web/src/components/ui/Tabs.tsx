@@ -22,9 +22,11 @@ interface TabsProps<K extends string> {
    * draw the panel with `TabPanel` and the same prefix.
    */
   idPrefix?: string
+  /** The row's own spacing where it sits in a toolbar or a panel. */
+  style?: React.CSSProperties
 }
 
-export function Tabs<K extends string>({ items, value, onChange, ariaLabel, idPrefix }: TabsProps<K>) {
+export function Tabs<K extends string>({ items, value, onChange, ariaLabel, idPrefix, style }: TabsProps<K>) {
   const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>, idx: number) => {
     let next: number | null = null
     if (e.key === 'ArrowRight') next = (idx + 1) % items.length
@@ -42,7 +44,7 @@ export function Tabs<K extends string>({ items, value, onChange, ariaLabel, idPr
   return (
     // ONE row, always (26 Sep 2026): wrapped onto three rows in a narrow column it looked broken, the
     // underline of the open tab on a row of its own. Too narrow for the row, it scrolls sideways.
-    <div role="tablist" aria-label={ariaLabel} style={{ display: 'flex', gap: 4, overflowX: 'auto', scrollbarWidth: 'thin', borderBottom: '1px solid var(--border)', marginBottom: 20 }}>
+    <div role="tablist" aria-label={ariaLabel} style={{ display: 'flex', gap: 4, overflowX: 'auto', scrollbarWidth: 'thin', borderBottom: '1px solid var(--border)', marginBottom: 20, ...style }}>
       {items.map((item, idx) => {
         const selected = item.key === value
         return (

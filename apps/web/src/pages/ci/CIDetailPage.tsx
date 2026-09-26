@@ -1,3 +1,5 @@
+import { Loading } from '@/components/ui/Loading'
+import { BackLink, DetailTitle } from '@/components/ui/BackLink'
 import { useMemo, useState, useCallback, useId, lazy, Suspense } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
@@ -590,7 +592,7 @@ export function CIDetailPage() {
   // Only at the first load: a refetch (Apollo 4 turns `loading` on) swapped
   // the whole page, and sections, graph and scroll were lost (review of 23 Sep 2026).
   if (metamodelLoading || (loading && !data)) {
-    return <div style={{ padding: 40, color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</div>
+    return <Loading padded />
   }
   if (metamodelError) {
     return <div style={{ padding: 40 }}><QueryError message={metamodelError.message} /></div>
@@ -612,7 +614,7 @@ export function CIDetailPage() {
         <button
           type="button"
           onClick={() => navigate(`/ci/${typeName}`)}
-          style={{ color: 'var(--color-brand)', background: 'none', border: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer' }}
+          style={{ color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, background: 'none', border: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer' }}
         >
           {t('pages.ci.backTo', { label: ciType.label })}
         </button>
@@ -622,17 +624,11 @@ export function CIDetailPage() {
 
   return (
     <PageContainer>
-      <button
-        type="button"
-        onClick={() => navigate(`/ci/${typeName}`)}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--color-slate-light)', background: 'none', border: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer', padding: 0, marginBottom: 12 }}
-      >
-        ← {ciType.label}
-      </button>
+      <BackLink onClick={() => navigate(`/ci/${typeName}`)}>{ciType.label}</BackLink>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
         <CIIcon icon={ciType.icon} size={24} color="var(--color-icon-accent)" />
-        <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{ci.name}</h1>
+        <DetailTitle>{ci.name}</DetailTitle>
         {ci.status && <StatusBadge value={ci.status} />}
       </div>
 
@@ -657,13 +653,11 @@ export function CIDetailPage() {
                 defaultOpen={true}
                 headerRight={
                   !editMode ? (
-                    <button
-                      type="button"
+                    <Button variant="secondary" size="xs"
                       onClick={e => { e.stopPropagation(); startEdit() }}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', fontWeight: 500, borderRadius: 6, border: '1px solid var(--color-brand)', background: 'transparent', color: 'var(--color-brand)', cursor: 'pointer' }}
                     >
                       <Pencil size={12} /> {t('common.edit')}
-                    </button>
+                    </Button>
                   ) : undefined
                 }
               >
@@ -709,12 +703,12 @@ export function CIDetailPage() {
 
                     {/* Save / Cancel */}
                     <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                      <button type="button" onClick={handleSaveAll} style={{ padding: '6px 18px', borderRadius: 6, border: 'none', background: 'var(--color-brand)', color: colors.white, fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
+                      <Button variant="primary" onClick={handleSaveAll}>
                         {t('common.save')}
-                      </button>
-                      <button type="button" onClick={() => setEditMode(false)} style={{ padding: '6px 14px', borderRadius: 6, border: `1px solid ${colors.border}`, background: colors.white, color: 'var(--color-slate)', fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
+                      </Button>
+                      <Button variant="secondary" onClick={() => setEditMode(false)}>
                         {t('common.cancel')}
-                      </button>
+                      </Button>
                     </div>
                   </>
                 ) : (
@@ -827,13 +821,11 @@ export function CIDetailPage() {
                 title={`${t('pages.ci.relations')} (${(ci.dependencies as CIRelation[]).length + (ci.dependents as CIRelation[]).length})`}
                 defaultOpen={false}
                 headerRight={
-                  <button
-                    type="button"
+                  <Button variant="secondary" size="xs"
                     onClick={e => { e.stopPropagation(); setShowAddRel(true) }}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', fontWeight: 500, borderRadius: 6, border: '1px solid var(--color-brand)', background: 'transparent', color: 'var(--color-brand)', cursor: 'pointer' }}
                   >
                     <Plus size={12} /> {t('pages.ci.addRelation')}
-                  </button>
+                  </Button>
                 }
               >
                 {(ci.dependencies as CIRelation[]).length === 0 && (ci.dependents as CIRelation[]).length === 0 ? (
@@ -881,13 +873,11 @@ export function CIDetailPage() {
                       {t('pages.ci.removeRelation', { relationType: deleteRel.relationType, name: deleteRel.name })}
                     </span>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button
-                        type="button"
+                      <Button variant="secondary" size="xs"
                         onClick={() => setDeleteRel(null)}
-                        style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', borderRadius: 6, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', color: 'var(--color-slate-dark)' }}
                       >
                         {t('common.cancel')}
-                      </button>
+                      </Button>
                       <button
                         type="button"
                         onClick={handleRemoveRelation}

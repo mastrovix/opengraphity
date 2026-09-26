@@ -1,3 +1,5 @@
+import { Loading } from '@/components/ui/Loading'
+import { Chip } from '@/components/ui/Chip'
 import { useTranslation } from 'react-i18next'
 import type { SyncConflict } from './useSyncPage'
 import { StatusBadge, btnStyle } from './syncShared'
@@ -33,15 +35,14 @@ export function SyncConflictsTab({ conflicts, loading, onResolveConflict, total,
     <div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         {(['open', 'resolved', 'all'] as const).map(s => (
-          <button type="button" key={s} aria-pressed={status === s} onClick={() => onStatusChange(s)}
-            style={{ padding: '6px 12px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer', background: status === s ? colors.brand : colors.white, color: status === s ? colors.white : palette.neutral.textMuted }}>
+          <Chip pressed={status === s} key={s} onClick={() => onStatusChange(s)}>
             {t(`pages.sync.filter.${s}`)}
-          </button>
+          </Chip>
         ))}
       </div>
 
       {/* G-18: era «Loading...» letterale. */}
-      {loading && <div style={{ padding: 24, color: colors.slate }}>{t('common.loading')}</div>}
+      {loading && <Loading padded />}
 
       {!loading && total > filtered.length && (
         <p style={{ margin: '0 0 8px', fontSize: 'var(--font-size-table)', color: colors.slate }}>

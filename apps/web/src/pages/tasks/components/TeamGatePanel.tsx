@@ -2,13 +2,15 @@
  * Shown when the viewer is not in the responsible team: lists team members
  * and lets the viewer send a reminder ping via SEND_TASK_REMINDER.
  */
+import { Pill } from '@/components/ui/Pill'
+import { Button } from '@/components/Button'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Bell } from 'lucide-react'
 import { GET_TEAM_DETAIL } from '@/graphql/queries'
 import { SEND_TASK_REMINDER } from '@/graphql/mutations'
-import { colors, palette } from '@/lib/tokens'
+import { palette } from '@/lib/tokens'
 import { showError } from '@/lib/showError'
 
 export function TeamGatePanel({ teamId, taskId, assigneeId }: {
@@ -50,23 +52,16 @@ export function TeamGatePanel({ teamId, taskId, assigneeId }: {
                 {m.name}
               </span>
               {isAssigned && (
-                <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, backgroundColor: 'var(--color-brand-light)', color: 'var(--color-brand)' }}>
+                <Pill bg="var(--color-brand-light)" color="var(--color-brand)" radius={4} style={{ fontSize: 'var(--font-size-label)', fontWeight: 600 }}>
                   {t('changeTasks.assigned')}
-                </span>
+                </Pill>
               )}
-              <button
-                type="button"
+              <Button variant="secondary" size="xs"
                 disabled={sending}
-                onClick={() => void sendReminder({ variables: { taskId, userId: m.id } })}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 4,
-                  padding: '4px 8px', borderRadius: 4, border: `1px solid ${palette.warning.border}`,
-                  background: colors.white, cursor: sending ? 'not-allowed' : 'pointer',
-                  fontSize: 'var(--font-size-label)', color: palette.warning.strong, fontWeight: 500,
-                }}
+                onClick={() => sendReminder({ variables: { taskId, userId: m.id } })}
               >
                 <Bell size={12} /> {t('changeTasks.nudge')}
-              </button>
+              </Button>
             </div>
           )
         })}

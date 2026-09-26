@@ -21,7 +21,7 @@
 import { useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { alpha, colors, palette } from '@/lib/tokens'
-import { controlStyle } from '@/components/ui/FormControls'
+import { Input } from '@/components/ui/FormControls'
 
 export interface PickerOption {
   id:      string
@@ -167,7 +167,7 @@ export function SearchPicker({
 
   return (
     <div ref={wrapRef} style={{ position: 'relative' }}>
-      <input
+      <Input
         id={inputId}
         type="text"
         role="combobox"
@@ -189,7 +189,7 @@ export function SearchPicker({
         onClick={() => { if (!open) { setOpen(true); setActive(-1) } }}
         onBlur={close}
         onKeyDown={onKeyDown}
-        style={{ ...controlStyle, ...(invalid ? { borderColor: palette.warning.border } : {}), ...style }}
+        style={{ ...(invalid ? { borderColor: palette.warning.border } : {}), ...style }}
       />
       {open && !disabled && (
         <ul id={listId} role="listbox" aria-label={label} style={{

@@ -1,3 +1,6 @@
+import { Pill } from '@/components/ui/Pill'
+import { Chip } from '@/components/ui/Chip'
+import { Button } from '@/components/Button'
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useLazyQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
@@ -179,39 +182,36 @@ function JobDetail({ job, retryable, onRetry, retrying }: { job: QueueJob; retry
             {t('pages.queueStats.noPayload')}
           </span>
         ) : (
-          <button type="button"
+          <Button variant="secondary" size="xs"
             onClick={() => setShowPayload((p) => !p)}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', color: palette.neutral.textStrong }}
           >
             {showPayload ? <ChevronDown size={12} /> : <ChevronRight size={12} />} {t('pages.queueStats.payload')}
-          </button>
+          </Button>
         )}
         {job.stacktrace.length > 0 && (
-          <button type="button"
+          <Button variant="secondary" size="xs"
             onClick={() => setShowStack((p) => !p)}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', color: palette.neutral.textStrong }}
           >
             {showStack ? <ChevronDown size={12} /> : <ChevronRight size={12} />} {t('pages.queueStats.stackTrace', { count: job.stacktrace.length })}
-          </button>
+          </Button>
         )}
         {job.status === 'failed' && retryable && (
-          <button type="button"
+          <Button variant="primary" size="xs"
             onClick={onRetry}
             disabled={retrying}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: 'none', background: 'var(--color-brand)', color: colors.white, cursor: retrying ? 'not-allowed' : 'pointer', opacity: retrying ? 0.6 : 1, fontWeight: 500 }}
           >
             <RotateCcw size={12} /> {retrying ? t('pages.queueStats.retrying') : t('pages.queueStats.retry')}
-          </button>
+          </Button>
         )}
         {job.status === 'failed' && !retryable && (
-          <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', padding: '3px 8px', background: colors.slateBg, borderRadius: 4 }}>
+          <Pill bg={colors.slateBg} color="var(--color-slate-light)" radius={4} style={{ fontSize: 'var(--font-size-table)' }}>
             {t('pages.queueStats.notRetryable')}
-          </span>
+          </Pill>
         )}
         {job.returnValue && (
-          <span style={{ fontSize: 'var(--font-size-table)', color: palette.success.base, padding: '3px 8px', background: alpha.success08, borderRadius: 4 }}>
+          <Pill bg={alpha.success08} color={palette.success.base} radius={4} style={{ fontSize: 'var(--font-size-table)' }}>
             {t('pages.queueStats.returnValue', { value: job.returnValue.length > 60 ? job.returnValue.slice(0, 60) + '…' : job.returnValue })}
-          </span>
+          </Pill>
         )}
       </div>
 
@@ -296,14 +296,14 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
               {queue.name}
             </span>
             {queue.paused && (
-              <span title={t('pages.queueStats.pausedHelp')} style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate)', padding: '1px 6px', background: colors.slateBg, borderRadius: 4, whiteSpace: 'nowrap', fontWeight: 600 }}>
+              <Pill bg={colors.slateBg} color="var(--color-slate)" radius={4} title={t('pages.queueStats.pausedHelp')} style={{ fontSize: 'var(--font-size-table)', fontWeight: 600 }}>
                 {t('pages.queueStats.paused')}
-              </span>
+              </Pill>
             )}
             {!queue.retryable && (
-              <span title={t('pages.queueStats.notRetryable')} style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', padding: '1px 6px', background: colors.slateBg, borderRadius: 4, whiteSpace: 'nowrap' }}>
+              <Pill bg={colors.slateBg} color="var(--color-slate-light)" radius={4} title={t('pages.queueStats.notRetryable')} style={{ fontSize: 'var(--font-size-table)' }}>
                 {t('pages.queueStats.notRetryable')}
-              </span>
+              </Pill>
             )}
           </div>
           <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', lineHeight: 1.4, fontWeight: 400 }}>
@@ -328,19 +328,10 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
               ? t(`pages.queueStats.keptHelp.${key}`)
               : undefined
             return (
-              <span
-                key={key}
-                title={aiuto}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 5,
-                  padding: '3px 10px', borderRadius: 20, background: s.bg, fontSize: 'var(--font-size-body)',
-                  fontWeight: val > 0 ? 600 : 400,
-                  color: val > 0 ? s.color : 'var(--color-slate-light)',
-                }}
-              >
+              <Pill bg={s.bg} color={val > 0 ? s.color : 'var(--color-slate-light)'} radius={20} key={key} title={aiuto} style={{ gap: 5, fontSize: 'var(--font-size-body)', fontWeight: val > 0 ? 600 : 400 }}>
                 <span style={{ fontWeight: 700 }}>{val}</span>
                 <span>{t(`pages.queueStats.${key}`)}</span>
-              </span>
+              </Pill>
             )
           })}
         </div>
@@ -353,26 +344,16 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
           <div style={{ display: 'flex', gap: 4, padding: '10px 16px', background: 'var(--color-slate-bg)', alignItems: 'center' }}>
             <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginRight: 4 }}>{t('pages.queueStats.show')}</span>
             {JOB_STATUSES.map((s) => (
-              <button type="button"
-                key={s}
-                aria-pressed={jobStatus === s}
-                onClick={(e) => { e.stopPropagation(); handleStatusChange(s) }}
-                style={{
-                  padding: '3px 10px', borderRadius: 5, border: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer',
-                  fontWeight: 500,
-                  background: jobStatus === s ? (COUNTER_STYLE[s]?.color ?? 'var(--color-brand)') : colors.border,
-                  color: jobStatus === s ? colors.white : palette.neutral.textStrong,
-                }}
-              >
+              <Chip pressed={jobStatus === s} key={s} onClick={(e) => { e.stopPropagation(); handleStatusChange(s) }} accent={COUNTER_STYLE[s]?.color ?? 'var(--color-brand)'}>
                 {t(`pages.queueStats.${s}`)}
-              </button>
+              </Chip>
             ))}
-            <button type="button"
+            <Button variant="secondary" size="xs"
               onClick={(e) => { e.stopPropagation(); void loadJobs({ variables: { queueName: queue.name, status: jobStatus, limit: 50 } }) }}
-              style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', color: palette.neutral.textStrong }}
+              style={{ marginLeft: 'auto' }}
             >
               <RefreshCw size={11} /> {t('pages.queueStats.refresh')}
-            </button>
+            </Button>
           </div>
 
           {jobsLoading && (
@@ -474,19 +455,13 @@ export function QueueStatsPage() {
             {loading ? '—' : t('pages.queueStats.count', { count: queues.length })}
           </p>
         </div>
-        <button type="button"
-          onClick={() => void refetch()}
+        <Button variant="secondary"
+          onClick={() => refetch()}
           disabled={loading}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '7px 14px', borderRadius: 8, border: '1px solid var(--color-border)',
-            background: colors.white, color: 'var(--color-slate-dark)', fontSize: 'var(--font-size-body)',
-            cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1,
-          }}
         >
           <RefreshCw size={14} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
           {t('pages.logs.refresh')}
-        </button>
+        </Button>
       </div>
 
       {error && (

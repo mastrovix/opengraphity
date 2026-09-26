@@ -1,3 +1,4 @@
+import { Textarea } from '@/components/ui/FormControls'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useAIFeature } from '@/hooks/useAIFeature'
 import { AIDisabledNotice } from '@/components/ai/AIDisabledNotice'
@@ -496,7 +497,7 @@ export default function ReportsPage() {
           <button
             type="button"
             onClick={handleNewConversation}
-            style={{ fontSize: 'var(--font-size-section-title)', fontWeight: 400, color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, padding: '2px 6px', borderRadius: 4 }}
+            style={{ fontSize: 'var(--font-size-section-title)', fontWeight: 400, color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, padding: '2px 6px', borderRadius: 4 }}
             title={t('pages.reportsAI.newConversation')}
           >+</button>
         </div>
@@ -716,7 +717,7 @@ export default function ReportsPage() {
             </div>
           )}
           <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
-            <textarea
+            <Textarea
               ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -724,17 +725,12 @@ export default function ReportsPage() {
               placeholder={t('pages.aiAnalysis.placeholder')}
               aria-label={t('pages.aiAnalysis.title')}
               rows={1}
-              style={{
-                flex: 1, fontSize: 'var(--font-size-body)', padding: '10px 14px',
-                border: '1px solid var(--color-border-strong)', borderRadius: 8,
-                resize: 'none', fontFamily: 'var(--font-family)', lineHeight: 1.5,
-                maxHeight: 96, overflowY: 'auto', outline: 'none',
-              }}
               onInput={(e) => {
                 const t = e.currentTarget
                 t.style.height = 'auto'
                 t.style.height = Math.min(t.scrollHeight, 96) + 'px'
               }}
+              style={{ flex: 1, resize: 'none', lineHeight: 1.5, maxHeight: 96, overflowY: 'auto' }}
             />
             <button
               type="button"

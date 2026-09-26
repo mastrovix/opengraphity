@@ -1,3 +1,5 @@
+import { Pill } from '@/components/ui/Pill'
+import { Button } from '@/components/Button'
 import { useId, useState } from 'react'
 import { useCIBaseEnums } from '@/lib/ciEnums'
 import { useCILabels } from '@/hooks/useCILabels'
@@ -26,11 +28,7 @@ import { CIFieldEditor, fieldToForm } from './citype/CIFieldEditor'
 import type { FieldForm } from './citype/CIFieldEditor'
 import { CIRelationEditor, CIRelationTable } from './citype/CIRelationEditor'
 import type { RelationForm } from './citype/CIRelationEditor'
-import {
-  inputS, selectS, textareaS,
-  btnPrimary, btnDanger,
-} from './shared/designerStyles'
-import { Input, Select } from '@/components/ui/FormControls'
+import { Input, Select, Textarea } from '@/components/ui/FormControls'
 import { Tabs } from '@/components/ui/Tabs'
 import type { EnumTypeRef } from './shared/designerStyles'
 import { DesignerFieldRow } from './shared/DesignerFieldRow'
@@ -219,9 +217,9 @@ export function CITypeDesignerPage() {
                     <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', letterSpacing: '0.06em' }}>{t('citypeDesigner.systemFields')}</div>
                     <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 2 }}>{t('citypeDesigner.fieldsNotDeletable', { count: baseType.fields.length })}</div>
                   </div>
-                  <button type="button" style={btnPrimary} onClick={() => { setEditingBaseField(null); setShowBaseFieldModal(true) }}>
+                  <Button variant="primary" onClick={() => { setEditingBaseField(null); setShowBaseFieldModal(true) }}>
                     <Plus size={13} /> {t('citypeDesigner.addBaseField')}
-                  </button>
+                  </Button>
                 </div>
                 {[...baseType.fields].sort((a, b) => a.order - b.order).map((f) => (
                   <DesignerFieldRow
@@ -260,12 +258,12 @@ export function CITypeDesignerPage() {
                     {selected.active ? `● ${t('common.active')}` : `○ ${t('common.inactive')}`}
                   </button>
                   {shipped && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-size-table)', background: 'var(--color-slate-bg)', color: 'var(--color-slate)', padding: '2px 8px', borderRadius: 20, fontWeight: 500 }}>
+                    <Pill bg="var(--color-slate-bg)" color="var(--color-slate)" radius={20} style={{ gap: 4, fontSize: 'var(--font-size-table)', fontWeight: 500 }}>
                       <Package size={10} aria-hidden="true" /> {t('ciTypeDesigner.shippedBadge')}
-                    </span>
+                    </Pill>
                   )}
                 </div>
-                <button type="button" style={{ ...btnDanger, ...readOnlyIf(shipped) }}
+                <Button variant="danger" size="xs"
                   disabled={shipped}
                   title={shipped ? shippedNote : undefined}
                   onClick={async () => {
@@ -291,9 +289,10 @@ export function CITypeDesignerPage() {
                     }
                     if (!(await confirm({ title: t('ciTypeDesigner.deleteTypeTitle', { label: selected.label }), body: <CITypeDeletionImpact impact={impact} t={t} />, danger: true }))) return
                     void deleteType({ variables: { id: selected.id } })
-                  }}>
+                  }}
+                >
                   <Trash2 size={12} /> {t('citypeDesigner.deleteType')}
-                </button>
+                </Button>
               </div>
 
               {/* A-6: il perché, non solo i bottoni grigi. */}
@@ -325,7 +324,7 @@ export function CITypeDesignerPage() {
                 {activeTab === 'settings' && settingsForm && (
                   <div style={{ maxWidth: 480 }}>
                     <FormField label={t('common.label')}>
-                      <Input style={inputS} value={settingsForm.label}
+                      <Input value={settingsForm.label}
                         onChange={(e) => setSettingsForm((p) => p && ({ ...p, label: e.target.value }))} />
                     </FormField>
                     {/*
@@ -339,7 +338,7 @@ export function CITypeDesignerPage() {
                       */}
                     {lingue.map(({ codice, nome }) => (
                       <FormField key={codice} label={t('citypeDesigner.labelForLanguage', { language: nome })}>
-                        <Input style={inputS} value={settingsForm.labels[codice] ?? ''}
+                        <Input value={settingsForm.labels[codice] ?? ''}
                           placeholder={settingsForm.label}
                           disabled={shipped}
                           onChange={(e) => setSettingsForm((p) => p && ({ ...p, labels: { ...p.labels, [codice]: e.target.value } }))} />
@@ -347,7 +346,7 @@ export function CITypeDesignerPage() {
                     ))}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, marginBottom: 14 }}>
                       <FormField label={t('citypeDesigner.icon')}>
-                        <Select style={selectS} value={settingsForm.icon}
+                        <Select value={settingsForm.icon}
                           onChange={(e) => setSettingsForm((p) => p && ({ ...p, icon: e.target.value }))}>
                           {CI_ICON_KEYS.map((i) => <option key={i} value={i}>{i}</option>)}
                         </Select>
@@ -428,12 +427,16 @@ export function CITypeDesignerPage() {
                       <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
                         <Trans i18nKey="citypeDesigner.validationScriptHint" components={{ code: <code /> }} />
                       </p>
-                      <textarea aria-label={t('citypeDesigner.validationScriptPlaceholder')} style={{ ...textareaS, minHeight: 100 }} value={settingsForm.validationScript}
+                      <Textarea
+                        aria-label={t('citypeDesigner.validationScriptPlaceholder')}
+                        value={settingsForm.validationScript}
                         onChange={(e) => setSettingsForm((p) => p && ({ ...p, validationScript: e.target.value }))}
-                        placeholder={t('citypeDesigner.validationScriptPlaceholder')} />
+                        placeholder={t('citypeDesigner.validationScriptPlaceholder')}
+                        style={{ minHeight: 100 }}
+                      />
                     </FormField>
                     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                      <button type="button" style={{ ...btnPrimary, opacity: settingsSaving || shipped ? 0.6 : 1 }}
+                      <Button variant="primary"
                         disabled={settingsSaving || shipped}
                         title={shipped ? shippedNote : undefined}
                         aria-describedby={shipped ? 'citype-shipped-note' : undefined}
@@ -457,9 +460,10 @@ export function CITypeDesignerPage() {
                               statusesExcluded: settingsForm.statusesExcluded,
                             } } })
                           } catch { /* said by the mutation's onError */ } finally { setSettingsSaving(false) }
-                        }}>
+                        }}
+                      >
                         {settingsSaving ? t('common.saving') : t('citypeDesigner.saveSettings')}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -496,13 +500,14 @@ export function CITypeDesignerPage() {
                           <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', letterSpacing: '0.06em' }}>
                             {t('citypeDesigner.specificFieldsHeader', { count: specificFields.length })}
                           </div>
-                          <button type="button" style={{ ...btnPrimary, ...readOnlyIf(shipped) }}
+                          <Button variant="primary"
                             onClick={() => { setAddingField(true); setEditingFieldId(null) }}
                             disabled={addingField || shipped}
                             title={shipped ? shippedNote : undefined}
-                            aria-describedby={shipped ? 'citype-shipped-note' : undefined}>
+                            aria-describedby={shipped ? 'citype-shipped-note' : undefined}
+                          >
                             <Plus size={13} /> {t('citypeDesigner.addField')}
-                          </button>
+                          </Button>
                         </div>
 
                         {addingField && (
@@ -571,13 +576,14 @@ export function CITypeDesignerPage() {
                 {activeTab === 'relations' && (
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-                      <button type="button" style={{ ...btnPrimary, ...readOnlyIf(shipped) }}
+                      <Button variant="primary"
                         onClick={() => setShowRelModal(true)}
                         disabled={shipped}
                         title={shipped ? shippedNote : undefined}
-                        aria-describedby={shipped ? 'citype-shipped-note' : undefined}>
+                        aria-describedby={shipped ? 'citype-shipped-note' : undefined}
+                      >
                         <Plus size={13} /> {t('citypeDesigner.addRelation')}
-                      </button>
+                      </Button>
                     </div>
                     <CIRelationTable
                       relations={selected.relations}

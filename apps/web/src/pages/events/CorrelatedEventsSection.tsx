@@ -13,20 +13,19 @@
  * `/events?incidentId=` / `/events?changeId=` (filtri `incidentId` e
  * `suppressedByChangeId` di EventFilter), dove ci sono azioni e paginazione.
  */
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { Radar, ArrowRight } from 'lucide-react'
 import { SectionCard } from '@/components/ui/SectionCard'
+import { SimpleTable, type SimpleColumn } from '@/components/ui/SimpleTable'
 import { formatDateTime, timeAgo } from '@/lib/datetime'
 import { ciPath } from '@/lib/ciPath'
 import { colors } from '@/lib/tokens'
 import { EventStatusBadge, EventSeverityBadge, EventNoCIBadge, resourceKindLabel } from './eventShared'
 import type { EventRow } from '@/types/events'
 
-const th = { textAlign: 'left', padding: '4px 8px', color: colors.slateLight, fontWeight: 500, fontSize: 'var(--font-size-label)', textTransform: 'uppercase', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap' } as const
-const td = { padding: '6px 8px', borderBottom: '1px solid var(--color-border-light)', verticalAlign: 'middle' } as const
-const linkStyle = { color: colors.brand, textDecoration: 'none', fontWeight: 500 } as const
+const linkStyle = { color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, fontWeight: 500 } as const
 
 /**
  * The alarm title never gets narrower than this (D8, tour of 23 Sep 2026): in
@@ -37,48 +36,28 @@ const linkStyle = { color: colors.brand, textDecoration: 'none', fontWeight: 500
  */
 const ALARM_TITLE_MIN_WIDTH = 220
 
-/** Tabella compatta degli eventi (condivisa da incident e change). */
+/** Tabella compatta degli eventi (condivisa da incident e change): the app's small table, the row opens the alarm. */
 function EventRows({ events }: { events: EventRow[] }) {
+  const navigate = useNavigate()
   const { t } = useTranslation()
-  return (
-    <div className="og-scroll-x" style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
-        <thead>
-          <tr>
-            <th scope="col" style={th}>{t('events.columns.status')}</th>
-            <th scope="col" style={th}>{t('events.columns.severity')}</th>
-            <th scope="col" style={th}>{t('events.columns.title')}</th>
-            <th scope="col" style={th}>{t('events.columns.ci')}</th>
-            <th scope="col" style={th}>{t('events.columns.source')}</th>
-            <th scope="col" style={{ ...th, textAlign: 'right' }}>{t('events.columns.count')}</th>
-            <th scope="col" style={th}>{t('events.columns.lastSeen')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {events.map((ev) => (
-            <tr key={ev.id}>
-              <td style={td}><EventStatusBadge status={ev.status} severity={ev.severity} /></td>
-              <td style={td}><EventSeverityBadge severity={ev.severity} /></td>
-              <td style={td}>
-                <div style={{ minWidth: ALARM_TITLE_MIN_WIDTH }}>
-                  <Link to={`/events/${ev.id}`} style={linkStyle}>{ev.title}</Link>
-                  <div style={{ fontSize: 'var(--font-size-table)', color: colors.slateLight, marginTop: 2 }}>{resourceKindLabel(t, ev.resourceKind)} · {ev.resource}</div>
-                </div>
-              </td>
-              <td style={td}>
-                {ev.ci
-                  ? <Link to={ciPath(ev.ci)} style={linkStyle}>{ev.ci.name}</Link>
-                  : <EventNoCIBadge matchReason={ev.matchReason} />}
-              </td>
-              <td style={{ ...td, color: colors.slate, whiteSpace: 'nowrap' }}>{ev.source?.name ?? '—'}</td>
-              <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{ev.count}</td>
-              <td style={{ ...td, color: colors.slateLight, whiteSpace: 'nowrap' }} title={formatDateTime(ev.lastSeenAt)}>{timeAgo(ev.lastSeenAt)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
+  const columns: SimpleColumn<EventRow>[] = [
+    { key: 'status', label: t('events.columns.status'), render: (_v, ev) => <EventStatusBadge status={ev.status} severity={ev.severity} /> },
+    { key: 'severity', label: t('events.columns.severity'), render: (_v, ev) => <EventSeverityBadge severity={ev.severity} /> },
+    { key: 'title', label: t('events.columns.title'), minWidth: ALARM_TITLE_MIN_WIDTH, render: (_v, ev) => (
+      <>
+        <div style={{ fontWeight: 500 }}>{ev.title}</div>
+        <div style={{ fontSize: 'var(--font-size-table)', color: colors.slateLight, marginTop: 2 }}>{resourceKindLabel(t, ev.resourceKind)} · {ev.resource}</div>
+      </>
+    ) },
+    // The CI is somewhere else than the row: a real link.
+    { key: 'ci', label: t('events.columns.ci'), render: (_v, ev) => ev.ci
+      ? <Link to={ciPath(ev.ci)} style={linkStyle}>{ev.ci.name}</Link>
+      : <EventNoCIBadge matchReason={ev.matchReason} /> },
+    { key: 'source', label: t('events.columns.source'), render: (_v, ev) => <span style={{ color: colors.slate, whiteSpace: 'nowrap' }}>{ev.source?.name ?? '—'}</span> },
+    { key: 'count', label: t('events.columns.count'), align: 'right', render: (_v, ev) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{ev.count}</span> },
+    { key: 'lastSeenAt', label: t('events.columns.lastSeen'), render: (_v, ev) => <span title={formatDateTime(ev.lastSeenAt)} style={{ color: colors.slateLight, whiteSpace: 'nowrap' }}>{timeAgo(ev.lastSeenAt)}</span> },
+  ]
+  return <SimpleTable<EventRow> columns={columns} rows={events} onRowClick={(ev) => navigate(`/events/${ev.id}`)} />
 }
 
 const emptyStyle = { fontSize: 'var(--font-size-body)', color: colors.slateLight, margin: 0 } as const

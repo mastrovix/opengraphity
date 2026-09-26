@@ -22,8 +22,8 @@ import { Plug, Plus, Trash2, Copy, Play, RefreshCw } from 'lucide-react'
 import { Modal } from '@/components/Modal'
 import { Button } from '@/components/Button'
 import { toast } from 'sonner'
-import { inputS, selectS, labelS, textareaS as sharedTextareaS } from '@/components/ui/styles'
-import { Input, Select } from '@/components/ui/FormControls'
+import { labelS } from '@/components/ui/styles'
+import { Input, Select, Textarea } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
 import { GET_WORKFLOW_EVENT_TYPES } from '@/graphql/queries'
 import { Toggle } from '@/components/ui/Toggle'
@@ -101,7 +101,6 @@ const PRODUCT_OUTBOUND_EVENTS = ['incident.created', 'incident.resolved', 'chang
  */
 const PERMISSIONS = API_KEY_PERMISSIONS
 
-const textareaS: React.CSSProperties = { ...sharedTextareaS, minHeight: 70 }
 /** Suggerimento sotto un campo: la stessa scala della label, un tono più tenue. */
 const hintS: React.CSSProperties = { fontSize: 'var(--font-size-caption)', color: 'var(--color-slate)', margin: '-6px 0 0' }
 // Pill overrides: these badges are regular-weight with a small right gap.
@@ -345,7 +344,7 @@ export function IntegrationsPage() {
     { key: 'id', label: t('admin.integrations.columns.endpoint'), sortable: true, render: (v, row) => {
       const url = sourceEndpointUrl(String(v))
       return row.entityType === 'event' ? (
-        <Link to={`/monitoring/sources/${row.id}`} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', fontWeight: 500, whiteSpace: 'nowrap' }}>
+        <Link to={`/monitoring/sources/${row.id}`} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, fontWeight: 500, whiteSpace: 'nowrap' }}>
           {t('admin.integrations.manageInMonitoring')} →
         </Link>
       ) : (
@@ -434,7 +433,7 @@ export function IntegrationsPage() {
       {tab === 'inbound' && <>
         <p style={{ margin: '0 0 12px', padding: '8px 12px', background: 'var(--color-brand-light)', borderRadius: 8, fontSize: 'var(--font-size-body)', color: palette.info.text }}>
           {t('admin.integrations.eventsNote')}{' '}
-          <Link to="/monitoring/sources" style={{ color: 'var(--color-brand)', fontWeight: 600 }}>{t('admin.integrations.eventsNoteLink')}</Link>.
+          <Link to="/monitoring/sources" style={{ color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, fontWeight: 600 }}>{t('admin.integrations.eventsNoteLink')}</Link>.
         </p>
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
           <Button icon={<Plus size={14} aria-hidden="true" />} onClick={() => { resetInForm(); setModal('inbound') }}>{t('admin.integrations.newInbound')}</Button>
@@ -451,19 +450,19 @@ export function IntegrationsPage() {
         {modal === 'inbound' && (
           <ModalPortal modalType="inbound" onClose={() => setModal(null)}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div><label htmlFor={fid('in-name')} style={labelS}>{t('admin.integrations.form.name')}</label><Input id={fid('in-name')} style={inputS} value={inForm.name} onChange={e => setInForm({ ...inForm, name: e.target.value })} /></div>
+              <div><label htmlFor={fid('in-name')} style={labelS}>{t('admin.integrations.form.name')}</label><Input id={fid('in-name')} value={inForm.name} onChange={e => setInForm({ ...inForm, name: e.target.value })} /></div>
               <div><label htmlFor={fid('in-entity-type')} style={labelS}>{t('admin.integrations.form.entityType')}</label>
-                <Select id={fid('in-entity-type')} style={selectS} value={inForm.entityType} onChange={e => setInForm({ ...inForm, entityType: e.target.value })}>
+                <Select id={fid('in-entity-type')} value={inForm.entityType} onChange={e => setInForm({ ...inForm, entityType: e.target.value })}>
                   {ENTITY_TYPES.map(et => <option key={et} value={et}>{et}</option>)}
                 </Select>
               </div>
-              <div><label htmlFor={fid('in-field-mapping')} style={labelS}>{t('admin.integrations.form.fieldMapping')}</label><textarea id={fid('in-field-mapping')} style={textareaS} value={inForm.fieldMapping} onChange={e => setInForm({ ...inForm, fieldMapping: e.target.value })} aria-describedby={fid('in-targets')} /></div>
+              <div><label htmlFor={fid('in-field-mapping')} style={labelS}>{t('admin.integrations.form.fieldMapping')}</label><Textarea id={fid('in-field-mapping')} value={inForm.fieldMapping} onChange={e => setInForm({ ...inForm, fieldMapping: e.target.value })} aria-describedby={fid('in-targets')} /></div>
               {/* D-25: i bersagli che il server scrive davvero. Fuori da questo
                   elenco il salvataggio rifiuta, invece di accettare la voce e
                   poi scartarla alla consegna con un 201 Created. */}
               <p id={fid('in-targets')} style={hintS}>{t('admin.integrations.form.allowedTargets', { fields: allowedTargets.join(', ') })}</p>
-              <div><label htmlFor={fid('in-default-values')} style={labelS}>{t('admin.integrations.form.defaultValues')}</label><textarea id={fid('in-default-values')} style={textareaS} value={inForm.defaultValues} onChange={e => setInForm({ ...inForm, defaultValues: e.target.value })} aria-describedby={fid('in-targets')} /></div>
-              <div><label htmlFor={fid('in-transform-script')} style={labelS}>{t('admin.integrations.form.transformScript')}</label><textarea id={fid('in-transform-script')} style={textareaS} value={inForm.transformScript} onChange={e => setInForm({ ...inForm, transformScript: e.target.value })} /></div>
+              <div><label htmlFor={fid('in-default-values')} style={labelS}>{t('admin.integrations.form.defaultValues')}</label><Textarea id={fid('in-default-values')} value={inForm.defaultValues} onChange={e => setInForm({ ...inForm, defaultValues: e.target.value })} aria-describedby={fid('in-targets')} /></div>
+              <div><label htmlFor={fid('in-transform-script')} style={labelS}>{t('admin.integrations.form.transformScript')}</label><Textarea id={fid('in-transform-script')} value={inForm.transformScript} onChange={e => setInForm({ ...inForm, transformScript: e.target.value })} /></div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
                 <Button variant="secondary" onClick={() => setModal(null)}>{t('common.cancel')}</Button>
                 <Button onClick={() => handleCreateInbound()} disabled={!inFormValid}>{t('common.create')}</Button>
@@ -490,14 +489,14 @@ export function IntegrationsPage() {
         {modal === 'outbound' && (
           <ModalPortal modalType="outbound" onClose={() => setModal(null)}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div><label htmlFor={fid('out-name')} style={labelS}>{t('admin.integrations.form.name')}</label><Input id={fid('out-name')} style={inputS} value={outForm.name} onChange={e => setOutForm({ ...outForm, name: e.target.value })} /></div>
-              <div><label htmlFor={fid('out-url')} style={labelS}>{t('admin.integrations.form.url')}</label><Input id={fid('out-url')} style={inputS} value={outForm.url} onChange={e => setOutForm({ ...outForm, url: e.target.value })} placeholder="https://..." /></div>
+              <div><label htmlFor={fid('out-name')} style={labelS}>{t('admin.integrations.form.name')}</label><Input id={fid('out-name')} value={outForm.name} onChange={e => setOutForm({ ...outForm, name: e.target.value })} /></div>
+              <div><label htmlFor={fid('out-url')} style={labelS}>{t('admin.integrations.form.url')}</label><Input id={fid('out-url')} value={outForm.url} onChange={e => setOutForm({ ...outForm, url: e.target.value })} placeholder="https://..." /></div>
               <div><label htmlFor={fid('out-method')} style={labelS}>{t('admin.integrations.form.method')}</label>
-                <Select id={fid('out-method')} style={selectS} value={outForm.method} onChange={e => setOutForm({ ...outForm, method: e.target.value })}>
+                <Select id={fid('out-method')} value={outForm.method} onChange={e => setOutForm({ ...outForm, method: e.target.value })}>
                   {HTTP_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
                 </Select>
               </div>
-              <div><label htmlFor={fid('out-headers')} style={labelS}>{t('admin.integrations.form.headers')}</label><textarea id={fid('out-headers')} style={textareaS} value={outForm.headers} onChange={e => setOutForm({ ...outForm, headers: e.target.value })} /></div>
+              <div><label htmlFor={fid('out-headers')} style={labelS}>{t('admin.integrations.form.headers')}</label><Textarea id={fid('out-headers')} value={outForm.headers} onChange={e => setOutForm({ ...outForm, headers: e.target.value })} /></div>
               <div>
                 <div style={labelS}>{t('admin.integrations.form.events')}</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -509,8 +508,8 @@ export function IntegrationsPage() {
                   ))}
                 </div>
               </div>
-              <div><label htmlFor={fid('out-payload-template')} style={labelS}>{t('admin.integrations.form.payloadTemplate')}</label><textarea id={fid('out-payload-template')} style={textareaS} value={outForm.payloadTemplate} onChange={e => setOutForm({ ...outForm, payloadTemplate: e.target.value })} /></div>
-              <div><label htmlFor={fid('out-secret')} style={labelS}>{t('admin.integrations.form.secret')}</label><Input id={fid('out-secret')} style={inputS} value={outForm.secret} onChange={e => setOutForm({ ...outForm, secret: e.target.value })} /></div>
+              <div><label htmlFor={fid('out-payload-template')} style={labelS}>{t('admin.integrations.form.payloadTemplate')}</label><Textarea id={fid('out-payload-template')} value={outForm.payloadTemplate} onChange={e => setOutForm({ ...outForm, payloadTemplate: e.target.value })} /></div>
+              <div><label htmlFor={fid('out-secret')} style={labelS}>{t('admin.integrations.form.secret')}</label><Input id={fid('out-secret')} value={outForm.secret} onChange={e => setOutForm({ ...outForm, secret: e.target.value })} /></div>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
                 <input type="checkbox" checked={outForm.retryOnFailure} onChange={e => setOutForm({ ...outForm, retryOnFailure: e.target.checked })} />
                 {t('admin.integrations.retryOnFailure')}
@@ -541,7 +540,7 @@ export function IntegrationsPage() {
         {modal === 'apikey' && (
           <ModalPortal modalType="apikey" onClose={() => setModal(null)}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div><label htmlFor={fid('key-name')} style={labelS}>{t('admin.integrations.form.name')}</label><Input id={fid('key-name')} style={inputS} value={keyForm.name} onChange={e => setKeyForm({ ...keyForm, name: e.target.value })} /></div>
+              <div><label htmlFor={fid('key-name')} style={labelS}>{t('admin.integrations.form.name')}</label><Input id={fid('key-name')} value={keyForm.name} onChange={e => setKeyForm({ ...keyForm, name: e.target.value })} /></div>
               <div>
                 <div style={labelS}>{t('admin.integrations.form.permissions')}</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
@@ -553,8 +552,8 @@ export function IntegrationsPage() {
                   ))}
                 </div>
               </div>
-              <div><label htmlFor={fid('key-rate-limit')} style={labelS}>{t('admin.integrations.form.rateLimit')}</label><Input id={fid('key-rate-limit')} style={inputS} type="number" value={keyForm.rateLimit} onChange={e => setKeyForm({ ...keyForm, rateLimit: Number(e.target.value) })} /></div>
-              <div><label htmlFor={fid('key-expires-at')} style={labelS}>{t('admin.integrations.form.expiresAt')}</label><Input id={fid('key-expires-at')} style={inputS} type="date" aria-describedby={fid('key-expires-at-hint')} value={keyForm.expiresAt} onChange={e => setKeyForm({ ...keyForm, expiresAt: e.target.value })} /><div id={fid('key-expires-at-hint')} style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 4 }}>{t('admin.integrations.form.expiresAtHint')}</div></div>
+              <div><label htmlFor={fid('key-rate-limit')} style={labelS}>{t('admin.integrations.form.rateLimit')}</label><Input id={fid('key-rate-limit')} type="number" value={keyForm.rateLimit} onChange={e => setKeyForm({ ...keyForm, rateLimit: Number(e.target.value) })} /></div>
+              <div><label htmlFor={fid('key-expires-at')} style={labelS}>{t('admin.integrations.form.expiresAt')}</label><Input id={fid('key-expires-at')} type="date" aria-describedby={fid('key-expires-at-hint')} value={keyForm.expiresAt} onChange={e => setKeyForm({ ...keyForm, expiresAt: e.target.value })} /><div id={fid('key-expires-at-hint')} style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 4 }}>{t('admin.integrations.form.expiresAtHint')}</div></div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
                 <Button variant="secondary" onClick={() => setModal(null)}>{t('common.cancel')}</Button>
                 <Button onClick={() => handleCreateApiKey()} disabled={!keyForm.name.trim() || !keyForm.permissions.length || !Number.isInteger(keyForm.rateLimit) || keyForm.rateLimit < 1}>{t('common.create')}</Button>

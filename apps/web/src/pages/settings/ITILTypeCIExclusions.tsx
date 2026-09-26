@@ -8,6 +8,8 @@
  * ammessi, e l'esclusione vale ovunque — alla creazione e dopo, dal web,
  * dall'API, dal portale e dagli incident che apre il monitoraggio.
  */
+import { Loading } from '@/components/ui/Loading'
+import { Button } from '@/components/Button'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery } from '@apollo/client/react'
@@ -16,7 +18,6 @@ import { Save } from 'lucide-react'
 import { GET_TICKET_CI_EXCLUSIONS } from '@/graphql/queries'
 import { SET_TICKET_CI_EXCLUSIONS } from '@/graphql/mutations'
 import { showError } from '@/lib/showError'
-import { btnPrimary } from './shared/designerStyles'
 
 const TICKET_CI_TYPES = ['incident', 'problem', 'change', 'service_request'] as const
 
@@ -44,7 +45,7 @@ export function ITILTypeCIExclusions({ ticketType, ciTypes }: ITILTypeCIExclusio
 
   if (!linksCIs) return <p style={{ color: 'var(--color-slate-light)' }}>{t('itilDesigner.ciExclusions.notLinked')}</p>
   if (error) return <p role="alert" style={{ color: 'var(--color-danger)' }}>{t('itilDesigner.ciExclusions.loadError', { error: error.message })}</p>
-  if (loading || !saved) return <p style={{ color: 'var(--color-slate-light)' }}>{t('common.loading')}</p>
+  if (loading || !saved) return <Loading />
 
   const dirty = [...selected].sort().join(',') !== [...saved].sort().join(',')
   const toggle = (name: string) => setSelected((prev) => {
@@ -70,10 +71,12 @@ export function ITILTypeCIExclusions({ ticketType, ciTypes }: ITILTypeCIExclusio
       <p style={{ margin: '0 0 12px', color: 'var(--color-slate-light)' }}>
         {selected.size === 0 ? t('itilDesigner.ciExclusions.none') : t('itilDesigner.ciExclusions.summary', { selected: selected.size })}
       </p>
-      <button type="button" style={btnPrimary} disabled={!dirty || saving}
-        onClick={() => void save({ variables: { ticketType, ciTypes: [...selected] } })}>
+      <Button variant="primary"
+        disabled={!dirty || saving}
+        onClick={() => save({ variables: { ticketType, ciTypes: [...selected] } })}
+      >
         <Save size={13} /> {t('itilDesigner.save')}
-      </button>
+      </Button>
     </div>
   )
 }

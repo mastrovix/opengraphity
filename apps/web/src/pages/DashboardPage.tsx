@@ -1,3 +1,4 @@
+import { Loading } from '@/components/ui/Loading'
 import { useState, useId, lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation } from '@apollo/client/react'
@@ -298,13 +299,12 @@ function SettingsDialog({ dashboard, teams, canDelete, onClose, onDeleted, onUpd
         )}
 
         {!dashboard.isDefault && (
-          <button
-            type="button"
-            onClick={() => void handleSetDefault()}
-            style={{ width: '100%', padding: '7px 14px', borderRadius: 6, border: '1px solid var(--color-brand)', background: 'var(--color-brand-light)', color: 'var(--color-brand)', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', marginBottom: 8 }}
+          <Button variant="secondary"
+            onClick={() => handleSetDefault()}
+            style={{ width: '100%', marginBottom: 8 }}
           >
             ★ {t('pages.dashboard.setDefault')}
-          </button>
+          </Button>
         )}
     </Modal>
   )
@@ -385,17 +385,15 @@ export function DashboardPage() {
 
         {/* Dashboard selector dropdown */}
         <div style={{ position: 'relative' }}>
-          <button
-            type="button"
+          <Button variant="secondary"
             onClick={() => setDropdownOpen((v) => !v)}
             aria-haspopup="menu"
             aria-expanded={dropdownOpen}
             aria-label={t('pages.dashboard.selectDashboard')}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 6, border: '1px solid var(--color-border-strong)', background: colors.white, color: 'var(--color-slate)', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}
           >
             <span>{activeDashName}</span>
             <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>▼</span>
-          </button>
+          </Button>
 
           {dropdownOpen && (
             <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: colors.white, border: '1px solid var(--color-border)', borderRadius: 8, boxShadow: '0 4px 16px var(--color-black-a10)', minWidth: 220, zIndex: 100 }}>
@@ -419,7 +417,7 @@ export function DashboardPage() {
                 <button
                   type="button"
                   onClick={() => { setDropdownOpen(false); setShowCreate(true) }}
-                  style={{ width: '100%', padding: '7px 12px', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', fontWeight: 500 }}
+                  style={{ width: '100%', padding: '7px 12px', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-link)', textDecoration: 'underline', textUnderlineOffset: 2, fontWeight: 500 }}
                 >
                   + {t('pages.dashboard.newDashboard')}
                 </button>
@@ -432,31 +430,27 @@ export function DashboardPage() {
       <div style={{ display: 'flex', gap: 8 }}>
         {editMode ? (
           <>
-            <button
-              type="button"
-              onClick={() => void handleSave()}
+            <Button variant="primary"
+              onClick={() => handleSave()}
               disabled={saving}
-              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--color-brand)', background: saving ? palette.teal.border : 'var(--color-brand)', color: colors.white, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer' }}
             >
               {saving ? t('pages.dashboard.saving') : `✓ ${t('common.save')}`}
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button variant="secondary"
               onClick={cancelEditMode}
               disabled={saving}
-              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--color-border-strong)', background: colors.white, color: 'var(--color-slate)', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}
             >
               ✕ {t('common.cancel')}
-            </button>
+            </Button>
           </>
         ) : (
           <>
-            {canCustomize && <button type="button" onClick={enterEditMode} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--color-border-strong)', background: colors.white, color: 'var(--color-slate)', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}>
+            {canCustomize && <Button variant="secondary" onClick={enterEditMode}>
               ✏ {t('pages.dashboard.customize')}
-            </button>}
-            {isOwner && <button type="button" onClick={() => setShowSettings(true)} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--color-border-strong)', background: colors.white, color: 'var(--color-slate)', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}>
+            </Button>}
+            {isOwner && <Button variant="secondary" onClick={() => setShowSettings(true)}>
               ⚙ {t('pages.dashboard.settings')}
-            </button>}
+            </Button>}
             {activeDash && !canCustomize && activeDash.createdBy && (
               <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
                 {t('pages.dashboard.sharedBy', { name: activeDash.createdBy.name })}
@@ -471,7 +465,7 @@ export function DashboardPage() {
   // ── Loading ──────────────────────────────────────────────────────────────────
 
   if (listLoading || (activeDashboardId && dashLoading && !dashData)) {
-    return <div style={{ padding: 32, color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</div>
+    return <Loading padded />
   }
 
   // ── VIEW MODE ────────────────────────────────────────────────────────────────

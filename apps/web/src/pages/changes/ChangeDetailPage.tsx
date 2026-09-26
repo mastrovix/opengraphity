@@ -7,6 +7,9 @@
  * what they need via props and manage only their own local UI state
  * (e.g. which modal is open inside a row).
  */
+import { Loading } from '@/components/ui/Loading'
+import { Pill } from '@/components/ui/Pill'
+import { BackLink, DetailTitle } from '@/components/ui/BackLink'
 import { TicketOLACard } from '@/components/ticket/ola/TicketOLACard'
 import { useId, useState } from 'react'
 import { CustomFieldsCard } from '@/components/ticket/customFields/CustomFieldsCard'
@@ -22,7 +25,7 @@ import { PageContainer } from '@/components/PageContainer'
 import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
 import { SectionCard } from '@/components/ui/SectionCard'
-import { FieldLabel } from '@/components/ui/FormControls'
+import { FieldLabel, Select, Textarea } from '@/components/ui/FormControls'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { TicketTasksSection } from '@/components/ticket/TicketTasksSection'
 import { EntityCommentsSection } from '@/components/ticket/EntityCommentsSection'
@@ -209,7 +212,7 @@ export function ChangeDetailPage() {
     onError: (e) => showError(e),
   })
 
-  if (loading && !change) return <PageContainer><p>{t('common.loading')}</p></PageContainer>
+  if (loading && !change) return <PageContainer><Loading /></PageContainer>
   if (changeError && !changeData) return <PageContainer><QueryError message={changeError.message} onRetry={() => void refetchChange()} /></PageContainer>
   if (!change) return <PageContainer><p>{t('pages.changeDetail.notFound')}</p></PageContainer>
 
@@ -263,9 +266,9 @@ export function ChangeDetailPage() {
 
   return (
     <PageContainer style={{ padding: '16px 24px' }}>
-      <button type="button" onClick={() => navigate('/changes')} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 12, padding: 0 }}>← {t('pages.changeDetail.backToChanges')}</button>
+      <BackLink onClick={() => navigate('/changes')}>{t('pages.changeDetail.backToChanges')}</BackLink>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
-        <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{change.code}</h1>
+        <DetailTitle>{change.code}</DetailTitle>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Button
             variant="secondary"
@@ -366,8 +369,8 @@ export function ChangeDetailPage() {
                           <span style={{ flex: 1, color: 'var(--color-slate)' }}>{a.teamName ?? '—'}</span>
                           <span style={{ width: 110 }}>
                             {a.status === 'approved'
-                              ? <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: palette.success.strong, background: palette.success.tint, padding: '2px 8px', borderRadius: 12 }}>{t('pages.changeDetail.approved')}</span>
-                              : <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: palette.yellow.text, background: palette.yellow.bg, padding: '2px 8px', borderRadius: 12 }}>{t('pages.changeDetail.pending')}</span>}
+                              ? <Pill bg={palette.success.tint} color={palette.success.strong} radius={12} style={{ fontSize: 'var(--font-size-label)', fontWeight: 600 }}>{t('pages.changeDetail.approved')}</Pill>
+                              : <Pill bg={palette.yellow.bg} color={palette.yellow.text} radius={12} style={{ fontSize: 'var(--font-size-label)', fontWeight: 600 }}>{t('pages.changeDetail.pending')}</Pill>}
                           </span>
                           <span style={{ flex: 1, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
                             {a.approvedByName ? `${a.approvedByName}${a.approvedAt ? ` · ${fmtDate(a.approvedAt)}` : ''}` : '—'}
@@ -384,10 +387,11 @@ export function ChangeDetailPage() {
                                   style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: 'none', background: palette.success.base, color: colors.white, fontWeight: 600, fontSize: 'var(--font-size-label)', cursor: approving ? 'wait' : 'pointer' }}>
                                   <CheckCircle size={14} /> {t('pages.changeDetail.approve')}
                                 </button>
-                                <button type="button" onClick={() => { setRejectNote(''); setReopenMode('all'); setReopenIds(new Set()); setRejectModal({ teamId: a.teamId!, teamName: a.teamName ?? '' }) }}
-                                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--color-danger)', background: colors.white, color: 'var(--color-danger)', fontWeight: 600, fontSize: 'var(--font-size-label)', cursor: 'pointer' }}>
+                                <Button variant="danger"
+                                  onClick={() => { setRejectNote(''); setReopenMode('all'); setReopenIds(new Set()); setRejectModal({ teamId: a.teamId!, teamName: a.teamName ?? '' }) }}
+                                >
                                   <XCircle size={14} /> {t('pages.changeDetail.reject')}
-                                </button>
+                                </Button>
                               </>
                             )}
                             {a.ownChange && (
@@ -444,52 +448,38 @@ export function ChangeDetailPage() {
         {tab === 'ciRelease' && (
           <>
             <SectionCard title={t('pages.changeDetail.involvedCIs')} collapsible count={affected.length}>
-              <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border)' }}>
-                {(['affected', 'impacted'] as const).map(tab => {
-                  const active = ciTab === tab
-                  return (
-                    <button key={tab} type="button" onClick={() => setCITab(tab)} style={{
-                      display: 'flex', alignItems: 'center', gap: 6,
-                      padding: '8px 16px', fontSize: 'var(--font-size-body)', background: 'none', border: 'none', cursor: 'pointer',
-                      borderBottom: active ? '2px solid var(--color-brand)' : '2px solid transparent',
-                      color: active ? 'var(--color-brand)' : 'var(--color-slate-light)',
-                      fontWeight: active ? 600 : 500,
-                    }}>
-                      {tab === 'affected' ? t('changeTasks.ciTab.affected') : t('changeTasks.ciTab.impacted')}
-                      <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 6px', borderRadius: 8, backgroundColor: active ? 'var(--color-brand-light)' : colors.slateBg, color: active ? 'var(--color-brand)' : 'var(--color-slate-light)' }}>
-                        {tab === 'affected' ? affected.length : impactedCIs.length}
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
+              <Tabs<'affected' | 'impacted'>
+                ariaLabel={t('pages.changeDetail.involvedCIs')}
+                items={[
+                  { key: 'affected', label: t('changeTasks.ciTab.affected'), badge: affected.length },
+                  { key: 'impacted', label: t('changeTasks.ciTab.impacted'), badge: impactedCIs.length },
+                ]}
+                value={ciTab}
+                onChange={setCITab}
+                style={{ marginBottom: 0 }}
+              />
               <div>
                 {ciTab === 'affected' && (
                   <>
                     {canWrite && currentStep === wfInitialStep?.name && (
                       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-                        <button type="button" onClick={() => setShowAddCI(true)} style={{
-                          padding: '4px 10px', borderRadius: 6, border: '1px solid var(--color-brand)',
-                          color: 'var(--color-brand)', background: 'transparent',
-                          fontSize: 'var(--font-size-label)', fontWeight: 500, cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', gap: 4,
-                        }}>
+                        <Button variant="secondary" size="xs"
+                          onClick={() => setShowAddCI(true)}
+                        >
                           <Plus size={12} /> {t('pages.questions.add')}
-                        </button>
+                        </Button>
                       </div>
                     )}
                     {affected.map((a) => (
                       <div key={a.ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--color-border-light)', fontSize: 'var(--font-size-body)' }}>
                         <span style={{ flex: 1, fontWeight: 500, color: 'var(--color-slate-dark)' }}>{a.ci.name}</span>
-                        {a.ci.type && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.typeLabel(a.ci.type)}</span>}
-                        {a.ci.environment && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.environmentLabel(a.ci.environment)}</span>}
+                        {a.ci.type && <Pill bg={colors.slateBg} color="var(--color-slate)" radius={4} style={{ fontSize: 'var(--font-size-label)' }}>{ciLabels.typeLabel(a.ci.type)}</Pill>}
+                        {a.ci.environment && <Pill bg={colors.slateBg} color="var(--color-slate)" radius={4} style={{ fontSize: 'var(--font-size-label)' }}>{ciLabels.environmentLabel(a.ci.environment)}</Pill>}
                         {canWrite && currentStep === wfInitialStep?.name && (
-                          <button
+                          <button className="hover-danger-text"
                             type="button"
                             onClick={() => setConfirmRemoveCI({ id: a.ci.id, name: a.ci.name })}
                             style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--color-slate-light)', flexShrink: 0 }}
-                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-danger)' }}
-                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-slate-light)' }}
                           >
                             <X size={14} />
                           </button>
@@ -502,9 +492,9 @@ export function ChangeDetailPage() {
                   <>
                     <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 500, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>{t('pages.changeDetail.depth')}</span>
-                      <select aria-label={t('pages.changeDetail.depth')} value={impactDepth} onChange={e => setImpactDepth(Number(e.target.value))} style={{ padding: '4px 8px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)' }}>
+                      <Select aria-label={t('pages.changeDetail.depth')} value={impactDepth} onChange={e => setImpactDepth(Number(e.target.value))}>
                         {[1, 2, 3, 4, 5].map(d => <option key={d} value={d}>{d}</option>)}
-                      </select>
+                      </Select>
                     </div>
                     {impactError && (
                       <div style={{ padding: '10px 12px', backgroundColor: palette.danger.bg, border: '1px solid var(--color-danger-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-danger)', marginBottom: 8 }}>
@@ -540,25 +530,18 @@ export function ChangeDetailPage() {
                                   )}
                                 </span>
                                 <span style={{ flex: 1, fontWeight: 500, color: 'var(--color-slate-dark)' }}>{b.ci.name}</span>
-                                <span style={{ width: 80 }}>{b.ci.type ? <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.typeLabel(b.ci.type)}</span> : null}</span>
-                                <span style={{ width: 80 }}>{b.ci.environment ? <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.environmentLabel(b.ci.environment)}</span> : null}</span>
-                                <span style={{ width: 60 }}><span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 6px', borderRadius: 4, backgroundColor: b.distance === 1 ? 'var(--color-danger-bg)' : b.distance === 2 ? palette.orange.bg : colors.slateBg, color: b.distance === 1 ? 'var(--color-danger)' : b.distance === 2 ? palette.warning.text : 'var(--color-slate)' }}>{t('pages.changeDetail.hops', { count: b.distance })}</span></span>
+                                <span style={{ width: 80 }}>{b.ci.type ? <Pill bg={colors.slateBg} color="var(--color-slate)" radius={4} style={{ fontSize: 'var(--font-size-label)' }}>{ciLabels.typeLabel(b.ci.type)}</Pill> : null}</span>
+                                <span style={{ width: 80 }}>{b.ci.environment ? <Pill bg={colors.slateBg} color="var(--color-slate)" radius={4} style={{ fontSize: 'var(--font-size-label)' }}>{ciLabels.environmentLabel(b.ci.environment)}</Pill> : null}</span>
+                                <span style={{ width: 60 }}><Pill bg={b.distance === 1 ? 'var(--color-danger-bg)' : b.distance === 2 ? palette.orange.bg : colors.slateBg} color={b.distance === 1 ? 'var(--color-danger)' : b.distance === 2 ? palette.warning.text : 'var(--color-slate)'} radius={4} style={{ fontSize: 'var(--font-size-label)', fontWeight: 600 }}>{t('pages.changeDetail.hops', { count: b.distance })}</Pill></span>
                                 <span style={{ width: 140, fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>{b.affectedBy.name}</span>
                                 {currentStep === wfInitialStep?.name && (
                                   <span style={{ width: 100, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
-                                    <button
-                                      type="button"
+                                    <Button variant="secondary" size="xs"
                                       title={t('pages.changeDetail.moveToAffected')}
-                                      onClick={() => void addCIFromImpacted({ variables: { changeId, ciId: b.ci.id } })}
-                                      style={{
-                                        padding: '4px 8px', borderRadius: 6, border: '1px solid var(--color-brand)',
-                                        color: 'var(--color-brand)', background: 'transparent',
-                                        fontSize: 'var(--font-size-label)', fontWeight: 500, cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', gap: 4,
-                                      }}
+                                      onClick={() => addCIFromImpacted({ variables: { changeId, ciId: b.ci.id } })}
                                     >
                                       <PlusCircle size={14} /> {t('pages.questions.add')}
-                                    </button>
+                                    </Button>
                                   </span>
                                 )}
                               </div>
@@ -711,14 +694,14 @@ export function ChangeDetailPage() {
           </p>
 
           <label htmlFor={rejectNoteId} style={{ display: 'block', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginBottom: 6 }}>{t('pages.requests.rejectionReason')} <span style={{ color: 'var(--color-danger)' }}>*</span></label>
-          <textarea
+          <Textarea
             id={rejectNoteId}
             value={rejectNote}
             onChange={(e) => setRejectNote(e.target.value)}
             rows={3}
-            style={{ width: '100%', padding: 8, border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 14 }}
             // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: textarea del modal di rigetto aperto dall'utente
             autoFocus
+            style={{ marginBottom: 14 }}
           />
 
           <fieldset style={{ border: 'none', padding: 0, margin: 0 }}>
@@ -787,12 +770,11 @@ export function ChangeDetailPage() {
           <FieldLabel htmlFor={transitionNotesId} style={{ fontWeight: 400 }}>
             {transitionModal.inputField ?? t('pages.changeDetail.notesField')}
           </FieldLabel>
-          <textarea
+          <Textarea
             id={transitionNotesId}
             value={transitionNotes}
             onChange={(e) => setTransitionNotes(e.target.value)}
             rows={4}
-            style={{ width: '100%', padding: 8, border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box', fontFamily: 'inherit' }}
             // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: textarea del modal di transizione aperto dall'utente
             autoFocus
           />
