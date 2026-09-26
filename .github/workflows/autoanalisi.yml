@@ -185,7 +185,15 @@ jobs:
           # turni e 0,79 $ e non ha pubblicato NIENTE: né PR, né commento. Il
           # lavoro c'era, il canale per raccontarlo no. `track_progress` apre
           # il commento di tracciamento su cui l'agente riferisce.
-          track_progress: true
+          #
+          # SOLO per l'evento `issues` (26 set 2026): l'azione accetta
+          # `track_progress` solo per issue, PR e commenti, e con
+          # `repository_dispatch` — la porta del prodotto — si fermava in 0,3 s
+          # («track_progress is only supported for events: …»), prima di
+          # cominciare. Il primo giro vero dal prodotto (issue #86) è morto
+          # così. Negli altri casi l'agente riferisce con `gh issue comment`,
+          # come dice il prompt.
+          track_progress: ${{ github.event_name == 'issues' }}
           # IL TETTO DI SPESA, e la misura viene dal vero (21 set 2026).
           #
           # A 40 turni il quarto giro si è fermato A METÀ implementazione:
@@ -232,7 +240,7 @@ jobs:
             fare»: un'analisi che non arriva a nessuno è denaro buttato. Se
             gli strumenti GitHub non ti bastano, usa `gh` dal terminale, che
             è già installato e autenticato per i commenti:
-              gh issue comment 25 --body "..."
+              gh issue comment ${{ github.event.issue.number || github.event.client_payload.issue || inputs.issue }} --body "..."
             4. Se c'è, fai la modifica minima, con i test che la reggono.
 
                Le regole di questo repository, che valgono anche per te (se
