@@ -127,6 +127,14 @@ describe('evaluateAutoTransitions', () => {
     transitionTicket.mockResolvedValue({ moved: true })
   })
 
+  it('the walk does not follow the automatic exits of a wait: the timer leaves it (26 Sep 2026)', async () => {
+    mockDb({ transitions: [] })
+    await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
+    const [, q, params] = vi.mocked(runQuery).mock.calls[0]!
+    expect(q).toContain("WHERE coalesce(current.type, '') <> $timerWait")
+    expect(params).toMatchObject({ timerWait: 'timer_wait' })
+  })
+
   describe('all_assessments_complete', () => {
     it('tutti i task completati (pending 0) → fa la transition e chiama afterEnterStep', async () => {
       mockDb({ transitions: [{ toStep: 'planning', condition: 'all_assessments_complete' }], pending: 0 })

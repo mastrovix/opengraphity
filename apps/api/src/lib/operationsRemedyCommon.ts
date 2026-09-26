@@ -32,8 +32,6 @@ export const OPERATIONS_LIMITS = {
   mapSyncLateMinutes: 60,
   /** A missing CI still in a live map this long after the last synchronization. */
   mapMissingCIMinutes: 15,
-  /** A wait step whose timer expired this long ago: the timer job was lost (the only «late» a workflow can be). */
-  timerGraceMinutes: 15,
 } as const
 
 /** Who acted, in the histories the remedies write: nobody clicked on the ticket, an admin accepted a proposal. */

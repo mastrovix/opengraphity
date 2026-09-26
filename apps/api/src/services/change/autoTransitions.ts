@@ -1,6 +1,7 @@
 import { GraphQLError } from 'graphql'
 import { workflowEngine } from '@opengraphity/workflow'
 import type { ConditionContext } from '@opengraphity/workflow'
+import { TIMER_WAIT_STEP } from '../../lib/waitSteps.js'
 import type { Session as NeoSession } from 'neo4j-driver'
 import { toNumber } from '@opengraphity/neo4j'
 import { runQuery, runQueryOne, type Props } from '../../lib/db.js'
@@ -274,11 +275,13 @@ async function walkAutoTransitions(
     if (!wi) return
     visited.add(wi.step)
 
+    // A wait is left by its timer, never by the walk: its automatic exits are not followed here (26 Sep 2026, waitSteps.ts).
     const transitions = await runQuery<{ toStep: string; condition: string | null }>(session, `
       MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})-[:CURRENT_STEP]->(current:WorkflowStep)
+      WHERE coalesce(current.type, '') <> $timerWait
       MATCH (current)-[tr:TRANSITIONS_TO {trigger: 'automatic'}]->(next:WorkflowStep)
       RETURN next.name AS toStep, tr.condition AS condition
-    `, { instanceId: wi.instanceId, tenantId: ctx.tenantId })
+    `, { instanceId: wi.instanceId, tenantId: ctx.tenantId, timerWait: TIMER_WAIT_STEP })
     if (transitions.length === 0) return
 
     let fired = false

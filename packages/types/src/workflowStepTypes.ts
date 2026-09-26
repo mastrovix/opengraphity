@@ -46,3 +46,13 @@ export type WorkflowStepType =
 export function isUnimplementedStepType(type: string): boolean {
   return (UNIMPLEMENTED_STEP_TYPES as readonly string[]).includes(type)
 }
+
+/**
+ * The triggers of the edge that concludes a timed wait (review of 23 Sep
+ * 2026): «timer» is documented as the way out of a wait step and the job
+ * consumer walks it, but the engine scheduled the timer only for
+ * «automatic» — with a «timer» exit nothing was scheduled. One list for both.
+ * Here and not in the engine's package since 26 Sep 2026: the passes that
+ * must not cut a wait short read it without loading the engine.
+ */
+export const WAIT_EXIT_TRIGGERS: readonly string[] = ['automatic', 'timer']

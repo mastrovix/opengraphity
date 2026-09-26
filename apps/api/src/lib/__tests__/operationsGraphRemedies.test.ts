@@ -47,7 +47,6 @@ const move = vi.hoisted(() => ({ transition: vi.fn(async (_s: unknown, _r: Recor
 vi.mock('../../services/ticketTransition.js', () => ({ transitionTicket: move.transition }))
 const engine = vi.hoisted(() => ({ holds: new Map<string, boolean | 'unknown'>() }))
 vi.mock('@opengraphity/workflow', () => ({
-  WAIT_EXIT_TRIGGERS: ['automatic', 'timer'],
   workflowEngine: {
     evaluateCondition: async (_s: unknown, name: string) => {
       const v = engine.holds.get(name)
@@ -60,6 +59,7 @@ vi.mock('../../workflow/conditions.js', () => ({}))
 
 const R = await import('../operationsGraphRemedies.js')
 const { OPERATIONS_LIMITS: L, REMEDY_ACTOR } = await import('../operationsRemedyCommon.js')
+const { TIMER_GRACE_MINUTES } = await import('../waitSteps.js')
 
 const NOW = new Date('2026-09-26T08:00:00Z')
 const minutesAgo = (m: number) => new Date(NOW.getTime() - m * 60_000).toISOString()
@@ -226,7 +226,8 @@ describe('tickets stuck in a wait whose timer was lost', () => {
     fake.answer = () => []
     await R.detectStuckWorkflows('t-a', NOW)
     const { q } = lastQuery('HAS_WORKFLOW')!
-    expect(q).toContain("WHERE cur.type = 'timer_wait' AND tr.trigger IN $waitExit")
+    expect(q).toContain('WHERE cur.type = $timerWait AND tr.trigger IN $waitExit')
+    expect(lastQuery('HAS_WORKFLOW')!.params['timerWait']).toBe('timer_wait')
     expect(q).not.toMatch(/tr\.trigger = 'automatic'/)
   })
 
@@ -241,9 +242,9 @@ describe('tickets stuck in a wait whose timer was lost', () => {
   })
 
   it('a wait is never cut short: its exit opens only once the timer expired, plus the grace', async () => {
-    fake.answer = () => [arc({ instanceId: 'running', since: minutesAgo(60 + L.timerGraceMinutes - 1) })]
+    fake.answer = () => [arc({ instanceId: 'running', since: minutesAgo(60 + TIMER_GRACE_MINUTES - 1) })]
     expect(await R.detectStuckWorkflows('t-a', NOW)).toEqual([])
-    fake.answer = () => [arc({ instanceId: 'lost', since: minutesAgo(60 + L.timerGraceMinutes + 1) })]
+    fake.answer = () => [arc({ instanceId: 'lost', since: minutesAgo(60 + TIMER_GRACE_MINUTES + 1) })]
     expect((await R.detectStuckWorkflows('t-a', NOW))[0]?.action?.params).toEqual({ instanceIds: ['lost'] })
     // A wait with no valid delay is the engine's error to tell, not a lost timer.
     fake.answer = () => [arc({ instanceId: 'broken', delay: 0, since: minutesAgo(999) })]

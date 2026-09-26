@@ -41,13 +41,10 @@ export type WorkflowTrigger =
  * Non è il vocabolario delle automazioni (lib/actionExecutor.ts): quello è un
  * altro insieme, e la loro unificazione è un'ondata successiva.
  */
-/**
- * The triggers of the edge that concludes a timed wait (review of 23 Sep
- * 2026): «timer» is documented as the way out of a wait step and the job
- * consumer walks it, but the engine scheduled the timer only for
- * «automatic» — with a «timer» exit nothing was scheduled. One list for both.
- */
-export const WAIT_EXIT_TRIGGERS: readonly string[] = ['automatic', 'timer']
+// The triggers that conclude a timed wait live with the step types in
+// `@opengraphity/types` (26 Sep 2026): the API passes that read them must not
+// have to load the engine. Re-exported here for the engine and its callers.
+export { WAIT_EXIT_TRIGGERS } from '@opengraphity/types'
 
 export const WORKFLOW_ACTION_TYPES = [
   'sla_start',

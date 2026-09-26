@@ -19,8 +19,9 @@ let candidati: Array<Record<string, unknown>> = []
 let condizioni: Record<string, boolean> = {}
 const valutate: string[] = []
 
+const queries: Array<{ q: string; params: Record<string, unknown> }> = []
 vi.mock('@opengraphity/neo4j', () => ({
-  runQuery: vi.fn(async () => candidati),
+  runQuery: vi.fn(async (_s: unknown, q: string, params: Record<string, unknown>) => { queries.push({ q, params }); return candidati }),
 }))
 vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: {
@@ -45,7 +46,8 @@ vi.mock('../../services/change/windowGate.js', () => ({
   automaticTransitionOutcome: () => automaticTransitionOutcome(),
 }))
 
-const { changesStuckWithOpenPath, MAX_CHANGE_DA_VALUTARE } = await import('../changesStuck.js')
+const { changesStuckWithOpenPath, changeChePossonoMuoversi, MAX_CHANGE_DA_VALUTARE } = await import('../changesStuck.js')
+const { TIMER_GRACE_MINUTES } = await import('../waitSteps.js')
 
 const session = {} as never
 
@@ -55,6 +57,7 @@ const candidato = (code: string, condition: string | null) => ({
 })
 
 beforeEach(() => {
+  queries.length = 0
   valutate.length = 0
   candidati = []
   varcoApre = true
@@ -158,5 +161,30 @@ describe('changesStuckWithOpenPath', () => {
       await changesStuckWithOpenPath(session, 't1')
       expect(automaticTransitionOutcome).not.toHaveBeenCalled()
     })
+  })
+})
+
+describe('a wait is never cut short (26 Sep 2026)', () => {
+  // The arcs out of a `timer_wait` step are automatic too: the resume pass moved a
+  // change out of its wait within a minute. Only a LOST timer lets a pass finish it.
+  const NOW = new Date('2026-09-26T08:00:00Z')
+  const agoMin = (m: number) => new Date(NOW.getTime() - m * 60_000).toISOString()
+  const inWait = (code: string, since: string) => ({ ...candidato(code, null), fromStep: 'cooling_off', stepType: 'timer_wait', delay: 60, since })
+
+  it('a change in a wait still running is not stuck', async () => {
+    candidati = [inWait('CHG-W', agoMin(60 + TIMER_GRACE_MINUTES - 1))]
+    expect(await changeChePossonoMuoversi(session, 't1', NOW)).toEqual([])
+  })
+
+  it('a change whose wait ended long ago, the timer lost: it is, and its exit is followed', async () => {
+    candidati = [inWait('CHG-L', agoMin(60 + TIMER_GRACE_MINUTES + 1))]
+    expect((await changeChePossonoMuoversi(session, 't1', NOW)).map((c) => c.code)).toEqual(['CHG-L'])
+  })
+
+  it('the query reads a wait\'s exits as the timer job does, and every other step\'s automatic arcs', async () => {
+    await changeChePossonoMuoversi(session, 't1', NOW)
+    const { q, params } = queries[0]!
+    expect(q).toContain("(coalesce(cur.type, '') <> $timerWait AND tr.trigger = 'automatic') OR (cur.type = $timerWait AND tr.trigger IN $waitExit)")
+    expect(params).toMatchObject({ timerWait: 'timer_wait', waitExit: ['automatic', 'timer'] })
   })
 })

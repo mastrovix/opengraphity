@@ -44,7 +44,7 @@
  */
 import type { Session } from 'neo4j-driver'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
-import { ENTITY_NEO4J_LABELS } from '@opengraphity/types'
+import { ENTITY_NEO4J_LABELS, WAIT_EXIT_TRIGGERS } from '@opengraphity/types'
 import type { ProposalToWrite } from './proposals.js'
 import type { EsitoAzione } from './proposalActions.js'
 import { ValidationError } from './errors.js'
@@ -54,6 +54,7 @@ import { CI_HEALTH_SCALE, ciHealthCaseCypher } from '../services/events/ciHealth
 import { resolveCILifecycleSemantics } from './ciLifecycle.js'
 import { loadDomainMatrix } from './domainMatrix.js'
 import { SERVICE_STALE_MISSING_CI, SERVICE_STALE_OVER_LIMIT } from './serviceVocabularies.js'
+import { TIMER_WAIT_STEP, waitTimerLost } from './waitSteps.js'
 import { OPERATIONS_LIMITS as L, REMEDY_ACTOR, idsParam, operationsProposal, type VerificationOutcome } from './operationsRemedyCommon.js'
 
 const MODULE = 'operations-remedies'
@@ -355,24 +356,24 @@ export interface StuckTicket {
 }
 
 /**
- * The tickets still in a wait step whose timer expired `timerGraceMinutes`
+ * The tickets still in a wait step whose timer expired `TIMER_GRACE_MINUTES`
  * ago — a wait is never cut short —, with the first exit whose condition
  * holds (the engine evaluates it), in the designer's order.
  */
 async function stuckTickets(session: Session, tenantId: string, now: Date, ids?: string[]): Promise<StuckTicket[]> {
-  const { workflowEngine, WAIT_EXIT_TRIGGERS } = await import('@opengraphity/workflow')
+  const { workflowEngine } = await import('@opengraphity/workflow')
   const rows = await runQuery<ArcRow>(session, `
     MATCH (entity)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId, status: 'active'})-[:CURRENT_STEP]->(cur:WorkflowStep)
     WHERE wi.entity_type IN $types AND coalesce(entity.deleted, false) = false AND ($ids IS NULL OR wi.id IN $ids)
     MATCH (cur)-[tr:TRANSITIONS_TO]->(next:WorkflowStep)
-    WHERE cur.type = 'timer_wait' AND tr.trigger IN $waitExit
+    WHERE cur.type = $timerWait AND tr.trigger IN $waitExit
     RETURN wi.id AS instanceId, wi.entity_type AS entityType, wi.entity_id AS entityId,
            toString(coalesce(entity.number, entity.code, entity.id)) AS label, properties(entity) AS props,
            wi.updated_at AS since, cur.name AS fromStep, cur.timer_delay_minutes AS delay,
            next.name AS toStep, tr.condition AS condition
     ORDER BY wi.updated_at, wi.id, coalesce(next.step_order, 999), next.name
     LIMIT toInteger($max)
-  `, { tenantId, types: WORKFLOW_TYPES, waitExit: [...WAIT_EXIT_TRIGGERS], ids: ids ?? null, max: MAX_CANDIDATES })
+  `, { tenantId, types: WORKFLOW_TYPES, timerWait: TIMER_WAIT_STEP, waitExit: [...WAIT_EXIT_TRIGGERS], ids: ids ?? null, max: MAX_CANDIDATES })
   if (rows.length === 0) return []
   // The ITSM conditions register themselves on the engine when loaded (see changesStuck.ts).
   await import('../workflow/conditions.js')
@@ -381,11 +382,8 @@ async function stuckTickets(session: Session, tenantId: string, now: Date, ids?:
   const out: StuckTicket[] = []
   for (const r of rows) {
     if (seen.has(r.instanceId)) continue
-    const since = r.since ? Date.parse(r.since) : Number.NaN
-    if (Number.isNaN(since)) continue
-    const delay = Number(r.delay)
-    // A wait with no valid delay has its own error from the engine: not a lost timer.
-    if (!(delay > 0) || since + (delay + L.timerGraceMinutes) * 60_000 > now.getTime()) continue
+    // The one rule for a lost timer (waitSteps.ts): a wait is never cut short.
+    if (!waitTimerLost(r.since, r.delay, now)) continue
     if (r.condition) {
       try {
         const holds = await workflowEngine.evaluateCondition(session, r.condition, {

@@ -43,6 +43,8 @@
 import type { Session } from 'neo4j-driver'
 import { runQuery } from '@opengraphity/neo4j'
 import { automaticTransitionOutcome } from '../services/change/windowGate.js'
+import { WAIT_EXIT_TRIGGERS } from '@opengraphity/types'
+import { TIMER_WAIT_STEP, waitTimerLost } from './waitSteps.js'
 
 /**
  * Il tetto dei candidati da valutare: questo è un controllo di diagnostica, non
@@ -66,6 +68,10 @@ export interface CambioFermo {
   toStep:     string
   condition:  string | null
   props:      Record<string, unknown>
+  /** The current step's type, its wait (minutes) and when the change last moved: a wait's exit opens only once its timer is lost. */
+  stepType?:  string | null
+  delay?:     unknown
+  since?:     string | null
 }
 
 /**
@@ -83,17 +89,25 @@ export interface CambioFermo {
  * le fa camminare davvero: le due cose devono guardare lo STESSO insieme, se
  * no la diagnostica racconta una cosa e il prodotto ne fa un'altra.
  */
-export async function changeChePossonoMuoversi(session: Session, tenantId: string): Promise<CambioFermo[]> {
+export async function changeChePossonoMuoversi(session: Session, tenantId: string, now: Date = new Date()): Promise<CambioFermo[]> {
+  /*
+   * A WAIT IS NEVER CUT SHORT (26 Sep 2026). The arcs out of a `timer_wait`
+   * step are automatic too, and this query took them as «should have fired
+   * at once»: a change entering a wait was moved on by the resume pass within
+   * a minute. Out of a wait only its exits count (`automatic` or `timer`, as
+   * the timer job reads them), and only once the timer is lost (waitSteps.ts).
+   */
   const candidati = await runQuery<CambioFermo>(session, `
     MATCH (c:Change {tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId})
     WHERE coalesce(c.deleted, false) = false AND wi.status = 'active'
-    MATCH (wi)-[:CURRENT_STEP]->(cur:WorkflowStep)-[tr:TRANSITIONS_TO {trigger: 'automatic'}]->(next:WorkflowStep)
+    MATCH (wi)-[:CURRENT_STEP]->(cur:WorkflowStep)-[tr:TRANSITIONS_TO]->(next:WorkflowStep)
+    WHERE (coalesce(cur.type, '') <> $timerWait AND tr.trigger = 'automatic') OR (cur.type = $timerWait AND tr.trigger IN $waitExit)
     RETURN c.code AS code, c.id AS changeId, wi.id AS instanceId,
            cur.name AS fromStep, next.name AS toStep, tr.condition AS condition,
-           properties(c) AS props
+           properties(c) AS props, cur.type AS stepType, cur.timer_delay_minutes AS delay, wi.updated_at AS since
     ORDER BY c.code
     LIMIT ${MAX_CHANGE_DA_VALUTARE}
-  `, { tenantId })
+  `, { tenantId, timerWait: TIMER_WAIT_STEP, waitExit: [...WAIT_EXIT_TRIGGERS] })
   // Nessun candidato, nessun motore da caricare: la strada corta è anche la
   // più comune, perché le change in un passo con un arco automatico sono poche.
   if (candidati.length === 0) return []
@@ -134,6 +148,7 @@ export async function changeChePossonoMuoversi(session: Session, tenantId: strin
   const muovibili: CambioFermo[] = []
   for (const r of candidati) {
     if (ferme.has(r.code)) continue
+    if (r.stepType === TIMER_WAIT_STEP && !waitTimerLost(r.since, r.delay, now)) continue
     // Un arco automatico SENZA condizione doveva scattare all'istante: se la
     // change è ancora qui, l'occasione è stata persa.
     let passa = r.condition === null || r.condition === ''
