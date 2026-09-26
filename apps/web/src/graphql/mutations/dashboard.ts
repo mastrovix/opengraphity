@@ -33,7 +33,7 @@ export const ADD_DASHBOARD_WIDGET = gql`
         id order colSpan reportTemplateId reportSectionId
         data(language: $language) error(language: $language)
         reportSection { id title chartType }
-        reportTemplate { id name }
+        reportTemplate { id name description }
       }
     }
   }
@@ -72,7 +72,7 @@ export const SAVE_DASHBOARD_LAYOUT = gql`
         reportTemplateId reportSectionId
         data(language: $language) error(language: $language)
         reportSection { id title chartType }
-        reportTemplate { id name }
+        reportTemplate { id name description }
       }
     }
   }

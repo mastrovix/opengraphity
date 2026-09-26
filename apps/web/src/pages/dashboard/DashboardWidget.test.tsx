@@ -36,6 +36,25 @@ describe('DashboardWidget', () => {
     expect(screen.getAllByText(/^Open incidents$/i)).toHaveLength(1)
   })
 
+  // 25 Sep 2026: «Open incidents» and «Open problems» had no second line, «Open
+  // requests» had one, and the three cards side by side no longer lined up.
+  it('in its place, the line under the title says what the report says of itself', () => {
+    render(<DashboardWidget widget={widget({ reportTemplate: { id: 'rt1', name: 'Open Incidents', description: 'Incidents not yet resolved.' } })} />)
+    expect(screen.getByTestId('widget-subtitle')).toHaveTextContent('Incidents not yet resolved.')
+    expect(screen.getAllByText(/^Open incidents$/i)).toHaveLength(1)
+  })
+
+  it('with nothing to say, the second line is still there, so every header has the same height', () => {
+    render(<DashboardWidget widget={widget({ reportTemplate: { id: 'rt1', name: 'Open Incidents', description: null } })} />)
+    expect(screen.getByTestId('widget-subtitle').textContent).toBe(' ')
+  })
+
+  it('the card fills the height of its row, as tall as the cards beside it', () => {
+    const { container } = render(<DashboardWidget widget={widget()} />)
+    expect(container.firstElementChild).toHaveStyle({ display: 'flex' })
+    expect(container.firstElementChild?.firstElementChild).toHaveStyle({ flex: '1 1 0%', display: 'flex', flexDirection: 'column' })
+  })
+
   it('a widget whose section and report are gone is still a card, named "Widget", without a report line', () => {
     render(<DashboardWidget widget={widget({ reportSection: null, reportTemplate: null, data: null })} />)
     expect(screen.getByText('Widget')).toBeInTheDocument()

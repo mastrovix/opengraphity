@@ -48,7 +48,7 @@ export interface DashboardWidgetServer {
   data: string | null
   error: string | null
   reportSection: { id: string; title: string; chartType: string } | null
-  reportTemplate: { id: string; name: string } | null
+  reportTemplate: { id: string; name: string; description?: string | null } | null
 }
 
 export interface DashboardConfig {

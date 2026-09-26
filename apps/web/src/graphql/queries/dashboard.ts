@@ -25,7 +25,7 @@ export const GET_DASHBOARD = gql`
         reportTemplateId reportSectionId
         data(language: $language) error(language: $language)
         reportSection { id title chartType }
-        reportTemplate { id name }
+        reportTemplate { id name description }
       }
       customWidgets {
         id title widgetType entityType metric
@@ -45,7 +45,7 @@ export const GET_MY_DASHBOARD = gql`
         id order colSpan reportTemplateId reportSectionId
         data(language: $language) error(language: $language)
         reportSection { id title chartType }
-        reportTemplate { id name }
+        reportTemplate { id name description }
       }
       customWidgets {
         id title widgetType entityType metric
