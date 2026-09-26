@@ -214,13 +214,12 @@ describe('autoTriggers (query)', () => {
     expect(queries[0]!.cypher).toMatch(/ORDER BY t\.name DESC/)
   })
 
-  it('sorts only by whitelisted columns: an unknown sort field falls back to the default', async () => {
+  it('sorts only by whitelisted columns: an unknown sort field is refused (A-22, 26 Sep 2026)', async () => {
     await Query.autoTriggers(null, { sortField: 'executionCount', sortDirection: 'asc' }, ctxA)
     expect(queries[0]!.cypher).toMatch(/ORDER BY t\.execution_count ASC/)
-    await Query.autoTriggers(null, { sortField: 't.name; DETACH DELETE t', sortDirection: 'asc' }, ctxA)
-    // Why: the sort field is user input interpolated into Cypher.
-    expect(queries[1]!.cypher).toMatch(/ORDER BY t\.name ASC/)
-    expect(queries[1]!.cypher).not.toContain('DETACH')
+    // Why: the sort field is user input, and it used to fall back to the name in silence.
+    await expect(Query.autoTriggers(null, { sortField: 't.name; DETACH DELETE t', sortDirection: 'asc' }, ctxA)).rejects.toMatchObject({ extensions: { i18n: { key: 'errors.sort.unknownField' } } })
+    expect(queries.some((q) => q.cypher.includes('DETACH'))).toBe(false)
   })
 
   it('advanced filters become a parameterised WHERE, and a field outside the whitelist fails loud', async () => {

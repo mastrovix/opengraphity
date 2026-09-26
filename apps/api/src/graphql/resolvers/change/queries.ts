@@ -20,6 +20,8 @@ import {
 } from './mappers.js'
 import { toNumber } from '@opengraphity/neo4j'
 import { listPage } from '../../../lib/listLimit.js'
+import { orderByOrThrow, customFieldOrderBy } from '../../../lib/sortField.js'
+import { requestCustomFieldDefs } from '../ticketCustomFields.js'
 import { buildAdvancedWhere } from '../../../lib/filterBuilder.js'
 import { getScalarFields } from '../../../lib/schemaFields.js'
 import type { GraphQLResolveInfo } from 'graphql'
@@ -140,6 +142,10 @@ export const CHANGE_SORT_WHITELIST: Record<string, string> = {
   priority:           'c.priority',
   aggregateRiskScore: 'c.aggregate_risk_score',
   createdAt:          'c.created_at',
+  // 26 Sep 2026 (every column sorts): the phase is the step's name, which the
+  // engine writes on the change at every transition; the requester by name.
+  workflowInstance:   'c.status',
+  requester:          'req.name',
 }
 
 export async function changes(
@@ -149,9 +155,7 @@ export async function changes(
   info?: GraphQLResolveInfo,
 ) {
   const { limit, offset } = listPage(args, 50)
-  const sortCol = args.sortField ? CHANGE_SORT_WHITELIST[args.sortField] : undefined
-  const sortDir = args.sortDirection?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC'
-  const orderBy = sortCol ? `${sortCol} ${sortDir}` : 'c.created_at DESC'
+  const customFieldNames = (await requestCustomFieldDefs(ctx, 'change')).map((d) => d.name)
   return withSession(async (session) => {
     const joinWF = args.currentStep
       ? 'MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {current_step: $currentStep})'
@@ -169,6 +173,9 @@ export async function changes(
     const params: Record<string, unknown> = {
       tenantId: ctx.tenantId, currentStep: args.currentStep ?? null, priority: args.priority ?? null, limit, offset,
     }
+    // A field outside the whitelist is refused, not ignored (A-22): it used to sort by date in silence.
+    const orderBy = customFieldOrderBy('c', args.sortField, args.sortDirection, params, customFieldNames, 'changes(sortField)')
+      ?? orderByOrThrow(CHANGE_SORT_WHITELIST, args.sortField, args.sortDirection ?? 'desc', 'c.created_at DESC', 'changes(sortField)')
     const allowedFields = new Set(info ? getScalarFields(info.schema, 'Change') : ['code', 'title', 'status', 'priority', 'change_type'])
     // The list filters by step as `status`: not a GraphQL field of Change, but
     // the engine writes the step's name there on every transition (and the

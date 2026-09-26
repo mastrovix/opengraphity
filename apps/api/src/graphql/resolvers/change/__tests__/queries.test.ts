@@ -22,6 +22,8 @@ import { perms } from '../../../../lib/__tests__/testPermissions.js'
 
 const runQuery = vi.fn()
 const runQueryOne = vi.fn()
+// The customer's fields of a change (they sort the list since 26 Sep 2026): none here.
+vi.mock('../../ticketCustomFields.js', () => ({ requestCustomFieldDefs: async () => [] }))
 vi.mock('../../ci-utils.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../ci-utils.js')>()),
   withSession: (fn: (s: unknown) => unknown) => fn({ fakeSession: true }),
@@ -66,17 +68,20 @@ beforeEach(() => {
 
 // ══════════════════════════════════════════════════════════════════════════════
 describe('changes — la lista', () => {
-  it('ordina solo sui campi della lista bianca: uno inventato NON finisce nella query', async () => {
-    await q.changes(null, { sortField: 'c.title; DROP', sortDirection: 'ASC' }, ctx())
-    expect(runQuery.mock.calls[0]![1]).toContain('ORDER BY c.created_at DESC')
-    expect(runQuery.mock.calls[0]![1]).not.toContain('DROP')
+  it('ordina solo sui campi della lista bianca: uno inventato è rifiutato e NON finisce nella query (A-22, 26 Sep 2026)', async () => {
+    await expect(q.changes(null, { sortField: 'c.title; DROP', sortDirection: 'ASC' }, ctx())).rejects.toMatchObject({ extensions: { i18n: { key: 'errors.sort.unknownField' } } })
+    expect(runQuery).not.toHaveBeenCalled()
   })
 
   it('un campo della lista bianca passa, con la direzione normalizzata', async () => {
     await q.changes(null, { sortField: 'aggregateRiskScore', sortDirection: 'asc' }, ctx())
     expect(runQuery.mock.calls[0]![1]).toContain('ORDER BY c.aggregate_risk_score ASC')
+    // Any direction but «desc» is ascending, as in every list (lib/sortField.ts).
     await q.changes(null, { sortField: 'code', sortDirection: 'qualunque cosa' }, ctx())
-    expect(runQuery.mock.calls[2]![1]).toContain('ORDER BY c.code DESC')
+    expect(runQuery.mock.calls[2]![1]).toContain('ORDER BY c.code ASC')
+    // The phase and the requester sort too (26 Sep 2026).
+    await q.changes(null, { sortField: 'requester', sortDirection: 'desc' }, ctx())
+    expect(runQuery.mock.calls[4]![1]).toContain('ORDER BY req.name DESC')
   })
 
   it('le change cancellate non si contano né si mostrano', async () => {

@@ -94,10 +94,11 @@ describe('auditLog — la pagina', () => {
     expect(pagina()[1]['skip']).toBe(0)
   })
 
-  it('si ordina solo sui quattro campi noti: uno inventato NON entra nella query', async () => {
-    await auditLog(null, { sortField: 'a.action; MATCH (x)', sortDirection: 'asc' }, AMMESSO)
-    expect(String(pagina()[0])).toContain('ORDER BY a.created_at ASC')
-    expect(String(pagina()[0])).not.toContain('MATCH (x)')
+  it('si ordina solo sui campi noti: uno inventato è rifiutato e NON entra nella query (A-22, 26 Sep 2026)', async () => {
+    await expect(auditLog(null, { sortField: 'a.action; MATCH (x)', sortDirection: 'asc' }, AMMESSO)).rejects.toMatchObject({ extensions: { i18n: { key: 'errors.sort.unknownField' } } })
+    txRun.mockClear()
+    await auditLog(null, { sortField: 'ipAddress', sortDirection: 'asc' }, AMMESSO)
+    expect(String(pagina()[0])).toContain('ORDER BY a.ip_address ASC')
     txRun.mockClear()
     await auditLog(null, { sortField: 'userEmail' }, AMMESSO)
     expect(String(pagina()[0])).toContain('ORDER BY a.user_email DESC')

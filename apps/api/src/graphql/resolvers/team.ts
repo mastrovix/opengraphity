@@ -35,6 +35,8 @@ export const TEAM_SORT_WHITELIST: Record<string, string> = {
   type:      't.type',
   sourcing:  't.sourcing',
   createdAt: 't.created_at',
+  // 26 Sep 2026 (every column sorts).
+  description: 't.description',
 }
 
 async function teams(_: unknown, args: { filters?: string; sortField?: string; sortDirection?: string }, ctx: GraphQLContext, info?: GraphQLResolveInfo) {

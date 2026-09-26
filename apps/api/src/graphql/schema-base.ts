@@ -254,7 +254,7 @@ export function buildBaseSDL(): string {
     comments(entityType: String!, entityId: String!, includeInternal: Boolean): [EntityComment!]!
 
     # Knowledge Base
-    kbArticles(search: String, category: String, status: String, page: Int, pageSize: Int): KBArticlesResult!
+    kbArticles(search: String, category: String, status: String, page: Int, pageSize: Int, sortField: String, sortDirection: String): KBArticlesResult!
     kbArticle(id: ID!): KBArticle!
     kbArticleBySlug(slug: String!): KBArticle!
     """The published articles that share tags with this one, the closest first (24 Sep 2026)."""

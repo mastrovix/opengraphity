@@ -29,6 +29,8 @@ let onQuery: Handler = () => []
 let onQueryOne: Handler = () => null
 const calls: Array<{ cypher: string; params: Record<string, unknown> }> = []
 
+// The customer's fields of a change (they sort the list since 26 Sep 2026): none here.
+vi.mock('../../ticketCustomFields.js', () => ({ requestCustomFieldDefs: async () => [] }))
 vi.mock('../../ci-utils.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../ci-utils.js')>()),
   withSession: (fn: (s: unknown) => unknown) => fn({ fakeSession: true }),

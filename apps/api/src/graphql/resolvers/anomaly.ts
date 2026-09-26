@@ -1,3 +1,4 @@
+import { orderByOrThrow } from '../../lib/sortField.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { getSession, runQuery, runQueryOne, toNumber } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
@@ -13,6 +14,16 @@ import {
 } from '../../anomaly/ruleConfig.js'
 
 /** Mirrors `enum ResolutionStatus` in schema-anomaly.ts — re-checked here so the stored status can never be an arbitrary string. */
+
+/** The columns the anomalies list sorts on (`sortWhitelists.test.ts` compares them with the page). */
+export const ANOMALY_SORT_WHITELIST: Record<string, string> = {
+  title:      'title',
+  severity:   'severity',
+  status:     'status',
+  entityName: 'entity_name',
+  detectedAt: 'detected_at',
+}
+
 export const RESOLUTION_STATUSES = ['resolved', 'false_positive', 'accepted_risk'] as const
 export type ResolutionStatus = (typeof RESOLUTION_STATUSES)[number]
 
@@ -152,14 +163,9 @@ export const anomalyResolvers = {
       ctx: GraphQLContext,
     ) => {
       const { limit = 50, offset = 0, filters, sortField, sortDirection } = args
-      const ANOMALY_SORT_WHITELIST: Record<string, string> = {
-        title:      'title',
-        severity:   'severity',
-        status:     'status',
-        entityName: 'entity_name',
-        detectedAt: 'detected_at',
-      }
       const sortCol = sortField && ANOMALY_SORT_WHITELIST[sortField]
+      // A field outside the list is refused (A-22), not replaced by the default order in silence.
+      if (sortField && !sortCol) orderByOrThrow(ANOMALY_SORT_WHITELIST, sortField, sortDirection, '', 'anomalies(sortField)')
       // `a.id` breaks the ties: one scan writes all its anomalies at the same
       // instant, and SKIP/LIMIT over an order with ties may repeat or skip rows
       // from one page to the next (owner, 24 Sep 2026: 77 anomalies at 13:31).

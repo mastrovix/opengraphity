@@ -22,7 +22,7 @@ import { notifyCommentAudience } from './comments.js'
 import { publishEvent } from '../../lib/publishEvent.js'
 import { listPage } from '../../lib/listLimit.js'
 import { serviceRelPatternForTenant } from '../../lib/ciMetamodelForTenant.js'
-import { orderByOrThrow } from '../../lib/sortField.js'
+import { orderByOrThrow, customFieldOrderBy, slaOrderExpr } from '../../lib/sortField.js'
 import { logger } from '../../lib/logger.js'
 import { resolveDomainValue } from '../../lib/domainValue.js'
 export type { IncidentEventPayload } from '../../services/incidentService.js'
@@ -46,12 +46,17 @@ export const INCIDENT_SORT_WHITELIST: Record<string, string> = {
   severity:  'severity',
   status:    'status',
   createdAt: 'created_at',
+  // Not a property: the ticket's latest SLA status, by urgency (lib/sortField.ts `slaOrderExpr`).
+  slaStatus: 'sla',
 }
 
-function incidentOrderBy(sortField?: string | null, sortDirection?: string | null): string {
+function incidentOrderBy(sortField: string | null | undefined, sortDirection: string | null | undefined, params: Record<string, unknown>, customFieldNames: readonly string[]): string {
   // A-22: un campo non ordinabile è un errore, non un ordine diverso in
   // silenzio. Le colonne della whitelist sono senza alias: si aggiunge qui.
-  const prefixed = Object.fromEntries(Object.entries(INCIDENT_SORT_WHITELIST).map(([k, v]) => [k, `i.${v}`]))
+  // 26 Sep 2026: every column sorts — the SLA by urgency, the customer's fields by their value.
+  const custom = customFieldOrderBy('i', sortField, sortDirection, params, customFieldNames, 'incidents(sortField)')
+  if (custom) return custom
+  const prefixed = { ...Object.fromEntries(Object.entries(INCIDENT_SORT_WHITELIST).filter(([k]) => k !== 'slaStatus').map(([k, v]) => [k, `i.${v}`])), slaStatus: slaOrderExpr('i') }
   return orderByOrThrow(prefixed, sortField, sortDirection ?? 'desc', 'i.created_at DESC', 'incidents(sortField)')
 }
 
@@ -73,7 +78,9 @@ async function incidents(
       limit,
     }
     // I campi del cliente si filtrano come quelli del prodotto (ondata 4).
-    const allowedFields = new Set([...getScalarFields(info.schema, 'Incident'), ...(await requestCustomFieldDefs(ctx, 'incident')).map((d) => d.name)])
+    const customFieldNames = (await requestCustomFieldDefs(ctx, 'incident')).map((d) => d.name)
+    const allowedFields = new Set([...getScalarFields(info.schema, 'Incident'), ...customFieldNames])
+    const orderBy = incidentOrderBy(sortField, sortDirection, params, customFieldNames)
     const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'i', {}, 'Incident') : ''
     const whereClause = `
       WHERE ($status   IS NULL OR i.status   = $status)
@@ -85,7 +92,7 @@ async function incidents(
       ${whereClause}
       OPTIONAL MATCH (i)-[:ASSIGNED_TO]->(u:User)
       OPTIONAL MATCH (i)-[:ASSIGNED_TO_TEAM]->(t:Team)
-      WITH i, u, t ORDER BY ${incidentOrderBy(sortField, sortDirection)}
+      WITH i, u, t ORDER BY ${orderBy}
       SKIP toInteger($offset) LIMIT toInteger($limit)
       OPTIONAL MATCH (i)-[:AFFECTED_BY]->(ci)
       WITH i, u, t, collect(DISTINCT {props: properties(ci), label: head([l IN labels(ci) WHERE l <> 'ConfigurationItem'])}) AS cis

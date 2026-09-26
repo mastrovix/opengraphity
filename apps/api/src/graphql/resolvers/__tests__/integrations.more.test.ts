@@ -96,10 +96,10 @@ describe('outboundWebhooks (list)', () => {
     expect(params).toEqual({ t: 'tenant-1', af_0: 'slack' })
   })
 
-  it('an unknown sort field falls back to the default column instead of reaching the query text', async () => {
-    await Q.outboundWebhooks(null, { sortField: 'name; DETACH DELETE w' }, admin)
+  it('an unknown sort field is refused instead of reaching the query text (A-22, 26 Sep 2026)', async () => {
+    await expect(Q.outboundWebhooks(null, { sortField: 'name; DETACH DELETE w' }, admin)).rejects.toMatchObject({ extensions: { i18n: { key: 'errors.sort.unknownField' } } })
+    await Q.outboundWebhooks(null, {}, admin)
     expect(lastQuery().cypher).toContain('ORDER BY w.name DESC')
-    expect(lastQuery().cypher).not.toContain('DETACH')
   })
 })
 

@@ -33,7 +33,7 @@ import { writeTicketComment } from '../../lib/ticketComments.js'
 import { notifyCommentAudience } from './comments.js'
 import { publishTicketUpdated } from '../../lib/ticketUpdated.js'
 import { listPage } from '../../lib/listLimit.js'
-import { orderByOrThrow } from '../../lib/sortField.js'
+import { orderByOrThrow, customFieldOrderBy } from '../../lib/sortField.js'
 
 type Props = Record<string, unknown>
 
@@ -96,9 +96,12 @@ export const PROBLEM_SORT_WHITELIST: Record<string, string> = {
   createdAt: 'created_at',
 }
 
-function problemOrderBy(sortField?: string | null, sortDirection?: string | null): string {
+function problemOrderBy(sortField: string | null | undefined, sortDirection: string | null | undefined, params: Record<string, unknown>, customFieldNames: readonly string[]): string {
   // A-22: un campo non ordinabile è un errore, non un ordine diverso in
   // silenzio. Le colonne della whitelist sono senza alias: si aggiunge qui.
+  // 26 Sep 2026: the customer's fields sort too.
+  const custom = customFieldOrderBy('p', sortField, sortDirection, params, customFieldNames, 'problems(sortField)')
+  if (custom) return custom
   const prefixed = Object.fromEntries(Object.entries(PROBLEM_SORT_WHITELIST).map(([k, v]) => [k, `p.${v}`]))
   return orderByOrThrow(prefixed, sortField, sortDirection ?? 'desc', 'p.created_at DESC', 'problems(sortField)')
 }
@@ -125,7 +128,9 @@ async function problems(
       limit,
     }
     // I campi del cliente si filtrano come quelli del prodotto (ondata 4).
-    const allowedFields = new Set([...getScalarFields(info.schema, 'Problem'), ...(await requestCustomFieldDefs(ctx, 'problem')).map((d) => d.name)])
+    const customFieldNames = (await requestCustomFieldDefs(ctx, 'problem')).map((d) => d.name)
+    const allowedFields = new Set([...getScalarFields(info.schema, 'Problem'), ...customFieldNames])
+    const orderBy = problemOrderBy(sortField, sortDirection, params, customFieldNames)
     const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'p') : ''
     const whereClause = `
       WHERE ($status   IS NULL OR p.status   = $status)
@@ -138,7 +143,7 @@ async function problems(
       ${whereClause}
       OPTIONAL MATCH (p)-[:ASSIGNED_TO]->(u:User)
       OPTIONAL MATCH (p)-[:ASSIGNED_TO_TEAM]->(t:Team)
-      WITH p, u, t ORDER BY ${problemOrderBy(sortField, sortDirection)}
+      WITH p, u, t ORDER BY ${orderBy}
       SKIP toInteger($offset) LIMIT toInteger($limit)
       OPTIONAL MATCH (p)-[:AFFECTS]->(ci)
       WITH p, u, t, collect(DISTINCT {props: properties(ci), label: head([l IN labels(ci) WHERE l <> 'ConfigurationItem'])}) AS cis

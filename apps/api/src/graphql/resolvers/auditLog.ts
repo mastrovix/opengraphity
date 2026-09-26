@@ -1,3 +1,4 @@
+import { orderByOrThrow } from '../../lib/sortField.js'
 import { getSession } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { logger } from '../../lib/logger.js'
@@ -28,6 +29,25 @@ function mapAuditEntry(r: { get: (k: string) => unknown }): AuditEntry {
     ipAddress:  r.get('ipAddress')  as string | null,
     createdAt:  r.get('createdAt')  as string,
   }
+}
+
+
+/**
+ * The columns the audit log sorts on (26 Sep 2026: every column sorts; the
+ * entity and the IP could not). A field outside the list is refused, not
+ * replaced by the date in silence (A-22).
+ */
+export const AUDIT_SORT_WHITELIST: Record<string, string> = {
+  action:     'a.action',
+  entityType: 'a.entity_type',
+  entityId:   'a.entity_id',
+  userEmail:  'a.user_email',
+  ipAddress:  'a.ip_address',
+  createdAt:  'a.created_at',
+}
+
+function auditOrderBy(sortField: string | null | undefined, sortDirection: string | null | undefined): string {
+  return orderByOrThrow(AUDIT_SORT_WHITELIST, sortField, sortDirection ?? 'desc', 'a.created_at DESC', 'auditLog(sortField)')
 }
 
 export async function auditLog(
@@ -78,7 +98,7 @@ export async function auditLog(
                a.details    AS details,
                a.ip_address AS ipAddress,
                a.created_at AS createdAt
-        ORDER BY ${(() => { const m: Record<string, string> = { action: 'a.action', entityType: 'a.entity_type', userEmail: 'a.user_email', createdAt: 'a.created_at' }; return m[args.sortField ?? ''] ?? 'a.created_at' })()} ${args.sortDirection === 'asc' ? 'ASC' : 'DESC'}
+        ORDER BY ${auditOrderBy(args.sortField, args.sortDirection)}
         SKIP toInteger($skip) LIMIT toInteger($limit)
       `, params),
     )

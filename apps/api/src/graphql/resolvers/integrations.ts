@@ -1,3 +1,4 @@
+import { orderByOrThrow } from '../../lib/sortField.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { CONNECTOR_KINDS, parseConfigJSON, sourceConfigOf } from '../../services/eventService.js'
 import { getEventPolicy } from '../../services/events/policy.js'
@@ -139,9 +140,27 @@ function mapApiKey(p: Props) {
 
 // ── Inbound Webhooks ─────────────────────────────────────────────────────────
 
-function sortClause(alias: string, sf: string | undefined, sd: string | undefined, wl: Record<string, string>, def: string): string {
-  const col = wl[sf ?? ''] ?? `${alias}.${def}`
-  return `ORDER BY ${col} ${sd === 'asc' ? 'ASC' : 'DESC'}`
+/**
+ * The columns each integrations list sorts on: every column of its table
+ * (26 Sep 2026, «le colonne dovrebbero essere sempre tutte ordinabili»). A
+ * field outside the list is refused (A-22): it used to fall back to the name
+ * in silence. `sortWhitelists.test.ts` compares these maps with the page.
+ */
+export const INBOUND_WEBHOOK_SORT_WHITELIST: Record<string, string> = {
+  name: 'w.name', entityType: 'w.entity_type', connectorKind: 'w.connector_kind', id: 'w.id', enabled: 'w.enabled',
+  receiveCount: 'w.receive_count', lastReceivedAt: 'w.last_received_at', createdAt: 'w.created_at',
+}
+export const OUTBOUND_WEBHOOK_SORT_WHITELIST: Record<string, string> = {
+  name: 'w.name', url: 'w.url', events: 'size(coalesce(w.events, []))', enabled: 'w.enabled', sendCount: 'w.send_count',
+  lastSentAt: 'w.last_sent_at', lastStatusCode: 'w.last_status_code', lastError: 'w.last_error', retryOnFailure: 'w.retry_on_failure',
+}
+export const API_KEY_SORT_WHITELIST: Record<string, string> = {
+  name: 'k.name', keyPrefix: 'k.key_prefix', permissions: 'size(coalesce(k.permissions, []))', rateLimit: 'k.rate_limit', enabled: 'k.enabled',
+  lastUsedAt: 'k.last_used_at', requestCount: 'k.request_count', createdAt: 'k.created_at',
+}
+
+function sortClause(alias: string, sf: string | undefined, sd: string | undefined, wl: Record<string, string>, def: string, what: string): string {
+  return `ORDER BY ${orderByOrThrow(wl, sf, sd ?? 'desc', `${alias}.${def} DESC`, what)}`
 }
 
 async function inboundWebhooks(_: unknown, args: { filters?: string; sortField?: string; sortDirection?: string }, ctx: GraphQLContext) {
@@ -149,7 +168,7 @@ async function inboundWebhooks(_: unknown, args: { filters?: string; sortField?:
     const params: Props = { t: ctx.tenantId }
     const allowed = new Set(['name', 'entityType', 'enabled', 'entity_type', 'receive_count'])
     const advWhere = args.filters ? buildAdvancedWhere(args.filters, params, allowed, 'w') : ''
-    const order = sortClause('w', args.sortField, args.sortDirection, { name: 'w.name', entityType: 'w.entity_type', enabled: 'w.enabled', receiveCount: 'w.receive_count', lastReceivedAt: 'w.last_received_at' }, 'name')
+    const order = sortClause('w', args.sortField, args.sortDirection, INBOUND_WEBHOOK_SORT_WHITELIST, 'name', 'inboundWebhooks(sortField)')
     const rows = await runQuery<{ props: Props }>(s, `MATCH (w:InboundWebhook {tenant_id: $t}) ${advWhere ? `WHERE ${advWhere}` : ''} RETURN properties(w) AS props ${order}`, params)
     return rows.map(r => mapInbound(r.props))
   })
@@ -257,7 +276,7 @@ async function outboundWebhooks(_: unknown, args: { filters?: string; sortField?
     const params: Props = { t: ctx.tenantId }
     const allowed = new Set(['name', 'url', 'enabled', 'send_count'])
     const advWhere = args.filters ? buildAdvancedWhere(args.filters, params, allowed, 'w') : ''
-    const order = sortClause('w', args.sortField, args.sortDirection, { name: 'w.name', url: 'w.url', enabled: 'w.enabled', sendCount: 'w.send_count', lastSentAt: 'w.last_sent_at' }, 'name')
+    const order = sortClause('w', args.sortField, args.sortDirection, OUTBOUND_WEBHOOK_SORT_WHITELIST, 'name', 'outboundWebhooks(sortField)')
     const rows = await runQuery<{ props: Props }>(s, `MATCH (w:OutboundWebhook {tenant_id: $t}) ${advWhere ? `WHERE ${advWhere}` : ''} RETURN properties(w) AS props ${order}`, params)
     return rows.map(r => mapOutbound(r.props))
   })
@@ -365,7 +384,7 @@ async function apiKeys(_: unknown, args: { filters?: string; sortField?: string;
     const params: Props = { t: ctx.tenantId }
     const allowed = new Set(['name', 'enabled', 'request_count'])
     const advWhere = args.filters ? buildAdvancedWhere(args.filters, params, allowed, 'k') : ''
-    const order = sortClause('k', args.sortField, args.sortDirection, { name: 'k.name', enabled: 'k.enabled', requestCount: 'k.request_count', lastUsedAt: 'k.last_used_at' }, 'name')
+    const order = sortClause('k', args.sortField, args.sortDirection, API_KEY_SORT_WHITELIST, 'name', 'apiKeys(sortField)')
     const rows = await runQuery<{ props: Props }>(s, `MATCH (k:ApiKey {tenant_id: $t}) ${advWhere ? `WHERE ${advWhere}` : ''} RETURN properties(k) AS props ${order}`, params)
     return rows.map(r => mapApiKey(r.props))
   })

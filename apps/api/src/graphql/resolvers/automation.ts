@@ -1,3 +1,4 @@
+import { orderByOrThrow } from '../../lib/sortField.js'
 import { v4 as uuidv4 } from 'uuid'
 import { assertComplianceObjective, calendarChoice, calendarNameOf } from '../../lib/serviceTargets.js'
 import { withSession } from './ci-utils.js'
@@ -370,10 +371,28 @@ function mapSLAPolicy(p: Props, teamName?: string | null) {
 
 // ── Sort helper ──────────────────────────────────────────────────────────────
 
-function resolveSort(alias: string, sortField: string | undefined, sortDirection: string | undefined, whitelist: Record<string, string>, defaultField: string): string {
-  const col = whitelist[sortField ?? ''] ?? `${alias}.${defaultField}`
-  const dir = sortDirection === 'asc' ? 'ASC' : 'DESC'
-  return `ORDER BY ${col} ${dir}`
+/**
+ * The columns each automation list sorts on: every column of its table
+ * (26 Sep 2026, «le colonne dovrebbero essere sempre tutte ordinabili»). A
+ * field outside the list is refused (A-22): it used to fall back in silence.
+ * `sortWhitelists.test.ts` compares these maps with the page.
+ */
+export const AUTO_TRIGGER_SORT_WHITELIST: Record<string, string> = {
+  name: 't.name', entityType: 't.entity_type', eventType: 't.event_type', enabled: 't.enabled',
+  executionCount: 't.execution_count', lastExecutedAt: 't.last_executed_at',
+}
+export const BUSINESS_RULE_SORT_WHITELIST: Record<string, string> = {
+  description: 'r.description', priority: 'r.priority', name: 'r.name', entityType: 'r.entity_type', eventType: 'r.event_type',
+  conditionLogic: 'r.condition_logic', stopOnMatch: 'r.stop_on_match', enabled: 'r.enabled',
+}
+export const SLA_POLICY_SORT_WHITELIST: Record<string, string> = {
+  entityType: 'p.entity_type', priority: 'p.priority', category: 'p.category', responseMinutes: 'p.response_minutes',
+  resolveMinutes: 'p.resolve_minutes', name: 'p.name', businessHours: 'p.business_hours',
+  complianceTarget: 'p.compliance_target', enabled: 'p.enabled',
+}
+
+function resolveSort(alias: string, sortField: string | undefined, sortDirection: string | undefined, whitelist: Record<string, string>, defaultField: string, what: string): string {
+  return `ORDER BY ${orderByOrThrow(whitelist, sortField, sortDirection ?? 'desc', `${alias}.${defaultField} DESC`, what)}`
 }
 
 // ── Auto Triggers ────────────────────────────────────────────────────────────
@@ -384,7 +403,7 @@ async function autoTriggers(_: unknown, args: { entityType?: string; filters?: s
     const filter = args.entityType ? 'AND t.entity_type = $entityType' : ''
     const allowed = new Set(['name', 'entityType', 'eventType', 'enabled', 'executionCount', 'entity_type', 'event_type', 'execution_count'])
     const advWhere = args.filters ? buildAdvancedWhere(args.filters, params, allowed, 't') : ''
-    const order = resolveSort('t', args.sortField, args.sortDirection, { name: 't.name', entityType: 't.entity_type', eventType: 't.event_type', enabled: 't.enabled', executionCount: 't.execution_count' }, 'name')
+    const order = resolveSort('t', args.sortField, args.sortDirection, AUTO_TRIGGER_SORT_WHITELIST, 'name', 'autoTriggers(sortField)')
     const rows = await runQuery<{ props: Props }>(session, `
       MATCH (t:AutoTrigger {tenant_id: $tenantId})
       WHERE true ${filter} ${advWhere ? `AND (${advWhere})` : ''}
@@ -541,7 +560,7 @@ async function businessRules(_: unknown, args: { entityType?: string; filters?: 
     const filter = args.entityType ? 'AND r.entity_type = $entityType' : ''
     const allowed = new Set(['name', 'entityType', 'eventType', 'priority', 'enabled', 'conditionLogic', 'entity_type', 'event_type', 'condition_logic'])
     const advWhere = args.filters ? buildAdvancedWhere(args.filters, params, allowed, 'r') : ''
-    const order = resolveSort('r', args.sortField, args.sortDirection, { name: 'r.name', entityType: 'r.entity_type', priority: 'r.priority', enabled: 'r.enabled' }, 'priority')
+    const order = resolveSort('r', args.sortField, args.sortDirection, BUSINESS_RULE_SORT_WHITELIST, 'priority', 'businessRules(sortField)')
     const rows = await runQuery<{ props: Props }>(session, `
       MATCH (r:BusinessRule {tenant_id: $tenantId})
       WHERE true ${filter} ${advWhere ? `AND (${advWhere})` : ''}
@@ -687,7 +706,7 @@ async function slaPolicies(_: unknown, args: { entityType?: string; filters?: st
     const filter = args.entityType ? 'AND p.entity_type = $entityType' : ''
     const allowed = new Set(['name', 'entityType', 'priority', 'category', 'enabled', 'entity_type', 'response_minutes', 'resolve_minutes'])
     const advWhere = args.filters ? buildAdvancedWhere(args.filters, params, allowed, 'p') : ''
-    const order = resolveSort('p', args.sortField, args.sortDirection, { entityType: 'p.entity_type', priority: 'p.priority', category: 'p.category', responseMinutes: 'p.response_minutes', resolveMinutes: 'p.resolve_minutes', name: 'p.name' }, 'entity_type')
+    const order = resolveSort('p', args.sortField, args.sortDirection, SLA_POLICY_SORT_WHITELIST, 'entity_type', 'slaPolicies(sortField)')
     const rows = await runQuery<{ props: Props; teamName: string | null }>(session, `
       MATCH (p:SLAPolicyNode {tenant_id: $tenantId})
       WHERE true ${filter} ${advWhere ? `AND (${advWhere})` : ''}

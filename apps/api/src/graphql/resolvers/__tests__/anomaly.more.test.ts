@@ -205,13 +205,16 @@ describe('Query.anomalies', () => {
     expect(vi.mocked(runQuery).mock.calls[0]![1]).toContain('a.severity][0], -1) DESC, a.detected_at DESC')
   })
 
-  it('an unknown sort field is ignored, never interpolated', async () => {
+  it('an unknown sort field is refused, never interpolated (A-22, 26 Sep 2026)', async () => {
     vi.mocked(runQuery).mockResolvedValue([] as never)
-    const out = await anomalyResolvers.Query.anomalies(null, { sortField: 'x) DETACH DELETE a //' }, ctx)
-    const cypher = vi.mocked(runQuery).mock.calls[0]![1]
-    expect(cypher).toContain('-1) DESC, a.detected_at DESC, a.id ASC')
-    expect(cypher).not.toContain('DETACH')
-    // No count row at all → total 0, not NaN.
+    await expect(anomalyResolvers.Query.anomalies(null, { sortField: 'x) DETACH DELETE a //' }, ctx)).rejects.toMatchObject({ extensions: { i18n: { key: 'errors.sort.unknownField' } } })
+    expect(vi.mocked(runQuery)).not.toHaveBeenCalled()
+  })
+
+  it('with no sort asked, the gravest first, then the newest; no count row reads as total 0', async () => {
+    vi.mocked(runQuery).mockResolvedValue([] as never)
+    const out = await anomalyResolvers.Query.anomalies(null, {}, ctx)
+    expect(vi.mocked(runQuery).mock.calls[0]![1]).toContain('-1) DESC, a.detected_at DESC, a.id ASC')
     expect(out).toEqual({ items: [], total: 0 })
   })
 

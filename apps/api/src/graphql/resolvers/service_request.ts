@@ -37,7 +37,7 @@ import { listPage } from '../../lib/listLimit.js'
 import { assertUserInAssignedTeam, setTicketUser } from '../../services/ticketAssignment.js'
 import { assignRequestToTeam } from '../../services/requestAssignment.js'
 import { roleHasPermission } from '../../lib/roles.js'
-import { orderByOrThrow } from '../../lib/sortField.js'
+import { orderByOrThrow, customFieldOrderBy } from '../../lib/sortField.js'
 
 
 // ── Query resolvers ──────────────────────────────────────────────────────────
@@ -54,6 +54,35 @@ export const REQUEST_SORT_WHITELIST: Record<string, string> = {
   status:    'r.status',
   priority:  'r.priority',
   createdAt: 'r.created_at',
+  // 26 Sep 2026 (every column sorts): who asked, by name.
+  requestedBy: "head([(r)-[:REQUESTED_BY]->(rb:User) | rb.name])",
+}
+
+/**
+ * A catalog form's field is a column of the list too (`ff:<name>`), and it
+ * sorts (26 Sep 2026, «le colonne dovrebbero essere sempre tutte
+ * ordinabili»): a plain value is a property of the request, named by the
+ * field and passed as a parameter; a reference sorts by the name of what it
+ * points at (the relationship type comes from the product's own map, never
+ * from the request); a table by how many rows it has.
+ */
+function formFieldOrderBy(
+  sortField: string | null | undefined, sortDirection: string | null | undefined,
+  params: Record<string, unknown>, libreria: readonly { name: string; fieldType: string }[],
+): string | null {
+  if (!sortField?.startsWith('ff:')) return null
+  const name = sortField.slice(3)
+  const campo = libreria.find((c) => c.name === name)
+  if (!campo) {
+    throw new ValidationError(`serviceRequests(sortField): "${sortField}" is not a field of the form library.`,
+      { key: 'errors.sort.unknownField', params: { what: 'serviceRequests(sortField)', field: sortField, allowed: libreria.map((c) => c.name).join(', ') } })
+  }
+  params['sortFormField'] = name
+  const dir = sortDirection?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC'
+  const relType = isFormReferenceType(campo.fieldType) ? FORM_REFERENCE_REL_TYPES[campo.fieldType] : undefined
+  if (relType) return `head([(r)-[:${relType} {field: $sortFormField}]->(ff) | ff.name]) ${dir}`
+  if (campo.fieldType === 'table') return `size([(r)-[:FORM_TABLE_ROW {field: $sortFormField}]->(ff) | ff]) ${dir}`
+  return `r[$sortFormField] ${dir}`
 }
 
 async function serviceRequests(
@@ -80,9 +109,10 @@ async function serviceRequests(
      * dei campi ammessi non le conoscesse, quella ragione sarebbe sulla carta.
      */
     const libreria = await formFields(session, ctx.tenantId)
+    const customFieldNames = (await requestCustomFieldDefs(ctx, 'service_request')).map((d) => d.name)
     const allowedFields = new Set([
       ...getScalarFields(info.schema, 'ServiceRequest'),
-      ...(await requestCustomFieldDefs(ctx, 'service_request')).map((d) => d.name),
+      ...customFieldNames,
       ...libreria.map((d) => d.name),
       // I campi virtuali delle TABELLE (ondata 7): `persone__ruolo` filtra le
       // righe, e senza questi nomi nella lista ammessa il filtro sarebbe
@@ -123,7 +153,9 @@ async function serviceRequests(
     )
     const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'r', relationFields, '', campiLista) : ''
     // A-22: un campo non ordinabile è un errore, non un ordine diverso in silenzio.
-    const orderBy = orderByOrThrow(REQUEST_SORT_WHITELIST, args.sortField, args.sortDirection ?? 'desc', 'r.created_at DESC', 'serviceRequests(sortField)')
+    const orderBy = customFieldOrderBy('r', args.sortField, args.sortDirection, params, customFieldNames, 'serviceRequests(sortField)')
+      ?? formFieldOrderBy(args.sortField, args.sortDirection, params, libreria)
+      ?? orderByOrThrow(REQUEST_SORT_WHITELIST, args.sortField, args.sortDirection ?? 'desc', 'r.created_at DESC', 'serviceRequests(sortField)')
     // Revisione totale · B-1: `advWhere` è un'espressione nuda e va unita con
     // AND — interpolata così com'era rendeva il Cypher invalido, quindi QUALUNQUE
     // filtro della pagina Richieste faceva fallire l'elenco (riprodotto su c-test).

@@ -1,3 +1,4 @@
+import { orderByOrThrow } from '../../lib/sortField.js'
 import { GraphQLError } from 'graphql'
 import { v4 as uuidv4 } from 'uuid'
 import { getSession, toNumber } from '@opengraphity/neo4j'
@@ -139,9 +140,21 @@ function canReadDrafts(ctx: GraphQLContext): boolean {
   return hasPermission(ctx, 'kb.read')
 }
 
+/**
+ * The columns the articles list sorts on (26 Sep 2026, «le colonne dovrebbero
+ * essere sempre tutte ordinabili»): the list is paged here, so a column sorts
+ * the whole list only if the query does. The author and the views are the
+ * RETURN's names (ORDER BY comes after it). `sortWhitelists.test.ts` compares
+ * this map with the page.
+ */
+export const KB_ARTICLE_SORT_WHITELIST: Record<string, string> = {
+  title: 'a.title', category: 'a.category', audience: 'a.audience', status: 'a.status',
+  authorName: 'authorName', views: 'views', updatedAt: 'a.updated_at',
+}
+
 export async function kbArticles(
   _: unknown,
-  args: { search?: string; category?: string; status?: string; page?: number; pageSize?: number },
+  args: { search?: string; category?: string; status?: string; page?: number; pageSize?: number; sortField?: string; sortDirection?: string },
   ctx: GraphQLContext,
 ): Promise<{ items: KBArticle[]; total: number }> {
   const page     = Math.max(1, args.page     ?? 1)
@@ -167,7 +180,7 @@ export async function kbArticles(
       MATCH (a:KBArticle)
       WHERE ${where}
       ${ARTICLE_RETURN_WITH_WI}
-      ORDER BY a.updated_at DESC
+      ORDER BY ${orderByOrThrow(KB_ARTICLE_SORT_WHITELIST, args.sortField, args.sortDirection ?? 'desc', 'a.updated_at DESC', 'kbArticles(sortField)')}
       SKIP toInteger($skip) LIMIT toInteger($limit)
     `, params))
 
