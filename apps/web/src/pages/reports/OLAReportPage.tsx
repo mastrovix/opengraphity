@@ -3,7 +3,7 @@
  *
  * Pagina gemella dell'SLA Report (stessa finestra, stessi box, stesse
  * percentuali: `reportWindow.tsx`). Qui si LEGGE; i contratti si creano e si
- * modificano in Admin → OLA / UC.
+ * modificano in Process rules → OLA / UC.
  *
  * Una «valutazione» è un'entità conclusa nella finestra confrontata con
  * l'obiettivo di risoluzione di un contratto: la stessa entità conta una volta

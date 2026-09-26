@@ -296,7 +296,7 @@ describe('job purge_inapp_notifications', () => {
     expect(before - cutoffOne).toBeLessThan(31 * 86_400_000)
     expect(before - cutoffTwo).toBeGreaterThanOrEqual(90 * 86_400_000 - 1000)
     expect(logInfo).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'c-two', deleted: 7, retentionDays: 90 }), 'In-app notifications pruned')
-    expect(logWarn).toHaveBeenCalledWith({ tenantId: 'c-new' }, expect.stringMatching(/NOT pruned.*Settings → Organization/))
+    expect(logWarn).toHaveBeenCalledWith({ tenantId: 'c-new' }, expect.stringMatching(/NOT pruned.*Organization & access → Organization/))
   })
 })
 

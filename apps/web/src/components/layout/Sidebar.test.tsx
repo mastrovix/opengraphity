@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { gql } from '@apollo/client'
 import { Sidebar } from './Sidebar'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
@@ -35,37 +36,59 @@ function renderSidebar(role: string, opts: { route?: string; collapsed?: boolean
 const nav = () => screen.getByRole('navigation', { name: 'Main menu' })
 
 describe('Sidebar — visibilità per ruolo', () => {
-  it('utente non admin: nessun gruppo Teams & Users / Configuration / ADMIN', async () => {
+  it('utente non admin: dei gruppi di amministrazione solo quello della Knowledge Base', async () => {
     renderSidebar('operator')
     // le voci arrivano coi permessi di `me` (ondata 7): nessuna voce prima di sapere cosa si apre
     expect(await within(nav()).findByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/dashboard')
     expect(within(nav()).getByRole('button', { name: 'ITIL Processes' })).toBeInTheDocument()
     // dopo il caricamento di `me` (mock a delay 0) i gruppi admin restano assenti
     await new Promise((r) => setTimeout(r, 10))
-    expect(within(nav()).queryByRole('button', { name: 'Teams & Users' })).not.toBeInTheDocument()
-    expect(within(nav()).queryByRole('button', { name: 'Configuration' })).not.toBeInTheDocument()
-    expect(within(nav()).queryByRole('link', { name: 'Audit Log' })).not.toBeInTheDocument()
-    expect(within(nav()).queryByRole('button', { name: 'Settings' })).not.toBeInTheDocument()
-    // Ondata 7: la sezione ADMIN mostra le sole pagine che il ruolo apre — per
-    // l'operator la gestione della Knowledge Base (kb.write), che prima aveva la
-    // rotta aperta ma nessuna voce di menu.
-    const admin = within(nav()).getAllByRole('link').filter((l) => l.getAttribute('href')?.startsWith('/admin/') || l.getAttribute('href') === '/logs')
-    expect(admin.map((l) => l.getAttribute('href'))).toEqual(['/admin/knowledge-base'])
+    for (const group of ['Organization & access', 'Process rules', 'Data model', 'External connections', 'Platform']) {
+      expect(within(nav()).queryByRole('button', { name: group }), group).not.toBeInTheDocument()
+    }
+    // Ondata 7: l'amministrazione mostra le sole pagine che il ruolo apre — per
+    // l'operator la gestione della Knowledge Base (kb.write), nel suo gruppo.
+    const catalog = within(nav()).getByRole('button', { name: 'Catalog & knowledge base' })
+    await userEvent.click(catalog)
+    const panel = document.getElementById(catalog.getAttribute('aria-controls')!)!
+    expect(within(panel).getAllByRole('link').map((l) => l.getAttribute('href'))).toEqual(['/admin/knowledge-base'])
   })
 
-  it('admin: gruppi Teams & Users, Configuration e sezione ADMIN con Settings', async () => {
+  // Review of the pages, 26 Sep 2026: one group per topic, a page in one group only.
+  it('admin: the administration in six groups by topic, each with its own pages', async () => {
     renderSidebar('admin')
-    expect(await within(nav()).findByRole('button', { name: 'Teams & Users' })).toBeInTheDocument()
-    expect(within(nav()).getByRole('button', { name: 'Configuration' })).toBeInTheDocument()
-    expect(within(nav()).getByText('ADMIN')).toBeInTheDocument()
-    expect(within(nav()).getByRole('link', { name: 'Audit Log' })).toHaveAttribute('href', '/admin/audit')
-    expect(within(nav()).getByRole('button', { name: 'Settings' })).toBeInTheDocument()
+    expect(await within(nav()).findByText('ADMINISTRATION')).toBeInTheDocument()
+    const pagesOf = async (group: string): Promise<string[]> => {
+      const button = within(nav()).getByRole('button', { name: group })
+      if (button.getAttribute('aria-expanded') === 'false') await userEvent.click(button)
+      const panel = document.getElementById(button.getAttribute('aria-controls')!)!
+      return within(panel).getAllByRole('link').map((l) => l.getAttribute('href')!)
+    }
+    expect(await pagesOf('Organization & access')).toEqual(['/settings/organization', '/teams', '/users', '/roles', '/security/login'])
+    expect(await pagesOf('Process rules')).toEqual(['/workflow', '/settings/itil-designer', '/admin/sla-policies', '/admin/ola-uc',
+      '/admin/assessment-questions', '/admin/business-rules', '/admin/triggers', '/settings/anomaly-rules', '/settings/notification-rules'])
+    expect(await pagesOf('Catalog & knowledge base')).toEqual(['/admin/service-catalog', '/settings/catalog-forms', '/admin/knowledge-base'])
+    expect(await pagesOf('Data model')).toEqual(['/settings/enum-designer', '/settings/domain-matrices', '/settings/ci-types'])
+    expect(await pagesOf('External connections')).toEqual(['/admin/integrations', '/settings/notifications', '/settings/sync'])
+    expect(await pagesOf('Platform')).toEqual(['/settings/diagnostics', '/logs', '/admin/audit', '/admin/queues', '/admin/monitoring'])
+    // The renamed pages read as what they are (point 3 of the review).
+    expect(within(nav()).getByRole('link', { name: 'Ticket types' })).toHaveAttribute('href', '/settings/itil-designer')
+    expect(within(nav()).getByRole('link', { name: 'Dictionary' })).toHaveAttribute('href', '/settings/enum-designer')
+    expect(within(nav()).getByRole('link', { name: 'Catalog forms' })).toHaveAttribute('href', '/settings/catalog-forms')
+  })
+
+  it('the group of the current page starts open, with that page lit', async () => {
+    renderSidebar('admin', { route: '/settings/domain-matrices' })
+    const data = await within(nav()).findByRole('button', { name: 'Data model' })
+    expect(data).toHaveAttribute('aria-expanded', 'true')
+    expect(within(nav()).getByRole('button', { name: 'Process rules' })).toHaveAttribute('aria-expanded', 'false')
+    expect(within(nav()).getByRole('link', { name: 'Domain matrices' })).toHaveAttribute('aria-current', 'page')
   })
 
   it('finché `me` non risponde (o è null) nessuna voce admin', async () => {
     renderSidebar('x', { mocks: [meMock(null), anomalyStatsMock(0), pendingMock(0)] })
     await new Promise((r) => setTimeout(r, 20))
-    expect(within(nav()).queryByRole('button', { name: 'Teams & Users' })).not.toBeInTheDocument()
+    expect(within(nav()).queryByRole('button', { name: 'Organization & access' })).not.toBeInTheDocument()
   })
 })
 
@@ -172,11 +195,13 @@ describe('Sidebar — Monitoraggio (Event Management)', () => {
     expect(within(panel).queryByRole('link', { name: 'Event policy' })).not.toBeInTheDocument()
   })
 
-  it('/settings/event-policy: attivo solo il gruppo Monitoraggio, non Settings', async () => {
+  it('/settings/event-policy: attivo solo il gruppo Monitoraggio, nessun gruppo di amministrazione', async () => {
     renderSidebar('admin', { route: '/settings/event-policy' })
     const monitoring = await within(nav()).findByRole('button', { name: 'Monitoring' })
     expect(monitoring).toHaveAttribute('aria-expanded', 'true')
-    expect(within(nav()).getByRole('button', { name: 'Settings' })).toHaveAttribute('aria-expanded', 'false')
+    for (const group of ['Organization & access', 'Process rules', 'Catalog & knowledge base', 'Data model', 'External connections', 'Platform']) {
+      expect(within(nav()).getByRole('button', { name: group }), group).toHaveAttribute('aria-expanded', 'false')
+    }
   })
 })
 
@@ -186,7 +211,7 @@ describe('Sidebar — una voce accesa sola', () => {
   // voci del menu admin e, pagina per pagina, vuole accesa solo quella.
   it('per ogni voce del menu, sulla sua pagina è accesa solo lei', async () => {
     const { container, unmount, user } = renderSidebar('admin')
-    await within(nav()).findByRole('button', { name: 'Teams & Users' })
+    await within(nav()).findByRole('button', { name: 'Organization & access' })
     // Le voci di un gruppo chiuso non sono nel DOM: si aprono tutti.
     for (const b of within(nav()).getAllByRole('button')) {
       if (b.getAttribute('aria-expanded') === 'false') await user.click(b)
@@ -197,7 +222,7 @@ describe('Sidebar — una voce accesa sola', () => {
 
     for (const href of hrefs) {
       const r = renderSidebar('admin', { route: href })
-      await within(nav()).findByRole('button', { name: 'Teams & Users' })
+      await within(nav()).findByRole('button', { name: 'Organization & access' })
       const accese = Array.from(r.container.querySelectorAll('a[aria-current="page"]')).map((a) => a.getAttribute('href'))
       expect({ pagina: href, accese }).toEqual({ pagina: href, accese: [href] })
       r.unmount()
@@ -220,7 +245,7 @@ describe('Sidebar — una voce accesa sola', () => {
 
   it('una pagina interna accende la voce da cui discende, e solo quella', async () => {
     const { container } = renderSidebar('admin', { route: '/reports/sla/qualcosa' })
-    await within(nav()).findByRole('button', { name: 'Teams & Users' })
+    await within(nav()).findByRole('button', { name: 'Organization & access' })
     expect(Array.from(container.querySelectorAll('a[aria-current="page"]')).map((a) => a.getAttribute('href'))).toEqual(['/reports/sla'])
   })
 })

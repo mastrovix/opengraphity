@@ -105,7 +105,7 @@ export const WIRE_VOCABULARIES: Readonly<Record<string, { reason: string; reason
     reason:
       'is the severity the monitoring systems send (the product normalizes alarms to info, warning, critical): '
       + 'changing its values does not change what arrives, and breaks the translation. '
-      + 'What you decide is which incident severity they translate into: Settings → Domain matrices, '
+      + 'What you decide is which incident severity they translate into: Data model → Domain matrices, '
       + 'matrix «event_severity».',
     reasonKey: 'errors.enum.wireReason.event_severity',
   },

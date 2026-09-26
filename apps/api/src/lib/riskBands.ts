@@ -105,7 +105,7 @@ async function loadThresholds(tenantId: string): Promise<readonly RiskBandThresh
         throw new ValidationError(
           `The risk bands of this tenant are not declared and the "risk_band" dictionary has `
           + `${String(bands.length)} values (${bands.join(', ')}), not three: there is no factory split of the `
-          + `score to fall back on. Declare the thresholds in Settings → Domain matrices.`,
+          + `score to fall back on. Declare the thresholds in Data model → Domain matrices.`,
           { key: 'errors.riskBand.notDeclared', params: { count: bands.length, bands: bands.join(', ') } },
         )
       }
@@ -145,7 +145,7 @@ function parseThresholds(raw: unknown, tenantId: string, bands: readonly string[
     if (!bands.includes(band)) {
       throw new ValidationError(
         `The risk bands of this tenant name "${band}", which is not (any more) in the "risk_band" dictionary `
-        + `(${bands.join(', ')}): fix them in Settings → Domain matrices.`,
+        + `(${bands.join(', ')}): fix them in Data model → Domain matrices.`,
         { key: 'errors.riskBand.stale', params: { band, bands: bands.join(', ') } },
       )
     }

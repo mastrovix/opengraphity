@@ -986,7 +986,7 @@ describe('IncidentDetailPage: knowledge base draft', () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalled())
     expect(apolloFinto.chiamata('CreateKbDraftFromIncident')).toEqual({ incidentId: 'inc-1' })
     const [message, options] = toast.success.mock.calls[0] as [string, { action: { label: string; onClick: () => void } }]
-    expect(message).toBe('KB draft created: "Mail relay runbook" — find it in Knowledge Base Admin')
+    expect(message).toBe('KB draft created: "Mail relay runbook" — find it in Catalog & knowledge base → Knowledge base management')
     expect(options.action.label).toBe('Open drafts')
     act(() => options.action.onClick())
     await attendiURL('/admin/knowledge-base')

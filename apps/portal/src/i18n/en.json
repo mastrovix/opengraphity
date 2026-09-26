@@ -183,13 +183,13 @@
     "authRestored": "Connection to the authentication server restored",
     "authUnreachable": "Authentication server unreachable — retrying in {{seconds}}s",
     "portal": {
-      "severityNotConfigured": "The severities offered in the portal are not configured, so a ticket cannot be opened there. An administrator chooses them in Settings → Organization.",
-      "severityStale": "The portal offers {{values}}, which the severity dictionary no longer has ({{allowed}}). An administrator fixes the choice in Settings → Organization.",
+      "severityNotConfigured": "The severities offered in the portal are not configured, so a ticket cannot be opened there. An administrator chooses them in Organization & access → Organization.",
+      "severityStale": "The portal offers {{values}}, which the severity dictionary no longer has ({{allowed}}). An administrator fixes the choice in Organization & access → Organization.",
       "severityNotOffered": "This severity is not offered in the portal. Choose one of: {{allowed}}.",
       "unclassifiedStates": "{{count}} ticket states belong to no class of the active incident workflow ({{states}}): the portal counters would not count them. Fix the steps (initial / terminal / category) in the designer.",
       "categoryRequired": "Choose a category for the request.",
       "priorityRequired": "Choose a priority for the request.",
-      "noCategories": "The ticket categories dictionary has no values: add them in Settings → Dictionary.",
+      "noCategories": "The ticket categories dictionary has no values: add them in Data model → Dictionary.",
       "severityAtLeastOne": "Choose at least one severity for the portal: without it nobody can open a ticket there.",
       "severityUnknown": "\"{{value}}\" is not a value of the severity dictionary ({{allowed}}).",
       "severityDuplicate": "\"{{value}}\" appears twice.",
@@ -198,7 +198,7 @@
       "cannotConfirmResolution": "This ticket cannot be confirmed: it is not resolved, or its workflow closes it only automatically."
     },
     "serviceRequest": {
-      "catalogItemWithoutPriority": "The catalog item «{{item}}» has no priority, so a request cannot be opened from it. An administrator sets it in Admin → Service catalog.",
+      "catalogItemWithoutPriority": "The catalog item «{{item}}» has no priority, so a request cannot be opened from it. An administrator sets it in Catalog & knowledge base → Catalog items.",
       "catalogItemInactive": "This service is no longer available: IT has switched it off. Pick another catalog item, or open a ticket describing what you need."
     },
     "comment": {
@@ -288,7 +288,7 @@
       "revisionChanged": "The form of \"{{item}}\" changed while you were filling it (it was revision {{filled}}, now it is {{current}}): these answers belong to another form. Start the request again."
     },
     "scripting": {
-      "scriptsSwitchedOff": "{{what}}: scripts are switched off for this organization. Switch them on in Settings > Organization, or remove the script from the configuration.",
+      "scriptsSwitchedOff": "{{what}}: scripts are switched off for this organization. Switch them on in Organization & access → Organization, or remove the script from the configuration.",
       "what": {
         "field": "The script of field \"{{field}}\"",
         "webhook": "The transform script of webhook {{hook}}",

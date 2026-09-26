@@ -6,7 +6,7 @@ import { useQuery } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { useTranslation } from 'react-i18next'
 import { GET_ANOMALY_STATS } from '@/graphql/queries'
-import { ListChecks, SlidersHorizontal, Server, Users, BarChart2, Settings, Activity, Radar, HeartPulse } from 'lucide-react'
+import { ListChecks, Server, BarChart2, Activity, Radar, HeartPulse } from 'lucide-react'
 import { useMe } from '@/hooks/useMe'
 import { routePermissions } from '@/lib/routePermissions'
 import { useMetamodel } from '@/contexts/MetamodelContext'
@@ -14,7 +14,7 @@ import { CIIcon } from '@/lib/ciIcon'
 import { C, NavItem, SubItem } from './SidebarNavItems'
 import { SidebarGroup, useGroupOpen } from './SidebarGroup'
 import { voceAttiva } from './menuActive'
-import { NAV_ITEM_DEFS, ANALYSIS_ITEM_DEFS, MONITORING_ITEM_DEFS, CONFIG_ITEM_DEFS, PROFILE_ITEM, ITSM_ITEM_DEFS, REPORTING_ITEM_DEFS, TEAMS_ITEM_DEFS, SETTINGS_ITEM_DEFS, ADMIN_NAV_ITEM_DEFS } from './menu'
+import { NAV_ITEM_DEFS, ANALYSIS_ITEM_DEFS, MONITORING_ITEM_DEFS, PROFILE_ITEM, ITSM_ITEM_DEFS, REPORTING_ITEM_DEFS, ADMIN_GROUPS, type MenuGroupDef } from './menu'
 import { SidebarCollapseButton } from './SidebarUserMenu'
 import { colors } from '@/lib/tokens'
 
@@ -68,17 +68,14 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   const reporting  = visible(REPORTING_ITEM_DEFS)
   const analysis   = visible(ANALYSIS_ITEM_DEFS)
   const monitoring = visible(MONITORING_ITEM_DEFS)
-  const teams      = visible(TEAMS_ITEM_DEFS)
-  const config     = visible(CONFIG_ITEM_DEFS)
-  const settings   = visible(SETTINGS_ITEM_DEFS)
-  const adminNav   = visible(ADMIN_NAV_ITEM_DEFS)
+  // A group only when the role opens at least one of its pages.
+  const adminGroups = ADMIN_GROUPS.map((g) => ({ ...g, items: visible(g.items) })).filter((g) => g.items.length > 0)
   const { ciTypes } = useMetamodel()
 
   // Una voce accesa sola, la più specifica fra TUTTE quelle del menu.
   const attiva = voceAttiva(pathname, [
     ...NAV_ITEM_DEFS, ...ITSM_ITEM_DEFS, ...REPORTING_ITEM_DEFS, ...ANALYSIS_ITEM_DEFS,
-    ...MONITORING_ITEM_DEFS, ...TEAMS_ITEM_DEFS, ...CONFIG_ITEM_DEFS, ...SETTINGS_ITEM_DEFS,
-    ...ADMIN_NAV_ITEM_DEFS, PROFILE_ITEM,
+    ...MONITORING_ITEM_DEFS, ...ADMIN_GROUPS.flatMap((g) => g.items), PROFILE_ITEM,
   ].map((d) => d.to).concat('/cmdb', '/cmdb/health', ciTypes.map((ct) => `/ci/${ct.name}`)))
 
   // Active flags derived from the location; open state re-opens on entry (E-12).
@@ -87,19 +84,12 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   const analysisActive  = startsWithAny(pathname, ANALYSIS_ITEM_DEFS)
   const monitoringActive = pathname.startsWith('/events') || pathname.startsWith('/monitoring') || pathname.startsWith('/settings/event-policy')
   const cmdbActive      = CMDB_LEGACY_PREFIXES.some((p) => pathname.startsWith(p))
-  const teamsActive     = startsWithAny(pathname, TEAMS_ITEM_DEFS)
-  const configActive    = startsWithAny(pathname, CONFIG_ITEM_DEFS)
-  // La policy eventi vive sotto /settings ma appartiene al gruppo Monitoraggio: un solo gruppo attivo.
-  const settingsActive  = (pathname.startsWith('/settings') && !pathname.startsWith('/settings/event-policy')) || pathname.startsWith('/admin/queues')
 
   const [itsmOpen, toggleItsm]           = useGroupOpen(itsmActive)
   const [reportingOpen, toggleReporting] = useGroupOpen(reportingActive)
   const [analysisOpen, toggleAnalysis]   = useGroupOpen(analysisActive)
   const [monitoringOpen, toggleMonitoring] = useGroupOpen(monitoringActive)
   const [cmdbOpen, toggleCmdb]           = useGroupOpen(cmdbActive)
-  const [teamsOpen, toggleTeams]         = useGroupOpen(teamsActive)
-  const [configOpen, toggleConfig]       = useGroupOpen(configActive)
-  const [settingsOpen, toggleSettings]   = useGroupOpen(settingsActive)
 
   const { data: anomalyStatsData, error: anomalyError } = useQuery<{ anomalyStats: { critical: number; open: number } }>(
     GET_ANOMALY_STATS,
@@ -269,38 +259,15 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
           />
         )}
 
-        {/* Teams & Users */}
-        {teams.length > 0 && (
-          <SidebarGroup title={t('sidebar.teamsUsers')} icon={Users} active={teamsActive} open={teamsOpen} onToggle={toggleTeams} collapsed={collapsed} collapsedTo={teams[0]!.to}>
-            {teams.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} isActive={to === attiva} />)}
-          </SidebarGroup>
-        )}
-
-        {/* Configuration */}
-        {config.length > 0 && (
-          <SidebarGroup title={t('sidebar.configuration')} icon={SlidersHorizontal} active={configActive} open={configOpen} onToggle={toggleConfig} collapsed={collapsed} collapsedTo={config[0]!.to}>
-            {config.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} isActive={to === attiva} />)}
-          </SidebarGroup>
-        )}
-
-        {/* Admin items + Settings */}
-        {(adminNav.length > 0 || settings.length > 0) && (
+        {/* Administration: one group per topic (26 Sep 2026) */}
+        {adminGroups.length > 0 && (
           <>
             {!collapsed && (
               <p style={{ color: C.textSection, fontSize: 'var(--font-size-label)', fontWeight: 600, letterSpacing: '0.08em', padding: '8px 8px 4px', margin: 0 }}>
                 {t('sidebar.admin')}
               </p>
             )}
-            {adminNav.map(({ to, labelKey, icon }) => (
-              <NavItem key={to} to={to} label={t(labelKey)} icon={icon} collapsed={collapsed} isActive={to === attiva} />
-            ))}
-
-            {/* Settings — collapsible, dentro ADMIN */}
-            {settings.length > 0 && (
-              <SidebarGroup title={t('sidebar.settings')} icon={Settings} active={settingsActive} open={settingsOpen} onToggle={toggleSettings} collapsed={collapsed} collapsedTo={settings[0]!.to}>
-                {settings.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} isActive={to === attiva} />)}
-              </SidebarGroup>
-            )}
+            {adminGroups.map((g) => <AdminGroup key={g.groupKey} group={g} attiva={attiva} collapsed={collapsed} />)}
           </>
         )}
       </nav>
@@ -308,5 +275,21 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
       {/* Collapse toggle */}
       <SidebarCollapseButton collapsed={collapsed} onToggle={onToggle} />
     </aside>
+  )
+}
+
+/**
+ * One administration group: open while one of its pages is the current one,
+ * like every other group. Its own component, so each group holds its own
+ * open state (a hook per group, never in a loop).
+ */
+function AdminGroup({ group, attiva, collapsed }: { group: MenuGroupDef; attiva: string | null; collapsed: boolean }) {
+  const { t } = useTranslation()
+  const active = group.items.some((i) => i.to === attiva)
+  const [open, toggle] = useGroupOpen(active)
+  return (
+    <SidebarGroup title={t(group.groupKey)} icon={group.icon} active={active} open={open} onToggle={toggle} collapsed={collapsed} collapsedTo={group.items[0]!.to}>
+      {group.items.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} isActive={to === attiva} />)}
+    </SidebarGroup>
   )
 }

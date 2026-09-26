@@ -544,7 +544,7 @@ async function ticketCategories(_: unknown, args: { language?: string | null }, 
     requestedLanguage(ctx.tenantId, args.language),
   ])
   if (vocabulary.values.length === 0) {
-    throw new ValidationError(`Tenant "${ctx.tenantId}": the "category" dictionary has no values, so a portal ticket cannot be opened. Add them in Settings → Dictionary.`, { key: 'errors.portal.noCategories' })
+    throw new ValidationError(`Tenant "${ctx.tenantId}": the "category" dictionary has no values, so a portal ticket cannot be opened. Add them in Data model → Dictionary.`, { key: 'errors.portal.noCategories' })
   }
   return vocabulary.values.map((name) => ({ name, label: labelFor(name, vocabulary.labels, language, fallback), icon: vocabulary.icons[name] ?? null }))
 }

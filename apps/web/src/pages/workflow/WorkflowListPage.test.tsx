@@ -166,7 +166,7 @@ describe('WorkflowListPage — an incomplete configuration', () => {
     const { user } = renderWithProviders(<WorkflowListPage />)
     const banner = screen.getByText("This tenant's configuration is incomplete").parentElement!
     expect(banner).toHaveTextContent(
-      'no active workflow for: problem, change; no teams: without teams CIs have no Owner/Support Group and no change can be created (Teams and Users)',
+      'no active workflow for: problem, change; no teams: without teams CIs have no Owner/Support Group and no change can be created (Organization & access → Teams)',
     )
     await user.click(screen.getByRole('button', { name: 'Complete the configuration' }))
     expect(apolloFinto.chiamate['ProvisionTenantData']).toHaveLength(1)
@@ -181,7 +181,7 @@ describe('WorkflowListPage — an incomplete configuration', () => {
     const { user } = renderWithProviders(<WorkflowListPage />)
     await user.click(screen.getByRole('button', { name: 'Complete the configuration' }))
     await waitFor(() => expect(toast.warning).toHaveBeenCalledWith(
-      'Configuration created, but this is still missing: no teams: without teams CIs have no Owner/Support Group and no change can be created (Teams and Users)',
+      'Configuration created, but this is still missing: no teams: without teams CIs have no Owner/Support Group and no change can be created (Organization & access → Teams)',
     ))
     expect(toast.success).not.toHaveBeenCalled()
   })

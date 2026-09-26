@@ -40,18 +40,6 @@ export const MONITORING_ITEM_DEFS = [
   { to: '/settings/event-policy', labelKey: 'sidebar.eventPolicy',       icon: Settings2  },
 ]
 
-export const CONFIG_ITEM_DEFS = [
-  { to: '/settings/diagnostics',      labelKey: 'sidebar.configurationDiagnostics', icon: Stethoscope },
-  { to: '/settings/organization',    labelKey: 'sidebar.organization',    icon: Building2 },
-  { to: '/settings/ci-types',        labelKey: 'sidebar.ciTypeDesigner',  icon: Layers   },
-  { to: '/settings/itil-designer',   labelKey: 'sidebar.itilDesigner',    icon: Settings2 },
-  { to: '/settings/catalog-forms',   labelKey: 'sidebar.catalogForms',    icon: ClipboardList },
-  { to: '/settings/enum-designer',   labelKey: 'sidebar.enumDesigner',    icon: Tag      },
-  { to: '/settings/domain-matrices', labelKey: 'sidebar.domainMatrices',  icon: Table2   },
-  { to: '/settings/anomaly-rules',   labelKey: 'sidebar.anomalyRules',    icon: ShieldAlert },
-  { to: '/workflow',                  labelKey: 'sidebar.workflowDesigner', icon: Route    },
-]
-
 // Personal page, the whole workspace (E-13): language + Slack link.
 export const PROFILE_ITEM = { to: '/profile', labelKey: 'sidebar.profile', icon: UserCircle }
 
@@ -71,32 +59,62 @@ export const REPORTING_ITEM_DEFS = [
   { to: '/custom-reports', labelKey: 'sidebar.reportBuilder', icon: LayoutGrid   },
 ]
 
-export const TEAMS_ITEM_DEFS = [
-  { to: '/teams', labelKey: 'sidebar.teams', icon: UsersRound },
-  { to: '/users', labelKey: 'sidebar.users', icon: User },
-  { to: '/roles', labelKey: 'sidebar.roles', icon: KeyRound },
-  { to: '/security/login', labelKey: 'sidebar.loginSecurity', icon: ShieldCheck },
-]
+export interface MenuGroupDef { groupKey: string; icon: LucideIcon; items: readonly MenuItemDef[] }
 
-export const SETTINGS_ITEM_DEFS = [
-  { to: '/settings/notifications',      labelKey: 'sidebar.notificationChannels', icon: Bell },
-  { to: '/settings/notification-rules', labelKey: 'sidebar.notificationRules',    icon: Bell },
-  { to: '/settings/sync',               labelKey: 'sidebar.cmdbSync',             icon: Activity },
-  { to: '/admin/queues',                labelKey: 'sidebar.bullBoard',            icon: Activity },
-]
-
-export const ADMIN_NAV_ITEM_DEFS = [
-  { to: '/logs',                   labelKey: 'sidebar.logs',           icon: ScrollText  },
-  { to: '/admin/audit',            labelKey: 'sidebar.auditLog',       icon: ShieldCheck },
-  { to: '/admin/monitoring',       labelKey: 'sidebar.platformMonitoring', icon: Activity },
-  { to: '/admin/knowledge-base',   labelKey: 'sidebar.kbAdmin',        icon: BookOpen    },
-  { to: '/admin/triggers',         labelKey: 'sidebar.autoTriggers',   icon: Zap         },
-  { to: '/admin/business-rules',   labelKey: 'sidebar.businessRules',  icon: GitBranch   },
-  { to: '/admin/sla-policies',     labelKey: 'sidebar.slaPolicies',    icon: Clock       },
-  { to: '/admin/ola-uc',           labelKey: 'sidebar.olaContracts',   icon: Handshake   },
-  { to: '/admin/service-catalog',  labelKey: 'sidebar.serviceCatalog', icon: ShoppingCart},
-  { to: '/admin/integrations',         labelKey: 'sidebar.integrations',        icon: Plug        },
-  { to: '/admin/assessment-questions', labelKey: 'sidebar.assessmentQuestions', icon: HelpCircle  },
+/**
+ * L'AMMINISTRAZIONE PER ARGOMENTO (26 set 2026, revisione delle pagine).
+ *
+ * Erano tre gruppi con confini che non dicevano niente: «Configurazione»,
+ * undici voci sciolte sotto «ADMIN» e «Impostazioni» dentro ADMIN. Lo stesso
+ * argomento finiva in posti diversi: le voci del catalogo sotto ADMIN e i loro
+ * moduli sotto Configurazione; integrazioni, canali di notifica e sync della
+ * CMDB in tre gruppi; log e audit sotto ADMIN, la coda dei job sotto
+ * Impostazioni. Ora ogni gruppo è un argomento, e una voce sta in uno solo.
+ *
+ * Sorgenti e policy degli eventi restano sotto Monitoraggio: sono l'ingresso
+ * di quella filiera, e chi la configura lavora lì.
+ */
+export const ADMIN_GROUPS: readonly MenuGroupDef[] = [
+  { groupKey: 'sidebar.groupAccess', icon: Building2, items: [
+    { to: '/settings/organization', labelKey: 'sidebar.organization',  icon: Building2 },
+    { to: '/teams',                 labelKey: 'sidebar.teams',         icon: UsersRound },
+    { to: '/users',                 labelKey: 'sidebar.users',         icon: User },
+    { to: '/roles',                 labelKey: 'sidebar.roles',         icon: KeyRound },
+    { to: '/security/login',        labelKey: 'sidebar.loginSecurity', icon: ShieldCheck },
+  ] },
+  { groupKey: 'sidebar.groupProcesses', icon: Route, items: [
+    { to: '/workflow',                   labelKey: 'sidebar.workflowDesigner',    icon: Route },
+    { to: '/settings/itil-designer',     labelKey: 'sidebar.itilDesigner',        icon: Settings2 },
+    { to: '/admin/sla-policies',         labelKey: 'sidebar.slaPolicies',         icon: Clock },
+    { to: '/admin/ola-uc',               labelKey: 'sidebar.olaContracts',        icon: Handshake },
+    { to: '/admin/assessment-questions', labelKey: 'sidebar.assessmentQuestions', icon: HelpCircle },
+    { to: '/admin/business-rules',       labelKey: 'sidebar.businessRules',       icon: GitBranch },
+    { to: '/admin/triggers',             labelKey: 'sidebar.autoTriggers',        icon: Zap },
+    { to: '/settings/anomaly-rules',     labelKey: 'sidebar.anomalyRules',        icon: ShieldAlert },
+    { to: '/settings/notification-rules', labelKey: 'sidebar.notificationRules',  icon: Bell },
+  ] },
+  { groupKey: 'sidebar.groupCatalog', icon: ShoppingCart, items: [
+    { to: '/admin/service-catalog', labelKey: 'sidebar.serviceCatalog', icon: ShoppingCart },
+    { to: '/settings/catalog-forms', labelKey: 'sidebar.catalogForms',  icon: ClipboardList },
+    { to: '/admin/knowledge-base',  labelKey: 'sidebar.kbAdmin',        icon: BookOpen },
+  ] },
+  { groupKey: 'sidebar.groupData', icon: Tag, items: [
+    { to: '/settings/enum-designer',   labelKey: 'sidebar.enumDesigner',   icon: Tag },
+    { to: '/settings/domain-matrices', labelKey: 'sidebar.domainMatrices', icon: Table2 },
+    { to: '/settings/ci-types',        labelKey: 'sidebar.ciTypeDesigner', icon: Layers },
+  ] },
+  { groupKey: 'sidebar.groupConnections', icon: Plug, items: [
+    { to: '/admin/integrations',     labelKey: 'sidebar.integrations',         icon: Plug },
+    { to: '/settings/notifications', labelKey: 'sidebar.notificationChannels', icon: Bell },
+    { to: '/settings/sync',          labelKey: 'sidebar.cmdbSync',             icon: Activity },
+  ] },
+  { groupKey: 'sidebar.groupPlatform', icon: Stethoscope, items: [
+    { to: '/settings/diagnostics', labelKey: 'sidebar.configurationDiagnostics', icon: Stethoscope },
+    { to: '/logs',                 labelKey: 'sidebar.logs',                     icon: ScrollText },
+    { to: '/admin/audit',          labelKey: 'sidebar.auditLog',                 icon: ShieldCheck },
+    { to: '/admin/queues',         labelKey: 'sidebar.bullBoard',                icon: Activity },
+    { to: '/admin/monitoring',     labelKey: 'sidebar.platformMonitoring',       icon: Activity },
+  ] },
 ]
 
 /**
@@ -110,10 +128,7 @@ export const MENU_SECTIONS: readonly { groupKey: string | null; items: readonly 
   { groupKey: 'sidebar.analysis',      items: ANALYSIS_ITEM_DEFS },
   { groupKey: 'sidebar.monitoring',    items: MONITORING_ITEM_DEFS },
   { groupKey: null,                   items: [PROFILE_ITEM] },
-  { groupKey: 'sidebar.teamsUsers',    items: TEAMS_ITEM_DEFS },
-  { groupKey: 'sidebar.configuration', items: CONFIG_ITEM_DEFS },
-  { groupKey: 'sidebar.settings',      items: SETTINGS_ITEM_DEFS },
-  { groupKey: null,                   items: ADMIN_NAV_ITEM_DEFS },
+  ...ADMIN_GROUPS,
 ]
 
 export interface MenuPosition {

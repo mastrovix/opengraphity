@@ -138,7 +138,7 @@ describe('calculateDeadline / businessMinutesBetween — the refusals', () => {
     const { businessMinutesBetween } = await import('../policy.js')
     expect(() => businessMinutesBetween(
       new Date('2026-03-28T09:00:00Z'), new Date('2026-03-28T17:00:00Z'), true, 'Europe/Rome', null))
-      .toThrow('[sla:policy] business-hours interval without a service calendar: configure it in Settings → Organization')
+      .toThrow('[sla:policy] business-hours interval without a service calendar: configure it in Organization & access → Organization')
   })
 
   it('an interval that ends before it starts is zero, not negative', async () => {

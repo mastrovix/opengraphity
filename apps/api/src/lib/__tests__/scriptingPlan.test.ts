@@ -64,7 +64,7 @@ describe('assertScriptingEnabled', () => {
     expect((err as GraphQLError).extensions['code']).toBe('BAD_USER_INPUT')
     expect((err as GraphQLError).message).toContain('server.rack.validation_script')
     expect((err as GraphQLError).message).toContain('scripts are switched off for tenant t1')
-    expect((err as GraphQLError).message).toContain('Settings > Organization')
+    expect((err as GraphQLError).message).toContain('Organization & access → Organization')
   })
 
   it('tenant senza nodo :Tenant → errore che nomina la migrazione', async () => {

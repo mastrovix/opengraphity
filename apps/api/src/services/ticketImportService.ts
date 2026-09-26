@@ -189,7 +189,7 @@ function parseIsoDate(value: string): string | null {
  *
  * Ora: la traduzione è la matrice `import_severity` del cliente (seminata con
  * gli stessi 25 sinonimi, così il primo giorno non cambia niente, ma ora
- * visibili e modificabili in Impostazioni → Matrici di dominio). Le severità
+ * visibili e modificabili in Modello dei dati → Matrici di dominio). Le severità
  * distinte del file si risolvono in un passaggio SOLO, prima del ciclo per
  * riga — come già fa la mappa dei passi — e una severità non risolvibile
  * mette la **riga in errore**, non a `medium`.

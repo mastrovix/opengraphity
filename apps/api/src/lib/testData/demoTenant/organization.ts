@@ -3,7 +3,7 @@
  *
  * Two things a tenant that has run for three years has chosen, and the demo
  * had left at the factory:
- *  - D55: how long the bell notifications are kept (Settings → Organization).
+ *  - D55: how long the bell notifications are kept (Organization & access → Organization).
  *    Not chosen, the nightly clean-up skips the tenant and the diagnostics
  *    say so: the demo showed a configuration warning on its first page.
  *  - D58: who hears about what. The factory rules tell EVERYONE about almost

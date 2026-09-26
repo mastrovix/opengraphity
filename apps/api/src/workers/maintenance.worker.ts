@@ -242,7 +242,7 @@ async function processMaintenanceJob(job: Job): Promise<void> {
       // con una durata che nessuno ha deciso non è un ripiego accettabile.
       for (const { tenantId, days } of await inAppRetentionByTenant()) {
         if (days === null) {
-          maintenanceLogger.warn({ tenantId }, 'In-app notifications NOT pruned: the organization has not chosen how long to keep them (Settings → Organization)')
+          maintenanceLogger.warn({ tenantId }, 'In-app notifications NOT pruned: the organization has not chosen how long to keep them (Organization & access → Organization)')
           continue
         }
         const before = new Date(Date.now() - days * 86_400_000).toISOString()

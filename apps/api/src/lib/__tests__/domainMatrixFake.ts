@@ -134,7 +134,7 @@ export function resolveDomainMatrix(
   if (out === undefined) {
     return Promise.reject(new ValidationError(
       `Matrix "${kind}" of tenant ${tenantId}: no value for ${spec.inputs.map((i, n) => `${i}="${values[n]}"`).join(', ')}. ` +
-      `Complete the matrix in Settings → Domain matrices (it is currently the factory one: you may have renamed a dictionary value without updating it).`,
+      `Complete the matrix in Data model → Domain matrices (it is currently the factory one: you may have renamed a dictionary value without updating it).`,
       { key: 'errors.matrix.noValueFactory', params: { matrix: kind, combination: spec.inputs.map((i, n) => `${i}="${values[n]}"`).join(', ') } },
     ))
   }

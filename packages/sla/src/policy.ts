@@ -198,7 +198,7 @@ export function calculateDeadline(
     return new Date(startedAt.getTime() + minutes * 60_000)
   }
   if (!calendar) {
-    throw new Error('[sla:policy] business-hours deadline without a service calendar: configure it in Settings → Organization')
+    throw new Error('[sla:policy] business-hours deadline without a service calendar: configure it in Organization & access → Organization')
   }
   const rule = calendarRule(calendar)
   const minutesPerDay = rule.end - rule.start
@@ -242,7 +242,7 @@ export function businessMinutesBetween(
   if (to.getTime() <= from.getTime()) return 0
   if (!businessHours) return (to.getTime() - from.getTime()) / 60_000
   if (!calendar) {
-    throw new Error('[sla:policy] business-hours interval without a service calendar: configure it in Settings → Organization')
+    throw new Error('[sla:policy] business-hours interval without a service calendar: configure it in Organization & access → Organization')
   }
   const rule = calendarRule(calendar)
   const end = toLocal(to, timezone)

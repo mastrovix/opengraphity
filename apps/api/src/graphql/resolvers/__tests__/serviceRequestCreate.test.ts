@@ -189,7 +189,7 @@ describe('createServiceRequest — priorità dalla voce del catalogo', () => {
   it('voce senza priorità → errore che la nomina e dice dove si sistema, nessuna richiesta', async () => {
     vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: false, priority: null, name: 'Vecchia voce' })
     const err = await failure(createServiceRequest(undefined, { input: { title: 'X', catalogItemId: 'cat-9' } }, endUser))
-    expect(err.message).toMatch(/"Vecchia voce" has no priority.*Admin → Service catalog/)
+    expect(err.message).toMatch(/"Vecchia voce" has no priority.*Catalog & knowledge base → Catalog items/)
     expect(createRequest).not.toHaveBeenCalled()
   })
 

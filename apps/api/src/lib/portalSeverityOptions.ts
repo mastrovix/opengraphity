@@ -101,14 +101,14 @@ export async function portalSeverityChoices(tenantId: string, language: Lingua):
   ])
   if (options === null || options.length === 0) {
     throw new ValidationError(
-      `Tenant "${tenantId}": the severities offered in the self-service portal are not configured, so a portal ticket cannot be opened. Choose them in Settings → Organization.`,
+      `Tenant "${tenantId}": the severities offered in the self-service portal are not configured, so a portal ticket cannot be opened. Choose them in Organization & access → Organization.`,
       { key: 'errors.portal.severityNotConfigured' },
     )
   }
   const stale = options.filter((o) => !vocabulary.values.includes(o.value)).map((o) => o.value)
   if (stale.length > 0) {
     throw new ValidationError(
-      `Tenant "${tenantId}": the portal offers ${stale.join(', ')}, which the "severity" dictionary no longer has (${vocabulary.values.join(', ')}). Fix the choice in Settings → Organization.`,
+      `Tenant "${tenantId}": the portal offers ${stale.join(', ')}, which the "severity" dictionary no longer has (${vocabulary.values.join(', ')}). Fix the choice in Organization & access → Organization.`,
       { key: 'errors.portal.severityStale', params: { values: stale.join(', '), allowed: vocabulary.values.join(', ') } },
     )
   }

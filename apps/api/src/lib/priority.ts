@@ -67,7 +67,7 @@ export async function invertPriority(tenantId: string, priority: unknown): Promi
   if (!candidates.length) {
     throw new ValidationError(
       `Matrix "priority" of tenant ${tenantId}: no combination of impact and urgency produces "${p}". `
-      + `Complete the matrix in Settings → Domain matrices`
+      + `Complete the matrix in Data model → Domain matrices`
       + (matrix.isDefault ? ' (it is currently the factory one: you may have renamed a dictionary value without updating it).' : '.'),
       { key: matrix.isDefault ? 'errors.priority.noCombinationFactory' : 'errors.priority.noCombination', params: { priority: p } },
     )
@@ -85,7 +85,7 @@ export async function invertPriority(tenantId: string, priority: unknown): Promi
     throw new ValidationError(
       `Matrix "priority" of tenant ${tenantId}, cell "${chosen}": the impact "${String(impact)}" is not (any more) in the `
       + `dictionary. ${e instanceof Error ? e.message : String(e)} `
-      + `It happens when a value is renamed without updating the matrix: fix it in Settings → Domain matrices.`,
+      + `It happens when a value is renamed without updating the matrix: fix it in Data model → Domain matrices.`,
       { key: 'errors.priority.cellImpactStale', params: { cell: chosen, value: String(impact), reason: e instanceof Error ? e.message : String(e) } },
     )
   })
@@ -93,7 +93,7 @@ export async function invertPriority(tenantId: string, priority: unknown): Promi
     throw new ValidationError(
       `Matrix "priority" of tenant ${tenantId}, cell "${chosen}": the urgency "${String(urgency)}" is not (any more) in the `
       + `dictionary. ${e instanceof Error ? e.message : String(e)} `
-      + `It happens when a value is renamed without updating the matrix: fix it in Settings → Domain matrices.`,
+      + `It happens when a value is renamed without updating the matrix: fix it in Data model → Domain matrices.`,
       { key: 'errors.priority.cellUrgencyStale', params: { cell: chosen, value: String(urgency), reason: e instanceof Error ? e.message : String(e) } },
     )
   })

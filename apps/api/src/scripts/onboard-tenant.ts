@@ -122,7 +122,7 @@ function parseCliArgs(argv: readonly string[]): Args {
    * deve accorgersi di non averlo scelto, invece di scoprirlo dalle scadenze.
    */
   if (timezone === DEFAULT_TENANT_TIMEZONE && !process.argv.some((a) => a.startsWith('--timezone'))) {
-    console.log(`[onboard] nessun --timezone: il tenant nasce su ${DEFAULT_TENANT_TIMEZONE}. Le scadenze SLA, il digest e gli OLA useranno quest'ora — cambiala in Impostazioni → Organizzazione se il cliente è altrove.`)
+    console.log(`[onboard] nessun --timezone: il tenant nasce su ${DEFAULT_TENANT_TIMEZONE}. Le scadenze SLA, il digest e gli OLA useranno quest'ora — cambiala in Organizzazione e accessi → Organizzazione se il cliente è altrove.`)
   }
   // emailDigestWorker fails loud on an invalid Tenant.timezone: reject it here.
   try {

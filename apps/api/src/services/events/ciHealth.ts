@@ -34,7 +34,7 @@ const HEALTHY: CIHealth = 'operational'
 function unmappedError(tenantId: string, severities: readonly string[]): ValidationError {
   const combination = severities.map((s) => `event_severity="${s}"`).join(', ')
   return new ValidationError(
-    `Matrix "ci_health" of tenant ${tenantId}: no CI health for ${combination}. Complete the matrix in Settings → Domain matrices.`,
+    `Matrix "ci_health" of tenant ${tenantId}: no CI health for ${combination}. Complete the matrix in Data model → Domain matrices.`,
     { key: 'errors.matrix.noValue', params: { matrix: 'ci_health', combination } },
   )
 }

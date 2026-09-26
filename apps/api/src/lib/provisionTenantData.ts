@@ -264,8 +264,8 @@ export function formatGap(g: ProvisioningGap): string {
     case 'no_domain_matrices':      return 'no domain matrices'
     case 'no_workflows':            return `no active workflow for: ${g.params?.['entityTypes'] ?? ''}`
     case 'no_assessment_questions': return 'no assessment questions: no change could ever get past the assessment stage (Assessment Questions)'
-    case 'no_teams':                return 'no teams: without teams CIs have no Owner/Support Group and no change can be created (Teams and Users)'
-    case 'no_change_manager':       return 'no team designated Change Manager: normal and emergency changes cannot enter approval (Teams and Users)'
+    case 'no_teams':                return 'no teams: without teams CIs have no Owner/Support Group and no change can be created (Organization & access → Teams)'
+    case 'no_change_manager':       return 'no team designated Change Manager: normal and emergency changes cannot enter approval (Organization & access → Teams)'
   }
 }
 

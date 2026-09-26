@@ -131,7 +131,7 @@ export async function assertCIsLinkable(tenantId: string, ticketType: TicketCITy
   const cis = blocked.map((b) => `${b.name} (${b.type})`).join(', ')
   throw new ValidationError(
     `These CIs cannot be linked to this ${ticketType}: their type is excluded for this ticket type (${cis}). `
-    + `Exclusions are set in Settings → ITIL Type Designer.`,
+    + `Exclusions are set in Process rules → Ticket types.`,
     { key: 'errors.ticketCI.excluded', params: { ticketType, cis } },
   )
 }

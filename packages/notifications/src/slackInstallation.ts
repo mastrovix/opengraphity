@@ -88,6 +88,6 @@ export async function loadSlackInstallationByTeam(teamId: string): Promise<Slack
 /** Il token del bot dell'organizzazione. Senza Slack collegato è un errore che lo dice. */
 export async function slackBotToken(tenantId: string): Promise<string> {
   const r = await readOne(`MATCH (s:SlackInstallation {tenant_id: $tenantId}) ${RETURN}`, { tenantId })
-  if (!r) throw new Error(`Slack is not connected for organization ${tenantId}: connect the workspace in Admin → Integrations`)
+  if (!r) throw new Error(`Slack is not connected for organization ${tenantId}: connect the workspace in External connections → Integrations`)
   return withSecrets(r).botToken
 }

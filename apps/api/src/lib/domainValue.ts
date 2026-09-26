@@ -42,7 +42,7 @@ export async function resolveDomainValue(
       `Matrix "${kind}", cell "${matrixKey(...values)}": the stored value "${out}" is not (any more) in the `
       + `"${spec.output}" dictionary of this tenant. Allowed: ${allowed.join(', ')}. `
       + `It happens when a dictionary value is renamed without updating the matrix: `
-      + `fix it in Settings → Domain matrices.`,
+      + `fix it in Data model → Domain matrices.`,
       { key: 'errors.matrix.storedValueStale', params: { matrix: kind, cell: matrixKey(...values), value: out, vocabulary: spec.output, allowed: allowed.join(', ') } },
     )
   }

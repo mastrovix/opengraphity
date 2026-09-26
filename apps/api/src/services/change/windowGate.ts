@@ -159,7 +159,7 @@ export async function assertChangeWindowGate(
         + `workflow no step declares the «Approval» purpose: there is no place to approve it, so it cannot `
         + `enter the release window. Give the «Approval» purpose to the step where approval happens `
         + `(workflow designer), or add "${input.changeType}" to the pre-approved types `
-        + `(Settings → Domain matrices).`,
+        + `(Data model → Domain matrices).`,
         { extensions: { code: 'CONFLICT', i18n: { key: 'errors.window.noApprovalStep', params: { type: input.changeType } } } },
       )
     case 'needs_approvals':

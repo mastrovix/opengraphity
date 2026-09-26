@@ -78,7 +78,7 @@ export const SYSTEM_ENUMS: readonly SystemEnum[] = [
   // codice ripiegava in silenzio su `medium`/`normal` quando non riconosceva
   // un valore. Ora sono vocabolari veri: `lib/domainMatrix.ts` li legge con
   // `domainVocabulary` (la copia del cliente vince), e le matrici di
-  // `Impostazioni → Matrici di dominio` li usano come tendine.
+  // `Modello dei dati → Matrici di dominio` li usano come tendine.
   // Il perché di ciascuno è in lib/domainMatrixSeed.ts.
   { name: 'urgency',                 label: 'Urgency',                values: ['low', 'medium', 'high'],                          scope: 'shared' },
   { name: 'risk_band',               label: 'Risk Band',              values: ['low', 'medium', 'high'],                          scope: 'shared', valueColors: RISK_BAND_COLORS },

@@ -719,7 +719,7 @@ function coerce(def: FormFieldDef, raw: string, allowed: readonly string[] | nul
        */
       if (allowed && allowed.length === 0) {
         throw new ValidationError(
-          `The field "${def.label}" chooses from a Dictionary that has no values yet: fill it in Settings → Dictionary, or the field cannot be answered.`,
+          `The field "${def.label}" chooses from a Dictionary that has no values yet: fill it in Data model → Dictionary, or the field cannot be answered.`,
           { key: 'errors.formField.vocabularyEmpty', params: { field: def.label, vocabulary: def.vocabulary ?? '' } },
         )
       }
@@ -958,7 +958,7 @@ export async function resolveFormWrites(
       const allowed = campo.vocabulary ? await vocabolarioDi(campo.vocabulary) : null
       if (allowed && allowed.length === 0) {
         throw new ValidationError(
-          `The field "${nome(campo)}" chooses from a Dictionary that has no values yet: fill it in Settings → Dictionary, or the field cannot be answered.`,
+          `The field "${nome(campo)}" chooses from a Dictionary that has no values yet: fill it in Data model → Dictionary, or the field cannot be answered.`,
           { key: 'errors.formField.vocabularyEmpty', params: { field: nome(campo), name: campo.name, vocabulary: campo.vocabulary ?? '' } },
         )
       }

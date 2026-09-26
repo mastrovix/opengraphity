@@ -107,7 +107,7 @@ export async function assertScriptingEnabled(
   if (!enabled) {
     throw new ValidationError(
       `${what}: scripts are switched off for tenant ${tenantId} (scripting_enabled = false). `
-      + `Switch them on in Settings > Organization, or remove the script from the configuration.`,
+      + `Switch them on in Organization & access → Organization, or remove the script from the configuration.`,
       { key: 'errors.scripting.scriptsSwitchedOff', params: { whatKey, plan, ...whatParams } },
     )
   }

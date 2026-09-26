@@ -83,7 +83,7 @@ describe('ITILTypeDesignerPage — the types', () => {
   it('while the types load, the page says so and draws no editor', () => {
     loadingTypes.on = true
     show()
-    expect(screen.getByRole('heading', { name: 'ITIL Type Designer' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Ticket types' })).toBeInTheDocument()
     expect(screen.getByText('Loading...')).toBeInTheDocument()
     expect(screen.queryByText('ITIL Types')).toBeNull()
   })

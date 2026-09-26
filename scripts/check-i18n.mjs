@@ -465,11 +465,6 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   // pagina si chiama Service Request Designer, e chiamare «voce di catalogo»
   // la stessa cosa in una tendina era il solito secondo nome.
   'pages.catalogForms.builder.item',
-  // «Service Request Designer» e il nome della pagina, nella stessa famiglia di
-  // «CI Type Designer» e «Workflow Designer» che stanno gia nella barra
-  // laterale: un nome, non una frase (scelto dal proprietario, 18 set 2026).
-  'sidebar.catalogForms',
-  'pages.catalogForms.title',
   // «Gantt» e il cognome di Henry Gantt: e il nome del diagramma, e i nomi
   // propri non si traducono (regola delle parole tecniche: resta inglese cio
   // che NOMINA). E l'etichetta della scheda, accanto a «Elenco»/«List», che
@@ -601,22 +596,16 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   'admin.sla.unit.minutes_other',
   'admin.integrations.test',
   'anomaly.rules.spof',
-  'itilDesigner.title',
   'notificationRules.category.digest',
   'notificationRules.channels.inApp',
   'pages.audit.title',
   'pages.import.dryRun',
-  'pages.kbAdmin.title',
   'pages.monitoring.health.uptime',
   'pages.monitoring.process.memory',
   'pages.monitoring.tracing.title',
   'roles.admin',
-  'sidebar.admin',
   'sidebar.auditLog',
   'sidebar.businessRules',
-  'sidebar.ciTypeDesigner',
-  'sidebar.itilDesigner',
-  'sidebar.kbAdmin',
   'sidebar.reportBuilder',
   'sidebar.reporting',
   'sidebar.workflowDesigner',

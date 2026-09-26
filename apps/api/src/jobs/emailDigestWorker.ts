@@ -60,7 +60,7 @@ export function resolveTenantTimezone(tenant: TenantRow): string {
   }
   throw new Error(
     `Tenant ${tenant.id} has no timezone: the daily digest cannot be sent at the right local hour. `
-    + 'Set it in Settings → Organization.',
+    + 'Set it in Organization & access → Organization.',
   )
 }
 

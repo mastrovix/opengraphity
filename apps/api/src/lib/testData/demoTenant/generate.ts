@@ -90,7 +90,7 @@ const TENANT_DATA_LABELS = ['Incident', 'Problem', 'Change', 'ServiceRequest', '
 async function preflight(session: Session, tenantId: string): Promise<{ timeZone: string }> {
   const tenant = await runQuery<{ timezone: string | null }>(session, 'MATCH (t:Tenant {id: $tenantId}) RETURN t.timezone AS timezone', { tenantId })
   if (!tenant[0]) throw new Error(`Tenant "${tenantId}" does not exist`)
-  if (!tenant[0].timezone) throw new Error(`Tenant "${tenantId}" has no timezone: set it in Settings → Organization first`)
+  if (!tenant[0].timezone) throw new Error(`Tenant "${tenantId}" has no timezone: set it in Organization & access → Organization first`)
   const labels = (await runQuery<{ label: string }>(session, 'CALL db.labels() YIELD label RETURN label', {})).map((r) => r.label)
   const markedBranches = labels.filter((l) => /^[A-Za-z][A-Za-z0-9_]*$/.test(l))
     .map((l) => `MATCH (n:${l} {tenant_id: $tenantId}) WHERE n.demo_run_id IS NOT NULL RETURN count(n) AS c`)

@@ -36,7 +36,7 @@
  *  2. **Arriva gratis tutto quello che serve**: lettura con cache per tenant
  *     (TTL 30 s, già valida anche nei worker), `version` con controllo di
  *     modifica concorrente, audit, e una pagina in cui l'amministratore vede e
- *     modifica la semantica (Impostazioni → Policy allarmi).
+ *     modifica la semantica (Monitoraggio → Policy eventi).
  *  3. **Un ruolo sul valore dell'enum era l'alternativa, e costa di più senza
  *     rendere di più**: `EnumTypeDefinition.values` è un array di stringhe
  *     letto dal generatore dello schema, dal disegnatore dei vocabolari, dai

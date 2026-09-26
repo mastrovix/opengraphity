@@ -227,7 +227,7 @@ describe('azioni dei passi: vocabolario imposto alla scrittura', () => {
    * in_app/slack/teams/email, ma il dispatcher per `workflow.step.entered`
    * instrada solo in_app ed email e LANCIA sugli altri. Un passo con Slack
    * spuntato si salvava e generava un job fallito a ogni ingresso nel passo —
-   * visibile solo in Admin → Code — senza nessuna notifica.
+   * visibile solo in Piattaforma → Coda Jobs — senza nessuna notifica.
    */
   it('assertStepActions: i canali di notify_rule sono quelli consegnabili all\'ingresso in un passo (G-8)', () => {
     const at = (channels: string[]) => JSON.stringify([{ type: 'notify_rule', params: { title_key: 'k', channels, target: 'all' } }])

@@ -268,7 +268,7 @@ async function createServiceRequest(
       if (priority === null) {
         if (!item.priority) {
           throw new ValidationError(
-            `The catalog item "${item.name}" has no priority, so a request cannot be opened from it. An administrator sets it in Admin → Service catalog.`,
+            `The catalog item "${item.name}" has no priority, so a request cannot be opened from it. An administrator sets it in Catalog & knowledge base → Catalog items.`,
             { key: 'errors.serviceRequest.catalogItemWithoutPriority', params: { item: item.name } },
           )
         }

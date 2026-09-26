@@ -183,13 +183,13 @@
     "authRestored": "Connessione al server di autenticazione ripristinata",
     "authUnreachable": "Server di autenticazione non raggiungibile — nuovo tentativo tra {{seconds}}s",
     "portal": {
-      "severityNotConfigured": "Le severità offerte nel portale non sono configurate, quindi non si può aprire un ticket. Un amministratore le sceglie da Impostazioni → Organizzazione.",
-      "severityStale": "Il portale offre {{values}}, che il vocabolario delle severità non ha più ({{allowed}}). Un amministratore corregge la scelta da Impostazioni → Organizzazione.",
+      "severityNotConfigured": "Le severità offerte nel portale non sono configurate, quindi non si può aprire un ticket. Un amministratore le sceglie da Organizzazione e accessi → Organizzazione.",
+      "severityStale": "Il portale offre {{values}}, che il vocabolario delle severità non ha più ({{allowed}}). Un amministratore corregge la scelta da Organizzazione e accessi → Organizzazione.",
       "severityNotOffered": "Questa severità non è offerta nel portale. Scegli fra: {{allowed}}.",
       "unclassifiedStates": "{{count}} stati dei ticket non appartengono a nessuna classe del workflow incident attivo ({{states}}): i contatori del portale non li conterebbero. Sistema i passi (iniziale / finale / categoria) nel disegnatore.",
       "categoryRequired": "Scegli una categoria per la richiesta.",
       "priorityRequired": "Scegli una priorità per la richiesta.",
-      "noCategories": "Il vocabolario delle categorie dei ticket non ha valori: aggiungili in Impostazioni → Dizionario.",
+      "noCategories": "Il vocabolario delle categorie dei ticket non ha valori: aggiungili in Modello dei dati → Dizionario.",
       "severityAtLeastOne": "Scegli almeno una severità per il portale: senza, nessuno può aprire un ticket.",
       "severityUnknown": "«{{value}}» non è un valore del vocabolario delle severità ({{allowed}}).",
       "severityDuplicate": "«{{value}}» compare due volte.",
@@ -198,7 +198,7 @@
       "cannotConfirmResolution": "Questo ticket non si può confermare: non è risolto, oppure il suo workflow lo chiude solo in automatico."
     },
     "serviceRequest": {
-      "catalogItemWithoutPriority": "La voce del catalogo «{{item}}» non ha una priorità, quindi non si può aprire una richiesta. Un amministratore la imposta da Admin → Catalogo servizi.",
+      "catalogItemWithoutPriority": "La voce del catalogo «{{item}}» non ha una priorità, quindi non si può aprire una richiesta. Un amministratore la imposta da Catalogo e knowledge base → Voci del catalogo.",
       "catalogItemInactive": "Questo servizio non è più disponibile: l'IT lo ha disattivato. Scegli un'altra voce del catalogo, o apri un ticket descrivendo cosa ti serve."
     },
     "comment": {
@@ -288,7 +288,7 @@
       "revisionChanged": "Il modulo di «{{item}}» è cambiato mentre lo compilavi (era la revisione {{filled}}, ora è la {{current}}): queste risposte sono di un altro modulo. Rifai la richiesta."
     },
     "scripting": {
-      "scriptsSwitchedOff": "{{what}}: gli script sono spenti per questa organizzazione. Accendili in Configurazione > Organizzazione, oppure togli lo script dalla configurazione.",
+      "scriptsSwitchedOff": "{{what}}: gli script sono spenti per questa organizzazione. Accendili in Organizzazione e accessi → Organizzazione, oppure togli lo script dalla configurazione.",
       "what": {
         "field": "Lo script del campo «{{field}}»",
         "webhook": "Lo script di trasformazione del webhook {{hook}}",

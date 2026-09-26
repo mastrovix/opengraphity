@@ -162,7 +162,7 @@ describe('draftResolutionNotes', () => {
     const err = await draftResolutionNotes(TENANT, 'inc-1').catch((e: unknown) => e) as GraphQLError
     expect(err.extensions['code']).toBe('BAD_USER_INPUT')
     expect(err.extensions['i18n']).toEqual({ key: 'errors.ai.needsTimezone' })
-    expect(err.message).toContain('Settings → Organization')
+    expect(err.message).toContain('Organization & access → Organization')
     expect(h.create).not.toHaveBeenCalled()
   })
 

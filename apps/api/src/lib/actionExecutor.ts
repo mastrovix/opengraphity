@@ -295,7 +295,7 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
           const hint = outcome.refusal.guard === 'workflow'
             ? ` Check that "${toStep}" is still a step of the ${ctx.entityType} workflow and that an edge leaves the current step.`
             : outcome.refusal.guard === 'change_window'
-              ? ' If this move must be automatic, add the change type to the pre-approved types (Settings -> Domain matrices), '
+              ? ' If this move must be automatic, add the change type to the pre-approved types (Data model → Domain matrices), '
                 + 'or let the rule run only after the assessment; otherwise remove this action from the rule.'
               : ''
           throw new Error(`transition_workflow: the transition to "${toStep}" did not happen (${outcome.refusal.guard}: ${outcome.refusal.message}).${hint}`)

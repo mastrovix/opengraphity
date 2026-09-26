@@ -65,7 +65,7 @@ export async function provisioningGaps(): Promise<Record<string, string[]>> {
       if (incompleti.length) {
         log.warn({ incompleti: Object.fromEntries(incompleti) },
           'Clienti con la configurazione incompleta: il sintomo arriverà al primo ticket. ' +
-          'Si rimedia da Impostazioni → Workflow (o con la mutation provisionTenantData).')
+          'Si rimedia da Regole dei processi → Workflow Designer (o con la mutation provisionTenantData).')
       }
       return out
     } finally {

@@ -49,7 +49,7 @@ beforeEach(() => {
 
 describe('portalSeverityChoices', () => {
   it('non dichiarate → si ferma e dice dove si sceglie (niente valori indovinati)', async () => {
-    await expect(portalSeverityChoices('c-test', 'en')).rejects.toThrow(/not configured.*Settings → Organization/)
+    await expect(portalSeverityChoices('c-test', 'en')).rejects.toThrow(/not configured.*Organization & access → Organization/)
   })
 
   it('le parole dell\'amministratore vincono; una lingua non scritta usa il Dizionario; il colore è del Dizionario', async () => {

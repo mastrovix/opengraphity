@@ -298,7 +298,7 @@ describe('creating a team', () => {
     const { user } = renderPage('/teams', null)
     await user.click(screen.getByRole('button', { name: 'New Team' }))
     const dialog = screen.getByRole('dialog', { name: 'New Team' })
-    expect(within(dialog).getByText('No team type in the dictionary: add the values in Settings → Dictionary → Team Type.')).toBeInTheDocument()
+    expect(within(dialog).getByText('No team type in the dictionary: add the values in Data model → Dictionary → Team Type.')).toBeInTheDocument()
     expect(within(dialog).getAllByRole('option').map((o) => o.textContent)).toEqual(['— Choose a type —'])
   })
 })

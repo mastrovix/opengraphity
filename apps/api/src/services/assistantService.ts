@@ -407,7 +407,7 @@ export async function streamAssistantChat(
   // The times the tools return are local to the organization (D14): without a zone they could only be raw UTC.
   const timeZone = await tenantTimezone(tenantId)
   if (!timeZone) {
-    emit.error('The organization has no time zone, so the assistant cannot write times in local time: choose it in Settings → Organization.')
+    emit.error('The organization has no time zone, so the assistant cannot write times in local time: choose it in Organization & access → Organization.')
     return
   }
 

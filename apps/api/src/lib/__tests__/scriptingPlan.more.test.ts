@@ -2,7 +2,7 @@
  * The tenant scripting switch: writing it (setScriptingEnabled).
  *
  * Why this matters: the administrator flips scripts on or off in
- * Settings > Organization. If the write did not clear the per-process cache,
+ * Organization & access → Organization. If the write did not clear the per-process cache,
  * the switch would appear to do nothing for up to a minute on this replica —
  * scripts the admin just turned off would keep running (or stay blocked after
  * turning them on). A tenant without a :Tenant node must fail loudly: a

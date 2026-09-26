@@ -98,7 +98,7 @@ async function draftTimeZone(tenantId: string): Promise<string> {
   const timeZone = await tenantTimezone(tenantId)
   if (!timeZone) {
     throw new ValidationError(
-      'The organization has no time zone, so the times in the draft cannot be written in local time: choose it in Settings → Organization.',
+      'The organization has no time zone, so the times in the draft cannot be written in local time: choose it in Organization & access → Organization.',
       { key: 'errors.ai.needsTimezone' },
     )
   }

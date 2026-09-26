@@ -102,7 +102,7 @@ function sharedFamilies(a: CITypeWithDefinitions, b: CITypeWithDefinitions): str
 /** The type may sit in a chain of this kind: it has a family, and the one the kind asks. */
 function assertTypeFitsKind(t: CITypeWithDefinitions, kind: ChainKind): void {
   if (!(t.chainFamilies ?? []).length) {
-    fail(`${shownName(t)} has no chain family: give it one in the CI Type Designer before drawing it in a chain`, 'typeWithoutFamily', { type: shownName(t) })
+    fail(`${shownName(t)} has no chain family: give it one in Data model → CI types before drawing it in a chain`, 'typeWithoutFamily', { type: shownName(t) })
   }
   const family = KIND_FAMILY[kind]
   if (family && !(t.chainFamilies ?? []).includes(family)) {

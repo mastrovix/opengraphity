@@ -115,7 +115,7 @@ describe('slackBotToken', () => {
     // into a TypeError far from the actual cause.
     state.rows = []
     await expect(slackBotToken('c-two'))
-      .rejects.toThrow('Slack is not connected for organization c-two: connect the workspace in Admin → Integrations')
+      .rejects.toThrow('Slack is not connected for organization c-two: connect the workspace in External connections → Integrations')
   })
 
   it('a token sealed with another key surfaces as a key problem, not as a missing installation', async () => {

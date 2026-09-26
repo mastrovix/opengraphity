@@ -72,7 +72,13 @@
   },
   "sidebar": {
     "workspace": "WORKSPACE",
-    "admin": "ADMIN",
+    "admin": "AMMINISTRAZIONE",
+    "groupAccess": "Organizzazione e accessi",
+    "groupProcesses": "Regole dei processi",
+    "groupCatalog": "Catalogo e knowledge base",
+    "groupData": "Modello dei dati",
+    "groupConnections": "Connessioni esterne",
+    "groupPlatform": "Piattaforma",
     "dashboard": "Dashboard",
     "cmdb": "CMDB",
     "all": "Tutti",
@@ -93,13 +99,11 @@
     "reportBuilder": "Report Builder",
     "analysis": "Analisi",
     "anomalies": "Anomalie",
-    "configuration": "Configurazione",
-    "ciTypeDesigner": "CI Type Designer",
+    "ciTypeDesigner": "Tipi di CI",
     "workflowDesigner": "Workflow Designer",
     "profile": "Profilo",
     "logs": "Log",
     "settings": "Impostazioni",
-    "teamsUsers": "Team e Utenti",
     "teams": "Team",
     "users": "Utenti",
     "notifications": "Notifiche",
@@ -111,15 +115,15 @@
     "knowledgeBase": "Knowledge Base",
     "assistant": "Assistente AI",
     "topologyMap": "Mappa Topologia",
-    "itilDesigner": "ITIL Type Designer",
-    "enumDesigner": "Dizionario Enum",
+    "itilDesigner": "Tipi di ticket",
+    "enumDesigner": "Dizionario",
     "auditLog": "Audit Log",
     "monitoring": "Monitoraggio",
-    "kbAdmin": "Knowledge Base Admin",
+    "kbAdmin": "Gestione knowledge base",
     "autoTriggers": "Trigger Automatici",
     "businessRules": "Business Rules",
     "slaPolicies": "Policy SLA",
-    "serviceCatalog": "Catalogo Servizi",
+    "serviceCatalog": "Voci del catalogo",
     "integrations": "Integrazioni",
     "assessmentQuestions": "Domande Assessment",
     "whatIf": "Analisi what-if",
@@ -144,7 +148,7 @@
     "anomalyRules": "Regole di anomalia",
     "roles": "Ruoli",
     "loginSecurity": "Accesso e password",
-    "catalogForms": "Service Request Designer",
+    "catalogForms": "Moduli del catalogo",
     "changeCalendar": "Calendario change",
     "configurationDiagnostics": "Diagnostica",
     "proposals": "Proposte",
@@ -397,7 +401,7 @@
       "makeChangeManager": "Designa come team Change Manager",
       "replaceManagerConfirm": "Il manager attuale <strong>{{current}}</strong> verrà sostituito da <strong>{{next}}</strong>. Confermi?",
       "noType": "— nessun tipo —",
-      "noTypeVocabulary": "Nessun tipo di team nel dizionario: aggiungi i valori in Impostazioni → Dizionario → Team Type.",
+      "noTypeVocabulary": "Nessun tipo di team nel dizionario: aggiungi i valori in Modello dei dati → Dizionario → Team Type.",
       "sourcing": {
         "label": "Sourcing",
         "internal": "Interno",
@@ -665,7 +669,7 @@
       "replaceInUseCount_one": "{{count}} record interessato",
       "replaceInUseCount_other": "{{count}} record interessati",
       "noValueLabels": {
-        "workflowStep": "Questi valori sono i nomi dei passi del workflow, quindi la loro lingua si scrive sul passo — apri Configurazione → Workflow Designer e modifica l’etichetta del passo. Scrivere un’etichetta qui non cambierebbe ciò che legge nessuno.",
+        "workflowStep": "Questi valori sono i nomi dei passi del workflow, quindi la loro lingua si scrive sul passo — apri Regole dei processi → Workflow Designer e modifica l’etichetta del passo. Scrivere un’etichetta qui non cambierebbe ciò che legge nessuno.",
         "importKeys": "Questi valori sono chiavi di riconoscimento dei dati in arrivo dagli altri sistemi (p1, sev1, crit, blocker…), non voci di menu: nessuno li legge a schermo, quindi non portano etichetta."
       },
       "discardTitle": "Uscire senza salvare?",
@@ -977,7 +981,7 @@
       "updatedOn": "Aggiornato il {{date}}"
     },
     "kbAdmin": {
-      "title": "Knowledge Base Admin",
+      "title": "Gestione knowledge base",
       "new": "Nuovo articolo",
       "newArticle": "Nuovo articolo",
       "editArticle": "Modifica articolo",
@@ -1385,7 +1389,7 @@
         "removeBand": "Togli la fascia \"{{band}}\""
       },
       "notFilledIn": "da compilare nella matrice",
-      "notCovered": "non coperta dalla matrice — completala in Impostazioni → Matrici di dominio",
+      "notCovered": "non coperta dalla matrice — completala in Modello dei dati → Matrici di dominio",
       "impact": "Impatto",
       "urgency": "Urgenza",
       "environmentWeight": {
@@ -1692,7 +1696,7 @@
     "changeDetail": {
       "notFound": "Change non trovato",
       "approval": "Approvazione",
-      "noApprovalRequirements": "Nessun requisito di approvazione. Verifica che sia designato un team <b>Change Manager</b> (Team e Utenti) e che i CI affected abbiano un owner group.",
+      "noApprovalRequirements": "Nessun requisito di approvazione. Verifica che sia designato un team <b>Change Manager</b> (Organizzazione e accessi → Team) e che i CI affected abbiano un owner group.",
       "requirement": "Requisito",
       "approvedBy": "Approvato da",
       "approved": "Approvato",
@@ -1801,7 +1805,7 @@
       "channelsErrorKept": "Non è stato possibile leggere i canali Slack: {{message}}. Il canale scelto prima resta.",
       "notAllowedOn": "Questo report viene inviato secondo una pianificazione. La cambia solo chi può pianificare i report.",
       "notAllowedOff": "Questo report non è pianificato. Una pianificazione la imposta solo chi può pianificare i report.",
-      "noSlackChannels": "Nessun canale Slack a cui inviarlo: un amministratore lo aggiunge in Impostazioni → Notifiche (si offrono solo i canali Slack attivi).",
+      "noSlackChannels": "Nessun canale Slack a cui inviarlo: un amministratore lo aggiunge in Connessioni esterne → Canali Notifica (si offrono solo i canali Slack attivi).",
       "lastRun": "Ultima esecuzione: {{date}}",
       "preset": {
         "dailyAt9": "Ogni giorno alle 9:00",
@@ -2215,18 +2219,18 @@
           "title": "Nessuna policy SLA copre questo incident",
           "body": "Nessuna policy SLA copre un incident con priorità «{{priority}}» e categoria «{{category}}». Se lo crei, non avrà SLA: nessuna scadenza di risposta né di risoluzione.",
           "bodyTeam": "Nessuna policy SLA copre un incident con priorità «{{priority}}», categoria «{{category}}» e team «{{team}}». Se lo crei, non avrà SLA: nessuna scadenza di risposta né di risoluzione.",
-          "hint": "Se deve averlo, torna indietro e cambia priorità, categoria o team, oppure chiedi a un amministratore una policy in Admin → SLA Policies. I ticket creati senza SLA dopo questo avviso non compaiono negli avvisi di configurazione."
+          "hint": "Se deve averlo, torna indietro e cambia priorità, categoria o team, oppure chiedi a un amministratore una policy in Regole dei processi → Policy SLA. I ticket creati senza SLA dopo questo avviso non compaiono negli avvisi di configurazione."
         },
         "problem": {
           "title": "Nessuna policy SLA copre questo problem",
           "body": "Nessuna policy SLA copre un problem con priorità «{{priority}}». Se lo crei, non avrà SLA: nessuna scadenza di risposta né di risoluzione.",
           "bodyTeam": "Nessuna policy SLA copre un problem con priorità «{{priority}}» e team «{{team}}». Se lo crei, non avrà SLA: nessuna scadenza di risposta né di risoluzione.",
-          "hint": "Se deve averlo, torna indietro e cambia priorità o team, oppure chiedi a un amministratore una policy in Admin → SLA Policies. I ticket creati senza SLA dopo questo avviso non compaiono negli avvisi di configurazione."
+          "hint": "Se deve averlo, torna indietro e cambia priorità o team, oppure chiedi a un amministratore una policy in Regole dei processi → Policy SLA. I ticket creati senza SLA dopo questo avviso non compaiono negli avvisi di configurazione."
         },
         "service_request": {
           "title": "Nessuna policy SLA copre questa service request",
           "body": "Nessuna policy SLA copre una service request con priorità «{{priority}}». Se la crei, non avrà SLA: nessuna scadenza di risposta né di risoluzione.",
-          "hint": "Se deve averlo, torna indietro e cambia la priorità, oppure chiedi a un amministratore una policy in Admin → SLA Policies. I ticket creati senza SLA dopo questo avviso non compaiono negli avvisi di configurazione."
+          "hint": "Se deve averlo, torna indietro e cambia la priorità, oppure chiedi a un amministratore una policy in Regole dei processi → Policy SLA. I ticket creati senza SLA dopo questo avviso non compaiono negli avvisi di configurazione."
         },
         "confirm": "Crea senza SLA",
         "cancel": "Torna indietro",
@@ -2484,7 +2488,7 @@
       "inactiveBadge": "INATTIVA"
     },
     "catalogForms": {
-      "title": "Service Request Designer",
+      "title": "Moduli del catalogo",
       "intro": "Da qui decidi che cosa chiede una service request (il modulo) e come viene lavorata (il workflow).",
       "tabs": {
         "forms": "Designer",
@@ -3009,7 +3013,7 @@
       "foundRelations_one": "{{count}} relazione",
       "foundRelations_other": "{{count}} relazioni",
       "chains": {
-        "intro": "Una catena dice quali relazioni fra CI sono ammesse: da un tipo radice, quali tipi seguono, con quale relazione e in quale verso. In una catena ogni collegamento è obbligatorio, e una catena si usa tutta: quello che è facoltativo è un'altra catena, un'alternativa (un'applicazione su server, oppure su server con un certificato, oppure su database…). Un CI va bene se, dove le catene lo mettono, ne rispetta una per intero. L'API rifiuta ogni relazione che nessuna catena ammette; la scheda Controlli conta quelle entrate comunque, i CI che nessuna catena raggiunge e i CI che non rispettano nessuna catena. Due tipi si possono collegare solo se hanno una famiglia di catena in comune (CI Type Designer).",
+        "intro": "Una catena dice quali relazioni fra CI sono ammesse: da un tipo radice, quali tipi seguono, con quale relazione e in quale verso. In una catena ogni collegamento è obbligatorio, e una catena si usa tutta: quello che è facoltativo è un'altra catena, un'alternativa (un'applicazione su server, oppure su server con un certificato, oppure su database…). Un CI va bene se, dove le catene lo mettono, ne rispetta una per intero. L'API rifiuta ogni relazione che nessuna catena ammette; la scheda Controlli conta quelle entrate comunque, i CI che nessuna catena raggiunge e i CI che non rispettano nessuna catena. Due tipi si possono collegare solo se hanno una famiglia di catena in comune (Modello dei dati → Tipi di CI).",
         "root": "radice",
         "canvas": "Disegno della catena",
         "newChain": "Nuova catena",
@@ -3408,7 +3412,7 @@
     "deleteField": "Elimina {{name}}"
   },
   "itilDesigner": {
-    "title": "ITIL Type Designer",
+    "title": "Tipi di ticket",
     "subtitle": "Configura i campi delle entità ITIL",
     "systemField": "Campo di sistema",
     "addField": "Aggiungi campo",
@@ -4199,7 +4203,7 @@
         "reorder": "Riordinare i valori"
       },
       "wireReason": {
-        "event_severity": "è la severità che mandano i sistemi di monitoraggio (il prodotto normalizza gli allarmi a info, warning, critical): cambiarne i valori non cambia quello che arriva, e fa smettere di funzionare la traduzione. Quello che decidi tu è in quale severità di incident si traducono: Impostazioni → Matrici di dominio, matrice «event_severity»."
+        "event_severity": "è la severità che mandano i sistemi di monitoraggio (il prodotto normalizza gli allarmi a info, warning, critical): cambiarne i valori non cambia quello che arriva, e fa smettere di funzionare la traduzione. Quello che decidi tu è in quale severità di incident si traducono: Modello dei dati → Matrici di dominio, matrice «event_severity»."
       },
       "unknownValueColor": "«{{color}}» non è uno dei colori disponibili ({{available}}).",
       "valueColorNotInValues": "«{{value}}» non è un valore di «{{name}}», quindi non può avere un colore.",
@@ -4333,19 +4337,19 @@
     },
     "priority": {
       "impactUrgencyTogether": "Impatto e urgenza si passano insieme: o entrambi, o soltanto la priorità ({{field}}).",
-      "noCombination": "Nessuna combinazione di impatto e urgenza produce «{{priority}}»: completa la matrice della priorità in Impostazioni → Matrici di dominio.",
-      "noCombinationFactory": "Nessuna combinazione di impatto e urgenza produce «{{priority}}». La matrice della priorità è ancora quella di fabbrica: è possibile che tu abbia rinominato un valore del vocabolario senza aggiornarla (Impostazioni → Matrici di dominio).",
-      "cellImpactStale": "Matrice della priorità, cella «{{cell}}»: l'impatto «{{value}}» non è (più) nel Dizionario. Succede quando si rinomina un valore del vocabolario senza aggiornare la matrice: correggila in Impostazioni → Matrici di dominio.",
-      "cellUrgencyStale": "Matrice della priorità, cella «{{cell}}»: l'urgenza «{{value}}» non è (più) nel Dizionario. Succede quando si rinomina un valore del vocabolario senza aggiornare la matrice: correggila in Impostazioni → Matrici di dominio."
+      "noCombination": "Nessuna combinazione di impatto e urgenza produce «{{priority}}»: completa la matrice della priorità in Modello dei dati → Matrici di dominio.",
+      "noCombinationFactory": "Nessuna combinazione di impatto e urgenza produce «{{priority}}». La matrice della priorità è ancora quella di fabbrica: è possibile che tu abbia rinominato un valore del vocabolario senza aggiornarla (Modello dei dati → Matrici di dominio).",
+      "cellImpactStale": "Matrice della priorità, cella «{{cell}}»: l'impatto «{{value}}» non è (più) nel Dizionario. Succede quando si rinomina un valore del vocabolario senza aggiornare la matrice: correggila in Modello dei dati → Matrici di dominio.",
+      "cellUrgencyStale": "Matrice della priorità, cella «{{cell}}»: l'urgenza «{{value}}» non è (più) nel Dizionario. Succede quando si rinomina un valore del vocabolario senza aggiornare la matrice: correggila in Modello dei dati → Matrici di dominio."
     },
     "riskBand": {
       "atLeastOne": "Serve almeno una fascia di rischio.",
       "duplicate": "La fascia «{{band}}» compare due volte.",
       "threshold": "La soglia di «{{band}}» deve essere un intero maggiore o uguale a zero (ricevuto {{got}}).",
-      "notDeclared": "Le fasce di rischio di questo cliente non sono dichiarate, e il vocabolario «risk_band» ha {{count}} valori ({{bands}}) invece di tre: non c'è una divisione del punteggio da usare di fabbrica. Dichiara le soglie in Impostazioni → Matrici di dominio.",
+      "notDeclared": "Le fasce di rischio di questo cliente non sono dichiarate, e il vocabolario «risk_band» ha {{count}} valori ({{bands}}) invece di tre: non c'è una divisione del punteggio da usare di fabbrica. Dichiara le soglie in Modello dei dati → Matrici di dominio.",
       "notGrowing": "Le soglie devono crescere: «{{band}}» arriva a {{upTo}}, che non è più della fascia precedente ({{previous}}). Le fasce si dichiarano dalla più bassa alla più alta.",
       "lastMustReachMax": "L'ultima fascia («{{band}}») deve arrivare a {{max}}: altrimenti un punteggio più alto resterebbe senza fascia, e la priorità della change non si potrebbe calcolare.",
-      "stale": "Le fasce di rischio di questo cliente citano «{{band}}», che non è (più) nel vocabolario «risk_band» ({{bands}}): correggile in Impostazioni → Matrici di dominio."
+      "stale": "Le fasce di rischio di questo cliente citano «{{band}}», che non è (più) nel vocabolario «risk_band» ({{bands}}): correggile in Modello dei dati → Matrici di dominio."
     },
     "changePolicy": {
       "duplicateType": "Il tipo di change «{{type}}» compare due volte fra i pre-approvati."
@@ -4364,7 +4368,7 @@
       "badCategory": "{{field}}: la categoria «{{category}}» è fuori vocabolario. Ammesse: {{allowed}}. La categoria dice come il ticket si vede da fuori, e il prodotto la legge per decidere: «risolto» valorizza la data di risoluzione, «chiuso» è dove arriva la chiusura automatica. Il nome che vedono le persone è l'etichetta del passo, non questo.",
       "badTrigger": "{{field}}: l'innesco «{{trigger}}» è fuori vocabolario. Ammessi: {{allowed}}.",
       "badCondition": "{{field}}: la condizione «{{condition}}» non esiste. Il motore sa valutare solo queste: {{allowed}} (oppure vuoto per nessuna condizione). Una condizione non registrata blocca l'arco: il motore la rifiuta a ogni tentativo e il ticket non si muove più.",
-      "noApprovalPurpose": "Nel workflow delle change nessun passo avrebbe più lo scopo «Approvazione», ma i tipi di change {{types}} non sono pre-approvati: senza quel passo non esisterebbe un posto dove approvarli, e il varco delle approvazioni non avrebbe dove applicarsi. Assegna lo scopo «Approvazione» al passo in cui si approva, oppure — se per questo cliente le change non si approvano — aggiungi quei tipi ai pre-approvati (Impostazioni → Matrici di dominio).",
+      "noApprovalPurpose": "Nel workflow delle change nessun passo avrebbe più lo scopo «Approvazione», ma i tipi di change {{types}} non sono pre-approvati: senza quel passo non esisterebbe un posto dove approvarli, e il varco delle approvazioni non avrebbe dove applicarsi. Assegna lo scopo «Approvazione» al passo in cui si approva, oppure — se per questo cliente le change non si approvano — aggiungi quei tipi ai pre-approvati (Modello dei dati → Matrici di dominio).",
       "noWindowPurpose": "Nel workflow delle change nessun passo avrebbe più uno scopo della finestra di rilascio ({{purposes}}), e su quegli scopi è indicizzato il varco delle approvazioni dal lato del passo di arrivo: senza di loro una change non approvata potrebbe entrare in produzione senza che nessuno la fermi, e gli allarmi non verrebbero più silenziati durante il rilascio. Assegna lo scopo «Programmata» o «Implementazione» al passo in cui la change va in produzione.",
       "stepActionsNotJson": "Workflow mal configurato: {{field}} del passo «{{step}}» non è JSON valido ({{reason}}).",
       "noApprover": "Nessun utente col ruolo «{{role}}» è configurato per approvare.",
@@ -4433,9 +4437,9 @@
       "cellRepeated": "Matrice «{{matrix}}»: la cella «{{cell}}» è ripetuta.",
       "keyOutOfVocabulary": "Matrice «{{matrix}}»: «{{value}}» non è nel vocabolario «{{vocabulary}}» di questo cliente. Ammessi: {{allowed}}.",
       "incomplete": "La matrice «{{matrix}}» è incompleta: {{count}} combinazioni senza valore ({{examples}}). Una cella vuota diventa un errore quando serve — all'apertura di un incident, all'arrivo di un allarme — quindi si compila qui, non si scopre lì.",
-      "noValue": "La matrice «{{matrix}}» non ha un valore per {{combination}}: completala in Impostazioni → Matrici di dominio.",
-      "noValueFactory": "La matrice «{{matrix}}» non ha un valore per {{combination}}, ed è ancora quella di fabbrica: è possibile che tu abbia rinominato un valore del vocabolario senza aggiornarla (Impostazioni → Matrici di dominio).",
-      "storedValueStale": "Matrice «{{matrix}}», cella «{{cell}}»: il valore salvato «{{value}}» non è (più) nel vocabolario «{{vocabulary}}» di questo cliente. Ammessi: {{allowed}}. Succede quando si rinomina un valore senza aggiornare la matrice: correggila in Impostazioni → Matrici di dominio.",
+      "noValue": "La matrice «{{matrix}}» non ha un valore per {{combination}}: completala in Modello dei dati → Matrici di dominio.",
+      "noValueFactory": "La matrice «{{matrix}}» non ha un valore per {{combination}}, ed è ancora quella di fabbrica: è possibile che tu abbia rinominato un valore del vocabolario senza aggiornarla (Modello dei dati → Matrici di dominio).",
+      "storedValueStale": "Matrice «{{matrix}}», cella «{{cell}}»: il valore salvato «{{value}}» non è (più) nel vocabolario «{{vocabulary}}» di questo cliente. Ammessi: {{allowed}}. Succede quando si rinomina un valore senza aggiornare la matrice: correggila in Modello dei dati → Matrici di dominio.",
       "keyDimensions": "Matrice «{{matrix}}», cella «{{cell}}»: {{got}} dimensioni invece di {{expected}}.",
       "unknownKind": "La matrice «{{kind}}» non esiste. Disponibili: {{allowed}}."
     },
@@ -4505,9 +4509,9 @@
       "unclassifiedStates": "{{count}} stati dei ticket non appartengono a nessuna classe del workflow incident attivo ({{states}}): i contatori del portale non li conterebbero. Sistema i passi (iniziale / finale / categoria) nel disegnatore.",
       "categoryRequired": "Scegli una categoria per la richiesta.",
       "priorityRequired": "Scegli una priorità per la richiesta.",
-      "noCategories": "Il vocabolario delle categorie dei ticket non ha valori: aggiungili in Impostazioni → Dizionario.",
-      "severityNotConfigured": "Le severità offerte nel portale non sono configurate, quindi non si può aprire un ticket. Un amministratore le sceglie da Impostazioni → Organizzazione.",
-      "severityStale": "Il portale offre {{values}}, che il vocabolario delle severità non ha più ({{allowed}}). Un amministratore corregge la scelta da Impostazioni → Organizzazione.",
+      "noCategories": "Il vocabolario delle categorie dei ticket non ha valori: aggiungili in Modello dei dati → Dizionario.",
+      "severityNotConfigured": "Le severità offerte nel portale non sono configurate, quindi non si può aprire un ticket. Un amministratore le sceglie da Organizzazione e accessi → Organizzazione.",
+      "severityStale": "Il portale offre {{values}}, che il vocabolario delle severità non ha più ({{allowed}}). Un amministratore corregge la scelta da Organizzazione e accessi → Organizzazione.",
       "severityAtLeastOne": "Scegli almeno una severità per il portale: senza, nessuno può aprire un ticket.",
       "severityUnknown": "«{{value}}» non è un valore del vocabolario delle severità ({{allowed}}).",
       "severityDuplicate": "«{{value}}» compare due volte.",
@@ -4525,7 +4529,7 @@
       "staleInitialState": "Il vocabolario «{{vocabulary}}» dichiara «{{declared}}» come stato iniziale, ma quel valore non è (più) fra i suoi ({{values}}): un CI nuovo nascerebbe con uno stato che il Dizionario non ha. Scegli lo stato iniziale fra i valori attuali."
     },
     "scripting": {
-      "scriptsSwitchedOff": "{{what}}: gli script sono spenti per questa organizzazione. Accendili in Configurazione > Organizzazione, oppure togli lo script dalla configurazione.",
+      "scriptsSwitchedOff": "{{what}}: gli script sono spenti per questa organizzazione. Accendili in Organizzazione e accessi → Organizzazione, oppure togli lo script dalla configurazione.",
       "what": {
         "field": "Lo script del campo «{{field}}»",
         "webhook": "Lo script di trasformazione del webhook {{hook}}",
@@ -4571,9 +4575,9 @@
       "didNotAdvance": "Le approvazioni sono complete ma la change non è avanzata a «{{step}}»: {{reason}}",
       "rejectNeedsNote": "Il motivo del rifiuto è obbligatorio.",
       "rejectFailed": "Il rifiuto non è riuscito.",
-      "typeNoLongerPreApproved": "La change è di tipo «{{type}}», che non è fra i tipi pre-approvati, e non ha nessun requisito di approvazione: i requisiti si creano entrando in un passo di scopo «Approvazione», e questa change non ci è mai passata (quando è nata, il suo tipo era pre-approvato). Due uscite: rimetti «{{type}}» fra i tipi pre-approvati (Impostazioni → Matrici di dominio), e le change come questa ripartono da sole; oppure riportala al passo di approvazione, che i requisiti li crea entrando.",
-      "missingChangeManagerRequirement": "Manca il requisito del Change Manager: designa un team Change Manager (Team e Utenti) prima di approvare.",
-      "noChangeManagerTeam": "Nessun team è designato Change Manager: configurane uno (Team e Utenti) prima di mandare la change in approvazione.",
+      "typeNoLongerPreApproved": "La change è di tipo «{{type}}», che non è fra i tipi pre-approvati, e non ha nessun requisito di approvazione: i requisiti si creano entrando in un passo di scopo «Approvazione», e questa change non ci è mai passata (quando è nata, il suo tipo era pre-approvato). Due uscite: rimetti «{{type}}» fra i tipi pre-approvati (Modello dei dati → Matrici di dominio), e le change come questa ripartono da sole; oppure riportala al passo di approvazione, che i requisiti li crea entrando.",
+      "missingChangeManagerRequirement": "Manca il requisito del Change Manager: designa un team Change Manager (Organizzazione e accessi → Team) prima di approvare.",
+      "noChangeManagerTeam": "Nessun team è designato Change Manager: configurane uno (Organizzazione e accessi → Team) prima di mandare la change in approvazione.",
       "incomplete_one": "L'approvazione non è completa: {{count}} requisito è ancora in attesa.",
       "incomplete_other": "L'approvazione non è completa: {{count}} requisiti sono ancora in attesa.",
       "noPublishedStep": "Il workflow della knowledge base non ha un arco da qui a un passo pubblicato: l'approvazione non può pubblicare l'articolo. Aggiungilo nel disegnatore.",
@@ -4600,7 +4604,7 @@
       "disabled": "La funzione AI «{{feature}}» è spenta per questa organizzazione. Un amministratore può accenderla in Organizzazione → AI.",
       "truncated": "La risposta del modello si è interrotta a metà: la richiesta era troppo grande. Riprova, o riduci quello che stai chiedendo.",
       "badAnswer": "La risposta del modello non è leggibile. Riprova: se succede ancora, segnalalo a chi amministra la piattaforma.",
-      "needsTimezone": "L'organizzazione non ha un fuso orario, quindi gli orari della bozza non si possono scrivere in ora locale: sceglilo in Impostazioni → Organizzazione."
+      "needsTimezone": "L'organizzazione non ha un fuso orario, quindi gli orari della bozza non si possono scrivere in ora locale: sceglilo in Organizzazione e accessi → Organizzazione."
     },
     "kb": {
       "onlyFromConcluded": "La bozza per la Knowledge Base si genera solo da incident risolti o chiusi: questo è nel passo «{{step}}». Passi conclusivi del workflow incident: {{concluded}}.",
@@ -4621,7 +4625,7 @@
       "lastOne": "L'unica dashboard non si può eliminare."
     },
     "window": {
-      "noApprovalStep": "La change è di tipo «{{type}}», che non è fra i tipi pre-approvati, e nel workflow delle change nessun passo dichiara lo scopo «Approvazione»: non esiste un posto dove approvarla, quindi non può entrare nella finestra di rilascio. Assegna lo scopo «Approvazione» al passo in cui si approva, oppure aggiungi «{{type}}» ai tipi pre-approvati (Impostazioni → Matrici di dominio)."
+      "noApprovalStep": "La change è di tipo «{{type}}», che non è fra i tipi pre-approvati, e nel workflow delle change nessun passo dichiara lo scopo «Approvazione»: non esiste un posto dove approvarla, quindi non può entrare nella finestra di rilascio. Assegna lo scopo «Approvazione» al passo in cui si approva, oppure aggiungi «{{type}}» ai tipi pre-approvati (Modello dei dati → Matrici di dominio)."
     },
     "metamodelName": {
       "typeSyntax": "«{{name}}» non va bene come nome di tipo CI: deve cominciare con una lettera minuscola e contenere solo lettere minuscole, cifre e trattini basso (regola: {{pattern}}).{{instead}} Il nome è lo slug tecnico; il nome che si legge nell'interfaccia è la label, che può contenere spazi, accenti e maiuscole.",
@@ -4673,7 +4677,7 @@
       "unknownTimezone": "«{{timezone}}» non è un fuso orario valido (per esempio Europe/Rome, America/New_York).",
       "serviceCalendar": {
         "not_object": "Il calendario di servizio deve indicare giorni, inizio, fine e festività.",
-        "invalid_json": "Il calendario di servizio salvato non si legge: salvalo di nuovo da Impostazioni → Organizzazione.",
+        "invalid_json": "Il calendario di servizio salvato non si legge: salvalo di nuovo da Organizzazione e accessi → Organizzazione.",
         "days": "Scegli almeno un giorno lavorativo.",
         "time_format": "«{{value}}» non è un orario nel formato HH:MM.",
         "end_before_start": "La fine dell'orario lavorativo ({{end}}) deve venire dopo l'inizio ({{start}}).",
@@ -4711,8 +4715,8 @@
     "serviceRequest": {
       "priorityFromCatalog": "La priorità di una richiesta dal catalogo la decide la voce del catalogo.",
       "catalogItemRequired": "Dal portale una richiesta si apre da una voce del catalogo.",
-      "catalogItemWithoutPriority": "La voce del catalogo «{{item}}» non ha una priorità, quindi non si può aprire una richiesta. Un amministratore la imposta da Admin → Catalogo servizi.",
-      "catalogItemInactive": "La voce di catalogo «{{item}}» non è attiva: non si possono aprire nuove richieste da lì. Riattivala in Admin → Catalogo Servizi, oppure scegli un'altra voce.",
+      "catalogItemWithoutPriority": "La voce del catalogo «{{item}}» non ha una priorità, quindi non si può aprire una richiesta. Un amministratore la imposta da Catalogo e knowledge base → Voci del catalogo.",
+      "catalogItemInactive": "La voce di catalogo «{{item}}» non è attiva: non si possono aprire nuove richieste da lì. Riattivala in Catalogo e knowledge base → Voci del catalogo, oppure scegli un'altra voce.",
       "priorityRequired": "Scegli la priorità della richiesta.",
       "catalogItemPriorityRequired": "Una voce del catalogo deve avere una priorità.",
       "createdButNotAssigned": "La richiesta {{number}} è stata creata, ma l'assegnazione al suo team non è riuscita: {{reason}}",
@@ -4867,7 +4871,7 @@
     "ticketCI": {
       "unknownTicketType": "Il tipo di ticket «{{type}}» non si collega ai CI. Ammessi: {{allowed}}.",
       "unknownCIType": "Non sono tipi di CI di questo cliente: {{types}}. Ammessi: {{allowed}}.",
-      "excluded": "Questi CI non si possono collegare al ticket, perché il loro tipo è escluso per {{ticketType}}: {{cis}}. Le esclusioni si impostano in Impostazioni → ITIL Type Designer."
+      "excluded": "Questi CI non si possono collegare al ticket, perché il loro tipo è escluso per {{ticketType}}: {{cis}}. Le esclusioni si impostano in Regole dei processi → Tipi di ticket."
     },
     "apiKey": {
       "nameRequired": "La chiave API ha bisogno di un nome.",
@@ -4902,7 +4906,7 @@
       "notBoolean": "Il campo «{{field}}» è sì/no: usa true o false.",
       "notDate": "Il campo «{{field}}» è una data, «{{value}}» no.",
       "notInVocabulary": "«{{value}}» non è un valore di «{{field}}». Ammessi: {{allowed}}.",
-      "vocabularyEmpty": "Il campo «{{field}}» sceglie da un Dizionario ancora vuoto ({{vocabulary}}): riempilo in Configurazione → Dizionario, altrimenti a quel campo non si può rispondere.",
+      "vocabularyEmpty": "Il campo «{{field}}» sceglie da un Dizionario ancora vuoto ({{vocabulary}}): riempilo in Modello dei dati → Dizionario, altrimenti a quel campo non si può rispondere.",
       "script": "Il campo «{{field}}» è stato rifiutato: {{message}}",
       "oneReference": "Il campo «{{field}}» prende un riferimento, ne sono arrivati {{count}}.",
       "fileRequired": "Il campo «{{field}}» ha bisogno di almeno un file.",
@@ -4981,7 +4985,7 @@
       "cellNotBoolean": "Riga {{row}} di «{{field}}»: «{{column}}» vuole sì o no, è arrivato «{{value}}».",
       "cellNotDate": "Riga {{row}} di «{{field}}»: «{{value}}» non è una data per «{{column}}».",
       "cellNotInVocabulary": "Riga {{row}} di «{{field}}»: «{{value}}» non è un valore di «{{column}}» (ammessi: {{allowed}}).",
-      "cellVocabularyEmpty": "Riga {{row}} di «{{field}}»: la colonna «{{column}}» sceglie da un Dizionario ancora vuoto. Riempilo in Configurazione → Dizionario.",
+      "cellVocabularyEmpty": "Riga {{row}} di «{{field}}»: la colonna «{{column}}» sceglie da un Dizionario ancora vuoto. Riempilo in Modello dei dati → Dizionario.",
       "rowRequired": "La tabella «{{field}}» vuole almeno una riga.",
       "notATable": "Un campo {{fieldType}} non vuole colonne: le ha solo un campo tabella."
     },
@@ -5061,7 +5065,7 @@
       "unknownType": "«{{type}}» non è un tipo di CI attivo di questo tenant.",
       "relationRequired": "Il collegamento a {{type}} non ha una relazione.",
       "unknownDirection": "«{{direction}}» non è un verso.",
-      "typeWithoutFamily": "{{type}} non ha una famiglia di catena: dagliene una nel CI Type Designer prima di disegnarlo in una catena.",
+      "typeWithoutFamily": "{{type}} non ha una famiglia di catena: dagliene una in Modello dei dati → Tipi di CI prima di disegnarlo in una catena.",
       "typeNotInKind": "{{type}} non ha la famiglia che una catena di tipo {{kind}} richiede.",
       "noSharedFamily": "{{parent}} e {{child}} non hanno una famiglia di catena in comune: non si possono collegare.",
       "relationNotDeclared": "Il metamodello non dichiara {{relation}} da {{source}} a {{target}}.",
@@ -5306,7 +5310,7 @@
       "updated": "Incident aggiornato",
       "slaCoverageUnavailable": "Non è stato possibile verificare se una policy SLA copre l'incident: {{error}}",
       "fieldRulesUnavailable": "Impossibile validare i campi obbligatori: {{error}}",
-      "kbDraftCreated": "Bozza KB creata: \"{{title}}\" — la trovi in Knowledge Base Admin",
+      "kbDraftCreated": "Bozza KB creata: \"{{title}}\" — la trovi in Catalogo e knowledge base → Gestione knowledge base",
       "kbDraftFailed": "Bozza KB fallita: {{error}}",
       "transitionCompletedTo": "Transizione completata → {{step}}",
       "transitionFailed": "Transizione fallita",
@@ -5325,7 +5329,7 @@
       "aiDraftFailed": "Bozza AI fallita: {{error}}",
       "aiDraftNoResponse": "Bozza AI fallita: nessuna risposta",
       "matrixUnavailable": "Le matrici di dominio non sono raggiungibili ({{error}}): impatto, urgenza e priorità vengono da lì, quindi il ticket non si può creare adesso.",
-      "matrixIncomplete": "La matrice della priorità non copre la combinazione scelta: completala in Impostazioni → Matrici di dominio, oppure scegli un'altra coppia.",
+      "matrixIncomplete": "La matrice della priorità non copre la combinazione scelta: completala in Modello dei dati → Matrici di dominio, oppure scegli un'altra coppia.",
       "assignedToUser": "Incident assegnato a {{name}}",
       "kbDraftOpen": "Apri le bozze"
     },
@@ -6854,20 +6858,20 @@
       "vocabulary_without_semantics_other": "Questi stati del ciclo di vita non sono in nessuna lista della policy degli allarmi: {{statuses}}. Per il prodotto sono CI **in servizio**: i loro allarmi aprono incident e pesano nella salute dei servizi. Se sono stati finali, aggiungili a «ritirati».",
       "value_labels_missing": "Questi valori non hanno un'etichetta in nessuna lingua, quindi a schermo si leggono col loro nome interno: {{details}}. **Si scrive dal Dizionario**, accanto al valore.",
       "value_labels_partial": "Questi valori hanno l'etichetta in una lingua sola: chi usa l'altra li legge in italiano ({{languages}}). {{details}}. **Si completa dal Dizionario**.",
-      "default_language_not_set": "Nessuno ha scelto la lingua di questa organizzazione, quindi il prodotto si legge in «{{fallback}}» — la prima delle lingue disponibili ({{available}}), non una decisione. **Si sceglie da Impostazioni → Organizzazione**, e vale per chi non ha una lingua propria nel Profilo.",
+      "default_language_not_set": "Nessuno ha scelto la lingua di questa organizzazione, quindi il prodotto si legge in «{{fallback}}» — la prima delle lingue disponibili ({{available}}), non una decisione. **Si sceglie da Organizzazione e accessi → Organizzazione**, e vale per chi non ha una lingua propria nel Profilo.",
       "check_failed": "Il controllo «{{check}}» non è riuscito: {{error}}",
       "teams_without_sourcing_one": "{{count}} team non dice se è **interno o esterno**: {{teams}}{{more}}. Nessuno l'ha indovinato al posto tuo — **lo scegli nella pagina del team**, in Team.",
       "teams_without_sourcing_other": "{{count}} team non dicono se sono **interni o esterni**: {{teams}}{{more}}. Nessuno l'ha indovinato al posto tuo — **lo scegli nella pagina di ogni team**, in Team.",
-      "tickets_without_sla_one": "{{count}} ticket aperto è **senza SLA**: nessuna policy SLA lo copre ({{tickets}}{{more}}). Non c'è uno SLA di fabbrica a cui ricadere — **aggiungi o allarga una policy in Admin → SLA Policies**; i ticket creati da quel momento ricevono il loro SLA.",
-      "tickets_without_sla_other": "{{count}} ticket aperti sono **senza SLA**: nessuna policy SLA li copre ({{tickets}}{{more}}). Non c'è uno SLA di fabbrica a cui ricadere — **aggiungi o allarga una policy in Admin → SLA Policies**; i ticket creati da quel momento ricevono il loro SLA.",
-      "timezone_not_set": "Questa organizzazione non ha un fuso orario, quindi scadenze SLA, digest giornaliero e date dei messaggi non si possono calcolare. **Si sceglie da Impostazioni → Organizzazione**.",
-      "service_calendar_not_set": "{{count}} policy SLA o contratti OLA/UC contano l’orario di servizio senza un calendario valido ({{names}}): le loro scadenze non si possono calcolare. **Il calendario si sceglie da Admin → SLA Policies e OLA / UC**.",
-      "portal_severities_not_set": "Il portale self-service non ha severità da offrire, quindi gli utenti finali non possono aprire un ticket. **Si scelgono da Impostazioni → Organizzazione**.",
-      "portal_severities_stale": "Il portale self-service offre {{values}}, che il vocabolario delle severità non ha più: aprire un ticket lì fallisce. **Si corregge la scelta da Impostazioni → Organizzazione**.",
-      "catalog_items_without_priority": "{{count}} voci attive del catalogo non hanno una priorità ({{items}}): da quelle non si aprono richieste, nemmeno dal portale. **Si imposta da Admin → Catalogo servizi**.",
-      "catalog_items_legacy_category": "{{count}} voci del catalogo hanno ancora una categoria scritta a mano che non corrisponde a nessuna categoria del Dizionario ({{items}}): le loro richieste nascono senza categoria, e le policy SLA per categoria non le vedono. **Si sceglie da Admin → Catalogo servizi**.",
-      "catalog_items_without_fulfillment_team": "{{count}} voci del catalogo non hanno un gruppo di evasione, quindi le loro richieste nascono senza team: {{items}}. **Si sceglie da Admin → Catalogo servizi**.",
-      "inapp_retention_not_set": "Questa organizzazione non ha scelto per quanto conservare le notifiche della campanella: la pulizia notturna la salta e non vengono mai cancellate. **Si sceglie da Impostazioni → Organizzazione**.",
+      "tickets_without_sla_one": "{{count}} ticket aperto è **senza SLA**: nessuna policy SLA lo copre ({{tickets}}{{more}}). Non c'è uno SLA di fabbrica a cui ricadere — **aggiungi o allarga una policy in Regole dei processi → Policy SLA**; i ticket creati da quel momento ricevono il loro SLA.",
+      "tickets_without_sla_other": "{{count}} ticket aperti sono **senza SLA**: nessuna policy SLA li copre ({{tickets}}{{more}}). Non c'è uno SLA di fabbrica a cui ricadere — **aggiungi o allarga una policy in Regole dei processi → Policy SLA**; i ticket creati da quel momento ricevono il loro SLA.",
+      "timezone_not_set": "Questa organizzazione non ha un fuso orario, quindi scadenze SLA, digest giornaliero e date dei messaggi non si possono calcolare. **Si sceglie da Organizzazione e accessi → Organizzazione**.",
+      "service_calendar_not_set": "{{count}} policy SLA o contratti OLA/UC contano l’orario di servizio senza un calendario valido ({{names}}): le loro scadenze non si possono calcolare. **Il calendario si sceglie da Regole dei processi → Policy SLA e OLA / UC**.",
+      "portal_severities_not_set": "Il portale self-service non ha severità da offrire, quindi gli utenti finali non possono aprire un ticket. **Si scelgono da Organizzazione e accessi → Organizzazione**.",
+      "portal_severities_stale": "Il portale self-service offre {{values}}, che il vocabolario delle severità non ha più: aprire un ticket lì fallisce. **Si corregge la scelta da Organizzazione e accessi → Organizzazione**.",
+      "catalog_items_without_priority": "{{count}} voci attive del catalogo non hanno una priorità ({{items}}): da quelle non si aprono richieste, nemmeno dal portale. **Si imposta da Catalogo e knowledge base → Voci del catalogo**.",
+      "catalog_items_legacy_category": "{{count}} voci del catalogo hanno ancora una categoria scritta a mano che non corrisponde a nessuna categoria del Dizionario ({{items}}): le loro richieste nascono senza categoria, e le policy SLA per categoria non le vedono. **Si sceglie da Catalogo e knowledge base → Voci del catalogo**.",
+      "catalog_items_without_fulfillment_team": "{{count}} voci del catalogo non hanno un gruppo di evasione, quindi le loro richieste nascono senza team: {{items}}. **Si sceglie da Catalogo e knowledge base → Voci del catalogo**.",
+      "inapp_retention_not_set": "Questa organizzazione non ha scelto per quanto conservare le notifiche della campanella: la pulizia notturna la salta e non vengono mai cancellate. **Si sceglie da Organizzazione e accessi → Organizzazione**.",
       "migrations_pending": "{{count}} migrazioni del database non sono state applicate ({{migrations}}): il prodotto gira con dati che non corrispondono al suo codice. **Chi gestisce l'installazione lancia migrate.js**.",
       "workflow_step_categories_missing": "Il workflow «{{workflow}}» ({{entityType}}) non ha nessun passo con queste categorie: {{missing}}. Il prodotto riconosce i passi dalla categoria, non dal nome, quindi le operazioni che ne hanno bisogno si fermano con un errore. **Imposta la categoria sul passo nel designer del workflow**.",
       "workflow_step_purposes_missing": "Il workflow «{{workflow}}» ({{entityType}}) non ha nessun passo con questi scopi: {{missing}}. Il prodotto riconosce i passi dallo scopo, non dal nome, quindi le operazioni che ne hanno bisogno si fermano con un errore. **Imposta lo scopo sul passo nel designer del workflow**.",
@@ -6875,28 +6879,28 @@
       "workflow_optional_step_purposes_missing": "Il workflow «{{workflow}}» ({{entityType}}) non ha nessun passo con questi scopi: {{missing}}. Non si ferma niente, ma quello che ne dipende è spento senza avvisi (per esempio la soppressione degli allarmi durante un rilascio). **Se il workflow ha un passo così, imposta lo scopo nel designer del workflow**.",
       "vocabulary_behind_shipped_one": "Il prodotto ha aggiunto valori a un vocabolario che hai personalizzato, e la tua copia non li ha: {{details}}. La tua copia non viene mai sovrascritta — **decidi dal Dizionario**: aggiungerli, o tenere la tua lista.",
       "vocabulary_behind_shipped_other": "Il prodotto ha aggiunto valori a {{count}} vocabolari che hai personalizzato, e le tue copie non li hanno: {{details}}. Le tue copie non vengono mai sovrascritte — **decidi dal Dizionario**: aggiungerli, o tenere le tue liste.",
-      "sla_warning_not_before_deadline_one": "Una policy SLA manda l'avviso appena il ticket viene creato, perché il preavviso non è più breve del tempo di risoluzione (preavviso / risoluzione): {{details}}. **Accorcia il preavviso in Admin → SLA Policies**.",
-      "sla_warning_not_before_deadline_other": "{{count}} policy SLA mandano l'avviso appena il ticket viene creato, perché il preavviso non è più breve del tempo di risoluzione (preavviso / risoluzione): {{details}}. **Accorcia i preavvisi in Admin → SLA Policies**.",
+      "sla_warning_not_before_deadline_one": "Una policy SLA manda l'avviso appena il ticket viene creato, perché il preavviso non è più breve del tempo di risoluzione (preavviso / risoluzione): {{details}}. **Accorcia il preavviso in Regole dei processi → Policy SLA**.",
+      "sla_warning_not_before_deadline_other": "{{count}} policy SLA mandano l'avviso appena il ticket viene creato, perché il preavviso non è più breve del tempo di risoluzione (preavviso / risoluzione): {{details}}. **Accorcia i preavvisi in Regole dei processi → Policy SLA**.",
       "step_deadlines_blocked_one": "{{count}} ticket è ancora in un passo la cui scadenza non è riuscita a spostarlo ({{tickets}}): le approvazioni l'hanno rifiutata, oppure il workflow è cambiato e la scadenza non ha più strada. Si riprova ogni ora. **Controlla la scadenza del passo nel disegnatore dei workflow**.",
       "step_deadlines_blocked_other": "{{count}} ticket sono ancora in un passo la cui scadenza non è riuscita a spostarli ({{tickets}}): le approvazioni l'hanno rifiutata, oppure il workflow è cambiato e la scadenza non ha più strada. Si riprova ogni ora. **Controlla le scadenze dei passi nel disegnatore dei workflow**.",
-      "slack_not_connected_one": "Un canale Slack scrive con il bot, ma questa organizzazione non ha collegato il suo workspace Slack: {{channels}}. Ogni notifica verso quel canale fallisce. **Collega Slack in Admin → Integrazioni**.",
-      "slack_not_connected_other": "{{count}} canali Slack scrivono con il bot, ma questa organizzazione non ha collegato il suo workspace Slack: {{channels}}. Ogni notifica verso quei canali fallisce. **Collega Slack in Admin → Integrazioni**.",
+      "slack_not_connected_one": "Un canale Slack scrive con il bot, ma questa organizzazione non ha collegato il suo workspace Slack: {{channels}}. Ogni notifica verso quel canale fallisce. **Collega Slack in Connessioni esterne → Integrazioni**.",
+      "slack_not_connected_other": "{{count}} canali Slack scrivono con il bot, ma questa organizzazione non ha collegato il suo workspace Slack: {{channels}}. Ogni notifica verso quei canali fallisce. **Collega Slack in Connessioni esterne → Integrazioni**.",
       "service_incident_problem_one": "Il monitoraggio non riesce a gestire l'incident del servizio {{services}}: il servizio può essere giù senza incident. **Apri il servizio per vedere il motivo**.",
       "service_incident_problem_other": "Il monitoraggio non riesce a gestire l'incident di {{count}} servizi ({{services}}): possono essere giù senza incident. **Apri ogni servizio per vedere il motivo**.",
-      "custom_field_steps_missing_one": "Un campo dei ticket cita una fase che il workflow non ha più, quindi dove dipende da quella fase non si vede: {{fields}}. **Correggi le sue fasi nell'ITIL Type Designer**.",
-      "custom_field_steps_missing_other": "{{count}} campi dei ticket citano fasi che il workflow non ha più, quindi dove dipendono da quelle fasi non si vedono: {{fields}}. **Correggi le loro fasi nell'ITIL Type Designer**.",
-      "custom_field_from_step_absent_one": "Un campo dei ticket si vede «da una fase in poi», ma un workflow del suo tipo non ha quella fase: su quei ticket non si vede mai ({{fields}}). **Scegli altre fasi nell'ITIL Type Designer, o aggiungi la fase a quel workflow**.",
-      "custom_field_from_step_absent_other": "{{count}} campi dei ticket si vedono «da una fase in poi», ma alcuni workflow del loro tipo non hanno quella fase: su quei ticket non si vedono mai ({{fields}}). **Scegli altre fasi nell'ITIL Type Designer, o aggiungi le fasi a quei workflow**.",
-      "ola_contract_without_team_one": "Un contratto OLA/UC attivo non ha un team ({{names}}): non avvisa mai, e il report lo conta dall'apertura del ticket per qualunque team. **Scegli il suo team in Admin → OLA / UC**.",
-      "ola_contract_without_team_other": "{{count}} contratti OLA/UC attivi non hanno un team ({{names}}): non avvisano mai, e il report li conta dall'apertura del ticket per qualunque team. **Scegli il loro team in Admin → OLA / UC**.",
-      "ola_contract_unmeasurable_one": "Un contratto OLA/UC misura il tempo in cui il ticket è del suo team, ma nessun ticket del suo tipo è mai stato assegnato a un team ({{names}}): resta a zero. **Cambia il tipo di ticket in Admin → OLA / UC, o assegna quei ticket a un team**.",
-      "ola_contract_unmeasurable_other": "{{count}} contratti OLA/UC misurano il tempo in cui il ticket è del loro team, ma nessun ticket del loro tipo è mai stato assegnato a un team ({{names}}): restano a zero. **Cambia il tipo di ticket in Admin → OLA / UC, o assegna quei ticket a un team**.",
-      "formulas_with_scripting_off_one": "Un campo dei moduli è calcolato da una formula, ma gli script sono spenti per questa organizzazione ({{names}}): nessuna richiesta che usa quel modulo si può creare — chi compila viene rifiutato e non può rimediare. **Accendi gli script in Configurazione → Organizzazione, oppure togli la formula dalla libreria dei campi**.",
-      "formulas_with_scripting_off_other": "{{count}} campi dei moduli sono calcolati da una formula, ma gli script sono spenti per questa organizzazione ({{names}}): nessuna richiesta che usa quei moduli si può creare — chi compila viene rifiutato e non può rimediare. **Accendi gli script in Configurazione → Organizzazione, oppure togli le formule dalla libreria dei campi**.",
+      "custom_field_steps_missing_one": "Un campo dei ticket cita una fase che il workflow non ha più, quindi dove dipende da quella fase non si vede: {{fields}}. **Correggi le sue fasi in Regole dei processi → Tipi di ticket**.",
+      "custom_field_steps_missing_other": "{{count}} campi dei ticket citano fasi che il workflow non ha più, quindi dove dipendono da quelle fasi non si vedono: {{fields}}. **Correggi le loro fasi in Regole dei processi → Tipi di ticket**.",
+      "custom_field_from_step_absent_one": "Un campo dei ticket si vede «da una fase in poi», ma un workflow del suo tipo non ha quella fase: su quei ticket non si vede mai ({{fields}}). **Scegli altre fasi in Regole dei processi → Tipi di ticket, o aggiungi la fase a quel workflow**.",
+      "custom_field_from_step_absent_other": "{{count}} campi dei ticket si vedono «da una fase in poi», ma alcuni workflow del loro tipo non hanno quella fase: su quei ticket non si vedono mai ({{fields}}). **Scegli altre fasi in Regole dei processi → Tipi di ticket, o aggiungi le fasi a quei workflow**.",
+      "ola_contract_without_team_one": "Un contratto OLA/UC attivo non ha un team ({{names}}): non avvisa mai, e il report lo conta dall'apertura del ticket per qualunque team. **Scegli il suo team in Regole dei processi → OLA / UC**.",
+      "ola_contract_without_team_other": "{{count}} contratti OLA/UC attivi non hanno un team ({{names}}): non avvisano mai, e il report li conta dall'apertura del ticket per qualunque team. **Scegli il loro team in Regole dei processi → OLA / UC**.",
+      "ola_contract_unmeasurable_one": "Un contratto OLA/UC misura il tempo in cui il ticket è del suo team, ma nessun ticket del suo tipo è mai stato assegnato a un team ({{names}}): resta a zero. **Cambia il tipo di ticket in Regole dei processi → OLA / UC, o assegna quei ticket a un team**.",
+      "ola_contract_unmeasurable_other": "{{count}} contratti OLA/UC misurano il tempo in cui il ticket è del loro team, ma nessun ticket del loro tipo è mai stato assegnato a un team ({{names}}): restano a zero. **Cambia il tipo di ticket in Regole dei processi → OLA / UC, o assegna quei ticket a un team**.",
+      "formulas_with_scripting_off_one": "Un campo dei moduli è calcolato da una formula, ma gli script sono spenti per questa organizzazione ({{names}}): nessuna richiesta che usa quel modulo si può creare — chi compila viene rifiutato e non può rimediare. **Accendi gli script in Organizzazione e accessi → Organizzazione, oppure togli la formula dalla libreria dei campi**.",
+      "formulas_with_scripting_off_other": "{{count}} campi dei moduli sono calcolati da una formula, ma gli script sono spenti per questa organizzazione ({{names}}): nessuna richiesta che usa quei moduli si può creare — chi compila viene rifiutato e non può rimediare. **Accendi gli script in Organizzazione e accessi → Organizzazione, oppure togli le formule dalla libreria dei campi**.",
       "metamodel_duplicate_field_one": "Un campo del metamodello è definito DUE volte nello stesso tipo ({{fields}}): le tendine lo mostrano due volte, e una regola di visibilità scritta su una definizione non vale per l'altra. **Esegui le migrazioni** (la 20261005_1010 toglie i doppioni); se ricompare, aprine una segnalazione.",
       "metamodel_duplicate_field_other": "{{count}} gruppi di campi del metamodello sono definiti più di una volta nello stesso tipo ({{fields}}): le tendine li mostrano doppi, e una regola di visibilità scritta su una definizione non vale per l'altra. **Esegui le migrazioni** (la 20261005_1010 toglie i doppioni); se ricompaiono, aprine una segnalazione.",
-      "catalog_form_to_fix_one": "Un modulo del catalogo non si può compilare come è configurato ({{forms}}): chi apre la richiesta riceve un rifiuto che non può risolvere. **Aprilo in Configurazione → Moduli del catalogo**: `fieldsMissing` = cita un campo che non è più in libreria, `requiredNotForEndUser` = pretende un campo che il portale non chiede.",
-      "catalog_form_to_fix_other": "{{count}} moduli del catalogo non si possono compilare come sono configurati ({{forms}}): chi apre quelle richieste riceve un rifiuto che non può risolvere. **Aprili in Configurazione → Moduli del catalogo**: `fieldsMissing` = citano un campo che non è più in libreria, `requiredNotForEndUser` = pretendono un campo che il portale non chiede.",
+      "catalog_form_to_fix_one": "Un modulo del catalogo non si può compilare come è configurato ({{forms}}): chi apre la richiesta riceve un rifiuto che non può risolvere. **Aprilo in Catalogo e knowledge base → Moduli del catalogo**: `fieldsMissing` = cita un campo che non è più in libreria, `requiredNotForEndUser` = pretende un campo che il portale non chiede.",
+      "catalog_form_to_fix_other": "{{count}} moduli del catalogo non si possono compilare come sono configurati ({{forms}}): chi apre quelle richieste riceve un rifiuto che non può risolvere. **Aprili in Catalogo e knowledge base → Moduli del catalogo**: `fieldsMissing` = citano un campo che non è più in libreria, `requiredNotForEndUser` = pretendono un campo che il portale non chiede.",
       "autoanalisi_github_missing": "L'Autoanalisi sa aprire un Problem, ma non sa dove portarlo: manca il repository del codice. Aprendo un Problem da una proposta il prodotto porta il fascicolo d'indagine su GitHub e chiede l'analisi — senza `AUTOANALISI_GITHUB_REPO` e `AUTOANALISI_GITHUB_TOKEN` quel pezzo non parte e il fascicolo resta qui, da leggere a mano. **Configurale nel file `.env` dell'installazione** e riavvia l'API.",
       "changes_stuck": "{{count}} change sono ferme pur avendo la strada aperta ({{changes}}): la loro transizione automatica aspetta una condizione che è già soddisfatta. Le transizioni automatiche si valutano solo quando qualcuno lavora la change, quindi una che si è persa l'occasione non riparte da sé. **Apri quelle change e fai avanzare il passo**: il lavoro è già finito, manca solo il movimento.",
       "vocabulary_copy_without_changes_one": "Hai una copia di un vocabolario identica a quella di fabbrica: {{names}}. Non aggiunge niente e ti costa un prezzo — una copia non viene mai sovrascritta, quindi non riceverà i valori che il prodotto aggiungerà. **Cancellala dal Dizionario**: si torna a usare quella di fabbrica.",
@@ -6917,8 +6921,8 @@
       "no_domain_matrices": "nessuna matrice di dominio",
       "no_workflows": "nessun workflow attivo per: {{entityTypes}}",
       "no_assessment_questions": "nessuna domanda di assessment: nessuna change potrebbe superare la fase di assessment (Domande Assessment)",
-      "no_teams": "nessun team: senza team i CI non hanno Owner/Support Group e nessuna change si crea (Team e Utenti)",
-      "no_change_manager": "nessun team designato Change Manager: le change normal ed emergency non possono entrare in approvazione (Team e Utenti)"
+      "no_teams": "nessun team: senza team i CI non hanno Owner/Support Group e nessuna change si crea (Organizzazione e accessi → Team)",
+      "no_change_manager": "nessun team designato Change Manager: le change normal ed emergency non possono entrare in approvazione (Organizzazione e accessi → Team)"
     },
     "andMore_one": " (e un altro)",
     "andMore_other": " (e altri {{count}})",

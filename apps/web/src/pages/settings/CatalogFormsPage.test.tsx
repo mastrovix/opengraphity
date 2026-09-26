@@ -20,7 +20,7 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.f
 const { CatalogFormsPage } = await import('./CatalogFormsPage')
 
 /** The designer with no catalog item yet: it says where items are added. */
-const DESIGNER_EMPTY = 'There is no active catalog item to build a form for. Add one in Admin → Service catalog.'
+const DESIGNER_EMPTY = 'There is no active catalog item to build a form for. Add one in Catalog & knowledge base → Catalog items.'
 const LIBRARY_INTRO = /^A field is defined once and reused by every form\./
 const WORKFLOW_INTRO = /^A WORKFLOW is the road a request travels/
 
@@ -35,9 +35,9 @@ beforeEach(() => {
 describe('CatalogFormsPage', () => {
   it('opens on the form designer, under the title and what the page is for', () => {
     renderWithProviders(<CatalogFormsPage />)
-    expect(screen.getByRole('heading', { name: 'Service Request Designer' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Catalog forms' })).toBeInTheDocument()
     expect(screen.getByText(/^Here you decide what a service request asks \(the form\)/)).toBeInTheDocument()
-    expect(screen.getByRole('tablist', { name: 'Service Request Designer' })).toBeInTheDocument()
+    expect(screen.getByRole('tablist', { name: 'Catalog forms' })).toBeInTheDocument()
     expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Designer', 'Field library', 'Workflow'])
     expect(screen.getByRole('tab', { name: 'Designer' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByText(DESIGNER_EMPTY)).toBeInTheDocument()

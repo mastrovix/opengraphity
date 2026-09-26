@@ -48,7 +48,7 @@ vi.mock('../email.js', () => ({ sendEmail: vi.fn(async () => {}) }))
 const slackToken = vi.hoisted(() => ({ value: null as string | null }))
 vi.mock('../slackInstallation.js', () => ({
   slackBotToken: vi.fn(async (tenantId: string) => {
-    if (!slackToken.value) throw new Error(`Slack is not connected for organization ${tenantId}: connect the workspace in Admin → Integrations`)
+    if (!slackToken.value) throw new Error(`Slack is not connected for organization ${tenantId}: connect the workspace in External connections → Integrations`)
     return slackToken.value
   }),
 }))

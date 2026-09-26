@@ -116,7 +116,7 @@ export async function resolveNotificationRecipients(
   if (!isNotificationTarget(target)) {
     throw new Error(
       `${entity.eventType} notification rule has target "${target}", which is not one of [${NOTIFICATION_BASE_TARGETS.join(', ')}] nor role:<role> — ` +
-      `fix the rule (Settings → Notification rules): nobody would receive it`,
+      `fix the rule (Process rules → Notification Rules): nobody would receive it`,
     )
   }
   if (target === NOTIFICATION_TARGET_ALL) {

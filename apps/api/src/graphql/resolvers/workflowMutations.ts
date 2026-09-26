@@ -392,7 +392,7 @@ export async function assertApprovalPurposeSurvives(
     + `type(s) ${daApprovare.map((t) => `"${t}"`).join(', ')} are not pre-approved: `
     + `without that step there would be no place to approve them, and the approval gate would have `
     + `nowhere to apply. Give the «Approval» purpose to the step where approval happens, or — if in this `
-    + `tenant changes are not approved — add those types to the pre-approved ones (Settings → Domain matrices).`,
+    + `tenant changes are not approved — add those types to the pre-approved ones (Data model → Domain matrices).`,
     {
       extensions: {
         code: 'CONFLICT', changeTypesRequiringApproval: daApprovare,

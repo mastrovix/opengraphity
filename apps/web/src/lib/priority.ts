@@ -6,7 +6,7 @@
  * Questo file conteneva una matrice 3×3 scritta a mano, la sua inversa, la
  * mappa `critical → P1` e le etichette italiane dei tre valori. Era lo specchio
  * della matrice del server del 2025 — e l'ondata 7 ha reso quella matrice
- * **dato del cliente**, modificabile da Impostazioni → Matrici di dominio.
+ * **dato del cliente**, modificabile da Modello dei dati → Matrici di dominio.
  * Conseguenze misurate nella revisione:
  *
  *  1. un cliente che rinomina `impact`/`urgency` vede nel form i **tre bottoni

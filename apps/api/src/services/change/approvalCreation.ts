@@ -81,7 +81,7 @@ export async function assertAllApprovalsSatisfied(session: Session, changeId: st
       `The change is of type "${s.changeType}", which is not among the pre-approved types, and it has no `
       + `approval requirement: requirements are created when entering a step with the «Approval» purpose, `
       + `and this change never went through one (when it was created, its type was pre-approved). `
-      + `Two ways out: put "${s.changeType}" back among the pre-approved types (Settings → Domain `
+      + `Two ways out: put "${s.changeType}" back among the pre-approved types (Data model → Domain `
       + `matrices) — and changes like this one resume by themselves; or bring it back to the approval `
       + `step, which creates the requirements on entry.`,
       {
@@ -93,7 +93,7 @@ export async function assertAllApprovalsSatisfied(session: Session, changeId: st
     )
   }
   if (!s.hasChangeManager) {
-    throw new GraphQLError('The Change Manager requirement is missing: designate a Change Manager team (Teams and Users) before approving', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.approval.missingChangeManagerRequirement' } } })
+    throw new GraphQLError('The Change Manager requirement is missing: designate a Change Manager team (Organization & access → Teams) before approving', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.approval.missingChangeManagerRequirement' } } })
   }
   if (s.pending > 0) {
     throw new GraphQLError(`Approval incomplete: ${s.pending} requirement(s) still pending`, { extensions: { code: 'CONFLICT', i18n: { key: 'errors.approval.incomplete', params: { count: s.pending } } } })
@@ -130,7 +130,7 @@ export async function createChangeApprovals(session: Session, changeId: string, 
   `, { tenantId })
   if (!cmTeam) {
     logger.error({ changeId, tenantId }, '[approvalGate] nessun team Change Manager designato (is_change_manager)')
-    throw new GraphQLError('No Change Manager team designated: configure a team as "Change Manager" (Teams and Users) before sending the change to approval', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.approval.noChangeManagerTeam' } } })
+    throw new GraphQLError('No Change Manager team designated: configure a team as "Change Manager" (Organization & access → Teams) before sending the change to approval', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.approval.noChangeManagerTeam' } } })
   }
 
   const now = new Date().toISOString()
