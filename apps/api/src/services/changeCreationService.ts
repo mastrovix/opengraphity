@@ -10,6 +10,15 @@
  * and DeployPlanTask creation per CI, workflow instance creation and the
  * change-level audit entry. Callers only decide how to shape the response.
  *
+ * A PRE-APPROVED change asks only for the release plan (owner, 25 Sep 2026:
+ * «viene chiesto solo il piano, niente funzionale e niente tecnico»). Its risk
+ * was assessed once and for all, when its type was made pre-approved (ITIL
+ * standard change): no functional or technical assessment per CI, so no risk
+ * score and no approval route. The plan stays — it holds each CI's validation
+ * and release windows. The first step closes when the plans are complete
+ * (`all_assessments_complete` counts the tasks that exist), then the approval
+ * step lets it through at once, as before.
+ *
  * Errors are thrown as lib/errors.js classes (ValidationError, ...): GraphQL
  * lets them bubble up as-is, the REST route translates them into HTTP 400.
  */
@@ -27,6 +36,7 @@ import { assertCIsLinkable } from '../lib/ticketCIExclusions.js'
 import { withSession } from '../lib/db.js'
 import { runQueryOne } from '@opengraphity/neo4j'
 import { getInitialStepName } from '../lib/workflowHelpers.js'
+import { isPreApprovedChangeType } from '../lib/changePolicy.js'
 import {
   writeAudit,
   nextChangeCode,
@@ -88,6 +98,7 @@ export async function createChangeRFC(
   }
   if (!why)  throw new ValidationError('The "why" field is required', { key: 'errors.change.whyRequired' })
   if (!what) throw new ValidationError('The "what" field is required', { key: 'errors.change.whatRequired' })
+  const preApproved = await isPreApprovedChangeType(ctx.tenantId, changeType)
   // CM-8 (revisione del 15 set 2026): i tipi di CI esclusi per le change. Prima
   // le regole «change» (cinque su c-one) non erano applicate da nessuna parte.
   await assertCIsLinkable(ctx.tenantId, 'change', affectedCIIds)
@@ -109,12 +120,14 @@ export async function createChangeRFC(
       }
     }
     const code = await nextChangeCode(session, ctx.tenantId)
-    const taskCodes = await getNextTaskCodes(session, ctx.tenantId, affectedCIIds.length * 3)
+    // Codes only for the tasks that will exist: the plan alone when pre-approved.
+    const perCI = preApproved ? 1 : 3
+    const taskCodes = await getNextTaskCodes(session, ctx.tenantId, affectedCIIds.length * perCI)
     const ciTasks = affectedCIIds.map((ciId, i) => ({
       ciId,
-      ownerCode:   taskCodes[i * 3]!,
-      supportCode: taskCodes[i * 3 + 1]!,
-      planCode:    taskCodes[i * 3 + 2]!,
+      ownerCode:   preApproved ? null : taskCodes[i * 3]!,
+      supportCode: preApproved ? null : taskCodes[i * 3 + 1]!,
+      planCode:    taskCodes[i * perCI + perCI - 1]!,
     }))
     const id = uuidv4()
     const now = new Date().toISOString()
@@ -131,8 +144,9 @@ export async function createChangeRFC(
     // (revisione del 14 set 2026 · AU-1).
     const createdEvent = domainEvent('change.created', ctx.tenantId, ctx.userId, { id, code, title, change_type: changeType }, now)
 
-    // TRANSACTIONAL: all writes in single tx — Change + AFFECTS_CI + 2 AssessmentTask
-    // e 1 DeployPlanTask per CI + ASSIGNED_TO_TEAM + WorkflowInstance + audit entry.
+    // TRANSACTIONAL: all writes in single tx — Change + AFFECTS_CI + 1 DeployPlanTask
+    // per CI (+ 2 AssessmentTask per CI unless pre-approved) + ASSIGNED_TO_TEAM +
+    // WorkflowInstance + audit entry.
     // workflowEngine.createInstance e writeAudit ricevono la ManagedTransaction e
     // partecipano alla stessa tx: se un punto qualsiasi fallisce, rollback totale
     // (nessun Change orfano senza workflow, nessun audit senza Change).
@@ -174,24 +188,10 @@ export async function createChangeRFC(
       // SECONDO assessment owner, uno support e un piano — la change non
       // usciva più dall'analisi, perché all_assessments_complete aspettava i
       // duplicati (revisione totale · B-8).
-      CREATE (ownerT:AssessmentTask {
-        id: randomUUID(), code: ct.ownerCode, tenant_id: $tenantId, ci_id: ci.id,
-        change_key: $id + '-' + ci.id + '-owner',
-        responder_role: '${ASSESSMENT_ROLE.OWNER}', status: '${TASK_STATUS.PENDING}', score: null, created_at: $now
-      })
-      CREATE (c)-[:HAS_ASSESSMENT]->(ownerT)
-      ${firstTeamCypher('ownerT', 'ownerTeam', '$now')}
-      CREATE (supportT:AssessmentTask {
-        id: randomUUID(), code: ct.supportCode, tenant_id: $tenantId, ci_id: ci.id,
-        change_key: $id + '-' + ci.id + '-support',
-        responder_role: '${ASSESSMENT_ROLE.SUPPORT}', status: '${TASK_STATUS.PENDING}', score: null, created_at: $now
-      })
-      CREATE (c)-[:HAS_ASSESSMENT]->(supportT)
-      ${firstTeamCypher('supportT', 'supportTeam', '$now')}
       CREATE (dp:DeployPlanTask {
         id: randomUUID(), code: ct.planCode, tenant_id: $tenantId, ci_id: ci.id,
         change_key: $id + '-' + ci.id + '-deployplan',
-        status: '${TASK_STATUS.PENDING}', steps: '[]',
+        status: $pending, steps: '[]',
         created_at: $now
       })
       CREATE (c)-[:HAS_DEPLOY_PLAN]->(dp)
@@ -207,7 +207,33 @@ export async function createChangeRFC(
         tenantId: ctx.tenantId,
         now,
         customProps,
+        pending: TASK_STATUS.PENDING,
       })
+
+      // The functional and technical assessments: not for a pre-approved change.
+      if (!preApproved) {
+        await tx.run(`
+        MATCH (c:Change {id: $id, tenant_id: $tenantId})
+        UNWIND $ciTasks AS ct
+        MATCH (ci:ConfigurationItem {id: ct.ciId, tenant_id: $tenantId})
+        MATCH (ci)-[:OWNED_BY]->(ownerTeam:Team)
+        MATCH (ci)-[:SUPPORTED_BY]->(supportTeam:Team)
+        CREATE (ownerT:AssessmentTask {
+          id: randomUUID(), code: ct.ownerCode, tenant_id: $tenantId, ci_id: ci.id,
+          change_key: $id + '-' + ci.id + '-owner',
+          responder_role: $ownerRole, status: $pending, score: null, created_at: $now
+        })
+        CREATE (c)-[:HAS_ASSESSMENT]->(ownerT)
+        ${firstTeamCypher('ownerT', 'ownerTeam', '$now')}
+        CREATE (supportT:AssessmentTask {
+          id: randomUUID(), code: ct.supportCode, tenant_id: $tenantId, ci_id: ci.id,
+          change_key: $id + '-' + ci.id + '-support',
+          responder_role: $supportRole, status: $pending, score: null, created_at: $now
+        })
+        CREATE (c)-[:HAS_ASSESSMENT]->(supportT)
+        ${firstTeamCypher('supportT', 'supportTeam', '$now')}
+        `, { id, tenantId: ctx.tenantId, ciTasks, now, pending: TASK_STATUS.PENDING, ownerRole: ASSESSMENT_ROLE.OWNER, supportRole: ASSESSMENT_ROLE.SUPPORT })
+      }
 
       await workflowEngine.createInstance(tx, ctx.tenantId, id, 'change')
       // `change.created` in the transaction that creates the change (wave 7 · B2).

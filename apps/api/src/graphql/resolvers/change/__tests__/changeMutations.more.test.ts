@@ -92,6 +92,10 @@ vi.mock('../../../../lib/validateRequiredFields.js', () => ({
 }))
 vi.mock('../../../../lib/workflowTargets.js', () => ({ stepNamesByPurposeOrdered: vi.fn(async () => ['change_requested']) }))
 vi.mock('../../../../lib/systemText.js', () => ({ systemText: vi.fn(async (_t: string, key: string, p: Record<string, string>) => `${key}:${p['code']}`) }))
+// The tenant's pre-approved change types: the factory list (lib/changePolicy.ts).
+vi.mock('../../../../lib/changePolicy.js', () => ({
+  isPreApprovedChangeType: vi.fn(async (_t: string, type: string | null | undefined) => type === 'standard'),
+}))
 vi.mock('../../../../lib/ticketCIExclusions.js', () => ({ assertCIsLinkable: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../../lib/publishEvent.js', () => ({ publishEvent: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
@@ -296,8 +300,11 @@ describe('unlinkResolvedTicket', () => {
 // ── addCIToChange / removeCIFromChange ───────────────────────────────────────
 
 describe('addCIToChange', () => {
-  function ciRow(props: Record<string, unknown>, label = 'Server') {
-    vi.mocked(ciUtils.runQueryOne).mockResolvedValueOnce({ ciProps: props, ciLabel: label } as never)
+  /** The change's type is read first, the CI added last. */
+  function ciRow(props: Record<string, unknown>, label = 'Server', changeType = 'normal') {
+    vi.mocked(ciUtils.runQueryOne)
+      .mockResolvedValueOnce({ t: changeType } as never)
+      .mockResolvedValueOnce({ ciProps: props, ciLabel: label } as never)
   }
 
   it('draws a code only for the tasks that will really be created (no holes when a CI is re-added)', async () => {
@@ -309,14 +316,26 @@ describe('addCIToChange', () => {
     await mod.addCIToChange(null, { changeId: 'chg-1', ciId: 'ci-1' }, ctx)
     expect(helpers.getNextTaskCodes).toHaveBeenCalledWith(session, 't1', 2)
     const write = calls.find((c) => c.cypher.includes('MERGE (c)-[r_aci:AFFECTS_CI]->(ci)'))!
-    expect(write.params).toMatchObject({
-      ownerCode: 'TASK1', supportCode: null, planCode: 'TASK2',
-      // The key checked for existence is the very same string the MERGE uses.
-      chiaveOwner: 'chg-1-ci-1-owner', chiaveSupport: 'chg-1-ci-1-support', chiavePiano: 'chg-1-ci-1-deployplan',
-      tenantId: 't1',
+    // The key checked for existence is the very same string the MERGE uses.
+    expect(write.params).toMatchObject({ planCode: 'TASK2', chiavePiano: 'chg-1-ci-1-deployplan', tenantId: 't1' })
+    const assessments = calls.find((c) => c.cypher.includes('MERGE (ownerT:AssessmentTask'))!
+    expect(assessments.params).toMatchObject({
+      ownerCode: 'TASK1', supportCode: null,
+      chiaveOwner: 'chg-1-ci-1-owner', chiaveSupport: 'chg-1-ci-1-support', tenantId: 't1',
     })
     expect(vi.mocked(helpers.chiaviDaCreare).mock.calls[1]).toEqual([session, 'DeployPlanTask', ['chg-1-ci-1-deployplan'], 't1'])
     expect(helpers.writeAudit).toHaveBeenCalledWith(tx, 'chg-1', 't1', 'ci_added', 'u-1', 'CI web-01 added', { key: 'ciAdded', params: { ci: 'web-01' } })
+  })
+
+  // The owner, 25 Sep 2026: a standard change asks only for the plan, also for a CI added later.
+  it('a CI added to a pre-approved change gets only its release plan, and a code for it alone', async () => {
+    vi.mocked(helpers.chiaviDaCreare).mockResolvedValueOnce(new Set(['chg-1-ci-1-deployplan']))
+    ciRow({ id: 'ci-1', type: 'server' }, 'Server', 'standard')
+    await mod.addCIToChange(null, { changeId: 'chg-1', ciId: 'ci-1' }, ctx)
+    expect(vi.mocked(helpers.chiaviDaCreare).mock.calls).toEqual([[session, 'DeployPlanTask', ['chg-1-ci-1-deployplan'], 't1']])
+    expect(helpers.getNextTaskCodes).toHaveBeenCalledWith(session, 't1', 1)
+    expect(calls.some((c) => c.cypher.includes('AssessmentTask'))).toBe(false)
+    expect(calls.find((c) => c.cypher.includes('MERGE (c)-[r_aci:AFFECTS_CI]->(ci)'))!.params).toMatchObject({ planCode: 'TASK1' })
   })
 
   it('returns the CI in assessment phase, deriving the type from the label when the node has none', async () => {

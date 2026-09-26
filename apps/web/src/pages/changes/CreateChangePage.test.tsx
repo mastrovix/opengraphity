@@ -85,7 +85,7 @@ describe('CreateChangePage — tipo di change', () => {
 
   it('la nota nomina i tipi pre-approvati configurati, con le etichette del cliente', async () => {
     renderWithProviders(withVocabulary(<CreateChangePage />), { route: '/changes/new', mocks: [users, preApproved(['standard', 'major'])] })
-    await waitFor(() => expect(screen.getByText(/Standard, Major: pre-approved, they skip the approval chain but still go through the assessment/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/Standard, Major: pre-approved, only the release plan is asked for their CIs — no assessment, no approval/)).toBeInTheDocument())
   })
 
   it('nessun tipo pre-approvato → tutti passano dall\'approvazione, e lo dice', async () => {

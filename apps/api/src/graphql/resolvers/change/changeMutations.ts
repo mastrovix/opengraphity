@@ -25,6 +25,7 @@ import { NotFoundError } from '../../../lib/errors.js'
 import { publishEvent } from '../../../lib/publishEvent.js'
 import { audit } from '../../../lib/audit.js'
 import { assertCIsLinkable } from '../../../lib/ticketCIExclusions.js'
+import { isPreApprovedChangeType } from '../../../lib/changePolicy.js'
 import {
   writeAudit,
   getNextTaskCodes,
@@ -264,8 +265,9 @@ async function linkChangeToRequestingProblem(
 
 // ── addCIToChange / removeCIFromChange ────────────────────────────────────────
 
-// TRANSACTIONAL: all writes in single tx — relazione AFFECTS_CI + 2 AssessmentTask
-// + DeployPlanTask + ASSIGNED_TO_TEAM + audit entry committano o rollbackano insieme.
+// TRANSACTIONAL: all writes in single tx — relazione AFFECTS_CI + DeployPlanTask
+// (+ 2 AssessmentTask unless the change is pre-approved: only the plan, as at
+// creation) + ASSIGNED_TO_TEAM + audit entry committano o rollbackano insieme.
 // Le validazioni (step iniziale, owner/support del CI) e le letture (task codes,
 // nome CI) restano PRIMA della transazione.
 export async function addCIToChange(_: unknown, args: { changeId: string; ciId: string }, ctx: GraphQLContext) {
@@ -303,8 +305,11 @@ export async function addCIToChange(_: unknown, args: { changeId: string; ciId: 
     const chiaveOwner   = `${args.changeId}-${args.ciId}-owner`
     const chiaveSupport = `${args.changeId}-${args.ciId}-support`
     const chiavePiano   = `${args.changeId}-${args.ciId}-deployplan`
+    const type = await runQueryOne<{ t: string | null }>(session,
+      'MATCH (c:Change {id: $changeId, tenant_id: $tenantId}) RETURN c.change_type AS t', { changeId: args.changeId, tenantId: ctx.tenantId })
+    const preApproved = await isPreApprovedChangeType(ctx.tenantId, type?.t)
     const daCreare = new Set([
-      ...await chiaviDaCreare(session, 'AssessmentTask', [chiaveOwner, chiaveSupport], ctx.tenantId),
+      ...(preApproved ? [] : await chiaviDaCreare(session, 'AssessmentTask', [chiaveOwner, chiaveSupport], ctx.tenantId)),
       ...await chiaviDaCreare(session, 'DeployPlanTask', [chiavePiano], ctx.tenantId),
     ])
     const codici = await getNextTaskCodes(session, ctx.tenantId, daCreare.size)
@@ -323,29 +328,37 @@ export async function addCIToChange(_: unknown, args: { changeId: string; ciId: 
       MATCH (ci)-[:SUPPORTED_BY]->(supportTeam:Team)
       MERGE (c)-[r_aci:AFFECTS_CI]->(ci)
       ON CREATE SET r_aci.ci_phase = 'assessment'
-      MERGE (ownerT:AssessmentTask {tenant_id: $tenantId, change_key: $chiaveOwner})
-        ON CREATE SET ownerT.id = randomUUID(), ownerT.code = $ownerCode, ownerT.tenant_id = $tenantId,
-          ownerT.ci_id = $ciId, ownerT.responder_role = '${ASSESSMENT_ROLE.OWNER}',
-          ownerT.status = '${TASK_STATUS.PENDING}', ownerT.score = null, ownerT.created_at = $now
-      MERGE (c)-[:HAS_ASSESSMENT]->(ownerT)
-      ${firstTeamCypher('ownerT', 'ownerTeam', '$now')}
-      MERGE (supportT:AssessmentTask {tenant_id: $tenantId, change_key: $chiaveSupport})
-        ON CREATE SET supportT.id = randomUUID(), supportT.code = $supportCode, supportT.tenant_id = $tenantId,
-          supportT.ci_id = $ciId, supportT.responder_role = '${ASSESSMENT_ROLE.SUPPORT}',
-          supportT.status = '${TASK_STATUS.PENDING}', supportT.score = null, supportT.created_at = $now
-      MERGE (c)-[:HAS_ASSESSMENT]->(supportT)
-      ${firstTeamCypher('supportT', 'supportTeam', '$now')}
       MERGE (dp:DeployPlanTask {tenant_id: $tenantId, change_key: $chiavePiano})
         ON CREATE SET dp.id = randomUUID(), dp.code = $planCode, dp.tenant_id = $tenantId,
-          dp.ci_id = $ciId, dp.status = '${TASK_STATUS.PENDING}',
+          dp.ci_id = $ciId, dp.status = $pending,
           dp.steps = '[]',
           dp.created_at = $now
       MERGE (c)-[:HAS_DEPLOY_PLAN]->(dp)
       ${firstTeamCypher('dp', 'supportTeam', '$now')}
       SET c.updated_at = $now
-      `, { changeId: args.changeId, ciId: args.ciId, tenantId: ctx.tenantId, now,
-           chiaveOwner, chiaveSupport, chiavePiano,
-           ownerCode, supportCode, planCode })
+      `, { changeId: args.changeId, ciId: args.ciId, tenantId: ctx.tenantId, now, chiavePiano, planCode, pending: TASK_STATUS.PENDING })
+
+      if (!preApproved) {
+        await tx.run(`
+        MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
+        MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
+        MATCH (ci)-[:OWNED_BY]->(ownerTeam:Team)
+        MATCH (ci)-[:SUPPORTED_BY]->(supportTeam:Team)
+        MERGE (ownerT:AssessmentTask {tenant_id: $tenantId, change_key: $chiaveOwner})
+          ON CREATE SET ownerT.id = randomUUID(), ownerT.code = $ownerCode, ownerT.tenant_id = $tenantId,
+            ownerT.ci_id = $ciId, ownerT.responder_role = $ownerRole,
+            ownerT.status = $pending, ownerT.score = null, ownerT.created_at = $now
+        MERGE (c)-[:HAS_ASSESSMENT]->(ownerT)
+        ${firstTeamCypher('ownerT', 'ownerTeam', '$now')}
+        MERGE (supportT:AssessmentTask {tenant_id: $tenantId, change_key: $chiaveSupport})
+          ON CREATE SET supportT.id = randomUUID(), supportT.code = $supportCode, supportT.tenant_id = $tenantId,
+            supportT.ci_id = $ciId, supportT.responder_role = $supportRole,
+            supportT.status = $pending, supportT.score = null, supportT.created_at = $now
+        MERGE (c)-[:HAS_ASSESSMENT]->(supportT)
+        ${firstTeamCypher('supportT', 'supportTeam', '$now')}
+        `, { changeId: args.changeId, ciId: args.ciId, tenantId: ctx.tenantId, now, chiaveOwner, chiaveSupport, ownerCode, supportCode,
+             pending: TASK_STATUS.PENDING, ownerRole: ASSESSMENT_ROLE.OWNER, supportRole: ASSESSMENT_ROLE.SUPPORT })
+      }
 
       await writeAudit(tx, args.changeId, ctx.tenantId, 'ci_added', ctx.userId, `CI ${ciName} added`, { key: 'ciAdded', params: { ci: ciName } })
     })

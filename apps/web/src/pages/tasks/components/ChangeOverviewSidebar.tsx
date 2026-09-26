@@ -11,16 +11,35 @@ import { TASK_STATUS, VALIDATION_RESULT, REVIEW_RESULT, ASSESSMENT_ROLE } from '
 import type { AffectedCI, AssessmentTaskData, ChangeData, DeployPlanTaskData } from '@/types/change'
 import { colors } from '@/lib/tokens'
 
-type DotState = 'not_started' | 'in_progress' | 'completed' | 'failed'
+/**
+ * `not_required`: a task the change does not have — the functional and
+ * technical assessments of a pre-approved change, which asks only for the
+ * plan (owner, 25 Sep 2026). A hollow dot, not a grey one: grey says «still
+ * to do», and here there is nothing to do.
+ */
+type DotState = 'not_started' | 'in_progress' | 'completed' | 'failed' | 'not_required'
 const DOT_COLOR: Record<DotState, string> = {
-  not_started: 'var(--color-slate-light)',
-  in_progress: colors.warning,
-  completed:   colors.success,
-  failed:      'var(--color-danger)',
+  not_started:  'var(--color-slate-light)',
+  in_progress:  colors.warning,
+  completed:    colors.success,
+  failed:       'var(--color-danger)',
+  not_required: 'transparent',
 }
 
-function assessDotState(t: AssessmentTaskData | null): DotState {
-  if (!t) return 'not_started'
+function dotStyle(state: DotState): React.CSSProperties {
+  return {
+    width: 8, height: 8, borderRadius: '50%', display: 'inline-block', boxSizing: 'border-box', backgroundColor: DOT_COLOR[state],
+    border: state === 'not_required' ? '1px solid var(--color-slate-light)' : 'none',
+  }
+}
+
+/** A change that asks this CI for no assessment: pre-approved, only the plan. */
+function planOnly(a: AffectedCI): boolean {
+  return !a.assessmentOwner && !a.assessmentSupport
+}
+
+function assessDotState(t: AssessmentTaskData | null, required: boolean): DotState {
+  if (!t) return required ? 'not_started' : 'not_required'
   if (t.status === TASK_STATUS.COMPLETED) return 'completed'
   if (t.status === TASK_STATUS.IN_PROGRESS || t.responses.length > 0) return 'in_progress'
   return 'not_started'
@@ -47,8 +66,8 @@ const CI_PHASE_KEYS = ['changeTasks.phaseName.functional', 'changeTasks.phaseNam
 function CIDots({ a }: { a: AffectedCI }) {
   const { t } = useTranslation()
   const states: DotState[] = [
-    assessDotState(a.assessmentOwner),
-    assessDotState(a.assessmentSupport),
+    assessDotState(a.assessmentOwner, !planOnly(a)),
+    assessDotState(a.assessmentSupport, !planOnly(a)),
     planDotState(a.deployPlan),
     simpleDotState(a.validation),
     simpleDotState(a.deployment),
@@ -57,7 +76,7 @@ function CIDots({ a }: { a: AffectedCI }) {
   return (
     <div style={{ display: 'flex', gap: 3 }}>
       {states.map((state, i) => (
-        <span key={i} title={t(CI_PHASE_KEYS[i]!)} style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: DOT_COLOR[state], display: 'inline-block' }} />
+        <span key={i} title={t(CI_PHASE_KEYS[i]!)} data-dot={state} style={dotStyle(state)} />
       ))}
     </div>
   )
@@ -72,6 +91,7 @@ function CIDotsLegend() {
     { state: 'in_progress', label: t('changeTasks.dot.inProgress') },
     { state: 'completed',   label: t('changeTasks.dot.completed') },
     { state: 'failed',      label: t('changeTasks.dot.failed') },
+    { state: 'not_required', label: t('changeTasks.dot.notRequired') },
   ]
   return (
     <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginBottom: 12, lineHeight: 1.6 }}>
@@ -81,7 +101,7 @@ function CIDotsLegend() {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 10px', alignItems: 'center' }}>
         {colorItems.map((c) => (
           <span key={c.state} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: DOT_COLOR[c.state], display: 'inline-block' }} />
+            <span style={dotStyle(c.state)} />
             {c.label}
           </span>
         ))}
@@ -154,6 +174,11 @@ export function ChangeOverviewSidebar({
               <CIDotsLegend />
             </div>
 
+            {ciAffected && planOnly(ciAffected) && (
+              <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginBottom: 12 }}>
+                {t('changeTasks.planOnly')}
+              </div>
+            )}
             {ciAffected && ciAffected.assessmentOwner?.status === TASK_STATUS.COMPLETED && ciAffected.assessmentSupport?.status === TASK_STATUS.COMPLETED && (
               <div style={{ marginBottom: 12 }}>
                 <div style={{ fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', marginBottom: 6, fontSize: 'var(--font-size-label)' }}>
@@ -171,7 +196,7 @@ export function ChangeOverviewSidebar({
                 </div>
               </div>
             )}
-            {ciAffected && !(ciAffected.assessmentOwner?.status === TASK_STATUS.COMPLETED && ciAffected.assessmentSupport?.status === TASK_STATUS.COMPLETED) && (
+            {ciAffected && !planOnly(ciAffected) && !(ciAffected.assessmentOwner?.status === TASK_STATUS.COMPLETED && ciAffected.assessmentSupport?.status === TASK_STATUS.COMPLETED) && (
               <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginBottom: 12 }}>
                 {t('changeTasks.functional')}: <StatusLabel status={ciAffected.assessmentOwner?.status} /> · {t('changeTasks.technical')}: <StatusLabel status={ciAffected.assessmentSupport?.status} />
               </div>

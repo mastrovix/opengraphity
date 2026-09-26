@@ -1366,7 +1366,7 @@
       "outOfVocabulary": "{{value}} — non più nel vocabolario",
       "preApproved": {
         "title": "Change pre-approvate",
-        "help": "Una change di un tipo pre-approvato salta la catena di approvazioni (il cambiamento pre-autorizzato dell'ITIL). Prima era il valore «standard» scritto nel codice: chi lo rinominava nel Dizionario perdeva la pre-approvazione senza saperlo.",
+        "help": "Una change di un tipo pre-approvato chiede solo il piano di rilascio: niente assessment funzionale né tecnico, e niente catena di approvazioni (il cambiamento pre-autorizzato dell'ITIL, con il rischio valutato una volta per tutte). Prima era il valore «standard» scritto nel codice: chi lo rinominava nel Dizionario perdeva la pre-approvazione senza saperlo.",
         "none": "Nessun tipo pre-approvato: ogni change passerà dalle approvazioni.",
         "saved": "Tipi pre-approvati salvati"
       },
@@ -2042,7 +2042,7 @@
       "searchCI": "Cerca un CI per nome...",
       "title": "Nuova change",
       "subtitle": "Apri una richiesta per introdurre una modifica controllata ai sistemi",
-      "typesNotePreApproved": "{{types}}: pre-approvati, saltano la catena di approvazioni ma passano comunque dall'assessment dei loro CI. Gli altri tipi passano dall'approvazione. Il piano di rientro si valuta nell'assessment tecnico.",
+      "typesNotePreApproved": "{{types}}: pre-approvati, per i loro CI si chiede solo il piano di rilascio — niente assessment, niente approvazione. Gli altri tipi passano dall'assessment e dall'approvazione. Il piano di rientro si valuta nell'assessment tecnico.",
       "typesNoteAllApproved": "Tutti i tipi passano dall'approvazione. Il piano di rientro si valuta nell'assessment tecnico.",
       "noChangeTypes": "Nessun tipo di change definito: aggiungi i valori del vocabolario change_type nel Dizionario.",
       "whyPlaceholder": "Perché serve questa change? Motivazione, problema o obiettivo.",
@@ -2065,7 +2065,7 @@
       "changeTypeChange": "Cambia",
       "preApprovedBadge": "Pre-approvata",
       "typeHelp": {
-        "standard": "Intervento ripetuto e a basso rischio, già valutato una volta per tutte: non passa dalle approvazioni, ma i suoi CI passano comunque dall'assessment.",
+        "standard": "Intervento ripetuto e a basso rischio, già valutato una volta per tutte: per i suoi CI si chiede solo il piano di rilascio, senza assessment e senza approvazioni.",
         "normal": "Il caso ordinario: si descrive, si valuta e passa dalla catena di approvazioni prima di andare in esercizio.",
         "emergency": "Serve subito, di solito per rimettere in piedi un servizio: si apre con l'urgenza, e la valutazione la si fa comunque — non la si salta."
       }
@@ -6965,8 +6965,10 @@
       "notStarted": "non iniziato",
       "inProgress": "in corso",
       "completed": "completato",
-      "failed": "fallito"
+      "failed": "fallito",
+      "notRequired": "non richiesto"
     },
+    "planOnly": "Una change pre-approvata: per questo CI si chiede solo il piano di rilascio, niente assessment funzionale né tecnico.",
     "doneMark": "✓ Completato",
     "phase": {
       "current": "corrente",

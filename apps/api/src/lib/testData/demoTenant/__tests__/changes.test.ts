@@ -357,6 +357,25 @@ describe('a change stays in the step it was planned to stop at', () => {
     }
   })
 
+  // The owner, 25 Sep 2026: «le change standard: viene chiesto solo il piano, niente funzionale e niente tecnico».
+  it('a standard change asks only for the plan: no assessment, no risk, and once the plan is done it goes through approval to scheduled by itself', () => {
+    const standard: ChangeSkeleton = { ...base, ...ahead, type: 'standard', target: 'scheduled' }
+    const sim = simulate(standard, 'standard/scheduled')
+    expect(sim.tasks.map((t) => t.label)).toEqual(['DeployPlanTask'])
+    expect(sim.responses).toHaveLength(0)
+    expect(sim.tasks[0]!.props['status']).toBe('completed')
+    expect(sim.trail.moves.map((m) => m.step.name)).toEqual(['approval', 'scheduled'])
+    expect(sim.approvals).toHaveLength(0)
+    expect(sim.props['approval_status']).toBe('approved')
+    expect(sim.props['aggregate_risk_score']).toBeUndefined()
+    expect(sim.props['approval_route']).toBeUndefined()
+    expect([...sim.affects.values()].every((a) => a['risk_score'] === undefined)).toBe(true)
+    // Still in assessment: it is its plan that stays open.
+    const waiting = simulate({ ...standard, target: 'assessment', conflictGroup: 7 }, 'standard/assessment')
+    expect(waiting.trail.current.name).toBe('assessment')
+    expect(waiting.tasks.map((t) => [t.label, t.props['status'] === 'completed'])).toEqual([['DeployPlanTask', false]])
+  })
+
   it('G30: a task someone started is held by who started it — the first to answer, who saved the plan — and one nobody touched is held by nobody', () => {
     let started = 0
     let untouched = 0

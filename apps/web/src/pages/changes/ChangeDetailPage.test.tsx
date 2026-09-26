@@ -463,14 +463,23 @@ describe('ChangeDetailPage — moving the change along its workflow', () => {
     expect(screen.getByText('task table: orders-db, orders-app | own teams | teams | open')).toBeInTheDocument()
   })
 
-  it('the progress of the initial step counts the three tasks of every CI', () => {
-    const { unmount } = mount()
+  it('the progress of the initial step counts the tasks every CI has: three, the plan alone for a pre-approved change', () => {
+    const plan = (id: string, status: string) => ({ ...DB.deployPlan!, id, status })
+    const app = { ...APP, assessmentSupport: task('a5', 'TASK00000005', 'pending'), deployPlan: plan('dp2', 'pending') }
     // orders-db: both assessments done, plan in progress; orders-app: nothing done.
+    apolloFinto.risposte['GetChangeAffectedCIs'] = { changeAffectedCIs: [DB, app] }
+    const { unmount } = mount()
     expect(screen.getByText('2/6 per-CI tasks completed')).toBeInTheDocument()
     unmount()
-    apolloFinto.risposte['GetChangeAffectedCIs'] = { changeAffectedCIs: [{ ...DB, deployPlan: { ...DB.deployPlan!, status: 'completed' } }, APP] }
-    mount()
+    apolloFinto.risposte['GetChangeAffectedCIs'] = { changeAffectedCIs: [{ ...DB, deployPlan: plan('dp1', 'completed') }, app] }
+    const second = mount()
     expect(screen.getByText('3/6 per-CI tasks completed')).toBeInTheDocument()
+    second.unmount()
+    // The owner, 25 Sep 2026: a standard change asks each CI only for its plan.
+    const planOnly = (ci: typeof DB, status: string) => ({ ...ci, assessmentOwner: null, assessmentSupport: null, deployPlan: plan(`dp-${ci.ci.id}`, status) })
+    apolloFinto.risposte['GetChangeAffectedCIs'] = { changeAffectedCIs: [planOnly(DB, 'completed'), planOnly(APP, 'pending')] }
+    mount()
+    expect(screen.getByText('1/2 per-CI tasks completed')).toBeInTheDocument()
   })
 
   it('a change with no workflow instance, in a workflow not loaded yet, draws no phase and offers no action', async () => {

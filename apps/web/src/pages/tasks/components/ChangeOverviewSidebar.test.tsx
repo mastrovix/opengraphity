@@ -81,7 +81,7 @@ function setup(props: Partial<Parameters<typeof ChangeOverviewSidebar>[0]> = {})
 /** What each of the six dots of a CI says, read through the legend's colours. */
 function dotsOf(ciName: string): string[] {
   const legend = screen.getByText(/^Dots \(in order\)/).parentElement!
-  const meaning = new Map(['not started', 'in progress', 'completed', 'failed'].map((label) => [
+  const meaning = new Map(['not started', 'in progress', 'completed', 'failed', 'not required'].map((label) => [
     (within(legend).getByText(label).firstElementChild as HTMLElement).style.backgroundColor, label,
   ]))
   const row = screen.getByRole('button', { name: new RegExp(ciName) })
@@ -141,6 +141,18 @@ describe('ChangeOverviewSidebar', () => {
     expect(dotsOf('db-01')).toEqual(['in progress', 'not started', 'completed', 'completed', 'in progress', 'failed'])
     expect(dotsOf('queue-01')).toEqual(['not started', 'not started', 'not started', 'not started', 'not started', 'completed'])
     expect(screen.getByText(/^Dots \(in order\)/)).toHaveTextContent('Dots (in order): 1 Functional · 2 Technical · 3 Plan · 4 Validation · 5 Deploy · 6 Review')
+  })
+
+  // The owner, 25 Sep 2026: a standard change asks only for the plan.
+  it('a CI of a pre-approved change has no assessment: its two dots say «not required», hollow, and a line says why', () => {
+    const STD = ci('ci-std', 'std-01', { deployPlan: plan('completed', 1) })
+    setup({ allAffected: [STD], ciAffected: STD, currentCIId: 'ci-std', currentCIName: 'std-01' })
+    expect(dotsOf('std-01')).toEqual(['not required', 'not required', 'completed', 'not started', 'not started', 'not started'])
+    const row = screen.getByRole('button', { name: /std-01/ })
+    expect(within(row).getByTitle('Functional').style.border).toContain('1px solid')
+    expect(screen.getByText(/only the release plan is asked for this CI/)).toBeInTheDocument()
+    expect(screen.queryByText(/Functional: /)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Assessment answers/)).not.toBeInTheDocument()
   })
 
   it('while the assessments of this CI are open, their states are shown', () => {

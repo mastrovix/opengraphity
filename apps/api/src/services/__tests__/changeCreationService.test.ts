@@ -35,6 +35,10 @@ vi.mock('../../lib/sequence.js', () => ({
   nextSequenceValue: vi.fn(async () => ++maxChgNum),
   nextSequenceBlock: vi.fn(async (_s: unknown, _t: string, _k: string, count: number) => (taskCounter += count)),
 }))
+// The tenant's pre-approved change types: the factory list (lib/changePolicy.ts).
+vi.mock('../../lib/changePolicy.js', () => ({
+  isPreApprovedChangeType: vi.fn(async (_t: string, type: string | null | undefined) => type === 'standard'),
+}))
 vi.mock('@opengraphity/sla', () => ({
   getActiveOLAContractsFor: vi.fn(async () => []), getTenantTimezone: vi.fn(async () => 'UTC'),
 }))
@@ -222,10 +226,13 @@ describe('createChangeRFC', () => {
     // partecipano tutte alla stessa transazione
     expect(mockSession.executeWrite).toHaveBeenCalledTimes(1)
 
-    // Dentro la tx: tx.run per la CREATE e per l'audit (l'instance è mockata)
-    expect(mockTx.run).toHaveBeenCalledTimes(2)
+    // Dentro la tx: tx.run per la CREATE (change e piani), per gli assessment
+    // e per l'audit (l'instance è mockata)
+    expect(mockTx.run).toHaveBeenCalledTimes(3)
     expect(mockTx.run.mock.calls[0]![0]).toContain('CREATE (c:Change')
-    expect(mockTx.run.mock.calls[1]![0]).toContain('ChangeAuditEntry')
+    expect(mockTx.run.mock.calls[0]![0]).toContain('DeployPlanTask')
+    expect(mockTx.run.mock.calls[1]![0]).toContain('AssessmentTask')
+    expect(mockTx.run.mock.calls[2]![0]).toContain('ChangeAuditEntry')
 
     expect(workflowEngine.createInstance).toHaveBeenCalledOnce()
     // createInstance riceve la ManagedTransaction, NON la session: partecipa alla tx
@@ -299,6 +306,30 @@ describe('createChangeRFC', () => {
 
     expect(result.code).toMatch(/^CHG\d{8}$/)
     expect(result.code).toBe('CHG00000008')
+  })
+
+  /**
+   * THE OWNER, 25 Sep 2026: «le change standard: viene chiesto solo il piano,
+   * niente funzionale e niente tecnico». A pre-approved change gets one task
+   * per CI, the release plan, and a code for it alone.
+   */
+  it('a pre-approved change asks only for the release plan: no assessment, one task code per CI', async () => {
+    mockQueries({
+      ciRows: [
+        { id: 'ci-1', name: 'A', ownerTeamId: 't1', supportTeamId: 't2' },
+        { id: 'ci-2', name: 'B', ownerTeamId: 't1', supportTeamId: 't2' },
+      ],
+    })
+    await createChangeRFC({ changeType: 'standard', title: 'Add indexes', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1', 'ci-2'] }, ctx)
+    const cyphers = mockTx.run.mock.calls.map((c) => c[0] as string)
+    expect(cyphers.some((q) => q.includes('AssessmentTask'))).toBe(false)
+    expect(cyphers[0]).toContain('DeployPlanTask')
+    const params = mockTx.run.mock.calls[0]![1] as { ciTasks: Array<Record<string, unknown>> }
+    expect(params.ciTasks).toEqual([
+      { ciId: 'ci-1', ownerCode: null, supportCode: null, planCode: 'TASK00000001' },
+      { ciId: 'ci-2', ownerCode: null, supportCode: null, planCode: 'TASK00000002' },
+    ])
+    expect(workflowEngine.createInstance).toHaveBeenCalledOnce()
   })
 
   it('passa un task code per ogni ruolo (owner/support/plan) per ciascun CI', async () => {

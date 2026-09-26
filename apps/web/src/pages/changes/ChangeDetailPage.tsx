@@ -202,7 +202,8 @@ export function ChangeDetailPage() {
   const currentStep = change.workflowInstance?.currentStep ?? ''
   const transitions = canWrite ? (change.availableTransitions ?? []).map(withLocalizedLabel) : []
 
-  const totalTasks = affected.length * 3
+  // The tasks the change has: three per CI, the plan alone when it is pre-approved.
+  const totalTasks = affected.reduce((n, a) => n + (a.assessmentOwner ? 1 : 0) + (a.assessmentSupport ? 1 : 0) + (a.deployPlan ? 1 : 0), 0)
   const completedTasks = affected.reduce((n, a) => n
     + (a.assessmentOwner?.status === TASK_STATUS.COMPLETED ? 1 : 0)
     + (a.assessmentSupport?.status === TASK_STATUS.COMPLETED ? 1 : 0)

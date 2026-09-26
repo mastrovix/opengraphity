@@ -3,7 +3,8 @@
  *
  * A change is lived as the app runs it (change resolvers, read line by line):
  * created with its CIs — one owner assessment, one support assessment and one
- * deploy plan per CI, each assigned to the CI's team — then assessed (the
+ * deploy plan per CI, each assigned to the CI's team; a standard change, being
+ * pre-approved, only the plan — then assessed (the
  * questions answered, the scores by the app's formula, the risk and the
  * priority from the tenant's matrices), planned (a release window per CI),
  * approved (the change-manager team and each owner team; a standard change
@@ -411,17 +412,23 @@ export function simulateChange(rng: Rng, w: World, s: ChangeSkeleton, questions:
   const milestones: ChangeMilestones = { code: s.code, createdAtMs: t0, deploymentAtMs: null, deploymentActorId: null, closedAtMs: null, closerId: null }
 
   // ── Creation: tasks per CI, in input order ─────────────────────────────────
-  const taskOf = new Map<string, { owner: TaskRow; support: TaskRow; plan: TaskRow }>()
+  // A standard change is pre-approved (the tenant's factory list): the app asks
+  // it only for the release plan, no functional or technical assessment (owner,
+  // 25 Sep 2026), so it has no risk score and no approval route either.
+  const preApproved = s.type === 'standard'
+  const parts = preApproved ? ['plan'] as const : ['owner', 'support', 'plan'] as const
+  const taskOf = new Map<string, { owner: TaskRow | null; support: TaskRow | null; plan: TaskRow }>()
   for (const ci of cis) {
     sim.affects.set(ci.id, { ci_phase: 'assessment' })
     const mk = (label: TaskRow['label'], rel: TaskRow['rel'], suffix: string, teamId: string, extra: Record<string, unknown>): TaskRow => ({
       label, rel, createdAtMs: t0, teamId, doneBy: null, assigneeId: null, segmentId: rng.uuid(),
       props: { id: rng.uuid(), code: taskCodes(), ci_id: ci.id, change_key: `${s.id}-${ci.id}${suffix}`, status: 'pending', created_at: new Date(t0).toISOString(), ...extra },
     })
-    const owner = mk('AssessmentTask', 'HAS_ASSESSMENT', '-owner', ci.ownerTeamId!, { responder_role: 'owner' })
-    const support = mk('AssessmentTask', 'HAS_ASSESSMENT', '-support', ci.supportTeamId!, { responder_role: 'support' })
+    const owner = preApproved ? null : mk('AssessmentTask', 'HAS_ASSESSMENT', '-owner', ci.ownerTeamId!, { responder_role: 'owner' })
+    const support = preApproved ? null : mk('AssessmentTask', 'HAS_ASSESSMENT', '-support', ci.supportTeamId!, { responder_role: 'support' })
     const plan = mk('DeployPlanTask', 'HAS_DEPLOY_PLAN', '-deployplan', ci.supportTeamId!, { steps: '[]' })
-    sim.tasks.push(owner, support, plan)
+    if (owner && support) sim.tasks.push(owner, support)
+    sim.tasks.push(plan)
     taskOf.set(ci.id, { owner, support, plan })
   }
   const watchers = [{ userId: requester.id, atMs: t0 }]
@@ -446,10 +453,10 @@ export function simulateChange(rng: Rng, w: World, s: ChangeSkeleton, questions:
   // Which assessments and plans get completed. A change still in assessment
   // keeps at least one open: completing the last one makes the app move it on.
   const finishes = new Map<string, boolean>()
-  for (const ci of cis) for (const part of ['owner', 'support', 'plan']) finishes.set(`${ci.id}:${part}`, rng.chance(doneFraction))
-  if (s.target === 'assessment' && [...finishes.values()].every(Boolean)) finishes.set(`${rng.pick(cis).id}:${rng.pick(['owner', 'support', 'plan'])}`, false)
+  for (const ci of cis) for (const part of parts) finishes.set(`${ci.id}:${part}`, rng.chance(doneFraction))
+  if (s.target === 'assessment' && [...finishes.values()].every(Boolean)) finishes.set(`${rng.pick(cis).id}:${rng.pick([...parts])}`, false)
   let finishedCount = 0
-  const totalFinishers = cis.length * 3
+  const totalFinishers = cis.length * parts.length
   let lastFinishAt = 0
   let updatedAtMs = t0
   /** Everything that sets `c.updated_at` in the app. */
@@ -457,6 +464,7 @@ export function simulateChange(rng: Rng, w: World, s: ChangeSkeleton, questions:
   for (const ci of cis) {
     const tk = taskOf.get(ci.id)!
     for (const [role, task] of [['owner', tk.owner], ['support', tk.support]] as const) {
+      if (!task) continue
       const qs = questions.filter((q) => q.category === (role === 'owner' ? 'functional' : 'technical'))
       const person = w.memberOf(rng, task.teamId!, t0)
       const start = between(assessFrom, assessBy - Math.min(HOUR, Math.round((assessBy - assessFrom) * 0.5)))
@@ -484,9 +492,9 @@ export function simulateChange(rng: Rng, w: World, s: ChangeSkeleton, questions:
           task.doneBy = { rel: 'COMPLETED_BY', userId: person.id }
           changeAudit(sim, at, 'assessment_task_completed', `${ROLE_LABEL[role]} · ${ci.name}: score ${String(score)}`, person.id,
             { key: 'taskScored', params: { role, ci: ci.name, score: String(score) } })
-          const other = role === 'owner' ? tk.support : tk.owner
+          const other = (role === 'owner' ? tk.support : tk.owner)!
           if (other.props['status'] === 'completed') {
-            const risk = Math.round(((tk.owner.props['score'] as number) + (tk.support.props['score'] as number)) / 2)
+            const risk = Math.round(((tk.owner!.props['score'] as number) + (tk.support!.props['score'] as number)) / 2)
             sim.affects.set(ci.id, { ci_phase: 'assessed', risk_score: risk })
             changeAudit(sim, at, 'ci_risk_computed', `${ci.name}: risk ${String(risk)}`, person.id, { key: 'ciRisk', params: { ci: ci.name, score: String(risk) } })
           }
@@ -544,7 +552,7 @@ export function simulateChange(rng: Rng, w: World, s: ChangeSkeleton, questions:
   }
 
   function enterApproval(at: number): void {
-    if (s.type === 'standard') {
+    if (preApproved) {
       // Pre-approved: no approvals; the app moves it on at once, as the system.
       sim.props['approval_status'] = 'approved'
       trail.transition('scheduled', at, SYSTEM_ACTOR, 'automatic', w.trail.text('change.preApproved'), { triggeredBy: 'system', automaticOnManual: true })
@@ -563,7 +571,7 @@ export function simulateChange(rng: Rng, w: World, s: ChangeSkeleton, questions:
   if (s.target === 'assessment' || trail.current.name === 'assessment') return done()
 
   // ── Approvals ──────────────────────────────────────────────────────────────
-  if (s.type !== 'standard') {
+  if (!preApproved) {
     const approveFrom = trail.lastEventMs
     const approveBy = Math.max(approveFrom + 10 * MINUTE, Math.min(t0 + Math.round(lead * 0.85), now - 5 * MINUTE))
     const order = rng.shuffle(sim.approvals)

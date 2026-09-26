@@ -60,7 +60,7 @@ const page = () => renderWithProviders(
 describe('CreateChangePage — the pre-approved types in the note', () => {
   it('a pre-approved type the vocabulary no longer lists is named by its value, next to the labelled ones', () => {
     page()
-    expect(screen.getByText(/^Standard, routine_patch: pre-approved, they skip the approval chain/)).toBeInTheDocument()
+    expect(screen.getByText(/^Standard, routine_patch: pre-approved, only the release plan is asked for their CIs/)).toBeInTheDocument()
   })
 })
 
